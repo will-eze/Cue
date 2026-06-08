@@ -6,6 +6,12 @@ Full technical specification: `Cue_Phase1a_TechnicalSpec.docx`
 
 ---
 
+## UI Design Rules
+
+**NEVER use AI purple / indigo (#6366F1, #4F6EF7, #818CF8, #A5B4FC, or any violet/purple accent) in UI component design.** This is the generic "AI app" colour that makes software look like every other LLM product. Use a distinct, purposeful accent palette instead — see Compatibility notes for current design direction.
+
+---
+
 ## Technology stack
 
 | Package | Role |

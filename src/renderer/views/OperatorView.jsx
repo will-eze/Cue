@@ -3,7 +3,7 @@ import RundownPanel from '../panels/RundownPanel';
 import PreviewLivePanel from '../panels/PreviewLivePanel';
 import LibraryPanel from '../panels/LibraryPanel';
 
-function useResizeH(containerRef, defaultPct = 42) {
+function useResizeH(containerRef, defaultPct = 40) {
   const [pct, setPct] = useState(defaultPct);
   function start(e) {
     e.preventDefault();
@@ -23,7 +23,7 @@ function useResizeH(containerRef, defaultPct = 42) {
   return [pct, start];
 }
 
-function useResizeV(containerRef, defaultPct = 58) {
+function useResizeV(containerRef, defaultPct = 60) {
   const [pct, setPct] = useState(defaultPct);
   function start(e) {
     e.preventDefault();
@@ -143,9 +143,7 @@ export default function OperatorView() {
     }
   }
 
-  function handleSelectPreviewSlide(idx) {
-    setPreviewSlideIdx(idx);
-  }
+  function handleSelectPreviewSlide(idx) { setPreviewSlideIdx(idx); }
 
   function handleGoAtPreviewSlide(idx) {
     if (!previewItem) return;
@@ -182,9 +180,7 @@ export default function OperatorView() {
     setLiveItemId(null);
   }
 
-  function handleLogo() {
-    window.cue.output.logo();
-  }
+  function handleLogo() { window.cue.output.logo(); }
 
   function handleNextSlide() {
     if (!previewItem) return;
@@ -227,24 +223,20 @@ export default function OperatorView() {
   }
 
   async function handleAddService(title) {
-    const id = await window.cue.services.create({
-      title,
-      date: new Date().toISOString().split('T')[0],
-    });
+    const id = await window.cue.services.create({ title, date: new Date().toISOString().split('T')[0] });
     const list = await window.cue.services.list();
     setServices(list);
     setActiveServiceId(id);
   }
 
   const containerRef = useRef(null);
-  const [hPct, startHDrag] = useResizeH(containerRef, 42);
-  const [vPct, startVDrag] = useResizeV(containerRef, 58);
+  const [hPct, startHDrag] = useResizeH(containerRef, 40);
+  const [vPct, startVDrag] = useResizeV(containerRef, 60);
 
   return (
-    <div ref={containerRef} className="flex flex-col h-full" style={{ background: '#060810' }}>
+    <div ref={containerRef} className="flex flex-col h-full" style={{ background: '#0C0A08' }}>
       {/* Top panels */}
       <div style={{ height: `${vPct}%` }} className="flex flex-shrink-0 min-h-0">
-        {/* Rundown */}
         <div style={{ width: `${hPct}%` }} className="flex-shrink-0 min-w-0 overflow-hidden">
           <RundownPanel
             services={services}
@@ -264,14 +256,13 @@ export default function OperatorView() {
 
         {/* Horizontal drag handle */}
         <div
-          className="resize-h flex-shrink-0 transition-colors duration-150"
-          style={{ width: 3, background: '#181C2A' }}
+          className="resize-h flex-shrink-0 transition-colors duration-100"
+          style={{ width: 3, background: '#201D18', cursor: 'col-resize' }}
           onMouseDown={startHDrag}
-          onMouseEnter={(e) => { e.currentTarget.style.background = '#4F6EF7'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = '#181C2A'; }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = '#C8780A'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = '#201D18'; }}
         />
 
-        {/* Preview/Live */}
         <div className="flex-1 min-w-0 overflow-hidden">
           <PreviewLivePanel
             previewItem={previewItem}
@@ -292,11 +283,11 @@ export default function OperatorView() {
 
       {/* Vertical drag handle */}
       <div
-        className="resize-v flex-shrink-0 transition-colors duration-150"
-        style={{ height: 3, background: '#181C2A' }}
+        className="resize-v flex-shrink-0 transition-colors duration-100"
+        style={{ height: 3, background: '#201D18', cursor: 'row-resize' }}
         onMouseDown={startVDrag}
-        onMouseEnter={(e) => { e.currentTarget.style.background = '#4F6EF7'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = '#181C2A'; }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = '#C8780A'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = '#201D18'; }}
       />
 
       {/* Library */}
