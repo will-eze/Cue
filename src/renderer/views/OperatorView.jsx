@@ -70,7 +70,6 @@ export default function OperatorView() {
     window.cue.on('output:live-capture', (dataUrl) => setLiveCapture(dataUrl));
   }, []);
 
-  // Arrow keys navigate preview only — press G / GO to send to live
   const shortcutRef = useRef({});
   shortcutRef.current = { handleNextSlide, handlePrevSlide, handleGo, handleClear, handleLogo };
 
@@ -127,13 +126,11 @@ export default function OperatorView() {
     return null;
   }
 
-  // Single-click rundown item → load into preview, no live change
   function handleClickItem(item) {
     setPreviewItemId(item.id);
     setPreviewSlideIdx(0);
   }
 
-  // Double-click rundown item → load into preview and immediately go live at slide 0
   function handleDoubleClickItem(item) {
     setPreviewItemId(item.id);
     const slides = getSlides(item);
@@ -146,12 +143,10 @@ export default function OperatorView() {
     }
   }
 
-  // Click in preview slide list → update preview position only, no live change
   function handleSelectPreviewSlide(idx) {
     setPreviewSlideIdx(idx);
   }
 
-  // Double-click in preview slide list → go live at that position
   function handleGoAtPreviewSlide(idx) {
     if (!previewItem) return;
     const payload = buildPayload(previewItem, idx);
@@ -163,7 +158,6 @@ export default function OperatorView() {
     }
   }
 
-  // Click in live slide list → advance live output to that position
   function handleSelectLiveSlide(idx) {
     if (!liveItem) return;
     const payload = buildPayload(liveItem, idx);
@@ -173,7 +167,6 @@ export default function OperatorView() {
     }
   }
 
-  // GO button / G key → send current preview item+slide to live
   function handleGo() {
     if (!previewItem) return;
     const payload = buildPayload(previewItem, previewSlideIdx);
@@ -193,7 +186,6 @@ export default function OperatorView() {
     window.cue.output.logo();
   }
 
-  // Arrow keys / Space → navigate preview only (no live change)
   function handleNextSlide() {
     if (!previewItem) return;
     const slides = getSlides(previewItem);
@@ -249,10 +241,10 @@ export default function OperatorView() {
   const [vPct, startVDrag] = useResizeV(containerRef, 58);
 
   return (
-    <div ref={containerRef} className="flex flex-col h-full bg-slate-950">
-      {/* Top panels — resizable height */}
+    <div ref={containerRef} className="flex flex-col h-full" style={{ background: '#060810' }}>
+      {/* Top panels */}
       <div style={{ height: `${vPct}%` }} className="flex flex-shrink-0 min-h-0">
-        {/* Rundown — resizable width */}
+        {/* Rundown */}
         <div style={{ width: `${hPct}%` }} className="flex-shrink-0 min-w-0 overflow-hidden">
           <RundownPanel
             services={services}
@@ -272,8 +264,11 @@ export default function OperatorView() {
 
         {/* Horizontal drag handle */}
         <div
-          className="resize-h w-[3px] flex-shrink-0 bg-slate-800 hover:bg-indigo-500 transition-colors duration-150"
+          className="resize-h flex-shrink-0 transition-colors duration-150"
+          style={{ width: 3, background: '#181C2A' }}
           onMouseDown={startHDrag}
+          onMouseEnter={(e) => { e.currentTarget.style.background = '#4F6EF7'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = '#181C2A'; }}
         />
 
         {/* Preview/Live */}
@@ -297,11 +292,14 @@ export default function OperatorView() {
 
       {/* Vertical drag handle */}
       <div
-        className="resize-v h-[3px] flex-shrink-0 bg-slate-800 hover:bg-indigo-500 transition-colors duration-150"
+        className="resize-v flex-shrink-0 transition-colors duration-150"
+        style={{ height: 3, background: '#181C2A' }}
         onMouseDown={startVDrag}
+        onMouseEnter={(e) => { e.currentTarget.style.background = '#4F6EF7'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = '#181C2A'; }}
       />
 
-      {/* Library — fills remaining space */}
+      {/* Library */}
       <div className="flex-1 min-h-0 overflow-hidden">
         <LibraryPanel onAddToRundown={handleAddToRundown} onSongSave={refreshService} />
       </div>

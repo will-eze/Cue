@@ -23,71 +23,151 @@ export default function SongPreviewModal({ song, onClose, onEdit, onAddToRundown
 
   return createPortal(
     <div
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.72)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 50,
+        padding: 16,
+        backdropFilter: 'blur(3px)',
+      }}
       onClick={onClose}
     >
       <div
-        className="bg-slate-800 border border-slate-700 rounded-sm w-full max-w-lg max-h-[80vh] flex flex-col shadow-2xl"
+        style={{
+          background: '#0E1120',
+          border: '1px solid #1E2232',
+          borderRadius: 6,
+          width: '100%',
+          maxWidth: 460,
+          maxHeight: '80vh',
+          display: 'flex',
+          flexDirection: 'column',
+          boxShadow: '0 24px 80px rgba(0,0,0,0.8)',
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-4 py-3 border-b border-slate-700 flex-shrink-0">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <h2 className="text-[14px] font-semibold text-slate-100 truncate">
+        <div style={{
+          padding: '14px 16px 12px',
+          borderBottom: '1px solid #181C2A',
+          flexShrink: 0,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+            <div style={{ minWidth: 0 }}>
+              <h2 style={{
+                fontSize: 14,
+                fontWeight: 600,
+                color: '#E8EBF5',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                letterSpacing: '0.01em',
+              }}>
                 {song.title}
               </h2>
               {song.author && (
-                <p className="text-[11px] text-slate-500 mt-0.5">{song.author}</p>
+                <p style={{ fontSize: 11, color: '#3A3F52', marginTop: 2 }}>{song.author}</p>
               )}
             </div>
             <button
               onClick={onClose}
-              className="text-slate-600 hover:text-slate-300 flex-shrink-0 mt-0.5 cursor-pointer"
+              className="cursor-pointer flex-shrink-0"
+              style={{ color: '#2A2E42', marginTop: 2 }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = '#7A82A0'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = '#2A2E42'; }}
             >
-              ✕
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+                <path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              </svg>
             </button>
           </div>
         </div>
 
         {/* Sections */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
           {!fullSong ? (
-            <div className="text-slate-500 text-[12px]">Loading…</div>
+            <div style={{ color: '#3A3F52', fontSize: 12 }}>Loading…</div>
           ) : fullSong.sections?.length === 0 ? (
-            <div className="text-slate-500 text-[12px]">No sections</div>
+            <div style={{ color: '#3A3F52', fontSize: 12 }}>No sections</div>
           ) : (
-            fullSong.sections?.map((section, i) => (
-              <div key={section.id || i}>
-                <div className="text-[10px] font-semibold tracking-[0.12em] uppercase text-slate-500 mb-1.5">
-                  {TYPE_LABELS[section.type] || section.type}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {fullSong.sections?.map((section, i) => (
+                <div key={section.id || i}>
+                  <div className="section-chip" style={{ marginBottom: 8, width: 'auto', display: 'inline-flex' }}>
+                    {TYPE_LABELS[section.type] || section.type}
+                  </div>
+                  <pre style={{
+                    fontSize: 12.5,
+                    color: '#A8AEBE',
+                    whiteSpace: 'pre-wrap',
+                    fontFamily: 'inherit',
+                    lineHeight: 1.65,
+                    margin: 0,
+                  }}>
+                    {section.content}
+                  </pre>
                 </div>
-                <pre className="text-[13px] text-slate-200 whitespace-pre-wrap font-sans leading-relaxed">
-                  {section.content}
-                </pre>
-              </div>
-            ))
+              ))}
+            </div>
           )}
         </div>
 
         {/* Footer */}
-        <div className="flex items-center gap-2 px-4 py-3 border-t border-slate-700 flex-shrink-0">
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '10px 14px',
+          borderTop: '1px solid #181C2A',
+          flexShrink: 0,
+        }}>
           <button
             onClick={() => onEdit(fullSong || song)}
-            className="px-3 h-7 text-[11px] text-slate-400 hover:text-slate-200 bg-slate-700 hover:bg-slate-600 rounded-sm transition-colors cursor-pointer"
+            className="cursor-pointer transition-all"
+            style={{
+              height: 28,
+              padding: '0 12px',
+              fontSize: 11,
+              fontWeight: 500,
+              background: '#131626',
+              border: '1px solid #1E2232',
+              color: '#7A82A0',
+              borderRadius: 3,
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = '#DEE2F0'; e.currentTarget.style.borderColor = '#333852'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = '#7A82A0'; e.currentTarget.style.borderColor = '#1E2232'; }}
           >
             Edit
           </button>
-          <div className="flex-1" />
+          <div style={{ flex: 1 }} />
           <button
             onClick={onClose}
-            className="px-3 h-7 text-[11px] text-slate-500 hover:text-slate-300 cursor-pointer"
+            className="cursor-pointer"
+            style={{ height: 28, padding: '0 12px', fontSize: 11, color: '#3A3F52' }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = '#7A82A0'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = '#3A3F52'; }}
           >
             Close
           </button>
           <button
             onClick={() => onAddToRundown(song.id)}
-            className="px-4 h-7 text-[11px] bg-indigo-600 hover:bg-indigo-500 text-white rounded-sm font-semibold transition-colors cursor-pointer"
+            className="cursor-pointer transition-all"
+            style={{
+              height: 28,
+              padding: '0 14px',
+              fontSize: 11,
+              fontWeight: 600,
+              background: 'linear-gradient(180deg, #2A3A8A 0%, #1E2D72 100%)',
+              border: '1px solid rgba(79,110,247,0.45)',
+              color: '#A5B4FC',
+              borderRadius: 3,
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(79,110,247,0.8)'; e.currentTarget.style.color = '#C7D2FE'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(79,110,247,0.45)'; e.currentTarget.style.color = '#A5B4FC'; }}
           >
             Add to Rundown
           </button>

@@ -24,18 +24,24 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, liveCaptu
         </div>
       )}
 
+      {/* Subtle vignette */}
+      <div className="absolute inset-0 pointer-events-none" style={{
+        background: 'radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.55) 100%)',
+        zIndex: 1,
+      }} />
+
       {/* Live capture override */}
       {isLive && liveCapture && (
-        <img src={liveCapture} className="absolute inset-0 w-full h-full object-cover" alt="live" />
+        <img src={liveCapture} className="absolute inset-0 w-full h-full object-cover" alt="live" style={{ zIndex: 2 }} />
       )}
 
       {/* Slide text */}
-      <div className="absolute inset-0 flex items-center justify-center z-10 px-4 text-center">
+      <div className="absolute inset-0 flex items-center justify-center z-10 px-4 text-center" style={{ zIndex: 3 }}>
         {slide ? (
           <p
             className="text-white text-[11px] leading-relaxed"
             style={{
-              textShadow: '0 1px 8px rgba(0,0,0,0.98)',
+              textShadow: '0 1px 12px rgba(0,0,0,1), 0 2px 24px rgba(0,0,0,0.8)',
               fontFamily: style?.fontFamily || undefined,
               fontSize:   style?.fontSize   ? style.fontSize + 'px' : undefined,
               textAlign:  style?.align      || 'center',
@@ -47,17 +53,118 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, liveCaptu
             dangerouslySetInnerHTML={{ __html: renderWithRuns(slide.content, style?.runs) }}
           />
         ) : (
-          <span className="text-slate-700 text-[10px] tracking-widest">{emptyLabel}</span>
+          <span style={{
+            fontSize: 9,
+            fontWeight: 600,
+            letterSpacing: '0.2em',
+            color: '#1E2232',
+            textTransform: 'uppercase',
+          }}>
+            {emptyLabel}
+          </span>
         )}
       </div>
 
-      {/* ON AIR badge — absolute so label row height is unaffected */}
+      {/* ON AIR badge */}
       {isLive && item && (
-        <div className="absolute top-2 right-2 z-20 flex items-center gap-1 bg-red-600/90 border border-red-500/60 px-2 py-0.5 rounded-sm">
-          <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-          <span className="text-[9px] font-bold tracking-widest text-white">ON AIR</span>
+        <div className="absolute top-2 right-2 flex items-center gap-1.5" style={{
+          zIndex: 20,
+          background: 'rgba(185,28,28,0.92)',
+          border: '1px solid rgba(239,68,68,0.5)',
+          padding: '2px 7px 2px 5px',
+          borderRadius: 2,
+          backdropFilter: 'blur(4px)',
+        }}>
+          <span className="dot-pulse" style={{
+            width: 5,
+            height: 5,
+            borderRadius: '50%',
+            background: '#FCA5A5',
+            flexShrink: 0,
+            display: 'block',
+          }} />
+          <span style={{
+            fontSize: 8.5,
+            fontWeight: 800,
+            letterSpacing: '0.18em',
+            color: '#FEE2E2',
+          }}>
+            ON AIR
+          </span>
         </div>
       )}
+    </div>
+  );
+}
+
+function MonitorLabel({ dot, label, isActive, item }) {
+  const titleFor = (i) => i?.song?.title || i?.asset?.filename || 'Slide';
+  return (
+    <div className="flex items-center gap-2 mb-1.5 flex-shrink-0" style={{ height: 18 }}>
+      <span style={{
+        width: 6,
+        height: 6,
+        borderRadius: '50%',
+        background: isActive ? '#EF4444' : dot ? '#4F6EF7' : '#1E2232',
+        flexShrink: 0,
+        ...(isActive ? { boxShadow: '0 0 6px rgba(239,68,68,0.6)' } : {}),
+      }} />
+      <span className={isActive ? 'live-text-glow' : ''} style={{
+        fontSize: 9.5,
+        fontWeight: 700,
+        letterSpacing: '0.18em',
+        textTransform: 'uppercase',
+        color: isActive ? undefined : '#404563',
+        flexShrink: 0,
+      }}>
+        {label}
+      </span>
+      {item && (
+        <span style={{
+          fontSize: 10,
+          color: '#2A2E42',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}>
+          — {titleFor(item)}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function Transport({ onGo, onClear, onLogo, previewItem }) {
+  return (
+    <div className="flex gap-1.5 flex-shrink-0" style={{ padding: '6px 8px' }}>
+      <button
+        onClick={onGo}
+        disabled={!previewItem}
+        className="btn-go flex-1 cursor-pointer flex items-center justify-center gap-2 active:scale-[0.97] transition-transform"
+        style={{ height: 42, borderRadius: 3, fontSize: 11, fontWeight: 800 }}
+      >
+        <svg width="11" height="11" viewBox="0 0 12 12" fill="currentColor">
+          <path d="M3 2l7 4-7 4V2z"/>
+        </svg>
+        GO
+        <span className="kbd-hint">G</span>
+      </button>
+      <button
+        onClick={onClear}
+        className="btn-clear cursor-pointer flex items-center justify-center gap-2 active:scale-[0.97] transition-transform"
+        style={{ height: 42, flex: '0 0 auto', minWidth: 80, borderRadius: 3, fontSize: 11, fontWeight: 700 }}
+      >
+        CLEAR
+        <span className="kbd-hint">Esc</span>
+      </button>
+      <button
+        onClick={onLogo}
+        className="btn-logo cursor-pointer flex items-center justify-center gap-2 active:scale-[0.97] transition-transform"
+        style={{ height: 42, flex: '0 0 auto', minWidth: 72, borderRadius: 3, fontSize: 11, fontWeight: 700 }}
+      >
+        LOGO
+        <span className="kbd-hint">L</span>
+      </button>
     </div>
   );
 }
@@ -104,62 +211,29 @@ export default function PreviewLivePanel({
     document.addEventListener('mouseup', onUp);
   }
 
-  const titleFor = (item) => item?.song?.title || item?.asset?.filename || 'Slide';
   const previewSlides = previewItem ? getSlides(previewItem) : [];
   const liveSlides = liveItem ? getSlides(liveItem) : [];
 
-  // Shared label row — fixed height prevents ON AIR badge from shifting layout
-  function MonitorLabel({ dot, label, isActive, item }) {
-    return (
-      <div className="flex items-center gap-1.5 h-5 mb-1 flex-shrink-0">
-        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-          isActive ? 'bg-red-500' : dot ? 'bg-indigo-500' : 'bg-slate-700'
-        }`} />
-        <span className={`text-[10px] font-bold tracking-[0.18em] uppercase flex-shrink-0 ${
-          isActive ? 'live-text-glow' : 'text-slate-500'
-        }`}>
-          {label}
-        </span>
-        {item && (
-          <span className="text-[10px] text-slate-600 truncate ml-0.5">
-            — {titleFor(item)}
-          </span>
-        )}
-      </div>
-    );
-  }
-
-  function Transport() {
-    return (
-      <div className="flex gap-1.5 px-2 py-2 flex-shrink-0">
-        <button onClick={onGo} disabled={!previewItem}
-          className="btn-go flex-1 h-9 text-[11px] font-bold tracking-widest rounded-sm transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-[0.97]">
-          GO <span className="opacity-30 font-normal text-[9px] tracking-normal">G</span>
-        </button>
-        <button onClick={onClear}
-          className="btn-clear flex-1 h-9 text-[11px] font-bold tracking-widest rounded-sm transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-[0.97]">
-          CLEAR <span className="opacity-30 font-normal text-[9px] tracking-normal">Esc</span>
-        </button>
-        <button onClick={onLogo}
-          className="btn-logo flex-1 h-9 text-[11px] font-bold tracking-widest rounded-sm transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-[0.97]">
-          LOGO <span className="opacity-30 font-normal text-[9px] tracking-normal">L</span>
-        </button>
-      </div>
-    );
-  }
-
-  // Two side-by-side slide lists: preview (left) and live (right)
   const slideLists = (
     <div className="flex flex-1 min-h-0 overflow-hidden">
       {/* Preview slides */}
-      <div className="flex-1 min-w-0 flex flex-col overflow-hidden border-r border-slate-800">
-        <div className="flex items-center gap-1.5 px-3 h-7 flex-shrink-0 bg-slate-900 border-b border-slate-800">
-          <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 flex-shrink-0" />
-          <span className="panel-label">Preview Slides</span>
+      <div className="flex-1 min-w-0 flex flex-col overflow-hidden" style={{ borderRight: '1px solid #12151F' }}>
+        <div className="flex items-center gap-2 flex-shrink-0" style={{
+          padding: '0 10px',
+          height: 28,
+          background: '#0A0C14',
+          borderBottom: '1px solid #12151F',
+        }}>
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#4F6EF7', flexShrink: 0 }} />
+          <span className="panel-label">Preview</span>
           {previewItem && (
-            <span className="text-[10px] text-slate-600 truncate ml-1">— {titleFor(previewItem)}</span>
+            <span style={{ fontSize: 10, color: '#2A2E42', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              — {previewItem?.song?.title || previewItem?.asset?.filename || 'Slide'}
+            </span>
           )}
-          <span className="text-[9px] text-slate-700 ml-auto flex-shrink-0">dbl-click → live</span>
+          <span style={{ fontSize: 8.5, color: '#272B3C', marginLeft: 'auto', flexShrink: 0, letterSpacing: '0.06em' }}>
+            dbl-click → live
+          </span>
         </div>
         <div className="flex-1 overflow-y-auto">
           {previewSlides.length > 0 ? (
@@ -170,8 +244,8 @@ export default function PreviewLivePanel({
               onDoubleClick={onGoAtPreviewSlide}
             />
           ) : (
-            <div className="flex items-center justify-center h-full text-slate-700 text-[11px] tracking-wider">
-              NOTHING IN PREVIEW
+            <div className="flex items-center justify-center h-full" style={{ color: '#1E2232', fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase' }}>
+              Nothing in preview
             </div>
           )}
         </div>
@@ -179,11 +253,25 @@ export default function PreviewLivePanel({
 
       {/* Live slides */}
       <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
-        <div className="flex items-center gap-1.5 px-3 h-7 flex-shrink-0 bg-slate-900 border-b border-slate-800">
-          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${liveItem ? 'bg-red-500' : 'bg-slate-700'}`} />
-          <span className={`panel-label ${liveItem ? 'live-text-glow' : ''}`}>Live Slides</span>
+        <div className="flex items-center gap-2 flex-shrink-0" style={{
+          padding: '0 10px',
+          height: 28,
+          background: '#0A0C14',
+          borderBottom: '1px solid #12151F',
+        }}>
+          <span style={{
+            width: 6,
+            height: 6,
+            borderRadius: '50%',
+            background: liveItem ? '#EF4444' : '#1E2232',
+            flexShrink: 0,
+            ...(liveItem ? { boxShadow: '0 0 5px rgba(239,68,68,0.5)' } : {}),
+          }} />
+          <span className={`panel-label ${liveItem ? 'live-text-glow' : ''}`}>Live</span>
           {liveItem && (
-            <span className="text-[10px] text-slate-600 truncate ml-1">— {titleFor(liveItem)}</span>
+            <span style={{ fontSize: 10, color: '#2A2E42', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              — {liveItem?.song?.title || liveItem?.asset?.filename || 'Slide'}
+            </span>
           )}
         </div>
         <div className="flex-1 overflow-y-auto">
@@ -194,8 +282,8 @@ export default function PreviewLivePanel({
               onSelect={onSelectLiveSlide}
             />
           ) : (
-            <div className="flex items-center justify-center h-full text-slate-700 text-[11px] tracking-wider">
-              NOTHING LIVE
+            <div className="flex items-center justify-center h-full" style={{ color: '#1E2232', fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase' }}>
+              Nothing live
             </div>
           )}
         </div>
@@ -204,16 +292,32 @@ export default function PreviewLivePanel({
   );
 
   return (
-    <div className="flex flex-col h-full bg-slate-950">
+    <div className="flex flex-col h-full" style={{ background: '#060810' }}>
       {/* Panel header */}
-      <div className="panel-header flex-shrink-0 justify-between">
+      <div className="panel-header" style={{ justifyContent: 'space-between' }}>
         <div className="flex items-center gap-2">
-          <div className="w-0.5 h-3 bg-indigo-600 rounded-sm" />
+          <div style={{ width: 2, height: 14, background: 'linear-gradient(180deg, #EF4444 0%, #F59E0B 100%)', borderRadius: 1 }} />
           <span className="panel-label">Preview / Live</span>
         </div>
-        <button onClick={toggleLayout}
-          className="titlebar-nodrag text-[10px] text-slate-600 hover:text-slate-300 px-2 h-5 rounded-sm hover:bg-slate-700 transition-colors cursor-pointer tracking-wider">
-          {layout === 'stacked' ? 'SIDE BY SIDE' : 'STACKED'}
+        <button
+          onClick={toggleLayout}
+          className="cursor-pointer transition-colors"
+          style={{
+            fontSize: 9.5,
+            fontWeight: 600,
+            letterSpacing: '0.12em',
+            textTransform: 'uppercase',
+            color: '#404563',
+            background: '#0E1018',
+            border: '1px solid #1E2232',
+            padding: '2px 8px',
+            borderRadius: 3,
+            height: 20,
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = '#8890A8'; e.currentTarget.style.borderColor = '#333852'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = '#404563'; e.currentTarget.style.borderColor = '#1E2232'; }}
+        >
+          {layout === 'stacked' ? 'Side by Side' : 'Stacked'}
         </button>
       </div>
 
@@ -222,49 +326,54 @@ export default function PreviewLivePanel({
           <>
             {/* Monitor section — resizable height */}
             <div style={{ height: monitorHeight }} className="flex-none overflow-y-auto">
-              <div className="p-2 flex flex-col gap-2">
-                <div>
+              <div style={{ padding: '8px 8px 0' }}>
+                {/* Preview monitor */}
+                <div style={{ marginBottom: 8 }}>
                   <MonitorLabel dot label="Preview" isActive={false} item={previewItem} />
                   <MonitorFrame item={previewItem} slideIdx={previewSlideIdx}
-                    getSlides={getSlides} emptyLabel="NOTHING IN PREVIEW"
+                    getSlides={getSlides} emptyLabel="Nothing in preview"
                     isLive={false} liveCapture={null} />
                 </div>
+                {/* Live monitor */}
                 <div>
                   <MonitorLabel dot={false} label="Live" isActive={!!liveItem} item={liveItem} />
                   <MonitorFrame item={liveItem} slideIdx={liveSlideIdx}
-                    getSlides={getSlides} emptyLabel="NOTHING LIVE"
+                    getSlides={getSlides} emptyLabel="Nothing live"
                     isLive={!!liveItem} liveCapture={liveCapture} />
                 </div>
               </div>
-              <Transport />
+              <Transport onGo={onGo} onClear={onClear} onLogo={onLogo} previewItem={previewItem} />
             </div>
 
             {/* Resize handle */}
-            <div className="resize-v flex-none h-[4px] bg-slate-800 hover:bg-indigo-500 transition-colors duration-150"
-              onMouseDown={startMonitorResize} />
+            <div
+              className="resize-v flex-none transition-colors duration-150"
+              style={{ height: 3, background: '#181C2A' }}
+              onMouseDown={startMonitorResize}
+              onMouseEnter={(e) => { e.currentTarget.style.background = '#4F6EF7'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = '#181C2A'; }}
+            />
 
-            {/* Dual slide lists */}
             {slideLists}
           </>
         ) : (
-          /* Side-by-side */
           <div className="flex-1 overflow-hidden flex flex-col min-h-0">
-            <div className="p-2 flex gap-2 flex-none">
+            <div style={{ padding: 8 }} className="flex gap-2 flex-none">
               <div className="flex-1 min-w-0">
                 <MonitorLabel dot label="Preview" isActive={false} item={previewItem} />
                 <MonitorFrame item={previewItem} slideIdx={previewSlideIdx}
-                  getSlides={getSlides} emptyLabel="NOTHING IN PREVIEW"
+                  getSlides={getSlides} emptyLabel="Nothing in preview"
                   isLive={false} liveCapture={null} />
               </div>
               <div className="flex-1 min-w-0">
                 <MonitorLabel dot={false} label="Live" isActive={!!liveItem} item={liveItem} />
                 <MonitorFrame item={liveItem} slideIdx={liveSlideIdx}
-                  getSlides={getSlides} emptyLabel="NOTHING LIVE"
+                  getSlides={getSlides} emptyLabel="Nothing live"
                   isLive={!!liveItem} liveCapture={liveCapture} />
               </div>
             </div>
-            <Transport />
-            <div className="border-t border-slate-800 flex-1 min-h-0 flex flex-col overflow-hidden">
+            <Transport onGo={onGo} onClear={onClear} onLogo={onLogo} previewItem={previewItem} />
+            <div className="flex-1 min-h-0 flex flex-col overflow-hidden" style={{ borderTop: '1px solid #12151F' }}>
               {slideLists}
             </div>
           </div>

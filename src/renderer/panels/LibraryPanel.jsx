@@ -7,26 +7,70 @@ import ContextMenu from '../components/ContextMenu';
 function SongRow({ index, style, data }) {
   const { songs, selectedId, onSelect, onDoubleClick, onContextMenu } = data;
   const song = songs[index];
+  const isSelected = selectedId === song.id;
   return (
     <div
-      style={style}
+      style={{
+        ...style,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        padding: '0 12px',
+        cursor: 'pointer',
+        borderBottom: '1px solid #0D101A',
+        background: isSelected ? '#0E1120' : undefined,
+        transition: 'background 100ms',
+      }}
       onClick={() => onSelect(song)}
       onDoubleClick={() => onDoubleClick(song.id)}
       onContextMenu={(e) => onContextMenu(e, song)}
-      className={`flex items-center gap-3 px-3 cursor-pointer border-b border-slate-800 transition-colors hover:bg-slate-800 ${
-        selectedId === song.id ? 'bg-slate-800' : ''
-      }`}
+      onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = '#0A0C16'; }}
+      onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = ''; }}
     >
+      {/* Music icon */}
+      <span style={{ color: '#2A2E42', flexShrink: 0 }}>
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M6 2v9.27A3 3 0 1 0 8 14V6l6-1V3L6 2z"/>
+        </svg>
+      </span>
       <div className="flex-1 min-w-0">
-        <div className="text-[13px] text-slate-200 truncate">{song.title}</div>
-        {song.author && <div className="text-[11px] text-slate-500 truncate">{song.author}</div>}
+        <div style={{
+          fontSize: 12.5,
+          fontWeight: 500,
+          color: isSelected ? '#E8EBF5' : '#A8AEBE',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          letterSpacing: '0.01em',
+        }}>
+          {song.title}
+        </div>
+        {song.author && (
+          <div style={{
+            fontSize: 10.5,
+            color: '#333852',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            marginTop: 1,
+          }}>
+            {song.author}
+          </div>
+        )}
       </div>
       <div className="flex gap-1 flex-shrink-0">
         {(song.tags || []).slice(0, 3).map((tag) => (
           <span
             key={tag.id}
-            className="text-[10px] px-1.5 py-0.5 rounded-sm text-white font-medium"
-            style={{ backgroundColor: tag.colour || '#1A6FBA' }}
+            style={{
+              fontSize: 9.5,
+              fontWeight: 600,
+              letterSpacing: '0.08em',
+              padding: '1px 6px',
+              borderRadius: 2,
+              color: 'rgba(255,255,255,0.85)',
+              background: tag.colour || '#1A4A8A',
+            }}
           >
             {tag.name}
           </span>
@@ -39,52 +83,71 @@ function SongRow({ index, style, data }) {
 function MediaGrid({ assets, onDelete, onSetBackground }) {
   const [contextMenu, setContextMenu] = useState(null);
 
-  function typeLabel(type) {
-    if (type === 'video') return 'VID';
-    if (type === 'audio') return 'AUD';
-    return 'IMG';
-  }
-
   return (
-    <div className="flex-1 overflow-y-auto p-2">
+    <div className="flex-1 overflow-y-auto" style={{ padding: 8 }}>
       {assets.length === 0 ? (
-        <div className="flex items-center justify-center h-full text-slate-600 text-[12px]">
-          No media — import files above
+        <div className="flex flex-col items-center justify-center h-full gap-2" style={{ color: '#2A2E42' }}>
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+            <circle cx="8.5" cy="8.5" r="1.5"/>
+            <polyline points="21 15 16 10 5 21"/>
+          </svg>
+          <span style={{ fontSize: 11, letterSpacing: '0.06em' }}>No media — import files above</span>
         </div>
       ) : (
-        <div className="grid grid-cols-3 gap-2">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
           {assets.map((asset) => (
             <div
               key={asset.id}
-              className="bg-slate-800 border border-slate-700 rounded-sm overflow-hidden cursor-pointer hover:border-slate-500 transition-colors"
+              className="cursor-pointer overflow-hidden transition-all"
+              style={{
+                background: '#0A0C14',
+                border: '1px solid #1A1D27',
+                borderRadius: 3,
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#333852'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#1A1D27'; }}
               onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, asset }); }}
             >
               {asset.type === 'image' ? (
-                <div className="aspect-video bg-black">
+                <div style={{ aspectRatio: '16/9', background: '#000' }}>
                   <img
                     src={`file://${asset.path}`}
-                    className="w-full h-full object-cover"
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                     alt={asset.filename}
                   />
                 </div>
               ) : asset.type === 'video' ? (
-                <div className="aspect-video bg-black relative">
+                <div style={{ aspectRatio: '16/9', background: '#000', position: 'relative' }}>
                   <video
                     src={`file://${asset.path}`}
-                    className="w-full h-full object-cover"
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                     muted
                   />
-                  <span className="absolute top-1 right-1 text-[9px] font-bold tracking-wider bg-black/80 text-slate-300 px-1 py-0.5 rounded-sm">
+                  <span style={{
+                    position: 'absolute',
+                    top: 4,
+                    right: 4,
+                    fontSize: 8.5,
+                    fontWeight: 700,
+                    letterSpacing: '0.1em',
+                    background: 'rgba(0,0,0,0.8)',
+                    color: '#7A82A0',
+                    padding: '1px 4px',
+                    borderRadius: 2,
+                  }}>
                     VID
                   </span>
                 </div>
               ) : (
-                <div className="aspect-video bg-slate-700 flex items-center justify-center">
-                  <span className="text-[11px] font-bold tracking-wider text-slate-500">{typeLabel(asset.type)}</span>
+                <div style={{ aspectRatio: '16/9', background: '#0E1018', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', color: '#2A2E42' }}>AUD</span>
                 </div>
               )}
-              <div className="px-2 py-1">
-                <div className="text-[11px] text-slate-300 truncate">{asset.filename}</div>
+              <div style={{ padding: '4px 7px 5px' }}>
+                <div style={{ fontSize: 10.5, color: '#6B7291', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {asset.filename}
+                </div>
               </div>
             </div>
           ))}
@@ -242,77 +305,106 @@ export default function LibraryPanel({ onAddToRundown, onSongSave }) {
   }
 
   return (
-    <div className="flex flex-col h-full bg-slate-950">
+    <div className="flex flex-col h-full" style={{ background: '#060810' }}>
       {/* Panel header */}
       <div className="panel-header gap-2">
+        {/* Accent + label */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+          <div style={{ width: 2, height: 14, background: '#22C55E', borderRadius: 1 }} />
+        </div>
+
         {/* Tabs */}
         <div className="flex items-center gap-0.5">
-          <button
-            onClick={() => setTab('songs')}
-            className={`h-5 px-2.5 text-[11px] font-medium rounded-sm transition-colors cursor-pointer ${
-              tab === 'songs'
-                ? 'bg-indigo-600 text-white'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700'
-            }`}
-          >
+          <LibTab active={tab === 'songs'} onClick={() => setTab('songs')}>
             Songs{tab === 'songs' && filteredSongs.length > 0 ? ` (${filteredSongs.length})` : ''}
-          </button>
-          <button
-            onClick={() => setTab('media')}
-            className={`h-5 px-2.5 text-[11px] font-medium rounded-sm transition-colors cursor-pointer ${
-              tab === 'media'
-                ? 'bg-indigo-600 text-white'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700'
-            }`}
-          >
+          </LibTab>
+          <LibTab active={tab === 'media'} onClick={() => setTab('media')}>
             Media{tab === 'media' && mediaAssets.length > 0 ? ` (${mediaAssets.length})` : ''}
-          </button>
+          </LibTab>
         </div>
 
         <div className="flex-1" />
 
+        {/* Search */}
         {tab === 'songs' && (
-          <input
-            className="bg-slate-700 text-slate-200 text-[11px] rounded-sm px-2 h-5 border border-slate-600 outline-none focus:border-indigo-500 w-44"
-            placeholder="Search songs..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
+          <div className="flex items-center" style={{
+            background: '#0A0C14',
+            border: '1px solid #1A1D27',
+            borderRadius: 3,
+            height: 22,
+            padding: '0 7px',
+            gap: 6,
+          }}>
+            <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="#2A2E42" strokeWidth="2" strokeLinecap="round">
+              <circle cx="7" cy="7" r="5"/><path d="M11 11l3 3"/>
+            </svg>
+            <input
+              className="outline-none bg-transparent"
+              style={{
+                fontSize: 11,
+                color: '#DEE2F0',
+                width: 140,
+              }}
+              placeholder="Search songs…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
         )}
+
+        {/* Action button */}
         {tab === 'songs' && (
-          <button
-            onClick={() => setEditSong({})}
-            className="text-[11px] bg-indigo-600 hover:bg-indigo-500 text-white h-5 px-2 rounded-sm transition-colors cursor-pointer"
-          >
-            + New Song
-          </button>
+          <ActionButton onClick={() => setEditSong({})}>+ New Song</ActionButton>
         )}
         {tab === 'media' && (
-          <button
-            onClick={handleImportMedia}
-            disabled={importing}
-            className="text-[11px] bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:text-slate-500 text-white h-5 px-2 rounded-sm transition-colors cursor-pointer"
-          >
+          <ActionButton onClick={handleImportMedia} disabled={importing}>
             {importing ? 'Importing…' : '+ Import'}
-          </button>
+          </ActionButton>
         )}
       </div>
 
       {/* Songs tab */}
       {tab === 'songs' && (
         <div className="flex flex-1 min-h-0">
+          {/* Tag filter sidebar */}
           {tags.length > 0 && (
-            <div className="w-28 flex-shrink-0 border-r border-slate-800 overflow-y-auto p-2 flex flex-col gap-0.5">
-              <span className="panel-label mb-1">Tags</span>
+            <div className="flex-shrink-0 overflow-y-auto" style={{
+              width: 112,
+              borderRight: '1px solid #12151F',
+              padding: '8px 6px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 2,
+            }}>
+              <span className="panel-label" style={{ marginBottom: 4, paddingLeft: 4 }}>Tags</span>
               {tags.map((tag) => (
                 <button
                   key={tag.id}
                   onClick={() => toggleTag(tag.id)}
-                  className={`text-[11px] px-2 py-1 rounded-sm text-left transition-colors cursor-pointer ${
-                    selectedTagIds.includes(tag.id) ? 'text-white' : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                  style={selectedTagIds.includes(tag.id) ? { backgroundColor: tag.colour || '#1A6FBA' } : {}}
+                  className="cursor-pointer text-left transition-all"
+                  style={{
+                    fontSize: 11,
+                    fontWeight: selectedTagIds.includes(tag.id) ? 600 : 400,
+                    padding: '4px 8px',
+                    borderRadius: 3,
+                    border: selectedTagIds.includes(tag.id)
+                      ? `1px solid ${tag.colour || '#1A6FBA'}40`
+                      : '1px solid transparent',
+                    background: selectedTagIds.includes(tag.id) ? `${tag.colour || '#1A6FBA'}20` : 'transparent',
+                    color: selectedTagIds.includes(tag.id) ? '#DEE2F0' : '#3A3F52',
+                  }}
+                  onMouseEnter={(e) => { if (!selectedTagIds.includes(tag.id)) e.currentTarget.style.color = '#7A82A0'; }}
+                  onMouseLeave={(e) => { if (!selectedTagIds.includes(tag.id)) e.currentTarget.style.color = '#3A3F52'; }}
                 >
+                  <span style={{
+                    display: 'inline-block',
+                    width: 6,
+                    height: 6,
+                    borderRadius: '50%',
+                    background: tag.colour || '#1A6FBA',
+                    marginRight: 6,
+                    verticalAlign: 'middle',
+                  }} />
                   {tag.name}
                 </button>
               ))}
@@ -321,14 +413,21 @@ export default function LibraryPanel({ onAddToRundown, onSongSave }) {
 
           <div ref={containerRef} className="flex-1 min-w-0 overflow-hidden">
             {filteredSongs.length === 0 ? (
-              <div className="flex items-center justify-center h-full text-slate-600 text-[12px]">
-                {searchQuery ? 'No songs found' : 'No songs yet — add one above'}
+              <div className="flex flex-col items-center justify-center h-full gap-2" style={{ color: '#2A2E42' }}>
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+                  <path d="M9 18V5l12-2v13"/>
+                  <circle cx="6" cy="18" r="3"/>
+                  <circle cx="18" cy="16" r="3"/>
+                </svg>
+                <span style={{ fontSize: 11, letterSpacing: '0.06em' }}>
+                  {searchQuery ? 'No songs found' : 'No songs yet — add one above'}
+                </span>
               </div>
             ) : (
               <List
                 height={listHeight}
                 itemCount={filteredSongs.length}
-                itemSize={52}
+                itemSize={48}
                 itemData={{
                   songs: filteredSongs,
                   selectedId: previewSong?.id,
@@ -351,14 +450,25 @@ export default function LibraryPanel({ onAddToRundown, onSongSave }) {
       {/* Media tab */}
       {tab === 'media' && (
         <div className="flex flex-1 min-h-0">
-          <div className="w-36 flex-shrink-0 border-r border-slate-800 overflow-y-auto p-2">
+          {/* Folder sidebar */}
+          <div className="flex-shrink-0 overflow-y-auto" style={{
+            width: 130,
+            borderRight: '1px solid #12151F',
+            padding: '8px 6px',
+          }}>
             <button
               onClick={() => setActiveFolderId(null)}
-              className={`text-[11px] px-2 py-1 rounded-sm w-full text-left mb-0.5 cursor-pointer transition-colors ${
-                activeFolderId == null
-                  ? 'bg-indigo-700 text-white'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
+              className="cursor-pointer w-full text-left transition-all"
+              style={{
+                fontSize: 11,
+                padding: '4px 8px',
+                borderRadius: 3,
+                marginBottom: 2,
+                background: activeFolderId == null ? 'rgba(79,110,247,0.15)' : 'transparent',
+                border: activeFolderId == null ? '1px solid rgba(79,110,247,0.3)' : '1px solid transparent',
+                color: activeFolderId == null ? '#A5B4FC' : '#3A3F52',
+                fontWeight: activeFolderId == null ? 600 : 400,
+              }}
             >
               All Files
             </button>
@@ -381,6 +491,7 @@ export default function LibraryPanel({ onAddToRundown, onSongSave }) {
         </div>
       )}
 
+      {/* Modals */}
       {previewSong && (
         <SongPreviewModal
           song={previewSong}
@@ -437,19 +548,76 @@ export default function LibraryPanel({ onAddToRundown, onSongSave }) {
   );
 }
 
+function LibTab({ active, onClick, children }) {
+  return (
+    <button
+      onClick={onClick}
+      className="cursor-pointer transition-all"
+      style={{
+        height: 22,
+        padding: '0 10px',
+        fontSize: 11,
+        fontWeight: 600,
+        borderRadius: 3,
+        border: active ? '1px solid rgba(34,197,94,0.3)' : '1px solid transparent',
+        background: active ? 'rgba(34,197,94,0.1)' : 'transparent',
+        color: active ? '#4ADE80' : '#3A3F52',
+        letterSpacing: '0.02em',
+      }}
+      onMouseEnter={(e) => { if (!active) { e.currentTarget.style.color = '#7A82A0'; }}}
+      onMouseLeave={(e) => { if (!active) { e.currentTarget.style.color = '#3A3F52'; }}}
+    >
+      {children}
+    </button>
+  );
+}
+
+function ActionButton({ onClick, disabled, children }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="cursor-pointer transition-all"
+      style={{
+        fontSize: 11,
+        fontWeight: 600,
+        height: 22,
+        padding: '0 10px',
+        borderRadius: 3,
+        background: disabled ? '#0A0C14' : 'linear-gradient(180deg, #2A3A8A 0%, #1E2D72 100%)',
+        border: disabled ? '1px solid #1A1D27' : '1px solid rgba(79,110,247,0.45)',
+        color: disabled ? '#2A2E42' : '#A5B4FC',
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
 function FolderNode({ folder, activeFolderId, onSelect, depth }) {
+  const isActive = activeFolderId === folder.id;
   return (
     <>
       <button
         onClick={() => onSelect(folder.id)}
-        className={`text-[11px] px-2 py-1 rounded-sm w-full text-left mb-0.5 cursor-pointer transition-colors flex items-center gap-1.5 ${
-          activeFolderId === folder.id
-            ? 'bg-indigo-700 text-white'
-            : 'text-slate-400 hover:text-slate-200'
-        }`}
-        style={{ paddingLeft: `${8 + depth * 12}px` }}
+        className="cursor-pointer w-full text-left transition-all"
+        style={{
+          fontSize: 11,
+          padding: `4px 8px 4px ${8 + depth * 12}px`,
+          borderRadius: 3,
+          marginBottom: 2,
+          background: isActive ? 'rgba(79,110,247,0.15)' : 'transparent',
+          border: isActive ? '1px solid rgba(79,110,247,0.3)' : '1px solid transparent',
+          color: isActive ? '#A5B4FC' : '#3A3F52',
+          fontWeight: isActive ? 600 : 400,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+        }}
+        onMouseEnter={(e) => { if (!isActive) { e.currentTarget.style.color = '#7A82A0'; }}}
+        onMouseLeave={(e) => { if (!isActive) { e.currentTarget.style.color = '#3A3F52'; }}}
       >
-        <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" className="flex-shrink-0 opacity-60">
+        <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" style={{ opacity: 0.5, flexShrink: 0 }}>
           <path d="M2 4a2 2 0 0 1 2-2h3.5l1.5 2H12a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4z"/>
         </svg>
         {folder.name}

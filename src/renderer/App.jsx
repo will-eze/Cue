@@ -16,53 +16,72 @@ export default function App() {
   }, []);
 
   return (
-    <div className="h-screen bg-slate-900 text-slate-200 flex flex-col select-none overflow-hidden">
-      {/* Titlebar / Nav — draggable region */}
+    <div className="h-screen flex flex-col select-none overflow-hidden" style={{ background: '#060810', color: '#DEE2F0' }}>
+      {/* Titlebar */}
       <nav
-        className="titlebar-drag flex items-center flex-shrink-0 bg-slate-950 border-b border-slate-800"
-        style={{ height: 36, paddingLeft: isMac ? 76 : 12, paddingRight: 12 }}
+        className="titlebar-drag flex items-center flex-shrink-0"
+        style={{
+          height: 38,
+          paddingLeft: isMac ? 80 : 12,
+          paddingRight: 12,
+          background: 'linear-gradient(180deg, #0A0C16 0%, #080A12 100%)',
+          borderBottom: '1px solid #181C2A',
+        }}
       >
         {/* Wordmark */}
-        <span className="titlebar-nodrag text-[11px] font-bold tracking-[0.3em] text-slate-100 mr-5 flex-shrink-0">
-          CUE
-        </span>
+        <div className="titlebar-nodrag flex items-center gap-2 mr-6 flex-shrink-0">
+          <div style={{
+            width: 18, height: 18,
+            background: 'linear-gradient(135deg, #4F6EF7 0%, #7C4DFF 100%)',
+            borderRadius: 3,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}>
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <circle cx="5" cy="5" r="3" stroke="rgba(255,255,255,0.9)" strokeWidth="1.5"/>
+              <circle cx="5" cy="5" r="1" fill="rgba(255,255,255,0.9)"/>
+            </svg>
+          </div>
+          <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: '0.25em', color: '#E8EBF5' }}>
+            CUE
+          </span>
+        </div>
 
-        {/* Nav buttons */}
-        <div className="titlebar-nodrag flex items-center gap-1">
-          <button
-            onClick={() => setView('operator')}
-            className={`px-3 h-[22px] text-[11px] font-medium rounded-sm transition-colors cursor-pointer ${
-              view === 'operator'
-                ? 'bg-indigo-600 text-white'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700'
-            }`}
-          >
-            Operator
-          </button>
-          <button
-            onClick={() => setView('settings')}
-            className={`px-3 h-[22px] text-[11px] font-medium rounded-sm transition-colors cursor-pointer ${
-              view === 'settings'
-                ? 'bg-indigo-600 text-white'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700'
-            }`}
-          >
-            Settings
-          </button>
+        {/* Nav tabs */}
+        <div className="titlebar-nodrag flex items-center" style={{ gap: 2 }}>
+          <NavTab label="Operator" active={view === 'operator'} onClick={() => setView('operator')} />
+          <NavTab label="Settings" active={view === 'settings'} onClick={() => setView('settings')} />
         </div>
 
         {/* NDI warning */}
         {ndiWarning && (
-          <div className="titlebar-nodrag ml-4 flex items-center gap-2 text-[11px] text-amber-400 bg-amber-900/20 border border-amber-900/60 px-2.5 h-[22px] rounded-sm">
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
-              <path d="M5 1L9 8H1L5 1Z" strokeWidth="0" fillOpacity="0.9"/>
+          <div className="titlebar-nodrag ml-4 flex items-center gap-2"
+            style={{
+              fontSize: 11,
+              color: '#FCD34D',
+              background: 'rgba(120,80,0,0.25)',
+              border: '1px solid rgba(180,120,0,0.4)',
+              padding: '0 8px',
+              height: 22,
+              borderRadius: 3,
+            }}
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="#FCD34D">
+              <path d="M5 1.5L9 8.5H1L5 1.5Z" strokeWidth="0"/>
+              <rect x="4.5" y="4" width="1" height="2.5" fill="#060810" rx="0.5"/>
+              <circle cx="5" cy="7.2" r="0.5" fill="#060810"/>
             </svg>
             NDI SDK not installed
             <button
               onClick={() => setNdiWarning(false)}
-              className="ml-1 text-amber-500 hover:text-amber-300 cursor-pointer"
+              className="cursor-pointer"
+              style={{ color: '#FCD34D', opacity: 0.6, marginLeft: 2, lineHeight: 1 }}
             >
-              ✕
+              <svg width="9" height="9" viewBox="0 0 9 9" fill="currentColor">
+                <path d="M1 1l7 7M8 1l-7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              </svg>
             </button>
           </div>
         )}
@@ -76,5 +95,31 @@ export default function App() {
         )}
       </div>
     </div>
+  );
+}
+
+function NavTab({ label, active, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className="cursor-pointer transition-all duration-150"
+      style={{
+        height: 24,
+        padding: '0 12px',
+        fontSize: 11,
+        fontWeight: 600,
+        letterSpacing: '0.04em',
+        borderRadius: 4,
+        border: active ? '1px solid rgba(79,110,247,0.5)' : '1px solid transparent',
+        background: active
+          ? 'linear-gradient(180deg, #2A3A8A 0%, #1E2D72 100%)'
+          : 'transparent',
+        color: active ? '#A5B4FC' : '#404563',
+      }}
+      onMouseEnter={(e) => { if (!active) { e.currentTarget.style.color = '#8890A8'; e.currentTarget.style.background = '#0F1220'; }}}
+      onMouseLeave={(e) => { if (!active) { e.currentTarget.style.color = '#404563'; e.currentTarget.style.background = 'transparent'; }}}
+    >
+      {label}
+    </button>
   );
 }

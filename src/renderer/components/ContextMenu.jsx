@@ -16,29 +16,55 @@ export default function ContextMenu({ x, y, items, onClose }) {
     };
   }, [onClose]);
 
-  const menuWidth = 192;
+  const menuWidth = 200;
+  const itemCount = items.filter(i => !i.separator).length;
   const left = Math.min(x, window.innerWidth - menuWidth - 8);
-  const top = Math.min(y, window.innerHeight - (items.length * 28 + 12) - 8);
+  const top = Math.min(y, window.innerHeight - (itemCount * 30 + 16) - 8);
 
   return createPortal(
     <div
       ref={ref}
-      style={{ position: 'fixed', top, left, zIndex: 9999, width: menuWidth }}
-      className="bg-slate-800 border border-slate-600 rounded-sm shadow-2xl py-1"
+      style={{
+        position: 'fixed',
+        top,
+        left,
+        zIndex: 9999,
+        width: menuWidth,
+        background: '#0F1120',
+        border: '1px solid #1E2232',
+        borderRadius: 4,
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7), 0 2px 8px rgba(0,0,0,0.5)',
+        padding: '4px 0',
+        overflow: 'hidden',
+      }}
     >
       {items.map((item, i) => {
         if (item.separator) {
-          return <div key={i} className="border-t border-slate-700 my-1" />;
+          return <div key={i} style={{ borderTop: '1px solid #1A1D27', margin: '3px 0' }} />;
         }
         return (
           <button
             key={i}
             onClick={item.onClick}
-            className={`w-full text-left px-3 py-1.5 text-[12px] transition-colors cursor-pointer ${
-              item.danger
-                ? 'text-red-400 hover:bg-slate-700 hover:text-red-300'
-                : 'text-slate-200 hover:bg-slate-700'
-            }`}
+            className="w-full text-left cursor-pointer transition-colors"
+            style={{
+              display: 'block',
+              padding: '6px 14px',
+              fontSize: 12,
+              fontWeight: 400,
+              color: item.danger ? '#F87171' : '#A8AEBE',
+              background: 'transparent',
+              border: 'none',
+              letterSpacing: '0.01em',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = item.danger ? 'rgba(239,68,68,0.08)' : '#141728';
+              e.currentTarget.style.color = item.danger ? '#FCA5A5' : '#DEE2F0';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.color = item.danger ? '#F87171' : '#A8AEBE';
+            }}
           >
             {item.label}
           </button>
