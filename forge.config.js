@@ -1,0 +1,50 @@
+module.exports = {
+  packagerConfig: {
+    asar: true,
+    name: 'Cue',
+    executableName: 'cue',
+  },
+  rebuildConfig: {
+    extraModules: ['better-sqlite3'],
+  },
+  makers: [
+    {
+      name: '@electron-forge/maker-squirrel',
+      config: { name: 'cue' },
+    },
+    {
+      name: '@electron-forge/maker-dmg',
+      config: { name: 'Cue' },
+    },
+  ],
+  plugins: [
+    {
+      name: '@electron-forge/plugin-vite',
+      config: {
+        build: [
+          {
+            entry: 'src/main/index.js',
+            config: 'vite.main.config.js',
+            target: 'main',
+          },
+          {
+            entry: 'src/main/preload.js',
+            config: 'vite.preload.config.js',
+            target: 'preload',
+          },
+          {
+            entry: 'src/main/output-preload.js',
+            config: 'vite.preload.config.js',
+            target: 'preload',
+          },
+        ],
+        renderer: [
+          {
+            name: 'main_window',
+            config: 'vite.renderer.config.js',
+          },
+        ],
+      },
+    },
+  ],
+};
