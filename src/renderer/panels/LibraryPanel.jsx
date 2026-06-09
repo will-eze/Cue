@@ -17,27 +17,22 @@ function SongRow({ index, style, data }) {
         gap: 10,
         padding: '0 12px',
         cursor: 'pointer',
-        borderBottom: '1px solid #0F0D0A',
-        background: isSelected ? '#181510' : undefined,
+        borderBottom: '1px solid rgba(66,71,84,0.3)',
+        background: isSelected ? 'rgba(77,142,255,0.1)' : undefined,
         transition: 'background 80ms',
       }}
       onClick={() => onSelect(song)}
       onDoubleClick={() => onDoubleClick(song.id)}
       onContextMenu={(e) => onContextMenu(e, song)}
-      onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = '#121008'; }}
+      onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = 'rgba(51,53,57,0.5)'; }}
       onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = ''; }}
     >
-      <span style={{ color: '#2A2218', flexShrink: 0 }}>
-        <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M6 2v9.27A3 3 0 1 0 8 14V6l6-1V3L6 2z"/>
-        </svg>
-      </span>
+      <span className="material-symbols-outlined text-[16px] text-outline-variant shrink-0">music_note</span>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{
-          fontSize: 12.5,
+          fontSize: 13,
           fontWeight: 500,
-          letterSpacing: '0.01em',
-          color: isSelected ? '#D0C8BE' : '#807060',
+          color: isSelected ? '#adc6ff' : '#e2e2e8',
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           whiteSpace: 'nowrap',
@@ -46,8 +41,8 @@ function SongRow({ index, style, data }) {
         </div>
         {song.author && (
           <div style={{
-            fontSize: 10.5,
-            color: '#2E2820',
+            fontSize: 11,
+            color: '#8c909f',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
@@ -57,17 +52,17 @@ function SongRow({ index, style, data }) {
           </div>
         )}
       </div>
-      <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+      <div style={{ display: 'flex', gap: 4, shrink: 0 }}>
         {(song.tags || []).slice(0, 3).map((tag) => (
           <span key={tag.id} style={{
-            fontFamily: "'Oswald', sans-serif",
+            fontFamily: 'monospace',
             fontSize: 9,
             fontWeight: 500,
-            letterSpacing: '0.1em',
+            letterSpacing: '0.08em',
             padding: '1px 6px',
-            borderRadius: 1,
-            color: 'rgba(255,255,255,0.75)',
-            background: tag.colour || '#4A3410',
+            borderRadius: 2,
+            color: 'rgba(255,255,255,0.8)',
+            background: tag.colour || '#333539',
           }}>
             {tag.name}
           </span>
@@ -81,63 +76,39 @@ function MediaGrid({ assets, onDelete, onSetBackground }) {
   const [contextMenu, setContextMenu] = useState(null);
 
   return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: 8 }}>
+    <div className="flex-1 overflow-y-auto p-md">
       {assets.length === 0 ? (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 8, color: '#2E2820' }}>
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
-            <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/>
-            <polyline points="21 15 16 10 5 21"/>
-          </svg>
-          <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 9, letterSpacing: '0.2em', textTransform: 'uppercase' }}>
-            No Media — Import Above
-          </span>
+        <div className="flex flex-col items-center justify-center h-full gap-sm text-outline-variant">
+          <span className="material-symbols-outlined text-4xl">image</span>
+          <span className="text-label-sm font-label-sm uppercase tracking-widest">No Media — Import Above</span>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+        <div className="grid gap-md" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))' }}>
           {assets.map((asset) => (
             <div
               key={asset.id}
-              style={{
-                background: '#0F0D0A',
-                border: '1px solid #201D18',
-                borderRadius: 2,
-                overflow: 'hidden',
-                cursor: 'pointer',
-                transition: 'border-color 100ms',
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#3A332A'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#201D18'; }}
+              className="group cursor-pointer"
               onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, asset }); }}
             >
-              {asset.type === 'image' ? (
-                <div style={{ aspectRatio: '16/9', background: '#000' }}>
+              <div className="aspect-video rounded bg-black border border-outline-variant overflow-hidden mb-xs relative">
+                {asset.type === 'image' ? (
                   <img src={`file://${asset.path}`}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                    className="w-full h-full object-cover group-hover:scale-110 transition-transform"
                     alt={asset.filename} />
-                </div>
-              ) : asset.type === 'video' ? (
-                <div style={{ aspectRatio: '16/9', background: '#000', position: 'relative' }}>
-                  <video src={`file://${asset.path}`}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                    muted />
-                  <span style={{
-                    position: 'absolute', top: 4, right: 4,
-                    fontFamily: "'Oswald', sans-serif",
-                    fontSize: 8.5, fontWeight: 500, letterSpacing: '0.14em',
-                    background: 'rgba(0,0,0,0.85)', color: '#7A7068',
-                    padding: '1px 4px', borderRadius: 1,
-                  }}>VID</span>
-                </div>
-              ) : (
-                <div style={{ aspectRatio: '16/9', background: '#141210', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 10, letterSpacing: '0.16em', color: '#2E2820' }}>AUD</span>
-                </div>
-              )}
-              <div style={{ padding: '4px 7px 5px' }}>
-                <div style={{ fontSize: 10.5, color: '#504540', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {asset.filename}
-                </div>
+                ) : asset.type === 'video' ? (
+                  <>
+                    <video src={`file://${asset.path}`}
+                      className="w-full h-full object-cover"
+                      muted />
+                    <div className="absolute bottom-1 right-1 bg-black/50 px-1 rounded text-[8px] text-white font-label-sm">VID</div>
+                  </>
+                ) : (
+                  <div className="w-full h-full bg-surface-container-high flex items-center justify-center">
+                    <span className="text-label-sm font-label-sm text-outline-variant">AUD</span>
+                  </div>
+                )}
               </div>
+              <p className="text-[10px] text-on-surface truncate">{asset.filename}</p>
             </div>
           ))}
         </div>
@@ -241,11 +212,11 @@ export default function LibraryPanel({ onAddToRundown, onSongSave }) {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0C0A08' }}>
+    <div className="flex flex-col h-full bg-surface-container-low border-t border-outline-variant/30">
       {/* Panel header */}
-      <div className="panel-header" style={{ gap: 10 }}>
+      <div className="flex items-center px-md h-12 bg-surface-container-high border-b border-outline-variant/30 shrink-0">
         {/* Tabs */}
-        <div style={{ display: 'flex', gap: 2 }}>
+        <div className="flex h-full items-center">
           <LibTab active={tab === 'songs'} onClick={() => setTab('songs')}>
             Songs{tab === 'songs' && filteredSongs.length > 0 ? ` · ${filteredSongs.length}` : ''}
           </LibTab>
@@ -254,84 +225,84 @@ export default function LibraryPanel({ onAddToRundown, onSongSave }) {
           </LibTab>
         </div>
 
-        <div style={{ flex: 1 }} />
+        <div className="ml-auto flex items-center gap-md">
+          {/* Search */}
+          {tab === 'songs' && (
+            <div className="relative">
+              <span className="material-symbols-outlined absolute left-sm top-1/2 -translate-y-1/2 text-on-surface-variant text-[16px]">
+                search
+              </span>
+              <input
+                className="bg-surface-container-lowest border border-outline-variant/30 rounded-full pl-xl pr-md py-1 text-label-sm font-label-sm focus:outline-none w-56 text-on-surface"
+                placeholder="Search songs…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+          )}
 
-        {/* Search */}
-        {tab === 'songs' && (
-          <div style={{
-            display: 'flex', alignItems: 'center',
-            background: '#0F0D0A',
-            border: '1px solid #2A2520',
-            borderRadius: 2,
-            height: 20,
-            padding: '0 7px',
-            gap: 5,
-          }}>
-            <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="#3A332A" strokeWidth="2" strokeLinecap="round">
-              <circle cx="7" cy="7" r="5"/><path d="M11 11l3 3"/>
-            </svg>
-            <input
-              className="outline-none bg-transparent"
-              style={{ fontSize: 11, color: '#C8C0B6', width: 130, fontFamily: "'Inter', sans-serif" }}
-              placeholder="Search songs…"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-        )}
-
-        {tab === 'songs' && <AmberButton onClick={() => setEditSong({})}>+ New Song</AmberButton>}
-        {tab === 'media' && (
-          <AmberButton onClick={handleImportMedia} disabled={importing}>
-            {importing ? 'Importing…' : '+ Import'}
-          </AmberButton>
-        )}
+          {tab === 'songs' && (
+            <button
+              onClick={() => setEditSong({})}
+              className="bg-primary text-on-primary px-md py-xs rounded text-label-sm font-label-sm font-bold hover:brightness-110 active:scale-95 transition-all cursor-pointer flex items-center gap-xs"
+            >
+              <span className="material-symbols-outlined text-[14px]">add</span>
+              New Song
+            </button>
+          )}
+          {tab === 'media' && (
+            <button
+              onClick={handleImportMedia}
+              disabled={importing}
+              className="bg-primary text-on-primary px-md py-xs rounded text-label-sm font-label-sm font-bold hover:brightness-110 active:scale-95 transition-all cursor-pointer flex items-center gap-xs disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <span className="material-symbols-outlined text-[14px]">upload</span>
+              {importing ? 'Importing…' : 'Import'}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Songs tab */}
       {tab === 'songs' && (
-        <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-          {tags.length > 0 && (
-            <div style={{ width: 108, flexShrink: 0, borderRight: '1px solid #181510', overflowY: 'auto', padding: '8px 6px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <span className="panel-label" style={{ fontSize: 8.5, marginBottom: 4, paddingLeft: 4 }}>Filter</span>
+        <div className="flex flex-1 min-h-0">
+          {/* Folder/tag tree */}
+          <div className="w-56 border-r border-outline-variant/30 overflow-y-auto shrink-0">
+            <ul className="text-label-sm font-label-sm text-on-surface-variant flex flex-col gap-xs p-sm">
+              <li
+                className={`flex items-center gap-sm p-sm rounded cursor-pointer transition-colors ${
+                  selectedTagIds.length === 0 ? 'text-on-surface bg-surface-variant' : 'hover:bg-surface-variant'
+                }`}
+                onClick={() => setSelectedTagIds([])}
+              >
+                <span className="material-symbols-outlined text-[16px]">folder_open</span>
+                <span>All Songs</span>
+              </li>
               {tags.map((tag) => {
                 const active = selectedTagIds.includes(tag.id);
                 return (
-                  <button
+                  <li
                     key={tag.id}
+                    className={`flex items-center gap-sm p-sm rounded cursor-pointer transition-colors ${
+                      active ? 'text-on-surface' : 'hover:bg-surface-variant'
+                    }`}
                     onClick={() => toggleTag(tag.id)}
-                    className="cursor-pointer text-left"
-                    style={{
-                      fontFamily: "'Inter', sans-serif",
-                      fontSize: 11,
-                      fontWeight: active ? 500 : 400,
-                      padding: '4px 8px',
-                      borderRadius: 2,
-                      border: active ? `1px solid ${tag.colour || '#4A3410'}60` : '1px solid transparent',
-                      background: active ? `${tag.colour || '#4A3410'}18` : 'transparent',
-                      color: active ? '#C8C0B6' : '#3A332A',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 7,
-                      transition: 'all 80ms',
-                    }}
-                    onMouseEnter={(e) => { if (!active) e.currentTarget.style.color = '#7A7068'; }}
-                    onMouseLeave={(e) => { if (!active) e.currentTarget.style.color = '#3A332A'; }}
+                    style={active ? { background: `${tag.colour || '#333539'}25` } : {}}
                   >
-                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: tag.colour || '#C8780A', flexShrink: 0 }} />
-                    {tag.name}
-                  </button>
+                    <span className="w-[8px] h-[8px] rounded-full shrink-0" style={{ background: tag.colour || '#8c909f' }} />
+                    <span className="truncate">{tag.name}</span>
+                  </li>
                 );
               })}
-            </div>
-          )}
-          <div ref={containerRef} style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+            </ul>
+          </div>
+
+          {/* Song list */}
+          <div ref={containerRef} className="flex-1 min-w-0 overflow-hidden">
             {filteredSongs.length === 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 8, color: '#2E2820' }}>
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
-                  <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
-                </svg>
-                <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 9, letterSpacing: '0.2em', textTransform: 'uppercase' }}>
+              <div className="flex flex-col items-center justify-center h-full gap-sm text-outline-variant">
+                <span className="material-symbols-outlined text-4xl">music_note</span>
+                <span className="text-label-sm font-label-sm uppercase tracking-widest">
                   {searchQuery ? 'No Songs Found' : 'No Songs Yet'}
                 </span>
               </div>
@@ -358,12 +329,23 @@ export default function LibraryPanel({ onAddToRundown, onSongSave }) {
 
       {/* Media tab */}
       {tab === 'media' && (
-        <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-          <div style={{ width: 120, flexShrink: 0, borderRight: '1px solid #181510', overflowY: 'auto', padding: '8px 6px' }}>
-            <FolderBtn active={activeFolderId == null} onClick={() => setActiveFolderId(null)}>All Files</FolderBtn>
-            {folderTree.map((folder) => (
-              <FolderNode key={folder.id} folder={folder} activeFolderId={activeFolderId} onSelect={setActiveFolderId} depth={0} />
-            ))}
+        <div className="flex flex-1 min-h-0">
+          {/* Folder tree */}
+          <div className="w-56 border-r border-outline-variant/30 overflow-y-auto shrink-0 p-sm">
+            <ul className="text-label-sm font-label-sm text-on-surface-variant flex flex-col gap-xs">
+              <li
+                className={`flex items-center gap-sm p-sm rounded cursor-pointer transition-colors ${
+                  activeFolderId == null ? 'text-on-surface bg-surface-variant' : 'hover:bg-surface-variant'
+                }`}
+                onClick={() => setActiveFolderId(null)}
+              >
+                <span className="material-symbols-outlined text-[16px]">folder_open</span>
+                <span>All Files</span>
+              </li>
+              {folderTree.map((folder) => (
+                <FolderNode key={folder.id} folder={folder} activeFolderId={activeFolderId} onSelect={setActiveFolderId} depth={0} />
+              ))}
+            </ul>
           </div>
           <MediaGrid assets={mediaAssets} onDelete={handleDeleteMedia} onSetBackground={handleSetBackground} />
         </div>
@@ -401,77 +383,11 @@ function LibTab({ active, onClick, children }) {
   return (
     <button
       onClick={onClick}
-      className="cursor-pointer"
-      style={{
-        fontFamily: "'Oswald', 'Inter', sans-serif",
-        fontSize: 10,
-        fontWeight: 500,
-        letterSpacing: '0.18em',
-        textTransform: 'uppercase',
-        height: 20,
-        padding: '0 10px',
-        borderRadius: 2,
-        border: active ? '1px solid rgba(200,120,10,0.4)' : '1px solid transparent',
-        background: active ? 'rgba(200,120,10,0.10)' : 'transparent',
-        color: active ? '#C87C14' : '#3A332A',
-        transition: 'all 100ms',
-      }}
-      onMouseEnter={(e) => { if (!active) e.currentTarget.style.color = '#7A7068'; }}
-      onMouseLeave={(e) => { if (!active) e.currentTarget.style.color = '#3A332A'; }}
-    >
-      {children}
-    </button>
-  );
-}
-
-function AmberButton({ onClick, disabled, children }) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className="cursor-pointer"
-      style={{
-        fontFamily: "'Oswald', 'Inter', sans-serif",
-        fontSize: 10,
-        fontWeight: 500,
-        letterSpacing: '0.18em',
-        textTransform: 'uppercase',
-        height: 20,
-        padding: '0 10px',
-        borderRadius: 2,
-        background: disabled ? '#0F0D0A' : 'linear-gradient(180deg, #3A2C10 0%, #261E08 100%)',
-        border: disabled ? '1px solid #201D18' : '1px solid rgba(200,120,10,0.38)',
-        color: disabled ? '#2A2218' : '#C87C14',
-        boxShadow: disabled ? 'none' : 'inset 0 1px 0 rgba(255,255,255,0.05)',
-        transition: 'all 100ms',
-      }}
-      onMouseEnter={(e) => { if (!disabled) { e.currentTarget.style.borderColor = 'rgba(200,120,10,0.7)'; e.currentTarget.style.color = '#E8A020'; }}}
-      onMouseLeave={(e) => { if (!disabled) { e.currentTarget.style.borderColor = 'rgba(200,120,10,0.38)'; e.currentTarget.style.color = '#C87C14'; }}}
-    >
-      {children}
-    </button>
-  );
-}
-
-function FolderBtn({ active, onClick, children }) {
-  return (
-    <button
-      onClick={onClick}
-      className="cursor-pointer w-full text-left"
-      style={{
-        fontFamily: "'Inter', sans-serif",
-        fontSize: 11,
-        padding: '4px 8px',
-        borderRadius: 2,
-        marginBottom: 2,
-        background: active ? 'rgba(200,120,10,0.12)' : 'transparent',
-        border: active ? '1px solid rgba(200,120,10,0.3)' : '1px solid transparent',
-        color: active ? '#C87C14' : '#3A332A',
-        fontWeight: active ? 500 : 400,
-        transition: 'all 80ms',
-      }}
-      onMouseEnter={(e) => { if (!active) e.currentTarget.style.color = '#7A7068'; }}
-      onMouseLeave={(e) => { if (!active) e.currentTarget.style.color = '#3A332A'; }}
+      className={`h-full px-lg text-label-sm font-label-sm cursor-pointer transition-colors ${
+        active
+          ? 'text-primary border-b-2 border-primary'
+          : 'text-on-surface-variant hover:bg-surface-variant border-b-2 border-transparent'
+      }`}
     >
       {children}
     </button>
@@ -482,30 +398,16 @@ function FolderNode({ folder, activeFolderId, onSelect, depth }) {
   const isActive = activeFolderId === folder.id;
   return (
     <>
-      <button
+      <li
+        className={`flex items-center gap-sm p-sm rounded cursor-pointer transition-colors ${
+          isActive ? 'text-on-surface bg-surface-variant' : 'hover:bg-surface-variant'
+        }`}
+        style={{ paddingLeft: `${8 + depth * 12}px` }}
         onClick={() => onSelect(folder.id)}
-        className="cursor-pointer w-full text-left"
-        style={{
-          fontFamily: "'Inter', sans-serif",
-          fontSize: 11,
-          padding: `4px 8px 4px ${8 + depth * 12}px`,
-          borderRadius: 2,
-          marginBottom: 2,
-          background: isActive ? 'rgba(200,120,10,0.12)' : 'transparent',
-          border: isActive ? '1px solid rgba(200,120,10,0.3)' : '1px solid transparent',
-          color: isActive ? '#C87C14' : '#3A332A',
-          fontWeight: isActive ? 500 : 400,
-          display: 'flex', alignItems: 'center', gap: 6,
-          transition: 'all 80ms',
-        }}
-        onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.color = '#7A7068'; }}
-        onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.color = '#3A332A'; }}
       >
-        <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" style={{ opacity: 0.45, flexShrink: 0 }}>
-          <path d="M2 4a2 2 0 0 1 2-2h3.5l1.5 2H12a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4z"/>
-        </svg>
-        {folder.name}
-      </button>
+        <span className="material-symbols-outlined text-[16px]">folder</span>
+        <span className="truncate">{folder.name}</span>
+      </li>
       {folder.children?.map((child) => (
         <FolderNode key={child.id} folder={child} activeFolderId={activeFolderId} onSelect={onSelect} depth={depth + 1} />
       ))}

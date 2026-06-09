@@ -1,12 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import OperatorView from './views/OperatorView';
 import SettingsView from './views/SettingsView';
 
-const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform);
+const platform = window.cue.platform; // 'darwin' | 'win32' | 'linux'
+const isMac    = platform === 'darwin';
+const isWin    = platform === 'win32';
 
 export default function App() {
   const [view, setView] = useState('operator');
   const [ndiWarning, setNdiWarning] = useState(false);
+  const [headerState, setHeaderState] = useState({ isLive: false, canGo: false });
+  const [clock, setClock] = useState(() => formatTime());
+  const transportRef = useRef({ go: () => {}, clear: () => {}, logo: () => {} });
 
   useEffect(() => {
     window.cue.on('output:unresolved-channels', (channels) => {
@@ -15,105 +20,108 @@ export default function App() {
     window.cue.on('output:ndi-unavailable', () => setNdiWarning(true));
   }, []);
 
+  useEffect(() => {
+    const id = setInterval(() => setClock(formatTime()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
   return (
-    <div className="h-screen flex flex-col select-none overflow-hidden"
-      style={{ background: '#0C0A08', color: '#C8C0B6' }}
-    >
-      {/* Titlebar */}
-      <nav
-        className="titlebar-drag flex items-center flex-shrink-0"
-        style={{
-          height: 36,
-          paddingLeft: isMac ? 78 : 12,
-          paddingRight: 12,
-          background: 'linear-gradient(180deg, #181410 0%, #121008 100%)',
-          borderBottom: '1px solid #201D18',
-        }}
+    <div className="h-screen flex flex-col select-none overflow-hidden bg-background text-on-surface">
+
+      {/* Row 1 — Titlebar (draggable) */}
+      <div
+        className="titlebar-drag bg-surface-container-high shrink-0 flex items-center border-b border-outline-variant/20"
+        style={{ height: 38 }}
       >
-        {/* Wordmark */}
-        <div className="titlebar-nodrag flex items-center gap-2.5 mr-6 flex-shrink-0">
-          {/* Amber signal lamp icon */}
-          <div style={{ position: 'relative', width: 16, height: 16, flexShrink: 0 }}>
-            <div style={{
-              width: 16, height: 16,
-              borderRadius: '50%',
-              background: 'radial-gradient(circle at 35% 35%, #F0A030 0%, #C87C14 50%, #8A5510 100%)',
-              boxShadow: '0 0 8px rgba(200,124,20,0.5), 0 0 16px rgba(200,124,20,0.2)',
-            }} />
-            <div style={{
-              position: 'absolute',
-              top: 3, left: 3,
-              width: 5, height: 4,
-              borderRadius: '50%',
-              background: 'rgba(255,220,150,0.55)',
-              transform: 'rotate(-20deg)',
-            }} />
+        {/*
+          macOS: 80px left inset clears the traffic lights (close/min/max).
+          Windows: no left inset needed; custom controls sit on the right.
+        */}
+        <div
+          className="titlebar-nodrag flex items-center gap-lg h-full px-md"
+          style={{ paddingLeft: isMac ? 80 : undefined }}
+        >
+          <span className="font-bold text-headline-md text-primary tracking-tight">Cue</span>
+          <nav className="flex gap-xs h-full items-center">
+            <NavTab label="Operator" active={view === 'operator'} onClick={() => setView('operator')} />
+            <NavTab label="Settings" active={view === 'settings'} onClick={() => setView('settings')} />
+          </nav>
+        </div>
+
+        {/* Windows-only: custom minimize / maximize / close */}
+        {isWin && (
+          <div className="titlebar-nodrag flex items-center h-full ml-auto">
+            <WinControl icon="remove" onClick={() => window.cue.window.minimize()} />
+            <WinControl icon="crop_square" onClick={() => window.cue.window.maximize()} />
+            <WinControl icon="close" onClick={() => window.cue.window.close()} danger />
           </div>
-          <span style={{
-            fontFamily: "'Oswald', 'Inter', sans-serif",
-            fontSize: 15,
-            fontWeight: 600,
-            letterSpacing: '0.35em',
-            color: '#C8C0B6',
-            textTransform: 'uppercase',
-          }}>
-            CUE
+        )}
+      </div>
+
+      {/* Row 2 — Transport toolbar (never draggable) */}
+      <div className="bg-surface-container shrink-0 flex items-center px-md gap-md border-b border-outline-variant/20" style={{ height: 40 }}>
+
+        {/* Live indicator */}
+        <div className="flex items-center gap-sm">
+          <span className={`w-[6px] h-[6px] rounded-full shrink-0 ${headerState.isLive ? 'bg-secondary dot-pulse' : 'bg-outline-variant'}`} />
+          <span className={`text-label-sm font-label-sm uppercase tracking-[0.05em] ${headerState.isLive ? 'text-secondary' : 'text-on-surface-variant/50'}`}>
+            {headerState.isLive ? 'Live' : 'Idle'}
           </span>
         </div>
 
-        {/* Divider */}
-        <div style={{ width: 1, height: 16, background: '#2A2520', marginRight: 16, flexShrink: 0 }} />
+        <span className="w-px h-3 bg-outline-variant/40 shrink-0" />
+        <span className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em]">NDI: OK</span>
+        <span className="w-px h-3 bg-outline-variant/40 shrink-0" />
+        <span className="text-label-sm font-timecode-lg text-on-surface tabular-nums">{clock}</span>
 
-        {/* Nav buttons */}
-        <div className="titlebar-nodrag flex items-center" style={{ gap: 2 }}>
-          <TitlebarTab label="Operator" active={view === 'operator'} onClick={() => setView('operator')} />
-          <TitlebarTab label="Settings" active={view === 'settings'} onClick={() => setView('settings')} />
-        </div>
-
-        {/* Right side spacer */}
-        <div style={{ flex: 1 }} />
-
-        {/* NDI warning */}
         {ndiWarning && (
-          <div className="titlebar-nodrag flex items-center gap-2"
-            style={{
-              fontFamily: "'Oswald', sans-serif",
-              fontSize: 10,
-              fontWeight: 500,
-              letterSpacing: '0.14em',
-              textTransform: 'uppercase',
-              color: '#C87C14',
-              background: 'rgba(90,55,0,0.3)',
-              border: '1px solid rgba(200,124,20,0.3)',
-              padding: '0 10px',
-              height: 22,
-              borderRadius: 2,
-            }}
-          >
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
-              <path d="M5 1L9.3 8.5H0.7L5 1Z"/>
-              <rect x="4.5" y="4" width="1" height="2.5" fill="#0C0A08" rx="0.4"/>
-              <circle cx="5" cy="7.2" r="0.5" fill="#0C0A08"/>
-            </svg>
-            NDI SDK not installed
+          <div className="flex items-center gap-xs px-sm py-1 bg-error-container/30 border border-error/30 rounded text-label-sm font-label-sm text-error ml-sm">
+            <span className="material-symbols-outlined text-[13px]">warning</span>
+            NDI SDK missing
             <button
               onClick={() => setNdiWarning(false)}
-              className="cursor-pointer"
-              style={{ color: '#C87C14', opacity: 0.6, marginLeft: 4, lineHeight: 1 }}
-              onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.6'; }}
+              className="ml-xs opacity-60 hover:opacity-100 transition-opacity cursor-pointer"
             >
-              <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
-                <path d="M1 1l6 6M7 1l-6 6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
-              </svg>
+              <span className="material-symbols-outlined text-[13px]">close</span>
             </button>
           </div>
         )}
-      </nav>
 
+        <div className="flex-1" />
+
+        {/* GO */}
+        <button
+          onClick={() => transportRef.current.go()}
+          disabled={!headerState.canGo}
+          className="h-7 px-lg text-headline-md font-display-lg font-extrabold uppercase tracking-widest bg-tertiary text-on-tertiary rounded transition-all active:scale-95 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed hover:opacity-90"
+        >
+          GO
+        </button>
+
+        {/* CLEAR */}
+        <button
+          onClick={() => transportRef.current.clear()}
+          className="h-7 px-md text-label-sm font-label-sm font-bold uppercase bg-surface-container-high border border-error/50 text-error rounded transition-all active:scale-95 cursor-pointer hover:border-error hover:bg-error/5"
+        >
+          Clear
+        </button>
+
+        {/* LOGO */}
+        <button
+          onClick={() => transportRef.current.logo()}
+          className="h-7 px-md text-label-sm font-label-sm font-bold uppercase bg-surface-container-high border border-primary/50 text-primary rounded transition-all active:scale-95 cursor-pointer hover:border-primary hover:bg-primary/5"
+        >
+          Logo
+        </button>
+      </div>
+
+      {/* Main content */}
       <div className="flex-1 overflow-hidden">
         {view === 'operator' ? (
-          <OperatorView />
+          <OperatorView
+            transportRef={transportRef}
+            onStateChange={setHeaderState}
+          />
         ) : (
           <SettingsView onClose={() => setView('operator')} />
         )}
@@ -122,39 +130,39 @@ export default function App() {
   );
 }
 
-function TitlebarTab({ label, active, onClick }) {
+function formatTime() {
+  return new Date().toLocaleTimeString('en-US', {
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  });
+}
+
+function NavTab({ label, active, onClick }) {
   return (
     <button
       onClick={onClick}
-      className="cursor-pointer"
-      style={{
-        fontFamily: "'Oswald', 'Inter', sans-serif",
-        fontSize: 11,
-        fontWeight: 500,
-        letterSpacing: '0.18em',
-        textTransform: 'uppercase',
-        height: 24,
-        padding: '0 12px',
-        borderRadius: 2,
-        border: active ? '1px solid rgba(200,124,20,0.45)' : '1px solid transparent',
-        background: active ? 'rgba(200,124,20,0.12)' : 'transparent',
-        color: active ? '#C87C14' : '#504540',
-        transition: 'all 120ms',
-      }}
-      onMouseEnter={(e) => {
-        if (!active) {
-          e.currentTarget.style.color = '#7A7068';
-          e.currentTarget.style.background = '#1A1714';
-        }
-      }}
-      onMouseLeave={(e) => {
-        if (!active) {
-          e.currentTarget.style.color = '#504540';
-          e.currentTarget.style.background = 'transparent';
-        }
-      }}
+      className={`titlebar-nodrag h-full flex items-center px-sm text-label-sm font-label-sm tracking-[0.05em] uppercase cursor-pointer transition-colors ${
+        active
+          ? 'text-primary border-b-2 border-primary'
+          : 'text-on-surface-variant hover:text-on-surface border-b-2 border-transparent'
+      }`}
     >
       {label}
+    </button>
+  );
+}
+
+// Windows-only close/min/max buttons
+function WinControl({ icon, onClick, danger }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`titlebar-nodrag h-full w-[46px] flex items-center justify-center transition-colors cursor-pointer ${
+        danger
+          ? 'text-on-surface-variant hover:bg-error hover:text-white'
+          : 'text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface'
+      }`}
+    >
+      <span className="material-symbols-outlined text-[16px]">{icon}</span>
     </button>
   );
 }

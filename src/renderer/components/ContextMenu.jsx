@@ -16,54 +16,30 @@ export default function ContextMenu({ x, y, items, onClose }) {
     };
   }, [onClose]);
 
-  const menuWidth = 196;
+  const menuWidth = 200;
   const itemCount = items.filter(i => !i.separator).length;
   const left = Math.min(x, window.innerWidth - menuWidth - 8);
-  const top = Math.min(y, window.innerHeight - (itemCount * 28 + 14) - 8);
+  const top = Math.min(y, window.innerHeight - (itemCount * 32 + 16) - 8);
 
   return createPortal(
     <div
       ref={ref}
-      style={{
-        position: 'fixed', top, left,
-        zIndex: 9999,
-        width: menuWidth,
-        background: '#111008',
-        border: '1px solid #2A2520',
-        borderRadius: 2,
-        boxShadow: '0 8px 28px rgba(0,0,0,0.75), 0 2px 8px rgba(0,0,0,0.5)',
-        padding: '4px 0',
-      }}
+      style={{ position: 'fixed', top, left, zIndex: 9999, width: menuWidth }}
+      className="bg-surface-container-high border border-outline-variant/40 rounded-lg shadow-2xl py-xs overflow-hidden ring-1 ring-white/5"
     >
       {items.map((item, i) => {
         if (item.separator) {
-          return <div key={i} style={{ borderTop: '1px solid #201D18', margin: '3px 0' }} />;
+          return <div key={i} className="border-t border-outline-variant/20 my-xs" />;
         }
         return (
           <button
             key={i}
             onClick={item.onClick}
-            className="w-full text-left cursor-pointer"
-            style={{
-              display: 'block',
-              padding: '6px 14px',
-              fontFamily: "'Inter', sans-serif",
-              fontSize: 12,
-              fontWeight: 400,
-              letterSpacing: '0.01em',
-              color: item.danger ? '#C45050' : '#907860',
-              background: 'transparent',
-              border: 'none',
-              transition: 'all 80ms',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = item.danger ? 'rgba(180,40,40,0.08)' : '#1A1714';
-              e.currentTarget.style.color = item.danger ? '#E06060' : '#C8C0B6';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'transparent';
-              e.currentTarget.style.color = item.danger ? '#C45050' : '#907860';
-            }}
+            className={`w-full text-left cursor-pointer px-md py-sm text-label-sm font-label-sm uppercase tracking-[0.05em] transition-colors ${
+              item.danger
+                ? 'text-error hover:bg-error/10 hover:text-error'
+                : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
+            }`}
           >
             {item.label}
           </button>

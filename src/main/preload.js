@@ -77,6 +77,12 @@ contextBridge.exposeInMainWorld('cue', {
     list: BUNDLED_FONTS,
     default: DEFAULT_FONT,
   },
+  platform: process.platform,
+  window: {
+    minimize: () => ipcRenderer.invoke('window:minimize'),
+    maximize: () => ipcRenderer.invoke('window:maximize'),
+    close:    () => ipcRenderer.invoke('window:close'),
+  },
   on: (channel, callback) => {
     const allowed = [
       'output:unresolved-channels', 'output:state-changed',

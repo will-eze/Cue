@@ -6,12 +6,6 @@
 
 * { box-sizing: border-box; }
 
-[contenteditable][data-placeholder]:empty::before {
-  content: attr(data-placeholder);
-  color: #2E2820;
-  pointer-events: none;
-}
-
 html, body, #root {
   height: 100%;
   margin: 0;
@@ -23,101 +17,105 @@ body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  font-size: 13px;
-  background: #0C0A08;
-  color: #C8C0B6;
+  font-size: 14px;
+  background: #111317;
+  color: #e2e2e8;
 }
 
-/* ── Display font — Oswald for all UI chrome ─────────────── */
-.oswald {
-  font-family: 'Oswald', 'Inter', sans-serif;
-}
-
-/* ── Panel label (Oswald uppercase) ──────────────────────── */
-.panel-label {
-  font-family: 'Oswald', 'Inter', sans-serif;
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: #504540;
-}
-
-/* ── Panel header — warm, with amber top accent ──────────── */
-.panel-header {
-  display: flex;
-  align-items: center;
-  height: 30px;
-  padding: 0 10px;
-  flex-shrink: 0;
-  background: linear-gradient(180deg, #1A1714 0%, #141210 100%);
-  border-top: 1.5px solid #C8780A;
-  border-bottom: 1px solid #201D18;
-  gap: 8px;
-}
-
-/* ── Tally states — broadcast cue sheet ──────────────────── */
-.tally-live {
-  border-left: 3px solid #E03535;
-  background: linear-gradient(90deg, rgba(224,53,53,0.13) 0%, rgba(224,53,53,0.03) 40%, transparent 75%);
-}
-.tally-preview {
-  border-left: 3px solid #D4891A;
-  background: linear-gradient(90deg, rgba(212,137,26,0.11) 0%, rgba(212,137,26,0.025) 40%, transparent 75%);
-}
-.tally-idle {
-  border-left: 3px solid transparent;
-}
-
-/* ── Monitor frames — hardware bezel look ────────────────── */
-.monitor-live {
-  border: 1px solid rgba(224,53,53,0.7);
-  border-radius: 1px;
-  box-shadow:
-    0 0 0 1px rgba(224,53,53,0.12),
-    0 0 24px rgba(224,53,53,0.20),
-    0 0 48px rgba(224,53,53,0.07),
-    inset 0 0 28px rgba(224,53,53,0.04);
-}
+/* ── Monitor glow effects ──────────────────────────────────── */
 .monitor-preview {
-  border: 1px solid rgba(212,137,26,0.4);
-  border-radius: 1px;
-  box-shadow:
-    0 0 0 1px rgba(212,137,26,0.06),
-    0 0 14px rgba(212,137,26,0.10),
-    inset 0 0 20px rgba(212,137,26,0.025);
+  border: 2px solid #adc6ff;
+  border-radius: 0.25rem;
+  box-shadow: 0 0 20px -5px rgba(173, 198, 255, 0.3);
+}
+.monitor-live {
+  border: 2px solid #ffb3ad;
+  border-radius: 0.25rem;
+  box-shadow: 0 0 20px -5px rgba(164, 2, 23, 0.5);
 }
 .monitor-idle {
-  border: 1px solid #201D18;
-  border-radius: 1px;
+  border: 2px solid #424754;
+  border-radius: 0.25rem;
 }
 
-/* ── Live label glow ──────────────────────────────────────── */
-.live-text-glow {
-  color: #E03535;
-  text-shadow: 0 0 8px rgba(224,53,53,0.55), 0 0 20px rgba(224,53,53,0.2);
+/* ── Live pulse animation ──────────────────────────────────── */
+@keyframes pulse-live {
+  0%   { box-shadow: 0 0 0 0 rgba(255, 179, 173, 0.4); }
+  70%  { box-shadow: 0 0 0 8px rgba(255, 179, 173, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 179, 173, 0); }
+}
+.live-pulse { animation: pulse-live 2s infinite; }
+
+/* ── Dot pulse (ON AIR indicator) ──────────────────────────── */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.25; }
+}
+.dot-pulse { animation: pulse-dot 1.4s ease-in-out infinite; }
+
+/* ── Tally states ──────────────────────────────────────────── */
+.tally-live    { border-left: 4px solid #ffb3ad; background: rgba(164,2,23,0.12); }
+.tally-preview { border-left: 4px solid #adc6ff; background: rgba(77,142,255,0.08); }
+.tally-idle    { border-left: 4px solid transparent; }
+
+/* ── Active slide ──────────────────────────────────────────── */
+.slide-active-preview {
+  border-left: 4px solid #adc6ff !important;
+  background: rgba(77,142,255,0.12) !important;
+}
+.slide-active-live {
+  border-left: 4px solid #ffb3ad !important;
+  background: rgba(164,2,23,0.15) !important;
 }
 
-/* ── Active slide ─────────────────────────────────────────── */
-.slide-active {
-  border-left: 2px solid #22C55E !important;
-  background: linear-gradient(90deg, rgba(34,197,94,0.11) 0%, rgba(34,197,94,0.02) 45%, transparent 100%) !important;
-}
-.slide-active .slide-label { color: #4ADE80; }
-.slide-active .slide-text  { color: #C8C0B6; }
+/* ── Resize handles ────────────────────────────────────────── */
+.resize-h { cursor: col-resize; user-select: none; }
+.resize-v { cursor: row-resize; user-select: none; }
 
-/* ── Section type chip (Oswald) ───────────────────────────── */
+/* ── Drag grip ─────────────────────────────────────────────── */
+.drag-handle { cursor: grab; }
+.drag-handle:active { cursor: grabbing; }
+
+/* ── Titlebar regions ──────────────────────────────────────── */
+.titlebar-drag   { -webkit-app-region: drag; }
+.titlebar-nodrag { -webkit-app-region: no-drag; }
+
+/* ── Custom scrollbar ──────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #1a1c20; }
+::-webkit-scrollbar-thumb { background: #333539; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #424754; }
+
+/* ── Select dropdown arrow ─────────────────────────────────── */
+select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='5' viewBox='0 0 9 5'%3E%3Cpath d='M1 1l3.5 3L8 1' stroke='%238c909f' stroke-width='1.4' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 7px center;
+  padding-right: 22px !important;
+}
+
+/* ── Focus ring override for inputs ────────────────────────── */
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: #adc6ff !important;
+  box-shadow: 0 0 0 1px #adc6ff;
+}
+
+/* ── Placeholder text ──────────────────────────────────────── */
+::placeholder { color: #8c909f; }
+
+/* ── Section type label ────────────────────────────────────── */
 .section-chip {
-  font-family: 'Oswald', 'Inter', sans-serif;
-  font-size: 9px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 10px;
   font-weight: 500;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
-  padding: 2px 5px;
-  border-radius: 1px;
-  background: #1A1714;
-  color: #403830;
-  border: 1px solid #2A2520;
+  padding: 1px 6px;
+  border-radius: 2px;
+  background: rgba(66,71,84,0.4);
+  color: #c2c6d6;
   flex-shrink: 0;
   min-width: 44px;
   text-align: center;
@@ -125,144 +123,19 @@ body {
   align-items: center;
   justify-content: center;
 }
-.slide-active .section-chip {
-  background: rgba(34,197,94,0.09);
-  color: #4ADE80;
-  border-color: rgba(34,197,94,0.22);
-}
 
-/* ── Transport buttons — hardware physical feel ───────────── */
-.btn-go {
-  font-family: 'Oswald', sans-serif;
-  font-weight: 500;
-  letter-spacing: 0.2em;
-  position: relative;
-  background: linear-gradient(180deg, #1A5C30 0%, #0F3D1E 100%);
-  border: 1px solid rgba(34,197,94,0.32);
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.07),
-    inset 0 -1px 0 rgba(0,0,0,0.3),
-    0 2px 6px rgba(0,0,0,0.5);
-  color: #5EE89A;
-}
-.btn-go:hover:not(:disabled) {
-  background: linear-gradient(180deg, #1E6B38 0%, #134A24 100%);
-  border-color: rgba(34,197,94,0.6);
-  color: #86EFAC;
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.09),
-    inset 0 -1px 0 rgba(0,0,0,0.3),
-    0 0 18px rgba(34,197,94,0.14),
-    0 2px 6px rgba(0,0,0,0.5);
-}
-.btn-go:active:not(:disabled) {
-  background: linear-gradient(180deg, #0F3D1E 0%, #0A2814 100%);
-  box-shadow: inset 0 2px 5px rgba(0,0,0,0.6), 0 1px 2px rgba(0,0,0,0.3);
-  transform: translateY(1px);
-}
-.btn-go:disabled {
-  background: #0F0D0B;
-  border-color: #1A1714;
-  color: #282220;
-  box-shadow: inset 0 1px 3px rgba(0,0,0,0.3);
-}
-
-.btn-clear {
-  font-family: 'Oswald', sans-serif;
-  font-weight: 500;
-  letter-spacing: 0.2em;
-  background: linear-gradient(180deg, #201D18 0%, #181510 100%);
-  border: 1px solid #2A2520;
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.04),
-    inset 0 -1px 0 rgba(0,0,0,0.25),
-    0 2px 4px rgba(0,0,0,0.4);
-  color: #7A7068;
-}
-.btn-clear:hover {
-  background: linear-gradient(180deg, #2A2520 0%, #201D18 100%);
-  border-color: #3A332A;
-  color: #C0B8B0;
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.06),
-    inset 0 -1px 0 rgba(0,0,0,0.25),
-    0 2px 4px rgba(0,0,0,0.4);
-}
-.btn-clear:active {
-  background: linear-gradient(180deg, #181510 0%, #141210 100%);
-  box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);
-  transform: translateY(1px);
-}
-
-.btn-logo {
-  font-family: 'Oswald', sans-serif;
-  font-weight: 500;
-  letter-spacing: 0.2em;
-  background: linear-gradient(180deg, #3A2C10 0%, #261E08 100%);
-  border: 1px solid rgba(212,137,26,0.38);
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.06),
-    inset 0 -1px 0 rgba(0,0,0,0.25),
-    0 2px 4px rgba(0,0,0,0.4);
-  color: #C87C14;
-}
-.btn-logo:hover {
-  background: linear-gradient(180deg, #4A3818 0%, #342610 100%);
-  border-color: rgba(212,137,26,0.65);
-  color: #E8A020;
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.08),
-    inset 0 -1px 0 rgba(0,0,0,0.25),
-    0 0 14px rgba(212,137,26,0.13),
-    0 2px 4px rgba(0,0,0,0.4);
-}
-.btn-logo:active {
-  background: linear-gradient(180deg, #261E08 0%, #1C1506 100%);
-  box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);
-  transform: translateY(1px);
-}
-
-/* ── Resize handles ───────────────────────────────────────── */
-.resize-h { cursor: col-resize; user-select: none; }
-.resize-v { cursor: row-resize; user-select: none; }
-
-/* ── Drag grip ────────────────────────────────────────────── */
-.drag-handle { cursor: grab; }
-.drag-handle:active { cursor: grabbing; }
-
-/* ── Titlebar regions ─────────────────────────────────────── */
-.titlebar-drag   { -webkit-app-region: drag; }
-.titlebar-nodrag { -webkit-app-region: no-drag; }
-
-/* ── Scrollbar ────────────────────────────────────────────── */
-::-webkit-scrollbar { width: 3px; height: 3px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #2A2520; border-radius: 1px; }
-::-webkit-scrollbar-thumb:hover { background: #3A332A; }
-
-/* ── Select dropdown ──────────────────────────────────────── */
-select {
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='5' viewBox='0 0 9 5'%3E%3Cpath d='M1 1l3.5 3L8 1' stroke='%23504540' stroke-width='1.4' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 7px center;
-  padding-right: 22px !important;
-}
-
-/* ── ON AIR pulse animation ───────────────────────────────── */
-@keyframes pulse-dot {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.25; }
-}
-.dot-pulse {
-  animation: pulse-dot 1.4s ease-in-out infinite;
-}
-
-/* ── Kbd shortcut hint ────────────────────────────────────── */
+/* ── Kbd shortcut hint ─────────────────────────────────────── */
 .kbd-hint {
-  font-family: 'Oswald', sans-serif;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-size: 9px;
   font-weight: 400;
-  letter-spacing: 0.08em;
-  opacity: 0.28;
+  letter-spacing: 0.05em;
+  opacity: 0.35;
+}
+
+/* ── Content area placeholder ──────────────────────────────── */
+[contenteditable][data-placeholder]:empty::before {
+  content: attr(data-placeholder);
+  color: #424754;
+  pointer-events: none;
 }

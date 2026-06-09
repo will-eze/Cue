@@ -5,9 +5,7 @@ export default function LogoSettings() {
   const [globalLogoAsset, setGlobalLogoAsset] = useState(null);
   const [channels, setChannels] = useState([]);
 
-  useEffect(() => {
-    load();
-  }, []);
+  useEffect(() => { load(); }, []);
 
   async function load() {
     const logoId = await window.cue.settings.get('global_logo_id');
@@ -39,54 +37,61 @@ export default function LogoSettings() {
   }
 
   return (
-    <div className="max-w-2xl">
-      <h2 className="text-sm font-semibold text-slate-100 mb-4">Logo Settings</h2>
+    <section className="space-y-md">
+      <h2 className="text-headline-md font-semibold text-on-surface flex items-center gap-sm">
+        <span className="material-symbols-outlined text-primary">branding_watermark</span>
+        Logo Settings
+      </h2>
 
-      <div className="bg-slate-800 border border-slate-700 rounded p-4 mb-4">
-        <h3 className="text-xs font-semibold text-slate-300 mb-3">Global Logo</h3>
-        <p className="text-xs text-slate-500 mb-3">
-          Shown on all channels when Logo is pressed, unless overridden per-channel.
-        </p>
-        <div className="flex items-center gap-3">
+      <div className="bg-surface-container-high p-lg rounded-xl border border-outline-variant/30 flex items-center gap-xl">
+        {/* Logo preview */}
+        <div className="w-32 h-32 rounded bg-background flex items-center justify-center p-md border border-outline-variant/30 relative group shrink-0">
           {globalLogoAsset ? (
             <img
               src={`file://${globalLogoAsset.path}`}
-              className="h-16 w-28 object-contain bg-black rounded border border-slate-600"
+              className="w-full h-full object-contain"
               alt="Logo"
             />
           ) : (
-            <div className="h-16 w-28 bg-slate-700 rounded border border-slate-600 flex items-center justify-center text-xs text-slate-600">
-              No logo
-            </div>
+            <span className="material-symbols-outlined text-outline-variant text-3xl">image</span>
           )}
-          <button
-            onClick={handlePickLogo}
-            className="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded"
-          >
-            Choose…
-          </button>
-          {globalLogoId && (
+        </div>
+
+        {/* Logo info and controls */}
+        <div className="flex-1 space-y-md">
+          <div>
+            <h4 className="text-headline-md font-semibold text-on-surface">Global Brand Mark</h4>
+            <p className="text-body-md text-on-surface-variant mt-xs">
+              PNG or SVG with transparent background. Min 512px. Shown on all channels when Logo is pressed.
+            </p>
+          </div>
+          <div className="flex gap-sm">
             <button
-              onClick={handleClearLogo}
-              className="text-xs text-slate-500 hover:text-red-400 px-3 py-1.5"
+              onClick={handlePickLogo}
+              className="bg-primary-container text-on-primary-container px-md py-sm rounded text-label-sm font-label-sm font-bold hover:brightness-110 active:scale-95 transition-all cursor-pointer"
             >
-              Clear
+              Pick Media
             </button>
-          )}
+            {globalLogoId && (
+              <button
+                onClick={handleClearLogo}
+                className="bg-surface-variant text-on-surface-variant px-md py-sm rounded text-label-sm font-label-sm hover:bg-outline-variant transition-all cursor-pointer"
+              >
+                Reset
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
       {channels.length > 0 && (
-        <div className="bg-slate-800 border border-slate-700 rounded p-4">
-          <h3 className="text-xs font-semibold text-slate-300 mb-2">Per-Channel Overrides</h3>
-          <p className="text-xs text-slate-500 mb-3">
-            Per-channel logo overrides are configured in Output Channels.
-          </p>
-          <div className="space-y-1">
+        <div className="bg-surface-container border border-outline-variant/30 rounded-xl p-md">
+          <h3 className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wider mb-sm">Per-Channel Status</h3>
+          <div className="space-y-xs">
             {channels.map((ch) => (
-              <div key={ch.id} className="flex items-center justify-between py-1 text-xs text-slate-400">
-                <span>{ch.name}</span>
-                <span className="text-slate-600">
+              <div key={ch.id} className="flex items-center justify-between py-xs text-label-sm font-label-sm">
+                <span className="text-on-surface">{ch.name}</span>
+                <span className="text-on-surface-variant">
                   {ch.logo_override_id ? 'Custom logo' : '↑ Global'}
                 </span>
               </div>
@@ -94,6 +99,6 @@ export default function LogoSettings() {
           </div>
         </div>
       )}
-    </div>
+    </section>
   );
 }

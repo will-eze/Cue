@@ -21,47 +21,29 @@ export default function SongPreviewModal({ song, onClose, onEdit, onAddToRundown
 
   return createPortal(
     <div
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 16 }}
+      className="fixed inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
       onClick={onClose}
     >
       <div
-        style={{
-          background: '#111008',
-          border: '1px solid #2A2520',
-          borderTop: '2px solid #C8780A',
-          borderRadius: 2,
-          width: '100%',
-          maxWidth: 460,
-          maxHeight: '80vh',
-          display: 'flex',
-          flexDirection: 'column',
-          boxShadow: '0 24px 80px rgba(0,0,0,0.85)',
-        }}
+        className="bg-surface-container-low border border-outline-variant/30 rounded-xl w-full max-w-md max-h-[80vh] flex flex-col shadow-2xl ring-1 ring-white/5"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div style={{ padding: '14px 16px 12px', borderBottom: '1px solid #201D18', flexShrink: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-            <div style={{ minWidth: 0 }}>
-              <h2 style={{
-                fontFamily: "'Inter', sans-serif",
-                fontSize: 14, fontWeight: 600,
-                color: '#C8C0B6',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                letterSpacing: '0.01em',
-              }}>
+        <div className="px-lg py-md border-b border-outline-variant/20 bg-surface-container-high rounded-t-xl flex-shrink-0">
+          <div className="flex items-start justify-between gap-md">
+            <div className="min-w-0">
+              <h2 className="text-headline-md font-bold text-primary truncate tracking-tight">
                 {song.title}
               </h2>
               {song.author && (
-                <p style={{ fontFamily: "'Inter', sans-serif", fontSize: 11, color: '#3A332A', marginTop: 2 }}>{song.author}</p>
+                <p className="text-label-sm font-label-sm text-on-surface-variant mt-xs uppercase tracking-[0.05em]">
+                  {song.author}
+                </p>
               )}
             </div>
             <button
               onClick={onClose}
-              className="cursor-pointer flex-shrink-0"
-              style={{ color: '#2A2218', marginTop: 2 }}
-              onMouseEnter={(e) => { e.currentTarget.style.color = '#7A7068'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.color = '#2A2218'; }}
+              className="w-8 h-8 flex items-center justify-center rounded-full text-on-surface-variant hover:text-on-surface hover:bg-surface-variant transition-colors cursor-pointer flex-shrink-0 mt-xs"
             >
               <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
                 <path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -71,76 +53,48 @@ export default function SongPreviewModal({ song, onClose, onEdit, onAddToRundown
         </div>
 
         {/* Sections */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-lg">
           {!fullSong ? (
-            <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 9, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#3A332A' }}>Loading…</div>
+            <div className="text-label-sm font-label-sm text-on-surface-variant/40 uppercase tracking-[0.05em]">Loading…</div>
           ) : fullSong.sections?.length === 0 ? (
-            <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 9, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#3A332A' }}>No sections</div>
+            <div className="text-label-sm font-label-sm text-on-surface-variant/40 uppercase tracking-[0.05em]">No sections</div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {fullSong.sections?.map((section, i) => (
-                <div key={section.id || i}>
-                  <div className="section-chip" style={{ marginBottom: 8, width: 'auto', display: 'inline-flex' }}>
-                    {TYPE_LABELS[section.type] || section.type}
+            <div className="flex flex-col gap-lg">
+              {fullSong.sections?.map((section, i) => {
+                const isChorus = section.type === 'chorus' || section.type === 'refrain';
+                return (
+                  <div key={section.id || i} className={`${isChorus ? 'border-l-2 border-primary pl-md' : 'border-l-2 border-outline-variant/20 pl-md'}`}>
+                    <div className={`section-chip mb-sm inline-flex ${isChorus ? 'bg-primary text-on-primary border-transparent' : ''}`}>
+                      {TYPE_LABELS[section.type] || section.type}
+                    </div>
+                    <pre className="text-body-sm text-on-surface whitespace-pre-wrap leading-relaxed m-0 font-sans">
+                      {section.content}
+                    </pre>
                   </div>
-                  <pre style={{
-                    fontFamily: "'Inter', sans-serif",
-                    fontSize: 12.5,
-                    color: '#807060',
-                    whiteSpace: 'pre-wrap',
-                    lineHeight: 1.65,
-                    margin: 0,
-                  }}>
-                    {section.content}
-                  </pre>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderTop: '1px solid #201D18', flexShrink: 0 }}>
+        <div className="flex items-center gap-sm px-lg py-md border-t border-outline-variant/20 bg-surface-container-high rounded-b-xl flex-shrink-0">
           <button
             onClick={() => onEdit(fullSong || song)}
-            className="cursor-pointer"
-            style={{
-              fontFamily: "'Inter', sans-serif",
-              height: 28, padding: '0 12px', fontSize: 11, fontWeight: 500,
-              background: '#141210', border: '1px solid #2A2520',
-              color: '#7A7068', borderRadius: 2,
-              transition: 'all 100ms',
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = '#C8C0B6'; e.currentTarget.style.borderColor = '#3A332A'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = '#7A7068'; e.currentTarget.style.borderColor = '#2A2520'; }}
+            className="px-md h-8 text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface bg-surface-container hover:bg-surface-variant border border-outline-variant/30 rounded-lg transition-colors cursor-pointer uppercase tracking-[0.05em]"
           >
             Edit
           </button>
-          <div style={{ flex: 1 }} />
+          <div className="flex-1" />
           <button
             onClick={onClose}
-            className="cursor-pointer"
-            style={{ fontFamily: "'Inter', sans-serif", height: 28, padding: '0 12px', fontSize: 11, color: '#3A332A' }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = '#7A7068'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = '#3A332A'; }}
+            className="px-md h-8 text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface rounded-lg hover:bg-surface-variant transition-colors cursor-pointer uppercase tracking-[0.05em]"
           >
             Close
           </button>
           <button
             onClick={() => onAddToRundown(song.id)}
-            className="cursor-pointer"
-            style={{
-              fontFamily: "'Oswald', 'Inter', sans-serif",
-              fontSize: 10, fontWeight: 500, letterSpacing: '0.16em', textTransform: 'uppercase',
-              height: 28, padding: '0 14px',
-              background: 'linear-gradient(180deg, #3A2C10 0%, #261E08 100%)',
-              border: '1px solid rgba(200,120,10,0.4)',
-              color: '#C87C14', borderRadius: 2,
-              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05)',
-              transition: 'all 100ms',
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(200,120,10,0.75)'; e.currentTarget.style.color = '#E8A020'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(200,120,10,0.4)'; e.currentTarget.style.color = '#C87C14'; }}
+            className="px-md h-8 text-label-sm font-label-sm bg-primary text-on-primary rounded-lg transition-colors cursor-pointer uppercase tracking-[0.05em] hover:opacity-90"
           >
             Add to Rundown
           </button>

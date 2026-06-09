@@ -121,15 +121,11 @@ function parseSong(rawText) {
 
   const lines = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
 
-  // Known section-type keywords
   const KW = 'verse|chorus|bridge|pre[-\\s]?chorus|prechorus|tag|intro|outro|refrain';
 
   const HEADER_PATTERNS = [
-    // [Verse 1], [CHORUS], [Pre-Chorus], [Refrain], etc.
     new RegExp('^\\[(.{1,40}?)\\]\\s*:?\\s*$'),
-    // "Refrain:", "Chorus:", "Bridge 2:" — keyword + optional number + colon, alone on line
     new RegExp(`^(${KW})\\s*\\d*\\s*:$`, 'i'),
-    // "Verse 1", "CHORUS", "bridge" — standalone keyword, alone on line
     new RegExp(`^(${KW})\\s*\\d*$`, 'i'),
   ];
 
@@ -157,25 +153,21 @@ function parseSong(rawText) {
     return TYPE_MAP[base] || TYPE_MAP[l] || 'verse';
   }
 
-  // Strip trailing inline section-reference tags, e.g. "...tonight. [Refrain]"
-  // These are performance directions, not content.
   const TRAILING_TAG_RE = new RegExp(
     `\\s*\\[(${KW}|ch|br|v)\\s*\\d*\\]\\s*$`, 'i'
   );
 
   function cleanLine(line) {
     return line
-      .trim()                                      // strip leading and trailing spaces
-      .replace(TRAILING_TAG_RE, '')                // "tonight. [Refrain]" → "tonight."
-      .replace(/^\s*[\[\(]?\d+[\]\)\.:]?\s+/, ''); // "1. Amazing" → "Amazing"
+      .trim()
+      .replace(TRAILING_TAG_RE, '')
+      .replace(/^\s*[\[\(]?\d+[\]\)\.:]?\s+/, '');
   }
 
   const sections   = [];
   let currentType  = null;
   let currentLines = [];
   let hasHeaders   = false;
-  // prevBlank tracks whether the previous line was blank (or we're at file start).
-  // Used to recognise "N. Content" as a stanza boundary only when it opens a stanza.
   let prevBlank    = true;
 
   function flush() {
@@ -190,26 +182,20 @@ function parseSong(rawText) {
   for (const line of lines) {
     const isBlank = !line.trim();
 
-    // ── Standard section header ──────────────────────────────────────────────
     const headerLabel = matchHeader(line);
     if (headerLabel) {
       flush();
       currentType = labelToType(headerLabel);
       hasHeaders  = true;
-      prevBlank   = true; // header is a stanza boundary — next line may be "N. content"
+      prevBlank   = true;
       continue;
     }
 
-    // ── Skip lines that are only a number (stanza number on its own line) ────
-    // Also treat as a stanza boundary so the next line can be detected as "N. content"
     if (/^\s*\d+[.):]?\s*$/.test(line)) {
       prevBlank = true;
       continue;
     }
 
-    // ── Numbered stanza: "1. Content" / "2) Content" at the start of a stanza ─
-    // Only fires after a blank line (or at file start) so it doesn't incorrectly
-    // split lines like "Luke 2. And the angel said…" mid-stanza.
     if (prevBlank && !isBlank) {
       const m = line.match(/^\s*(\d{1,2})[.)]?\s+(.+)$/);
       if (m) {
@@ -222,7 +208,6 @@ function parseSong(rawText) {
       }
     }
 
-    // ── Regular content line ─────────────────────────────────────────────────
     if (isBlank) {
       currentLines.push('');
       prevBlank = true;
@@ -233,7 +218,6 @@ function parseSong(rawText) {
   }
   flush();
 
-  // Fallback: no section markers found → split by blank lines, all 'verse'
   if (!hasHeaders) {
     const blocks = rawText.split(/\n\s*\n/).map(b => b.trim()).filter(Boolean);
     return blocks.map(content => ({ type: 'verse', content }));
@@ -274,19 +258,19 @@ function StyleBar({ songStyle, onChange, fonts, formatState, hasSelection }) {
   const activeBold  = songStyle.bold   || formatState.bold;
   const activeItal  = songStyle.italic || formatState.italic;
 
-  const btnBase = 'h-6 w-6 flex items-center justify-center rounded-sm transition-colors flex-shrink-0 text-[11px] cursor-pointer';
-  const btnOn   = 'bg-indigo-600 text-white';
-  const btnOff  = 'text-slate-500 hover:text-slate-300 hover:bg-slate-700';
+  const btnBase = 'h-6 w-6 flex items-center justify-center rounded transition-colors flex-shrink-0 text-[11px] cursor-pointer';
+  const btnOn   = 'bg-primary text-on-primary';
+  const btnOff  = 'text-on-surface-variant hover:text-on-surface hover:bg-surface-variant';
 
   function set(prop, value) { onChange({ ...songStyle, [prop]: value }); }
 
   return (
-    <div className="flex items-center gap-1.5 px-3 py-2 border-b border-slate-700 bg-slate-800/60 flex-wrap">
+    <div className="flex items-center gap-1.5 px-md py-sm border-b border-outline-variant/30 bg-surface-container flex-wrap">
       {/* Font family */}
       <select
         value={songStyle.fontFamily || ''}
         onChange={(e) => set('fontFamily', e.target.value || null)}
-        className="bg-slate-700 text-slate-200 text-[11px] rounded-sm px-1.5 h-6 border border-slate-600 w-28 outline-none focus:border-indigo-500 cursor-pointer"
+        className="bg-surface-container-high text-on-surface text-[11px] rounded px-1.5 h-6 border border-outline-variant/50 w-28 outline-none focus:border-primary cursor-pointer"
         title="Font family"
       >
         <option value="">Default font</option>
@@ -297,7 +281,7 @@ function StyleBar({ songStyle, onChange, fonts, formatState, hasSelection }) {
       <select
         value={songStyle.fontSize || ''}
         onChange={(e) => set('fontSize', e.target.value ? Number(e.target.value) : null)}
-        className="bg-slate-700 text-slate-200 text-[11px] rounded-sm px-1 h-6 border border-slate-600 w-[58px] outline-none focus:border-indigo-500 cursor-pointer"
+        className="bg-surface-container-high text-on-surface text-[11px] rounded px-1 h-6 border border-outline-variant/50 w-[58px] outline-none focus:border-primary cursor-pointer"
         title="Font size on output"
       >
         <option value="">Size</option>
@@ -307,7 +291,7 @@ function StyleBar({ songStyle, onChange, fonts, formatState, hasSelection }) {
       {/* Colour swatch */}
       <div className="relative flex-shrink-0" title="Text colour">
         <div
-          className="w-6 h-6 rounded-sm border border-slate-600 cursor-pointer overflow-hidden"
+          className="w-6 h-6 rounded border border-outline-variant/50 cursor-pointer overflow-hidden"
           style={{ background: songStyle.color || '#ffffff' }}
         >
           <input
@@ -319,7 +303,7 @@ function StyleBar({ songStyle, onChange, fonts, formatState, hasSelection }) {
         </div>
       </div>
 
-      <div className="w-px h-4 bg-slate-700 flex-shrink-0" />
+      <div className="w-px h-4 bg-outline-variant/40 flex-shrink-0" />
 
       {/* Bold */}
       <button
@@ -343,7 +327,7 @@ function StyleBar({ songStyle, onChange, fonts, formatState, hasSelection }) {
         title="Italic (applies to selection if text selected)"
       >I</button>
 
-      <div className="w-px h-4 bg-slate-700 flex-shrink-0" />
+      <div className="w-px h-4 bg-outline-variant/40 flex-shrink-0" />
 
       {/* Alignment */}
       {[
@@ -362,7 +346,7 @@ function StyleBar({ songStyle, onChange, fonts, formatState, hasSelection }) {
       {!styleIsDefault(songStyle) && (
         <button
           onMouseDown={(e) => { e.preventDefault(); onChange({ ...DEFAULT_STYLE }); }}
-          className="text-[10px] text-slate-600 hover:text-amber-400 cursor-pointer ml-1 transition-colors flex-shrink-0"
+          className="text-[10px] text-on-surface-variant/50 hover:text-primary cursor-pointer ml-1 transition-colors flex-shrink-0 font-mono"
           title="Reset all styling"
         >Reset</button>
       )}
@@ -417,13 +401,18 @@ function SortableSection({ section, onTypeChange, onDelete, onRef, songStyle, is
     textAlign:  songStyle.align      || 'center',
   };
 
-  return (
-    <div ref={setNodeRef} style={dndStyle} className={`group ${!isLast ? 'border-b border-slate-700/60' : ''}`}>
+  const isChorus = section.type === 'chorus' || section.type === 'refrain';
 
+  return (
+    <div
+      ref={setNodeRef}
+      style={dndStyle}
+      className={`group ${isChorus ? 'bg-primary/5 border-l-2 border-primary' : 'border-l-2 border-outline-variant/20'} ${!isLast ? 'border-b border-outline-variant/20' : ''}`}
+    >
       {/* Section header */}
-      <div className="flex items-center gap-2 px-3 h-7 bg-slate-800/30">
+      <div className="flex items-center gap-2 px-sm h-7 bg-surface-container/40">
         <button
-          className="drag-handle cursor-grab text-slate-700 hover:text-slate-500 flex-shrink-0 flex items-center"
+          className="drag-handle cursor-grab text-on-surface-variant/30 hover:text-on-surface-variant flex-shrink-0 flex items-center transition-colors"
           {...attributes} {...listeners} tabIndex={-1}
         >
           <svg width="8" height="12" viewBox="0 0 8 12" fill="currentColor">
@@ -436,20 +425,20 @@ function SortableSection({ section, onTypeChange, onDelete, onRef, songStyle, is
         <select
           value={section.type}
           onChange={(e) => onTypeChange(section._key, e.target.value)}
-          className="text-[11px] text-slate-400 hover:text-slate-200 bg-transparent border-none outline-none cursor-pointer transition-colors"
+          className={`text-[10px] font-mono font-bold uppercase tracking-[0.05em] bg-transparent border-none outline-none cursor-pointer transition-colors ${isChorus ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}
         >
           {SECTION_TYPES.map((t) => (
-            <option key={t} value={t} className="bg-slate-800 text-slate-200">
+            <option key={t} value={t} className="bg-surface-container text-on-surface normal-case font-normal tracking-normal">
               {t.charAt(0).toUpperCase() + t.slice(1)}
             </option>
           ))}
         </select>
 
-        <div className="flex-1 border-t border-slate-700/30" />
+        <div className="flex-1 border-t border-outline-variant/20" />
 
         <button
           onClick={() => onDelete(section._key)}
-          className="text-slate-700 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-[12px] leading-none flex-shrink-0"
+          className="text-on-surface-variant/30 hover:text-error opacity-0 group-hover:opacity-100 transition-all cursor-pointer text-[11px] leading-none flex-shrink-0 w-5 h-5 flex items-center justify-center rounded hover:bg-error/10"
           tabIndex={-1}
           title="Remove section"
         >✕</button>
@@ -462,7 +451,7 @@ function SortableSection({ section, onTypeChange, onDelete, onRef, songStyle, is
         suppressContentEditableWarning
         onPaste={handlePaste}
         onKeyDown={handleKeyDown}
-        className="px-5 py-3 min-h-[72px] outline-none text-slate-100 leading-relaxed whitespace-pre-wrap caret-white"
+        className="px-lg py-md min-h-[72px] outline-none text-on-surface leading-relaxed whitespace-pre-wrap caret-primary text-body-md"
         style={contentStyle}
       />
     </div>
@@ -475,14 +464,14 @@ function PasteView({ onParse, onCancel }) {
   const [text, setText] = useState('');
 
   return (
-    <div className="flex flex-col gap-3">
-      <p className="text-[12px] text-slate-400 leading-relaxed">
+    <div className="flex flex-col gap-md">
+      <p className="text-body-sm text-on-surface-variant leading-relaxed">
         Paste the full song text. Headers like{' '}
-        <span className="text-slate-300 font-mono">[Verse 1]</span>,{' '}
-        <span className="text-slate-300 font-mono">Chorus:</span>, or{' '}
-        <span className="text-slate-300 font-mono">BRIDGE</span> are detected and stripped.
-        Leading numbers (<span className="text-slate-300 font-mono">1.</span>,{' '}
-        <span className="text-slate-300 font-mono">2)</span>) are removed from lyric lines.
+        <span className="text-on-surface font-mono">[Verse 1]</span>,{' '}
+        <span className="text-on-surface font-mono">Chorus:</span>, or{' '}
+        <span className="text-on-surface font-mono">BRIDGE</span> are detected and stripped.
+        Leading numbers (<span className="text-on-surface font-mono">1.</span>,{' '}
+        <span className="text-on-surface font-mono">2)</span>) are removed from lyric lines.
         If no headers are found, blank lines split the song.
       </p>
       <textarea
@@ -491,15 +480,18 @@ function PasteView({ onParse, onCancel }) {
         onChange={(e) => setText(e.target.value)}
         rows={18}
         placeholder={"[Verse 1]\nAmazing grace, how sweet the sound\nThat saved a wretch like me\n\n[Chorus]\nPraise the Lord..."}
-        className="w-full bg-slate-700 text-slate-200 text-[13px] rounded-sm px-3 py-2 border border-slate-600 outline-none focus:border-indigo-500 resize-none font-mono leading-relaxed"
+        className="w-full bg-surface-container-lowest text-on-surface text-body-sm rounded-lg px-md py-sm border border-outline-variant/50 outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 resize-none font-mono leading-relaxed"
       />
-      <div className="flex gap-2">
+      <div className="flex gap-sm">
         <button
           onClick={() => { const p = parseSong(text); if (p.length) onParse(p); }}
           disabled={!text.trim()}
-          className="px-4 h-7 text-[11px] bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-sm transition-colors cursor-pointer font-medium"
+          className="px-lg h-8 text-label-sm font-mono bg-primary text-on-primary disabled:bg-surface-variant disabled:text-on-surface-variant/50 rounded-lg transition-colors cursor-pointer uppercase tracking-[0.05em]"
         >Import Sections</button>
-        <button onClick={onCancel} className="px-4 h-7 text-[11px] text-slate-400 hover:text-slate-200 cursor-pointer">
+        <button
+          onClick={onCancel}
+          className="px-lg h-8 text-label-sm font-mono text-on-surface-variant hover:text-on-surface cursor-pointer rounded-lg hover:bg-surface-variant transition-colors"
+        >
           Cancel
         </button>
       </div>
@@ -525,7 +517,6 @@ export default function SongEditor({ song, onClose, onSave }) {
   const sectionRefs = useRef({});
   const sensors     = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
-  // Track execCommand format state for toolbar active indicators
   useEffect(() => {
     function onSel() {
       setFormatState({
@@ -546,7 +537,6 @@ export default function SongEditor({ song, onClose, onSave }) {
         setCopyright(s.copyright || '');
         setSelectedTagIds((s.tags || []).map((t) => t.id));
 
-        // Derive song-level style from first section that has style_json
         const firstStyled = (s.sections || []).find((sec) => sec.style_json);
         if (firstStyled) {
           const { runs: _r, ...base } = JSON.parse(firstStyled.style_json);
@@ -640,26 +630,37 @@ export default function SongEditor({ song, onClose, onSave }) {
     }
   }
 
-  const inputClass = 'w-full bg-slate-700 text-slate-100 text-[13px] rounded-sm px-3 py-2 border border-slate-600 outline-none focus:border-indigo-500';
-  const labelClass = 'block text-[10px] font-semibold tracking-[0.12em] uppercase text-slate-500 mb-1';
+  const inputClass = 'w-full bg-surface-container-lowest text-on-surface text-body-sm rounded-lg px-md py-sm border border-outline-variant/50 outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors';
+  const labelClass = 'block text-label-sm font-mono text-on-surface-variant mb-1 uppercase tracking-[0.05em]';
 
   return createPortal(
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-800 border border-slate-700 rounded-sm w-full max-w-2xl max-h-[92vh] flex flex-col shadow-2xl">
+    <div className="fixed inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-surface-container-low border border-outline-variant/30 rounded-xl w-full max-w-3xl max-h-[92vh] flex flex-col shadow-2xl ring-1 ring-white/5">
 
         {/* Header */}
-        <div className="flex items-center px-4 py-3 border-b border-slate-700 flex-shrink-0">
-          <h2 className="text-[13px] font-semibold text-slate-100">{song?.id ? 'Edit Song' : 'New Song'}</h2>
-          <button onClick={onClose} className="ml-auto text-slate-600 hover:text-slate-300 cursor-pointer">✕</button>
+        <div className="flex items-center px-lg py-md border-b border-outline-variant/30 bg-surface-container-high rounded-t-xl flex-shrink-0">
+          <div>
+            <h2 className="text-headline-md font-bold text-primary tracking-tight">
+              {song?.id ? 'Edit Song' : 'New Song'}
+            </h2>
+            <p className="text-label-sm font-mono text-on-surface-variant uppercase tracking-[0.05em]">
+              {song?.id ? 'Song Editor · Edit' : 'Song Editor · New'}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="ml-auto w-8 h-8 flex items-center justify-center rounded-full text-on-surface-variant hover:text-on-surface hover:bg-surface-variant transition-colors cursor-pointer"
+          >✕</button>
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 overflow-y-auto custom-scrollbar">
 
           {!showPaste && (
             <>
-              <div className="grid grid-cols-2 gap-3 mb-4">
-                <div className="col-span-2">
+              {/* Metadata row */}
+              <div className="grid grid-cols-3 gap-md px-lg py-md bg-surface-container/50 border-b border-outline-variant/20">
+                <div className="col-span-3 sm:col-span-1">
                   <label className={labelClass}>Title *</label>
                   <input value={title} onChange={(e) => setTitle(e.target.value)}
                     className={inputClass} placeholder="Song title" />
@@ -677,19 +678,19 @@ export default function SongEditor({ song, onClose, onSave }) {
               </div>
 
               {allTags.length > 0 && (
-                <div className="mb-4">
+                <div className="px-lg py-sm border-b border-outline-variant/20">
                   <label className={labelClass}>Tags</label>
-                  <div className="flex flex-wrap gap-1.5">
+                  <div className="flex flex-wrap gap-xs mt-xs">
                     {allTags.map((tag) => (
                       <button
                         key={tag.id}
                         onClick={() => toggleTag(tag.id)}
-                        className={`text-[11px] px-2.5 py-1 rounded-sm transition-colors cursor-pointer ${
+                        className={`text-label-sm font-mono px-sm py-xs rounded-full transition-colors cursor-pointer border ${
                           selectedTagIds.includes(tag.id)
-                            ? 'text-white'
-                            : 'bg-slate-700 text-slate-400 hover:text-slate-200'
+                            ? 'text-white border-transparent'
+                            : 'bg-surface-container border-outline-variant/30 text-on-surface-variant hover:text-on-surface hover:border-outline-variant'
                         }`}
-                        style={selectedTagIds.includes(tag.id) ? { backgroundColor: tag.colour || '#1A6FBA' } : {}}
+                        style={selectedTagIds.includes(tag.id) ? { backgroundColor: tag.colour || '#4d8eff' } : {}}
                       >{tag.name}</button>
                     ))}
                   </div>
@@ -698,71 +699,84 @@ export default function SongEditor({ song, onClose, onSave }) {
             </>
           )}
 
-          {showPaste ? (
-            <PasteView onParse={handleParsedImport} onCancel={() => setShowPaste(false)} />
-          ) : (
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className={labelClass} style={{ marginBottom: 0 }}>Sections</label>
+          {/* Sections area */}
+          <div className="p-lg">
+            {showPaste ? (
+              <PasteView onParse={handleParsedImport} onCancel={() => setShowPaste(false)} />
+            ) : (
+              <div>
+                <div className="flex items-center justify-between mb-sm">
+                  <span className={labelClass} style={{ marginBottom: 0 }}>Sections</span>
+                  <button
+                    onClick={() => setShowPaste(true)}
+                    className="text-label-sm font-mono text-primary hover:text-primary/80 cursor-pointer transition-colors uppercase tracking-[0.05em]"
+                  >↙ Paste Song</button>
+                </div>
+
+                {/* Unified section block */}
+                <div className="border border-outline-variant/30 rounded-lg overflow-hidden">
+                  <StyleBar
+                    songStyle={songStyle}
+                    onChange={setSongStyle}
+                    fonts={fonts}
+                    formatState={formatState}
+                    hasSelection={hasSelection}
+                  />
+
+                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                    <SortableContext items={sections.map((s) => s._key)} strategy={verticalListSortingStrategy}>
+                      {sections.map((section, idx) => (
+                        <SortableSection
+                          key={section._key}
+                          section={section}
+                          onTypeChange={onTypeChange}
+                          onDelete={deleteSection}
+                          onRef={registerRef}
+                          songStyle={songStyle}
+                          isLast={idx === sections.length - 1}
+                        />
+                      ))}
+                    </SortableContext>
+                  </DndContext>
+
+                  {sections.length === 0 && (
+                    <div className="flex items-center justify-center h-14 text-on-surface-variant/30 text-label-sm font-mono uppercase tracking-[0.05em]">
+                      No sections
+                    </div>
+                  )}
+                </div>
+
                 <button
-                  onClick={() => setShowPaste(true)}
-                  className="text-[11px] text-indigo-400 hover:text-indigo-300 cursor-pointer transition-colors"
-                >↙ Paste Song</button>
+                  onClick={addSection}
+                  className="text-label-sm font-mono text-primary hover:text-primary/80 mt-sm cursor-pointer transition-colors uppercase tracking-[0.05em]"
+                >+ Add Section</button>
               </div>
-
-              {/* Single container — all sections in one unified block */}
-              <div className="border border-slate-700 rounded-sm overflow-hidden">
-                <StyleBar
-                  songStyle={songStyle}
-                  onChange={setSongStyle}
-                  fonts={fonts}
-                  formatState={formatState}
-                  hasSelection={hasSelection}
-                />
-
-                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                  <SortableContext items={sections.map((s) => s._key)} strategy={verticalListSortingStrategy}>
-                    {sections.map((section, idx) => (
-                      <SortableSection
-                        key={section._key}
-                        section={section}
-                        onTypeChange={onTypeChange}
-                        onDelete={deleteSection}
-                        onRef={registerRef}
-                        songStyle={songStyle}
-                        isLast={idx === sections.length - 1}
-                      />
-                    ))}
-                  </SortableContext>
-                </DndContext>
-
-                {sections.length === 0 && (
-                  <div className="flex items-center justify-center h-14 text-slate-700 text-[11px] tracking-wider">
-                    NO SECTIONS
-                  </div>
-                )}
-              </div>
-
-              <button
-                onClick={addSection}
-                className="text-[11px] text-indigo-400 hover:text-indigo-300 mt-2 cursor-pointer transition-colors"
-              >+ Add Section</button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Footer */}
         {!showPaste && (
-          <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-slate-700 flex-shrink-0">
-            <button onClick={onClose}
-              className="px-4 h-7 text-[11px] text-slate-400 hover:text-slate-200 rounded-sm cursor-pointer">
-              Cancel
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={!title.trim() || saving}
-              className="px-4 h-7 text-[11px] bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-sm transition-colors cursor-pointer font-medium"
-            >{saving ? 'Saving…' : 'Save'}</button>
+          <div className="flex items-center justify-between px-lg py-md border-t border-outline-variant/30 bg-surface-container-high rounded-b-xl flex-shrink-0">
+            <div className="flex items-center gap-xs text-on-surface-variant/40">
+              <span className="w-1.5 h-1.5 rounded-full bg-tertiary/60" />
+              <span className="text-label-sm font-mono uppercase tracking-[0.05em]">
+                {sections.length} section{sections.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+            <div className="flex items-center gap-sm">
+              <button
+                onClick={onClose}
+                className="px-lg h-8 text-label-sm font-mono text-on-surface-variant hover:text-on-surface rounded-lg hover:bg-surface-variant transition-colors cursor-pointer uppercase tracking-[0.05em]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={!title.trim() || saving}
+                className="px-lg h-8 text-label-sm font-mono bg-tertiary-container text-on-tertiary-container disabled:bg-surface-variant disabled:text-on-surface-variant/50 rounded-lg transition-colors cursor-pointer uppercase tracking-[0.05em] hover:opacity-90"
+              >{saving ? 'Saving…' : 'Save Song'}</button>
+            </div>
           </div>
         )}
       </div>

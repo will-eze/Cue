@@ -23,7 +23,7 @@ function useResizeH(containerRef, defaultPct = 40) {
   return [pct, start];
 }
 
-function useResizeV(containerRef, defaultPct = 60) {
+function useResizeV(containerRef, defaultPct = 62) {
   const [pct, setPct] = useState(defaultPct);
   function start(e) {
     e.preventDefault();
@@ -31,7 +31,7 @@ function useResizeV(containerRef, defaultPct = 60) {
     const startPct = pct;
     function move(ev) {
       const h = containerRef.current?.offsetHeight ?? window.innerHeight;
-      setPct(Math.max(28, Math.min(startPct + (ev.clientY - startY) / h * 100, 78)));
+      setPct(Math.max(35, Math.min(startPct + (ev.clientY - startY) / h * 100, 80)));
     }
     function up() {
       document.removeEventListener('mousemove', move);
@@ -43,7 +43,7 @@ function useResizeV(containerRef, defaultPct = 60) {
   return [pct, start];
 }
 
-export default function OperatorView() {
+export default function OperatorView({ transportRef, onStateChange }) {
   const [services, setServices] = useState([]);
   const [activeServiceId, setActiveServiceId] = useState(null);
   const [serviceData, setServiceData] = useState(null);
@@ -72,6 +72,18 @@ export default function OperatorView() {
 
   const shortcutRef = useRef({});
   shortcutRef.current = { handleNextSlide, handlePrevSlide, handleGo, handleClear, handleLogo };
+
+  // Bind transport handlers to App header ref (updated every render — no stale closures)
+  if (transportRef) {
+    transportRef.current = { go: handleGo, clear: handleClear, logo: handleLogo };
+  }
+
+  // Notify App header of live/preview state changes
+  // Uses previewItemId + serviceData (not previewItem, which is declared later)
+  useEffect(() => {
+    const hasPreview = !!(serviceData?.items?.find((i) => i.id === previewItemId));
+    onStateChange?.({ isLive: !!liveItemId, canGo: hasPreview });
+  }, [liveItemId, previewItemId, serviceData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     function onKeyDown(e) {
@@ -230,14 +242,14 @@ export default function OperatorView() {
   }
 
   const containerRef = useRef(null);
-  const [hPct, startHDrag] = useResizeH(containerRef, 40);
-  const [vPct, startVDrag] = useResizeV(containerRef, 60);
+  const [hPct, startHDrag] = useResizeH(containerRef, 25);
+  const [vPct, startVDrag] = useResizeV(containerRef, 62);
 
   return (
-    <div ref={containerRef} className="flex flex-col h-full" style={{ background: '#0C0A08' }}>
-      {/* Top panels */}
-      <div style={{ height: `${vPct}%` }} className="flex flex-shrink-0 min-h-0">
-        <div style={{ width: `${hPct}%` }} className="flex-shrink-0 min-w-0 overflow-hidden">
+    <div ref={containerRef} className="flex flex-col h-full bg-background">
+      {/* Top work area */}
+      <div style={{ height: `${vPct}%` }} className="flex shrink-0 min-h-0 p-gutter gap-gutter">
+        <div style={{ width: `${hPct}%` }} className="shrink-0 min-w-0 overflow-hidden">
           <RundownPanel
             services={services}
             activeServiceId={activeServiceId}
@@ -254,13 +266,13 @@ export default function OperatorView() {
           />
         </div>
 
-        {/* Horizontal drag handle */}
+        {/* Horizontal resize handle */}
         <div
-          className="resize-h flex-shrink-0 transition-colors duration-100"
-          style={{ width: 3, background: '#201D18', cursor: 'col-resize' }}
+          className="resize-h shrink-0 rounded-full transition-colors duration-100"
+          style={{ width: 3, background: '#424754', cursor: 'col-resize' }}
           onMouseDown={startHDrag}
-          onMouseEnter={(e) => { e.currentTarget.style.background = '#C8780A'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = '#201D18'; }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = '#adc6ff'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = '#424754'; }}
         />
 
         <div className="flex-1 min-w-0 overflow-hidden">
@@ -271,9 +283,6 @@ export default function OperatorView() {
             liveSlideIdx={liveSlideIdx}
             liveCapture={liveCapture}
             getSlides={getSlides}
-            onGo={handleGo}
-            onClear={handleClear}
-            onLogo={handleLogo}
             onSelectPreviewSlide={handleSelectPreviewSlide}
             onGoAtPreviewSlide={handleGoAtPreviewSlide}
             onSelectLiveSlide={handleSelectLiveSlide}
@@ -281,13 +290,13 @@ export default function OperatorView() {
         </div>
       </div>
 
-      {/* Vertical drag handle */}
+      {/* Vertical resize handle */}
       <div
-        className="resize-v flex-shrink-0 transition-colors duration-100"
-        style={{ height: 3, background: '#201D18', cursor: 'row-resize' }}
+        className="resize-v shrink-0 transition-colors duration-100"
+        style={{ height: 3, background: '#1e2024', cursor: 'row-resize' }}
         onMouseDown={startVDrag}
-        onMouseEnter={(e) => { e.currentTarget.style.background = '#C8780A'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = '#201D18'; }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = '#adc6ff'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = '#1e2024'; }}
       />
 
       {/* Library */}

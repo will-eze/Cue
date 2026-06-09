@@ -11,9 +11,11 @@ const SECTION_LABELS = {
   slide: 'Slide',
 };
 
-export default function SlideList({ slides, activeIdx, onSelect, onDoubleClick }) {
+export default function SlideList({ slides, activeIdx, onSelect, onDoubleClick, variant = 'preview' }) {
+  const isPreview = variant === 'preview';
+
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col gap-sm p-sm">
       {slides.map((slide, idx) => {
         const label = SECTION_LABELS[slide.type] || slide.type || 'Section';
         const isActive = idx === activeIdx;
@@ -22,26 +24,22 @@ export default function SlideList({ slides, activeIdx, onSelect, onDoubleClick }
             key={slide.id ?? idx}
             onClick={() => onSelect(idx)}
             onDoubleClick={onDoubleClick ? () => onDoubleClick(idx) : undefined}
-            className={`flex items-start gap-2.5 px-3 py-2.5 text-left w-full cursor-pointer transition-all border-l-2 ${
-              isActive ? 'slide-active' : 'border-l-transparent'
+            className={`shrink-0 p-sm rounded text-left w-full cursor-pointer transition-all border-l-4 ${
+              isActive
+                ? isPreview
+                  ? 'bg-primary-container/20 border-primary'
+                  : 'bg-secondary-container/20 border-secondary'
+                : 'bg-surface-container border-outline-variant/30 opacity-60 hover:opacity-100'
             }`}
-            style={{ borderBottom: '1px solid #0F0D0A' }}
-            onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = '#0F0D0A'; }}
-            onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = ''; }}
           >
-            <span className="section-chip mt-0.5">
+            <p className={`text-[8px] font-label-sm uppercase mb-xs tracking-widest ${
+              isActive ? (isPreview ? 'text-primary' : 'text-secondary') : 'text-on-surface-variant'
+            }`}>
               {label}
-            </span>
-            <span
-              className="slide-text whitespace-pre-line leading-relaxed flex-1"
-              style={{
-                fontSize: 11,
-                lineHeight: '1.55',
-                color: isActive ? undefined : '#302820',
-              }}
-            >
+            </p>
+            <p className="text-[14px] text-on-surface leading-tight whitespace-pre-wrap">
               {slide.content}
-            </span>
+            </p>
           </button>
         );
       })}

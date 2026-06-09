@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-function BackgroundPicker({ label, settingKey, description }) {
+function BackgroundPicker({ label, settingKey }) {
   const [assetId, setAssetId] = useState(null);
   const [asset, setAsset] = useState(null);
 
@@ -16,9 +16,7 @@ function BackgroundPicker({ label, settingKey, description }) {
 
   async function handlePick() {
     const result = await window.cue.dialog.openFile({
-      filters: [
-        { name: 'Images & Videos', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'mp4', 'webm', 'mov'] },
-      ],
+      filters: [{ name: 'Images & Videos', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'mp4', 'webm', 'mov'] }],
       properties: ['openFile'],
     });
     if (result.canceled || !result.filePaths.length) return;
@@ -39,43 +37,38 @@ function BackgroundPicker({ label, settingKey, description }) {
   }
 
   return (
-    <div className="bg-slate-800 border border-slate-700 rounded p-4 mb-3">
-      <h3 className="text-xs font-semibold text-slate-300 mb-1">{label}</h3>
-      <p className="text-xs text-slate-500 mb-3">{description}</p>
-      <div className="flex items-center gap-3">
+    <div className="flex-1 space-y-xs">
+      <div className="aspect-video w-full rounded overflow-hidden relative group border border-outline-variant/30">
         {asset ? (
           asset.type === 'video' ? (
-            <video
-              src={`file://${asset.path}`}
-              className="h-16 w-28 object-cover bg-black rounded border border-slate-600"
-              muted
-            />
+            <video src={`file://${asset.path}`} className="w-full h-full object-cover" muted />
           ) : (
-            <img
-              src={`file://${asset.path}`}
-              className="h-16 w-28 object-cover rounded border border-slate-600"
-              alt=""
-            />
+            <img src={`file://${asset.path}`} className="w-full h-full object-cover" alt="" />
           )
         ) : (
-          <div className="h-16 w-28 bg-slate-700 rounded border border-slate-600 flex items-center justify-center text-xs text-slate-600">
-            None
+          <div className="w-full h-full bg-surface-container-high flex items-center justify-center">
+            <span className="material-symbols-outlined text-outline-variant text-2xl">wallpaper</span>
           </div>
         )}
-        <button
-          onClick={handlePick}
-          className="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded"
-        >
-          Choose…
-        </button>
-        {assetId && (
-          <button
-            onClick={handleClear}
-            className="text-xs text-slate-500 hover:text-red-400 px-3 py-1.5"
-          >
-            Clear
-          </button>
-        )}
+        <div className="absolute inset-0 bg-gradient-to-t from-background/80 to-transparent p-sm flex items-end justify-between">
+          <span className="text-label-sm font-label-sm text-white">{label}</span>
+          <div className="flex gap-xs opacity-0 group-hover:opacity-100 transition-opacity">
+            <button
+              onClick={handlePick}
+              className="p-xs bg-black/50 hover:bg-black/70 rounded text-white material-symbols-outlined text-sm cursor-pointer"
+            >
+              edit
+            </button>
+            {assetId && (
+              <button
+                onClick={handleClear}
+                className="p-xs bg-black/50 hover:bg-error-container/70 rounded text-white material-symbols-outlined text-sm cursor-pointer"
+              >
+                delete
+              </button>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -107,45 +100,70 @@ export default function BackgroundSettings() {
   }
 
   return (
-    <div className="max-w-2xl">
-      <h2 className="text-sm font-semibold text-slate-100 mb-4">Background Defaults</h2>
+    <section className="space-y-md">
+      <h2 className="text-headline-md font-semibold text-on-surface flex items-center gap-sm">
+        <span className="material-symbols-outlined text-primary">wallpaper</span>
+        Background Defaults
+      </h2>
 
-      <BackgroundPicker
-        label="Global Song Background"
-        settingKey="global_bg_song_id"
-        description="Applied to all songs that have no per-song background set."
-      />
-      <button
-        onClick={() => handleApplyToAll('song')}
-        className="text-xs text-amber-400 hover:text-amber-300 mb-4"
-      >
-        Apply to All Songs…
-      </button>
+      <div className="bg-surface-container-high p-lg rounded-xl border border-outline-variant/30 space-y-md">
+        <div className="flex gap-md">
+          <BackgroundPicker label="Global Song" settingKey="global_bg_song_id" />
+          <BackgroundPicker label="Global Slide" settingKey="global_bg_slide_id" />
+        </div>
 
-      <BackgroundPicker
-        label="Global Slide Background"
-        settingKey="global_bg_slide_id"
-        description="Applied to all custom slides with no background override."
-      />
-
-      {/* Data path */}
-      <div className="bg-slate-800 border border-slate-700 rounded p-4 mt-4">
-        <h3 className="text-xs font-semibold text-slate-300 mb-2">Data Location</h3>
-        <p className="text-xs text-slate-500 font-mono break-all mb-2">{dataPath}</p>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => window.cue.settings.openDataFolder()}
-            className="text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 px-3 py-1.5 rounded"
-          >
-            Open in Finder / Explorer
-          </button>
-          {diskUsage !== null && (
-            <span className="text-xs text-slate-500">
-              Media: {formatBytes(diskUsage)}
-            </span>
-          )}
+        <div className="flex justify-between items-center pt-sm border-t border-outline-variant/30">
+          <p className="text-label-sm font-label-sm text-on-surface-variant">Default transition: 400ms Dissolve</p>
+          <div className="flex gap-md">
+            <button
+              onClick={() => handleApplyToAll('song')}
+              className="text-primary text-label-sm font-label-sm flex items-center gap-xs hover:underline cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-sm">auto_awesome</span>
+              Apply to all songs
+            </button>
+            <button
+              onClick={() => handleApplyToAll('slide')}
+              className="text-primary text-label-sm font-label-sm flex items-center gap-xs hover:underline cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-sm">auto_awesome</span>
+              Apply to all slides
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+
+      {/* System info */}
+      <footer className="pt-lg border-t border-outline-variant/30 flex justify-between items-center">
+        <div className="flex items-center gap-md">
+          <div className="flex flex-col">
+            <span className="text-label-sm font-label-sm text-on-surface">System Version</span>
+            <span className="text-label-sm font-label-sm text-outline">v1.0.0 (Build 1)</span>
+          </div>
+          <div className="h-8 w-[1px] bg-outline-variant/30" />
+          <div className="flex flex-col">
+            <span className="text-label-sm font-label-sm text-on-surface">Storage</span>
+            <span className="text-label-sm font-label-sm text-outline">
+              {diskUsage !== null ? `${formatBytes(diskUsage)} used` : '—'}
+            </span>
+          </div>
+          {dataPath && (
+            <>
+              <div className="h-8 w-[1px] bg-outline-variant/30" />
+              <div className="flex flex-col">
+                <span className="text-label-sm font-label-sm text-on-surface">Data Path</span>
+                <span className="text-[10px] font-label-sm text-outline truncate max-w-48">{dataPath}</span>
+              </div>
+            </>
+          )}
+        </div>
+        <button
+          onClick={() => window.cue.settings.openDataFolder()}
+          className="bg-surface-container text-on-surface px-lg py-sm rounded text-label-sm font-label-sm hover:bg-surface-container-high transition-all cursor-pointer"
+        >
+          Open Data Folder
+        </button>
+      </footer>
+    </section>
   );
 }
