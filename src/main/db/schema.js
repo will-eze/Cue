@@ -123,8 +123,6 @@ const migrations = [
   },
 
   // v2 — add style_json column and expand type CHECK to include 'refrain'.
-  // SQLite cannot ALTER a CHECK constraint, so the table is recreated in-place.
-  // Existing data is preserved; FTS triggers are re-attached to the new table.
   function v2(database) {
     database.exec(`
       CREATE TABLE song_sections_v2 (
@@ -164,6 +162,26 @@ const migrations = [
         INSERT INTO songs_fts(songs_fts, rowid, title, author, content)
         VALUES('delete', OLD.id, '', '', '');
       END;
+    `);
+  },
+  // v3 — Replace contentless_delete=1 FTS table with plain contentless FTS.
+  // SQLite 3.49 (bundled with Electron 30) rejects the special 'delete' INSERT
+  // command on contentless_delete=1 tables when empty-string column values are
+  // provided. Removing contentless_delete=1 restores the prior behaviour where
+  // the trigger fires without error. The FTS index is rebuilt from live data.
+  function v3(database) {
+    database.exec(`
+      DROP TABLE IF EXISTS songs_fts;
+
+      CREATE VIRTUAL TABLE songs_fts USING fts5(
+        title, author, content,
+        content=''
+      );
+
+      INSERT INTO songs_fts(rowid, title, author, content)
+        SELECT ss.id, s.title, s.author, ss.content
+        FROM song_sections ss
+        JOIN songs s ON s.id = ss.song_id;
     `);
   },
 ];

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { mediaUrl } from '../utils/mediaUrl';
 
 function BackgroundPicker({ label, settingKey }) {
   const [assetId, setAssetId] = useState(null);
@@ -41,9 +42,9 @@ function BackgroundPicker({ label, settingKey }) {
       <div className="aspect-video w-full rounded overflow-hidden relative group border border-outline-variant/30">
         {asset ? (
           asset.type === 'video' ? (
-            <video src={`file://${asset.path}`} className="w-full h-full object-cover" muted />
+            <video src={mediaUrl(asset.path)} className="w-full h-full object-cover" muted />
           ) : (
-            <img src={`file://${asset.path}`} className="w-full h-full object-cover" alt="" />
+            <img src={mediaUrl(asset.path)} className="w-full h-full object-cover" alt="" />
           )
         ) : (
           <div className="w-full h-full bg-surface-container-high flex items-center justify-center">

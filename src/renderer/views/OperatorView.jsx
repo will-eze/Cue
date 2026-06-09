@@ -3,6 +3,25 @@ import RundownPanel from '../panels/RundownPanel';
 import PreviewLivePanel from '../panels/PreviewLivePanel';
 import LibraryPanel from '../panels/LibraryPanel';
 
+function UndoToast({ message, onUndo, onDismiss }) {
+  return (
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-md bg-surface-container-high border border-outline-variant/40 rounded-xl shadow-2xl px-lg py-sm ring-1 ring-white/5 pointer-events-auto">
+      <span className="material-symbols-outlined text-[16px] text-on-surface-variant">undo</span>
+      <span className="text-body-sm text-on-surface truncate max-w-[280px]">{message}</span>
+      <button
+        onClick={onUndo}
+        className="text-label-sm font-mono text-primary hover:text-primary/80 uppercase tracking-[0.05em] cursor-pointer transition-colors ml-sm flex-shrink-0"
+      >Undo</button>
+      <button
+        onClick={onDismiss}
+        className="text-on-surface-variant/50 hover:text-on-surface-variant cursor-pointer ml-xs flex-shrink-0"
+      >
+        <span className="material-symbols-outlined text-[16px]">close</span>
+      </button>
+    </div>
+  );
+}
+
 function useResizeH(containerRef, defaultPct = 40) {
   const [pct, setPct] = useState(defaultPct);
   function start(e) {
@@ -53,12 +72,32 @@ export default function OperatorView({ transportRef, onStateChange }) {
   const [liveItemId, setLiveItemId] = useState(null);
   const [liveSlideIdx, setLiveSlideIdx] = useState(0);
   const [liveCapture, setLiveCapture] = useState(null);
+  const [globalBgSong, setGlobalBgSong] = useState(null);
+  const [globalBgSlide, setGlobalBgSlide] = useState(null);
+  const [undoStack, setUndoStack] = useState(null);
+  const undoTimerRef = useRef(null);
 
   useEffect(() => {
     window.cue.services.list().then((list) => {
       setServices(list);
       if (list.length > 0) setActiveServiceId(list[0].id);
     });
+  }, []);
+
+  useEffect(() => {
+    async function loadGlobalBackgrounds() {
+      const [songId, slideId] = await Promise.all([
+        window.cue.settings.get('global_bg_song_id'),
+        window.cue.settings.get('global_bg_slide_id'),
+      ]);
+      const [songAsset, slideAsset] = await Promise.all([
+        songId ? window.cue.media.get(songId) : Promise.resolve(null),
+        slideId ? window.cue.media.get(slideId) : Promise.resolve(null),
+      ]);
+      setGlobalBgSong(songAsset);
+      setGlobalBgSlide(slideAsset);
+    }
+    loadGlobalBackgrounds();
   }, []);
 
   useEffect(() => {
@@ -130,11 +169,12 @@ export default function OperatorView({ transportRef, onStateChange }) {
   }
 
   function resolveBackground(item) {
-    if (item.background_override) return item.background_override.path;
-    if (item.song?.default_background_id) {
-      const bg = serviceData?.items?.find(i => i.id === item.id);
-      if (bg?.background_override?.path) return bg.background_override.path;
+    if (item.background_override?.path) return item.background_override.path;
+    if (item.item_type === 'song' && item.song?.default_background?.path) {
+      return item.song.default_background.path;
     }
+    const globalBg = item.item_type === 'song' ? globalBgSong : globalBgSlide;
+    if (globalBg?.path) return globalBg.path;
     return null;
   }
 
@@ -211,9 +251,47 @@ export default function OperatorView({ transportRef, onStateChange }) {
   }
 
   async function handleRemoveItem(itemId) {
+    const items = serviceData?.items || [];
+    const idx = items.findIndex((i) => i.id === itemId);
+    const item = items[idx];
+
     await window.cue.services.removeItem(itemId);
     if (previewItemId === itemId) setPreviewItemId(null);
     if (liveItemId === itemId) setLiveItemId(null);
+    refreshService();
+
+    // Set up undo
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    const remainingIds = items.filter((i) => i.id !== itemId).map((i) => i.id);
+    const label = item?.song?.title || item?.asset?.filename || 'Item';
+    const serviceIdAtRemoval = activeServiceId;
+
+    undoTimerRef.current = setTimeout(() => setUndoStack(null), 5000);
+    setUndoStack({
+      message: `"${label}" removed from rundown`,
+      undo: async () => {
+        clearTimeout(undoTimerRef.current);
+        setUndoStack(null);
+        const newItemId = await window.cue.services.addItem(serviceIdAtRemoval, {
+          item_type: item.item_type,
+          ref_id: item.ref_id,
+          notes: item.notes,
+          content: item.content,
+          background_override_id: item.background_override_id ?? null,
+        });
+        const reordered = [
+          ...remainingIds.slice(0, idx),
+          newItemId,
+          ...remainingIds.slice(idx),
+        ];
+        await window.cue.services.reorderItems(serviceIdAtRemoval, reordered);
+        refreshService();
+      },
+    });
+  }
+
+  async function handleDuplicateItem(itemId) {
+    await window.cue.services.duplicateItem(itemId);
     refreshService();
   }
 
@@ -241,6 +319,9 @@ export default function OperatorView({ transportRef, onStateChange }) {
     setActiveServiceId(id);
   }
 
+  const previewBgPath = previewItem ? resolveBackground(previewItem) : null;
+  const liveBgPath    = liveItem    ? resolveBackground(liveItem)    : null;
+
   const containerRef = useRef(null);
   const [hPct, startHDrag] = useResizeH(containerRef, 25);
   const [vPct, startVDrag] = useResizeV(containerRef, 62);
@@ -261,6 +342,7 @@ export default function OperatorView({ transportRef, onStateChange }) {
             onDoubleClickItem={handleDoubleClickItem}
             onReorder={handleReorder}
             onRemoveItem={handleRemoveItem}
+            onDuplicate={handleDuplicateItem}
             onAddService={handleAddService}
             onRefresh={refreshService}
           />
@@ -283,6 +365,8 @@ export default function OperatorView({ transportRef, onStateChange }) {
             liveSlideIdx={liveSlideIdx}
             liveCapture={liveCapture}
             getSlides={getSlides}
+            previewBgPath={previewBgPath}
+            liveBgPath={liveBgPath}
             onSelectPreviewSlide={handleSelectPreviewSlide}
             onGoAtPreviewSlide={handleGoAtPreviewSlide}
             onSelectLiveSlide={handleSelectLiveSlide}
@@ -303,6 +387,14 @@ export default function OperatorView({ transportRef, onStateChange }) {
       <div className="flex-1 min-h-0 overflow-hidden">
         <LibraryPanel onAddToRundown={handleAddToRundown} onSongSave={refreshService} />
       </div>
+
+      {undoStack && (
+        <UndoToast
+          message={undoStack.message}
+          onUndo={undoStack.undo}
+          onDismiss={() => { clearTimeout(undoTimerRef.current); setUndoStack(null); }}
+        />
+      )}
     </div>
   );
 }

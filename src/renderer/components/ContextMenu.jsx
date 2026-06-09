@@ -3,18 +3,22 @@ import { createPortal } from 'react-dom';
 
 export default function ContextMenu({ x, y, items, onClose }) {
   const ref = useRef(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
-    function handle(e) {
-      if (ref.current && !ref.current.contains(e.target)) onClose();
+    function handleMouseDown(e) {
+      if (ref.current && !ref.current.contains(e.target)) onCloseRef.current();
     }
-    document.addEventListener('mousedown', handle);
-    document.addEventListener('contextmenu', handle);
+    // Small delay so this listener doesn't fire on the mousedown that opened the menu
+    const id = setTimeout(() => {
+      document.addEventListener('mousedown', handleMouseDown);
+    }, 0);
     return () => {
-      document.removeEventListener('mousedown', handle);
-      document.removeEventListener('contextmenu', handle);
+      clearTimeout(id);
+      document.removeEventListener('mousedown', handleMouseDown);
     };
-  }, [onClose]);
+  }, []);
 
   const menuWidth = 200;
   const itemCount = items.filter(i => !i.separator).length;

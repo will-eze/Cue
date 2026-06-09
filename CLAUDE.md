@@ -2,399 +2,421 @@
 
 Unified single-process Electron application. Replaces EasyWorship/ProPresenter (worship lyric presentation) and UNO (broadcast overlay graphics). Both use cases run simultaneously — no separate modes, no separate applications.
 
-Full technical specification: `Cue_Phase1a_TechnicalSpec.docx`
+**Full technical reference**: `plan/cue-master-reference.md` — read that for deep dives on any system. This file is the fast daily-use rules sheet.
 
 ---
 
 ## UI Design Rules
 
-**NEVER use AI purple / indigo (#6366F1, #4F6EF7, #818CF8, #A5B4FC, or any violet/purple accent) in UI component design.** This is the generic "AI app" colour that makes software look like every other LLM product. Use a distinct, purposeful accent palette instead — see Compatibility notes for current design direction.
+**NEVER use AI purple / indigo (#6366F1, #4F6EF7, #818CF8, #A5B4FC, or any violet/purple accent) in UI component design.** This is the generic "AI app" colour that makes software look like every other LLM product.
 
 ---
 
-## Technology stack
+## Design Philosophy
 
-| Package | Role |
-|---|---|
-| Electron 30+ | Desktop shell — **pin the version**, native addons must be rebuilt on every major bump |
-| React 18 | Operator UI |
-| Vite + `@electron-forge/plugin-vite` | Build tooling |
-| Electron Forge | Packaging — macOS `.dmg`, Windows `.exe` |
-| better-sqlite3 | Synchronous SQLite — fastest Node driver, avoids async complexity |
-| grandiose | NDI output — arm64 native on Apple Silicon, no Rosetta needed |
-| Tailwind CSS | Operator UI styling — dark-mode-first |
-| react-window | Virtualised list rendering for song library — **included from M3, never retrofit** |
+Mission-control broadcast engineering: dark, precise, information-dense. Not a consumer app. Not an AI assistant. A tool for professionals operating live broadcast environments.
 
-After any Electron version bump: run `npm run rebuild` (`electron-rebuild`) to recompile `better-sqlite3` and `grandiose`.
+### Colour system — actual values from `tailwind.config.js`
+
+| Token | Hex | Semantic use |
+|---|---|---|
+| `background` | `#111317` | Page background |
+| `surface-container-lowest` | `#0c0e12` | Input fields |
+| `surface-container-low` | `#1a1c20` | Panel backgrounds, modal shells |
+| `surface-container` | `#1e2024` | Cards, section rows |
+| `surface-container-high` | `#282a2e` | Panel headers, footers, toolbars |
+| `surface-container-highest` | `#333539` | Hover states, active tabs |
+| `surface-variant` | `#333539` | Hover background (same as highest) |
+| `outline-variant` | `#424754` | Dividers, inactive borders |
+| `outline` | `#8c909f` | Secondary borders |
+| `on-surface` | `#e2e2e8` | Primary text |
+| `on-surface-variant` | `#c2c6d6` | Secondary text |
+| `primary` | `#adc6ff` | Preview / staged / selected. Blue. |
+| `primary-container` | `#4d8eff` | Primary button bg |
+| `on-primary` | `#002e6a` | Text on primary bg |
+| `secondary` | `#ffb3ad` | Live / on-air / danger. Red-coral. |
+| `secondary-container` | `#a40217` | LIVE badge bg |
+| `on-secondary` | `#68000a` | Text on secondary bg |
+| `tertiary` | `#4ae176` | GO / success / active output. Green. |
+| `tertiary-container` | `#00a74b` | Save/confirm button bg |
+| `on-tertiary` | `#003915` | Text on tertiary bg |
+| `error` | `#ffb4ab` | Destructive actions |
+| `error-container` | `#93000a` | Error bg |
+
+Use container levels (`surface-container-*`) for tonal elevation — **no box shadows on flat surfaces**. Depth is expressed through surface lightness, not drop shadows.
+
+### Semantic colour coding
+
+- **Blue (primary)** = Preview state, staged items, selected/cued. Tally bars, monitor borders.
+- **Red (secondary)** = Live / on-air state. LIVE badges, live tally bar, CLEAR button border.
+- **Green (tertiary)** = GO action, success, active output indicator.
+- **Error** = Destructive actions (delete, remove).
+
+### Typography
+
+| Use | Font | Token | Treatment |
+|---|---|---|---|
+| Headlines / titles | Inter | `text-headline-md` (20px/600) | — |
+| Body copy | Inter | `text-body-md` (14px/400) | — |
+| Labels / chips / badges / buttons | JetBrains Mono | `text-label-sm` (12px/500) | `uppercase tracking-[0.05em]` |
+
+**JetBrains Mono** is NOT bundled. Always declare as `"JetBrains Mono", ui-monospace, monospace` — system monospace is the fallback. Never use Oswald in the operator UI (Oswald is for output fullscreen templates only).
+
+### Spacing tokens
+`xs=4px` `sm=8px` `md=16px` `lg=24px` `xl=32px` `gutter=12px`
+
+### Component rules
+
+- **Border radius**: `rounded-lg` (0.25rem) for cards/panels. `rounded-xl` (0.5rem) for modals and primary action buttons. `rounded-full` for badges and icon buttons.
+- **Borders**: `border border-outline-variant/30` on containers. `/20`–`/40` opacity suffixes preferred.
+- **Tally bars**: Left-edge `border-l-4` coloured strip on rundown items. Blue = preview, red = live, transparent = idle.
+- **Buttons**: Ghost for secondary/cancel. Filled `bg-primary text-on-primary` for primary. `bg-tertiary-container` for Save. `bg-surface-container-high border border-error/50` for CLEAR. `bg-surface-container-high border border-primary/50` for LOGO.
+- **Modals**: `fixed inset-0 bg-background/80 backdrop-blur-sm`. Container: `bg-surface-container-low rounded-xl border border-outline-variant/30 shadow-2xl ring-1 ring-white/5`.
+- **Inputs**: `bg-surface-container-lowest border border-outline-variant/50 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary/30`.
+- **Scrollbars**: 6px wide. Class: `custom-scrollbar`. Defined in `index.css`.
+- **Icons**: Material Symbols (`material-symbols-outlined` class). Filled variants: `fontVariationSettings: "'FILL' 1"`.
+
+### What NOT to do
+
+- No warm amber/brown tones.
+- No `bg-slate-*` or `border-slate-*` Tailwind classes.
+- No `text-indigo-*` or `bg-indigo-*` classes.
+- No Oswald in the operator UI.
+- No box shadows on flat dark surfaces.
+- No rounded corners above `rounded-xl` in panels.
 
 ---
 
-## Process architecture
+## Technology Stack
+
+| Package | Version | Notes |
+|---|---|---|
+| Electron | **30.0.9** | Pinned. Bump requires `npm run rebuild`. |
+| React / react-dom | 18.3.1 | — |
+| Vite + @electron-forge/plugin-vite | 5.3.1 / 7.4.0 | `npm start` = dev. `npm run make` = distributable. |
+| better-sqlite3 | 11.1.2 | Synchronous SQLite. Rebuild on Electron bump. |
+| grandiose | **NOT INSTALLED** | NDI output. Add when implementing NDI publish, then `npm run rebuild`. |
+| Tailwind CSS | 3.4.4 | Operator UI styling. |
+| react-window | 1.8.10 | Virtualised song list. |
+| @dnd-kit/core + sortable | 6.1.0 / 8.0.0 | Drag-to-reorder in rundown and song editor. |
+
+After any Electron version bump: `npm run rebuild` recompiles `better-sqlite3` (and `grandiose` when installed).
+
+---
+
+## Process Architecture
 
 | Process | Responsibilities |
 |---|---|
-| Main (Node.js) | SQLite, file system, NDI, window creation, IPC bridge |
-| Renderer (Chromium/React) | Operator UI — communicates with main via `contextBridge` preload only |
-| Output windows | Lightweight renderers — one per physical display or NDI channel. Plain DOM, no React. Receive `slide:update` IPC, update DOM. |
+| Main (Node.js) | SQLite, file system, `cue-media://` protocol, IPC bridge, output window lifecycle |
+| Renderer (React) | Operator UI — `window.cue.*` only, never direct Node access |
+| Output windows | Plain DOM, no React. One per screen/NDI channel. Receive `slide:update` IPC. |
 
-**Security rule: `nodeIntegration: false` always.** All Node/SQLite access goes through the main process via IPC, exposed through `window.cue` (contextBridge preload). Never bypass this.
+**Security rule: `nodeIntegration: false` always.** All Node/SQLite access goes through IPC, exposed through `window.cue` (contextBridge preload). Never bypass this.
 
 ---
 
-## Project structure
+## Media Files — Critical Protocol Rules
+
+All media file URLs use `cue-media://` — a custom Electron protocol that serves files from the `userData/media/` directory. **Do not use `file://` for media anywhere in the renderer or output templates.**
+
+### The `localhost` hostname requirement — DO NOT SKIP THIS
+
+`cue-media:///Users/...` (three slashes, no hostname) **silently breaks**. Chromium's standard-scheme URL parser treats `cue-media:///Users/...` as having `users` as the hostname (lowercased, stripped from path), so the file read fails with ENOENT.
+
+**Always use `cue-media://localhost` as the base:**
+
+```js
+// src/renderer/utils/mediaUrl.js — use this everywhere in renderer code
+export function mediaUrl(absPath) {
+  if (!absPath) return null;
+  const encoded = absPath.split('/').map((seg) => encodeURIComponent(seg)).join('/');
+  return 'cue-media://localhost' + encoded;
+}
+
+// Output templates (fullscreen.js / lowerthird.js) — identical inline helper
+function pathToUrl(p) {
+  if (!p) return null;
+  return 'cue-media://localhost' + p.split('/').map(encodeURIComponent).join('/');
+}
+```
+
+The protocol handler in `main/index.js` extracts the path from `new URL(request.url).pathname`, which correctly returns `/Users/...` when the hostname is `localhost`.
+
+---
+
+## Project Structure
 
 ```
 src/
-├── main/                    Node.js main process
-│   ├── index.js             App entry, window lifecycle
-│   ├── preload.js           contextBridge — exposes window.cue
+├── main/
+│   ├── index.js              App entry. Window creation. cue-media:// protocol handler.
+│   ├── preload.js            contextBridge → window.cue. Full renderer API.
+│   ├── output-preload.js     Minimal preload for output windows → window.cueOutput only.
+│   ├── fonts.js              BUNDLED_FONTS array + DEFAULT_FONT = 'Inter'.
 │   ├── db/
-│   │   ├── schema.js        Schema DDL + migration runner
-│   │   ├── songs.js         Song + section CRUD, FTS5 search
-│   │   ├── services.js      Service / rundown CRUD
-│   │   ├── media.js         Media asset + folder CRUD
-│   │   └── settings.js      Key-value settings persistence
+│   │   ├── schema.js         SQLite init + migration runner (v1→v2). getDb() singleton.
+│   │   ├── songs.js          Song + section + tag CRUD. FTS5 search.
+│   │   ├── services.js       Service / rundown CRUD. resolveItem() joins media paths.
+│   │   ├── media.js          Import (copy to userData/media/), list, getById, delete, folders.
+│   │   └── settings.js       Key-value store. Global logo/background helpers.
 │   ├── ipc/
-│   │   ├── songs.ipc.js
-│   │   ├── services.ipc.js
-│   │   ├── media.ipc.js
-│   │   ├── output.ipc.js
-│   │   └── settings.ipc.js
+│   │   ├── songs.ipc.js      songs:* and tags:* handlers.
+│   │   ├── services.ipc.js   services:* handlers.
+│   │   ├── media.ipc.js      media:* handlers.
+│   │   ├── output.ipc.js     output:* handlers.
+│   │   └── settings.ipc.js   settings:* handlers.
 │   └── output/
-│       ├── manager.js       Channel registry + BrowserWindow lifecycle
-│       └── ndi.js           grandiose publish, frame capture loop
-├── renderer/                React operator UI
-│   ├── App.jsx              Root layout, top nav
+│       ├── manager.js        Window registry. go/clear/logo dispatch. Live capture loop.
+│       └── ndi.js            Stub only — tries require('grandiose'), no publish logic.
+├── renderer/
+│   ├── main.jsx              React entry — mounts <App />.
+│   ├── index.css             Design system CSS: tally, monitor glow, scrollbar, animations.
+│   ├── App.jsx               Root. Titlebar + transport bar + Operator/Settings view switch.
 │   ├── views/
-│   │   ├── OperatorView.jsx Top-half + bottom-half layout
-│   │   └── SettingsView.jsx Replaces operator view (not a modal)
+│   │   ├── OperatorView.jsx  Three-panel layout. Transport state. Keyboard shortcuts. Background resolution.
+│   │   └── SettingsView.jsx  Settings page layout. Hosts OutputChannels + Logo + Background sections.
 │   ├── panels/
-│   │   ├── RundownPanel.jsx         Top-left
-│   │   ├── PreviewLivePanel.jsx     Top-right
-│   │   └── LibraryPanel.jsx         Bottom, full-width
+│   │   ├── RundownPanel.jsx       DnD-sortable item list. Context menu. MediaPickerModal for bg override.
+│   │   ├── PreviewLivePanel.jsx   Two MonitorFrames + two SlideLists. Background rendering.
+│   │   └── LibraryPanel.jsx       Virtualised song list + media grid. Search + tag filter.
 │   ├── components/
-│   │   ├── SongEditor.jsx           Modal — create/edit
-│   │   ├── SongPreviewModal.jsx     Modal — preview before add
-│   │   ├── ContextMenu.jsx          Right-click menu
-│   │   └── SlideList.jsx            Vertical slide nav in preview panel
-│   └── settings/
-│       ├── OutputChannels.jsx
-│       ├── LogoSettings.jsx
-│       └── BackgroundSettings.jsx
-└── output/                  Plain HTML output templates (no React)
-    ├── fullscreen.html / .css
-    └── lowerthird.html / .css
+│   │   ├── SongEditor.jsx         Full song CRUD modal. Per-section styling toolbar. Paste Song parser.
+│   │   │                          Exports renderWithRuns() used by PreviewLivePanel.
+│   │   ├── SongPreviewModal.jsx   Read-only song preview. Add to Rundown / Edit actions.
+│   │   ├── MediaPickerModal.jsx   Media grid picker. Used for background override in RundownPanel.
+│   │   ├── SlideList.jsx          Scrollable section list. preview and live variants.
+│   │   └── ContextMenu.jsx        Generic right-click menu positioned by x/y coords.
+│   ├── settings/
+│   │   ├── OutputChannels.jsx     Channel cards. Create/edit/delete. Display assignment.
+│   │   ├── LogoSettings.jsx       Global logo picker.
+│   │   └── BackgroundSettings.jsx Global song/slide background pickers. Disk usage. Data path.
+│   └── utils/
+│       └── mediaUrl.js            mediaUrl(absPath) — see Media section above.
+├── output/                   Plain HTML. No build step. Loaded directly by BrowserWindow.
+│   ├── fullscreen.html / .css / .js
+│   └── lowerthird.html / .css / .js
+└── fonts/
+    └── fonts.css + *.woff2   6 families (Inter, Montserrat, Lato, Oswald, Playfair Display, EB Garamond)
 ```
 
 ---
 
 ## Database
 
-**Engine**: `better-sqlite3` (synchronous).
-**Location**:
-- macOS: `~/Library/Application Support/Cue/cue.db`
-- Windows: `%APPDATA%\Cue\cue.db`
+**Engine**: `better-sqlite3` (synchronous — no Promises).
+**Location**: macOS `~/Library/Application Support/Cue/cue.db`, Windows `%APPDATA%\Cue\cue.db`
+**Current schema version**: 2
 
-**Media files** are always copied into `userData/media/<uuid>.<ext>` on import. Original source paths are not retained.
+**Media files** are copied to `userData/media/<uuid>.<ext>` on import. Original paths not retained.
 
-### Tables
+### Key tables (abbreviated)
 
-| Table | Purpose |
+| Table | Key columns |
 |---|---|
-| `songs` | Title, author, copyright, default_background_id |
-| `song_sections` | Ordered lyric sections per song. `content` is plain text with `\n` line breaks. `style_json` (nullable) holds section-level styling metadata — see below. |
-| `songs_fts` | FTS5 virtual table — mirrors title, author, section content via triggers |
-| `tags` | Tag labels with hex colour |
-| `taggables` | Polymorphic pivot — tags applied to songs or media_assets |
-| `services` | Service/rundown headers |
-| `service_items` | Ordered items within a service (song/media/slide) |
-| `media_assets` | Imported media — image, video, audio |
-| `media_folders` | Self-referencing folder tree |
-| `output_channels` | Screen and NDI output channel config |
-| `settings` | Key-value store for app-wide settings |
-| `db_version` | Single-integer migration cursor — must exist before first deployment |
+| `songs` | `id, title, author, copyright, default_background_id` |
+| `song_sections` | `id, song_id, type, order_index, content, style_json` |
+| `songs_fts` | FTS5 virtual — mirrors title/author/content via triggers |
+| `tags` | `id, name, colour` |
+| `taggables` | `tag_id, entity_type, entity_id` (polymorphic pivot) |
+| `services` | `id, title, date, notes` |
+| `service_items` | `id, service_id, item_type, ref_id, order_index, notes, content, background_override_id` |
+| `media_assets` | `id, filename, path, type, folder_id` |
+| `media_folders` | `id, name, parent_id` |
+| `output_channels` | `id, name, type, display_bounds, template, ndi_fps, ndi_width, ndi_height, active` |
+| `settings` | `key, value` (JSON-encoded values) |
+| `db_version` | `version` (integer, currently 2) |
 
-### Background resolution order (highest priority first)
+### Settings keys in use
 
-1. `service_items.background_override_id` — operator set for this specific rundown slot
-2. `songs.default_background_id` — per-song default (skipped for custom slides)
-3. `settings.global_bg_song_id` / `global_bg_slide_id` — global type default
-4. Black (no background)
+| Key | Type | Description |
+|---|---|---|
+| `global_logo_id` | number\|null | Global logo media asset ID |
+| `global_bg_song_id` | number\|null | Global default background for songs |
+| `global_bg_slide_id` | number\|null | Global default background for slides |
+| `operator_preview_layout` | string | Reserved — not yet wired in UI |
 
 ### `style_json` — section styling format
 
-`song_sections.style_json` is a nullable TEXT column containing a JSON object. `null` means "use output channel / global template defaults." When populated:
-
 ```json
 {
-  "align":       "center",   // "left" | "center" | "right"
-  "bold":        false,
-  "italic":      false,
-  "fontFamily":  null,       // CSS font-family string, e.g. "Helvetica Neue" or null for default
-  "fontSize":    null,       // points (number) or null for default
-  "color":       null,       // hex string or null for default
-  "lineSpacing": null,       // multiplier (number) or null for default
-  "runs":        []          // future: [{from, to, bold, italic, color, fontFamily}] for per-word styling
+  "align": "center",      "bold": false,      "italic": false,
+  "fontFamily": null,     "fontSize": null,   "color": null,
+  "lineSpacing": null,    "runs": []
 }
 ```
+`null` means "use template defaults." `fontFamily` must match a family in `fonts.css`. FTS5 indexes `content` only.
 
-**Content stays plain text.** `style_json` is purely presentation metadata. `fontFamily` must match a CSS family name declared in `src/fonts/fonts.css` — see Bundled fonts below. FTS5 indexes `content` only — styling does not pollute search. The song editor writes to `style_json` via the per-section styling toolbar; it never modifies `content`.
+### Background resolution order
 
-**Line breaks:** `content` uses `\n` characters. Rendered with `white-space: pre-wrap` in output templates and `whitespace-pre-wrap` in React preview monitors.
-
----
-
-## Bundled fonts
-
-Font files live in `src/fonts/` and ship inside the app ASAR. No system font installation required.
-
-| CSS family name | Category | Files |
-|---|---|---|
-| `Inter` | sans-serif | Inter-Regular.woff2, Inter-Bold.woff2 |
-| `Montserrat` | sans-serif | Montserrat-Regular.woff2, Montserrat-Bold.woff2 |
-| `Lato` | sans-serif | Lato-Regular.woff2, Lato-Bold.woff2 |
-| `Oswald` | sans-serif (condensed) | Oswald-Regular.woff2, Oswald-Bold.woff2 |
-| `Playfair Display` | serif | PlayfairDisplay-Regular.woff2, PlayfairDisplay-Bold.woff2 |
-| `EB Garamond` | serif | EBGaramond-Regular.woff2, EBGaramond-Bold.woff2 |
-
-`src/fonts/fonts.css` declares all `@font-face` rules. It is linked by:
-- `src/output/fullscreen.html` and `lowerthird.html` — via `<link href="../fonts/fonts.css">`
-- `src/renderer/index.css` — via `@import '../fonts/fonts.css'` (Vite bundles the files)
-
-The canonical font list for the UI is exported from `src/main/fonts.js` (`BUNDLED_FONTS`, `DEFAULT_FONT`) and exposed as `window.cue.fonts.list` / `window.cue.fonts.default` via the contextBridge preload (synchronous — no IPC roundtrip).
-
-To add a font: download the `.woff2` file(s) into `src/fonts/`, add `@font-face` rules to `fonts.css`, and add an entry to `BUNDLED_FONTS` in `fonts.js`.
-
----
-
-## Song Editor — `SongEditor.jsx`
-
-The modal song editor (`src/renderer/components/SongEditor.jsx`) has two capabilities beyond basic CRUD:
-
-### Per-section styling toolbar
-
-Each section row in the editor displays an inline toolbar:
-
-| Control | `style_json` field | Notes |
-|---|---|---|
-| Font family dropdown | `fontFamily` | Options from `window.cue.fonts.list`. "Default font" sets `null`. |
-| Font size dropdown | `fontSize` (number, px) | Values: 32 40 48 56 64 72 80 96 112 128 |
-| Colour swatch | `color` (hex string) | Native OS colour picker. Defaults to `#ffffff` display when unset. |
-| Bold | `bold` (boolean) | — |
-| Italic | `italic` (boolean) | — |
-| Align left / centre / right | `align` ('left'\|'center'\|'right') | Default centre. |
-| Reset button | Clears all style fields | Only shown when any non-default style is applied |
-
-Style state is held as a parsed JS object per section in React local state. On save, it is serialised to `style_json` (or `null` if no non-default values are set) and written to the database.
-
-### Paste Song — section parser
-
-The "↙ Paste Song" link in the sections area opens a full-height textarea. The operator pastes a complete song; clicking "Import Sections" runs `parseSong(rawText)` (pure regex, no external API) and replaces the current sections with the result.
-
-**Detection rules (priority order):**
-1. `[Verse 1]`, `[CHORUS]`, `[Pre-Chorus]` — bracketed label with optional trailing colon
-2. `Verse 1:`, `Chorus:`, `BRIDGE:` — known keyword + optional number + colon, alone on line
-3. `Verse 1`, `CHORUS`, `bridge` — bare known keyword with optional number, alone on line
-
-Known keywords: `verse`, `chorus`, `bridge`, `pre-chorus` / `pre chorus` / `prechorus`, `tag`, `intro`, `outro`, `refrain` (maps to `chorus`).
-
-Leading list numbers (`1.` `2)` `(1)` `[1]`) are stripped from content lines.
-
-**No-header fallback:** If no headers are detected, the parser splits by blank lines and marks everything `verse` for the operator to relabel.
-
-**Constraint:** No LLM or API fallback. Regex only. This is an explicit product decision — offline-safe, zero latency, no network dependency.
-
----
-
-### Migration rule
-
-`schema.js` reads `db_version` on startup and runs pending migrations in sequence. This must be in place before the first user-facing build — retrofitting it requires users to delete their database.
+1. `service_items.background_override_id` — per-slot override
+2. `songs.default_background_id` — per-song default
+3. `settings.global_bg_song_id` / `global_bg_slide_id` — global type default
+4. `null` → black screen
 
 ---
 
 ## IPC API (`window.cue`)
 
-All renderer↔main communication is via `ipcRenderer.invoke` / `ipcMain.handle`, exposed as `window.cue.*`.
-
 ### Songs
-- `songs:search(query)` — FTS5, returns `[{id, title, author}]`
-- `songs:get(id)` — full song with sections ordered by `order_index`
-- `songs:create(data)` — inserts song + sections, returns new id
-- `songs:update(id, data)` — updates song/sections, rebuilds FTS entries
-- `songs:delete(id)` — checks `service_items` references first, warns if found
+- `songs:search(query)` → `[{id, title, author}]` — FTS5 prefix search; empty query returns all
+- `songs:listAll()` → `[{id, title, author, copyright, default_background_id, tags:[...]}]`
+- `songs:get(id)` → full song with `sections` and `tags`
+- `songs:create(data)` / `songs:update(id, data)` / `songs:delete(id)` → `{hasReferences, count}`
 - `songs:addTag(songId, tagId)` / `songs:removeTag(songId, tagId)`
 - `songs:setBackground(songId, mediaId|null)`
 
+### Tags
+- `tags:list()` / `tags:create({name, colour})` / `tags:update(id, data)` / `tags:delete(id)`
+
 ### Services
-- `services:list` — all services, date DESC
-- `services:get(id)` — service with all items resolved
-- `services:create(data)` / `services:update(id, data)`
+- `services:list()` → `[{id, title, date, notes}]`
+- `services:get(id)` → service with fully resolved `items` (joins song, sections, media paths)
+- `services:create(data)` / `services:update(id, data)` / `services:delete(id)`
 - `services:reorderItems(serviceId, orderedIds)` — single transaction
 - `services:addItem(serviceId, item)` / `services:removeItem(itemId)`
-- `services:setItemBackground(itemId, mediaId|null)`
-- `services:setItemNotes(itemId, notes)`
+- `services:setItemBackground(itemId, mediaId|null)` / `services:setItemNotes(itemId, notes)`
+- `services:duplicateItem(itemId)` → new `id`
 
 ### Output
-- `output:go(payload)` / `output:clear` / `output:logo`
-- `output:getState` — returns `{ isLive, livePayload, activeChannels }`
-- `output:channels:list` / `:update(id,data)` / `:create(data)` / `:delete(id)`
-- `output:screens:list` — `screen.getAllDisplays()` with thumbnails
+- `output:go(payload)` / `output:clear()` / `output:logo()`
+- `output:getState()` → `{isLive, livePayload, activeChannels:[ids]}`
+- `output:channels:list()` / `:create(data)` / `:update(id, data)` / `:delete(id)`
+- `output:screens:list()` → `[{id, bounds, scaleFactor, label}]`
 
 ### Media
-- `media:import(filePaths)` — copies to userData, returns records
-- `media:list(folderId?)` / `media:delete(id)`
-- `media:folders:create(name, parentId?)` / `media:folders:tree`
+- `media:import(filePaths)` → `[{id, filename, path, type}]`
+- `media:get(id)` → single asset or null
+- `media:list(folderId?)` → assets; `null`/`undefined` = root only
+- `media:delete(id)`
+- `media:getDiskUsage()` → bytes / `media:getMediaDir()` → absolute path
+- `media:folders:create(name, parentId?)` / `:rename(id, name)` / `:delete(id)` / `:tree()`
 
 ### Settings
 - `settings:get(key)` / `settings:set(key, value)`
-- `settings:setGlobalLogo(mediaId|null)`
-- `settings:setGlobalBackground(type, mediaId|null)` — type: `'song'` or `'slide'`
-- `settings:applyBackgroundToAll(type, mediaId)` — bulk update, UI must confirm first
-- `settings:getDiskUsage` — total bytes in `userData/media/`
+- `settings:setGlobalLogo(mediaId|null)` / `settings:setGlobalBackground(type, mediaId|null)`
+- `settings:applyBackgroundToAll(type, mediaId)` — bulk update, UI must confirm
+- `settings:getDiskUsage()` / `settings:getDataPath()` / `settings:openDataFolder()`
+
+### Dialog
+- `dialog:openFile(options)` → `{canceled, filePaths}`
+
+### Fonts (synchronous, no IPC)
+- `window.cue.fonts.list` — `[{family, label, category}]`
+- `window.cue.fonts.default` — `'Inter'`
+
+### Renderer events (`window.cue.on(channel, cb)`)
+- `output:unresolved-channels` — unresolved channel objects on startup
+- `output:state-changed` — after go/clear/logo
+- `output:live-capture` — data URL of captured output frame (every 200ms while live)
+- `output:ndi-unavailable` — grandiose not installed
+- `shortcut:next` / `shortcut:prev` — reserved for hardware remote
 
 ---
 
-## Output payload structure
+## Output Payload Structure
 
 ```js
 {
   type: 'content' | 'clear' | 'logo',
   text: string | null,
-  sectionLabel: string | null,    // e.g. 'Chorus'
+  sectionLabel: string | null,
   copyright: string | null,
-  backgroundPath: string | null,  // absolute path to media file
-  logoPath: string | null,        // set when type === 'logo'
+  backgroundPath: string | null,   // absolute filesystem path — output template encodes to cue-media://
+  logoPath: string | null,
+  styleJson: object | null,        // parsed style_json from song_sections
 }
 ```
 
 Output windows receive this via `webContents.send('slide:update', payload)`.
 
-### Clear vs Logo behaviour
+---
 
-- **Go**: text + background rendered per template layout
-- **Clear**: text set to empty string, background cleared, template structure preserved — lower-third shows empty transparent band (no visual artefact on video feed)
-- **Logo**: logo asset rendered within the channel's own template region — lower-third channel shows logo in lower-third band only
+## Output Channels
+
+**Screen channels**: `fullscreen: true, frame: false, alwaysOnTop: true`. Display matched by **bounds** (`x, y, width, height`), never `display_index`. If bounds don't match a connected display → flagged unresolved → Settings auto-opens.
+
+**NDI channels**: hidden `show: false` BrowserWindow. Loads same templates. No frames are published — `ndi.js` is a stub (`grandiose` not installed). The hidden window exists and receives `slide:update` correctly, but nothing is sent to the NDI network.
 
 ---
 
-## Output channels
-
-### Screen channels
-```js
-new BrowserWindow({
-  x: display.bounds.x, y: display.bounds.y,
-  width: display.bounds.width, height: display.bounds.height,
-  fullscreen: true, frame: false, alwaysOnTop: true,
-  backgroundColor: '#000000',
-  webPreferences: { preload: '...', contextIsolation: true }
-})
-```
-
-### NDI channels (hidden off-screen window)
-```js
-new BrowserWindow({
-  width: channel.ndi_width,   // default 1920
-  height: channel.ndi_height, // default 1080
-  show: false, frame: false,
-  webPreferences: { preload: '...', contextIsolation: true }
-})
-```
-
-NDI capture: `webContents.capturePage()` at configured FPS, published via `grandiose`. Capture loop runs in main process. Default 1080p30. Alpha channel preserved for OBS keyed sources.
-
-**NDI SDK requirement**: The NDI Tools runtime must be installed separately on every host machine. Detect its absence on startup and show a Settings warning — do not crash silently.
-
-### Display matching on startup
-
-Match screen channels to physical displays using **bounds** (`x, y, width, height`), not `display_index`. If a channel's stored bounds do not match any connected display, flag it as unresolved and open Settings automatically. Never open an output window at incorrect/off-screen coordinates.
-
----
-
-## Keyboard shortcuts
+## Keyboard Shortcuts
 
 | Key | Action |
 |---|---|
-| Space / Down arrow | Next slide in **preview** (does not affect live output) |
-| Up arrow | Previous slide in **preview** (does not affect live output) |
-| G | Go — send current preview item/slide to live |
+| Space / ↓ | Next slide in **preview** only (no live change) |
+| ↑ | Previous slide in **preview** only |
+| G | GO — send preview item at current slide to live |
 | Escape | Clear all outputs |
 | L | Logo all outputs |
 
-Registered as a `keydown` listener on `document` in `OperatorView.jsx` (renderer-side, **not** `globalShortcut`). The listener suppresses shortcuts when focus is inside an `INPUT`, `TEXTAREA`, or `contenteditable` element. Arrow keys and Space navigate the preview cursor only — use G or double-click to commit to live. See implementation record §4.1 for why `globalShortcut` was avoided.
+Registered as a `keydown` listener on `document` in `OperatorView.jsx` — **not** `globalShortcut`. The listener suppresses shortcuts when an `INPUT`, `TEXTAREA`, or `contenteditable` has focus. Do not use `globalShortcut` — it captures at OS level and breaks typing G, L, or Space in any input field.
 
 ---
 
-## Operator UI layout
+## Operator UI Layout
 
 Target minimum resolution: **1920×1080**.
 
 ```
-┌─────────────────────┬─────────────────────┐
-│   Rundown Panel     │  Preview/Live Panel  │
-│   (top-left)        │  (top-right)         │
-├─────────────────────┴─────────────────────┤
-│          Library Panel (full-width)        │
-│          Songs tab | Media tab             │
-└───────────────────────────────────────────┘
+┌─── Titlebar (38px, draggable) ─────────────────────────────────┐
+│ Cue │ [Operator] [Settings]          Live●  NDI:OK  12:00  GO Clear Logo │
+├────────────────────────────────────────────────────────────────┤
+│  ┌──── Rundown ─────┐ │ ┌──── Preview/Live ──────────────────┐ │
+│  │ service select   │ │ │ PREVIEW mon.  │  LIVE mon.         │ │
+│  │ [DnD items]      │ │ ├───────────────┼────────────────────┤ │
+│  └──────────────────┘ │ │ Preview slides│  Live slides       │ │
+│                       │ └────────────────────────────────────┘ │
+├─── vertical resize ────────────────────────────────────────────┤
+│  ┌──── Library (full width) ──────────────────────────────────┐ │
+│  │  [Songs tab]  [Media tab]                                  │ │
+│  └────────────────────────────────────────────────────────────┘ │
+└────────────────────────────────────────────────────────────────┘
 ```
 
-- **Rundown**: one row per service item. Single click = load into preview. Double click = load into preview AND go live immediately (first slide).
-- **Preview/Live**: stacked by default (toggleable to side-by-side), preference persisted to `settings.operator_preview_layout`. Contains two independent slide lists — see Operator workflow below.
-- **Library**: global search bar spans both tabs, debounced 150ms. FTS5 for songs, filename/tag for media. Double-click a song = add directly to rundown.
-- **Settings**: replaces operator view, accessed from top nav bar (not a modal).
+Panel resize: horizontal (Rundown / Preview+Live, default 25%/75%), vertical (top / Library, default 62%/38%). Resize state is not persisted (backlog item).
 
 ---
 
-## Operator workflow — Preview/Live mechanics
+## Operator Workflow — Preview/Live
 
-The preview and live slots are fully independent. A different song can be cued in preview while another song is live.
+Preview and live are independent buses. A different song can be in preview while another is live.
 
-### State
-| Variable | Meaning |
-|---|---|
-| `previewItemId` | Which rundown item is loaded in preview |
-| `previewSlideIdx` | Which slide of that item is focused in preview |
-| `liveItemId` | Which rundown item is currently live on output |
-| `liveSlideIdx` | Which slide of the live item is currently on screen |
-
-### Interactions
 | Action | Result |
 |---|---|
-| Single-click rundown item | Loads item into preview, resets `previewSlideIdx` to 0. No live change. |
-| Double-click rundown item | Loads item into preview and immediately sends slide 0 to live. |
-| Single-click in **Preview Slides** list | Updates `previewSlideIdx` only. Preview monitor updates. No live change. |
-| Double-click in **Preview Slides** list | Sends that slide to live (`handleGoAtPreviewSlide`). |
-| Single-click in **Live Slides** list | Sends that slide to live immediately (`handleSelectLiveSlide`). |
-| GO button / G key | Sends current `previewItem` at `previewSlideIdx` to live. |
-| Space / Down / Up arrow | Advance/retreat `previewSlideIdx` only. No live change. |
-| Escape | Clears all output, sets `liveItemId` to null. |
-| Double-click song in library | Adds song to current rundown (no preview modal). |
-
-### Preview/Live panel layout
-The bottom half of the panel shows two side-by-side scrollable slide lists. The left column ("Preview Slides") navigates the preview cursor. The right column ("Live Slides") directly controls the live output. Each list shows full multi-line lyric content per section, scrollable. A hint label "dbl-click → live" appears on the preview list header.
+| Single-click rundown item | Loads to preview, `previewSlideIdx=0`. No live change. |
+| Double-click rundown item | Loads to preview + sends slide 0 to live. |
+| Single-click Preview Slides | Updates `previewSlideIdx`. No live change. |
+| Double-click Preview Slides | Sends that slide to live. |
+| Single-click Live Slides | Sends that slide to live immediately. |
+| GO / G key | Sends `previewItem[previewSlideIdx]` to live. |
+| Space / ↓ / ↑ | `previewSlideIdx` only. No live change. |
+| Escape | Clear. Sets `liveItemId=null`. |
+| Double-click song in library | Adds to rundown — no preview/live change. |
 
 ---
 
-## Build milestones
+## Bundled Fonts
 
-| # | Deliverable |
+`src/fonts/` ships inside the ASAR. No system install required.
+
+| Family | Category |
 |---|---|
-| M1 | Electron + React + Vite + Forge scaffold. contextBridge + one test IPC channel. Builds on macOS and Windows. |
-| M2 | All Phase 1a tables. Migration versioning. FTS5 + triggers. `songs:search` working via IPC. |
-| M3 | Song CRUD + sections + tags. Library panel. FTS5 search. Song Editor and Song Preview modals. react-window in song list. |
-| M4 | Single BrowserWindow output. Fullscreen template. Go/Clear/Logo end-to-end. |
-| M5 | Output channel manager. Multiple simultaneous outputs. Bounds-based display matching. Unresolved channel detection + Settings redirect. |
-| M6 | Service CRUD. Rundown panel with drag-to-reorder. Single-click preview, double-click live. Slide list navigation. Global keyboard shortcuts. |
-| M7 | Media import + folder tree + tag filter. Background resolution order. Drag asset to set override. Global Apply to All. |
-| M8 | grandiose NDI. Configurable FPS/resolution. `linked_channel_id` working. OBS verified. NDI absence detection. |
-| M9 | Full Settings screen wired. Preview/Live layout toggle persisted. Disk usage + data path display. All IPC channels connected. |
+| Inter (default) | sans-serif |
+| Montserrat | sans-serif |
+| Lato | sans-serif |
+| Oswald | sans-serif condensed — output templates only |
+| Playfair Display | serif |
+| EB Garamond | serif |
+
+Loaded by output templates via `<link href="../fonts/fonts.css">` and by the renderer via `@import` in `index.css`. Font list exposed as `window.cue.fonts.list` (synchronous). To add: `.woff2` → `src/fonts/`, `@font-face` → `fonts.css`, entry → `fonts.js`.
 
 ---
 
-## Compatibility notes
+## Compatibility Notes
 
-- **macOS Gatekeeper** (unsigned builds): `xattr -cr /Applications/Cue.app`, or right-click → Open on first launch.
-- **Windows SmartScreen** (unsigned builds): More info → Run anyway. One-time per machine.
-- **High-DPI / display scaling**: Use explicit size params in `webContents.capturePage()` for NDI — logical and physical pixel sizes differ on Retina / Windows scaled displays.
-- **Polymorphic FK gap**: SQLite cannot enforce `service_items.ref_id` across multiple tables. App layer must check for dangling references before deleting a song and warn the operator.
-- **Disk usage**: All media copied on import. Display total usage in Settings. Warn when free disk space falls below 2 GB (configurable threshold).
+- **macOS Gatekeeper** (unsigned): `xattr -cr /Applications/Cue.app` or right-click → Open.
+- **Windows SmartScreen** (unsigned): More info → Run anyway.
+- **Display matching**: Always use `display_bounds` JSON, never `display_index`. Mismatched = unresolved channel = Settings redirect.
+- **Polymorphic FK gap**: SQLite can't enforce `service_items.ref_id` across tables. App layer checks for dangling song references before delete.
+- **NDI**: `grandiose` is not installed. NDI channels have working BrowserWindows but publish no frames. The "NDI SDK missing" warning fires correctly on startup.

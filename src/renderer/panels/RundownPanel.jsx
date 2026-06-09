@@ -7,6 +7,8 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import ContextMenu from '../components/ContextMenu';
+import MediaPickerModal from '../components/MediaPickerModal';
+import { mediaUrl } from '../utils/mediaUrl';
 
 function SortableItem({ item, index, isPreview, isLive, onClick, onDoubleClick, onContextMenu }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
@@ -35,14 +37,13 @@ function SortableItem({ item, index, isPreview, isLive, onClick, onDoubleClick, 
   return (
     <div
       ref={setNodeRef}
-      style={dndStyle}
+      style={{ ...dndStyle, minHeight: 44 }}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
       className={`flex items-center gap-sm px-sm cursor-pointer border-b border-outline-variant/20 group ${
         isLive ? 'tally-live' : isPreview ? 'tally-preview' : 'tally-idle hover:bg-surface-variant'
       }`}
-      style={{ minHeight: 44 }}
     >
       {/* Drag handle */}
       <button
@@ -59,19 +60,31 @@ function SortableItem({ item, index, isPreview, isLive, onClick, onDoubleClick, 
         </svg>
       </button>
 
-      {/* Icon thumbnail */}
-      <div className={`w-12 h-8 bg-black rounded overflow-hidden shrink-0 flex items-center justify-center ${
-        isLive ? 'border border-secondary/30' : isPreview ? 'border border-primary/30' : ''
-      }`}>
-        <span
-          className={`material-symbols-outlined text-[18px] ${
-            isLive ? 'text-secondary' : isPreview ? 'text-primary' : 'text-outline-variant'
-          }`}
-          style={isLive ? { fontVariationSettings: "'FILL' 1" } : {}}
-        >
-          {isLive ? 'sensors' : isPreview ? 'visibility' : typeIcon}
-        </span>
-      </div>
+      {/* Icon / background thumbnail */}
+      {(() => {
+        const bgAsset = item.background_override || item.song?.default_background;
+        return (
+          <div className={`w-12 h-8 bg-black rounded overflow-hidden shrink-0 relative flex items-center justify-center ${
+            isLive ? 'border border-secondary/30' : isPreview ? 'border border-primary/30' : ''
+          }`}>
+            {bgAsset && (
+              bgAsset.type === 'video' || /\.(mp4|webm|mov)$/i.test(bgAsset.path) ? (
+                <video src={mediaUrl(bgAsset.path)} className="absolute inset-0 w-full h-full object-cover opacity-70" muted />
+              ) : (
+                <img src={mediaUrl(bgAsset.path)} className="absolute inset-0 w-full h-full object-cover opacity-70" alt="" />
+              )
+            )}
+            <span
+              className={`relative material-symbols-outlined text-[18px] ${bgAsset ? 'opacity-0' : ''} ${
+                isLive ? 'text-secondary' : isPreview ? 'text-primary' : 'text-outline-variant'
+              }`}
+              style={isLive ? { fontVariationSettings: "'FILL' 1" } : {}}
+            >
+              {isLive ? 'sensors' : isPreview ? 'visibility' : typeIcon}
+            </span>
+          </div>
+        );
+      })()}
 
       {/* Text */}
       <div className="flex-1 min-w-0">
@@ -107,11 +120,12 @@ function SortableItem({ item, index, isPreview, isLive, onClick, onDoubleClick, 
 
 export default function RundownPanel({
   services, activeServiceId, serviceData, previewItemId, liveItemId,
-  onSelectService, onClickItem, onDoubleClickItem, onReorder, onRemoveItem, onAddService,
+  onSelectService, onClickItem, onDoubleClickItem, onReorder, onRemoveItem, onDuplicate, onAddService, onRefresh,
 }) {
   const [contextMenu, setContextMenu] = useState(null);
   const [showNewService, setShowNewService] = useState(false);
   const [newServiceTitle, setNewServiceTitle] = useState('');
+  const [bgPickerForItem, setBgPickerForItem] = useState(null);
 
   const items = serviceData?.items || [];
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -233,7 +247,45 @@ export default function RundownPanel({
           x={contextMenu.x}
           y={contextMenu.y}
           onClose={() => setContextMenu(null)}
-          items={[{ label: 'Remove from Rundown', onClick: () => { onRemoveItem(contextMenu.item.id); setContextMenu(null); } }]}
+          items={[
+            {
+              label: 'Duplicate',
+              onClick: () => { onDuplicate?.(contextMenu.item.id); setContextMenu(null); },
+            },
+            ...(contextMenu.item.item_type === 'song' ? [
+              { separator: true },
+              {
+                label: 'Set Background Override',
+                onClick: () => { setBgPickerForItem(contextMenu.item); setContextMenu(null); },
+              },
+              ...(contextMenu.item.background_override ? [{
+                label: 'Clear Background Override',
+                onClick: async () => {
+                  await window.cue.services.setItemBackground(contextMenu.item.id, null);
+                  onRefresh?.();
+                  setContextMenu(null);
+                },
+              }] : []),
+            ] : []),
+            { separator: true },
+            {
+              label: 'Remove from Rundown',
+              danger: true,
+              onClick: () => { onRemoveItem(contextMenu.item.id); setContextMenu(null); },
+            },
+          ]}
+        />
+      )}
+
+      {bgPickerForItem && (
+        <MediaPickerModal
+          initialId={bgPickerForItem.background_override?.id ?? null}
+          onSelect={async (asset) => {
+            await window.cue.services.setItemBackground(bgPickerForItem.id, asset?.id ?? null);
+            onRefresh?.();
+            setBgPickerForItem(null);
+          }}
+          onClose={() => setBgPickerForItem(null)}
         />
       )}
     </div>

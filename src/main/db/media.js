@@ -42,6 +42,10 @@ export function importFiles(filePaths) {
   return results;
 }
 
+export function getById(id) {
+  return getDb().prepare('SELECT * FROM media_assets WHERE id=?').get(id) || null;
+}
+
 export function list(folderId) {
   const db = getDb();
   if (folderId == null) {

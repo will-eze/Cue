@@ -3,6 +3,7 @@ import * as media from '../db/media.js';
 
 export function registerMediaIpc() {
   ipcMain.handle('media:import', (_e, filePaths) => media.importFiles(filePaths));
+  ipcMain.handle('media:get', (_e, id) => media.getById(id));
   ipcMain.handle('media:list', (_e, folderId) => media.list(folderId));
   ipcMain.handle('media:delete', (_e, id) => media.del(id));
   ipcMain.handle('media:folders:create', (_e, name, parentId) => media.createFolder(name, parentId));

@@ -1,5 +1,6 @@
-import { app, BrowserWindow, ipcMain, dialog, screen } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, screen, protocol } from 'electron';
 import path from 'path';
+import fs from 'fs';
 import { initDb } from './db/schema.js';
 import { registerSongsIpc } from './ipc/songs.ipc.js';
 import { registerServicesIpc } from './ipc/services.ipc.js';
@@ -8,6 +9,17 @@ import { registerOutputIpc } from './ipc/output.ipc.js';
 import { registerSettingsIpc } from './ipc/settings.ipc.js';
 import * as outputManager from './output/manager.js';
 import { isAvailable as ndiAvailable } from './output/ndi.js';
+
+// Must be called synchronously before app is ready
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'cue-media', privileges: { secure: true, standard: true, supportFetchAPI: true, stream: true, bypassCSP: true, corsEnabled: true } },
+]);
+
+const MEDIA_MIME = {
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
+  webp: 'image/webp', svg: 'image/svg+xml', bmp: 'image/bmp',
+  mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime',
+};
 
 let mainWindow;
 
@@ -58,6 +70,54 @@ ipcMain.handle('dialog:openFile', async (_event, options) => {
 });
 
 app.whenReady().then(async () => {
+  // Serve local media files via fs — avoids file:// CORS block from http://localhost
+  // and bypasses net.fetch limitations with file:// URIs on some platforms.
+  // URL format: cue-media://localhost/absolute/path/to/file
+  // "localhost" is used as a dummy host so Chromium's standard-scheme parser
+  // doesn't promote the first path segment to the hostname field.
+  protocol.handle('cue-media', (request) => {
+    const { pathname } = new URL(request.url);
+    const filePath = decodeURIComponent(pathname);
+    try {
+      const stat = fs.statSync(filePath);
+      const ext = path.extname(filePath).slice(1).toLowerCase();
+      const mimeType = MEDIA_MIME[ext] || 'application/octet-stream';
+      const rangeHeader = request.headers.get('range');
+
+      if (rangeHeader) {
+        const match = /bytes=(\d*)-(\d*)/.exec(rangeHeader);
+        const start = match[1] ? parseInt(match[1], 10) : 0;
+        const end   = match[2] ? parseInt(match[2], 10) : stat.size - 1;
+        const chunkSize = end - start + 1;
+        const buf = Buffer.allocUnsafe(chunkSize);
+        const fd = fs.openSync(filePath, 'r');
+        fs.readSync(fd, buf, 0, chunkSize, start);
+        fs.closeSync(fd);
+        return new Response(buf, {
+          status: 206,
+          headers: {
+            'Content-Type': mimeType,
+            'Content-Range': `bytes ${start}-${end}/${stat.size}`,
+            'Accept-Ranges': 'bytes',
+            'Content-Length': String(chunkSize),
+          },
+        });
+      }
+
+      const data = fs.readFileSync(filePath);
+      return new Response(data, {
+        headers: {
+          'Content-Type': mimeType,
+          'Accept-Ranges': 'bytes',
+          'Content-Length': String(stat.size),
+        },
+      });
+    } catch (err) {
+      console.error('[cue-media] Failed to serve:', filePath, err.code);
+      return new Response('Not found', { status: 404 });
+    }
+  });
+
   initDb();
 
   registerSongsIpc();

@@ -11,6 +11,10 @@ function resolveItem(db, item) {
     if (song) {
       resolved.song = song;
       resolved.sections = db.prepare('SELECT * FROM song_sections WHERE song_id=? ORDER BY order_index').all(item.ref_id);
+      if (song.default_background_id) {
+        const bg = db.prepare('SELECT id, path, filename, type FROM media_assets WHERE id=?').get(song.default_background_id);
+        if (bg) resolved.song.default_background = bg;
+      }
     }
   }
   if (item.item_type === 'media' && item.ref_id) {

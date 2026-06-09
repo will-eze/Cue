@@ -49,6 +49,7 @@ contextBridge.exposeInMainWorld('cue', {
   },
   media: {
     import: (filePaths) => ipcRenderer.invoke('media:import', filePaths),
+    get: (id) => ipcRenderer.invoke('media:get', id),
     list: (folderId) => ipcRenderer.invoke('media:list', folderId),
     delete: (id) => ipcRenderer.invoke('media:delete', id),
     getDiskUsage: () => ipcRenderer.invoke('media:getDiskUsage'),

@@ -3,6 +3,7 @@ import { FixedSizeList as List } from 'react-window';
 import SongPreviewModal from '../components/SongPreviewModal';
 import SongEditor from '../components/SongEditor';
 import ContextMenu from '../components/ContextMenu';
+import { mediaUrl } from '../utils/mediaUrl';
 
 function SongRow({ index, style, data }) {
   const { songs, selectedId, onSelect, onDoubleClick, onContextMenu } = data;
@@ -92,12 +93,12 @@ function MediaGrid({ assets, onDelete, onSetBackground }) {
             >
               <div className="aspect-video rounded bg-black border border-outline-variant overflow-hidden mb-xs relative">
                 {asset.type === 'image' ? (
-                  <img src={`file://${asset.path}`}
+                  <img src={mediaUrl(asset.path)}
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform"
                     alt={asset.filename} />
                 ) : asset.type === 'video' ? (
                   <>
-                    <video src={`file://${asset.path}`}
+                    <video src={mediaUrl(asset.path)}
                       className="w-full h-full object-cover"
                       muted />
                     <div className="absolute bottom-1 right-1 bg-black/50 px-1 rounded text-[8px] text-white font-label-sm">VID</div>
@@ -183,9 +184,13 @@ export default function LibraryPanel({ onAddToRundown, onSongSave }) {
   }
 
   async function handleDeleteSong(song) {
+    if (!confirm(`Delete "${song.title}"? This cannot be undone.`)) return;
     const result = await window.cue.songs.delete(song.id);
-    if (result.hasReferences) alert(`This song is used in ${result.count} rundown item(s). Remove it from all rundowns first.`);
-    else loadSongs();
+    if (result.hasReferences) {
+      alert(`"${song.title}" is used in ${result.count} rundown item(s). Remove it from all rundowns first.`);
+    } else {
+      loadSongs();
+    }
   }
 
   async function handleDuplicateSong(song) {

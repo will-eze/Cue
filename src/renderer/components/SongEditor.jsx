@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import MediaPickerModal from './MediaPickerModal';
+import { mediaUrl } from '../utils/mediaUrl';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
 } from '@dnd-kit/core';
@@ -510,8 +512,11 @@ export default function SongEditor({ song, onClose, onSave }) {
   const [selectedTagIds, setSelectedTagIds] = useState([]);
   const [songStyle, setSongStyle] = useState({ ...DEFAULT_STYLE });
   const [saving, setSaving]       = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [showPaste, setShowPaste] = useState(false);
   const [formatState, setFormatState] = useState({ bold: false, italic: false });
+  const [songBackground, setSongBackground] = useState(null);
+  const [showBgPicker, setShowBgPicker] = useState(false);
 
   const fonts       = window.cue.fonts.list;
   const sectionRefs = useRef({});
@@ -537,6 +542,12 @@ export default function SongEditor({ song, onClose, onSave }) {
         setCopyright(s.copyright || '');
         setSelectedTagIds((s.tags || []).map((t) => t.id));
 
+        if (s.default_background_id && s.background_path) {
+          setSongBackground({ id: s.default_background_id, path: s.background_path, filename: s.background_filename });
+        } else {
+          setSongBackground(null);
+        }
+
         const firstStyled = (s.sections || []).find((sec) => sec.style_json);
         if (firstStyled) {
           const { runs: _r, ...base } = JSON.parse(firstStyled.style_json);
@@ -549,6 +560,7 @@ export default function SongEditor({ song, onClose, onSave }) {
         }));
       });
     } else {
+      setSongBackground(null);
       setSections([{ _key: newKey(), type: 'verse', content: '', runs: [] }]);
     }
   }, [song?.id]);
@@ -605,6 +617,7 @@ export default function SongEditor({ song, onClose, onSave }) {
   async function handleSave() {
     if (!title.trim()) return;
     setSaving(true);
+    setSaveError('');
     try {
       const sectionData = sections.map((sec) => {
         const el = sectionRefs.current[sec._key];
@@ -622,9 +635,18 @@ export default function SongEditor({ song, onClose, onSave }) {
         tagIds:    selectedTagIds,
       };
 
-      if (song?.id) await window.cue.songs.update(song.id, data);
-      else          await window.cue.songs.create(data);
+      let savedId;
+      if (song?.id) {
+        await window.cue.songs.update(song.id, data);
+        savedId = song.id;
+      } else {
+        savedId = await window.cue.songs.create(data);
+      }
+      await window.cue.songs.setBackground(savedId, songBackground?.id ?? null);
       onSave();
+    } catch (err) {
+      console.error('[SongEditor] save failed:', err);
+      setSaveError(`Save failed: ${err?.message || 'unknown error'}`);
     } finally {
       setSaving(false);
     }
@@ -675,7 +697,63 @@ export default function SongEditor({ song, onClose, onSave }) {
                   <input value={copyright} onChange={(e) => setCopyright(e.target.value)}
                     className={inputClass} placeholder="© Year Publisher" />
                 </div>
+
+                {/* Background row */}
+                <div className="col-span-3 border-t border-outline-variant/20 pt-sm">
+                  <label className={labelClass}>Default Background</label>
+                  <div className="flex items-center gap-md mt-xs">
+                    <div
+                      className="w-28 aspect-video rounded-lg border border-outline-variant/30 bg-surface-container-high overflow-hidden cursor-pointer shrink-0 relative group"
+                      onClick={() => setShowBgPicker(true)}
+                    >
+                      {songBackground ? (
+                        /\.(mp4|webm|mov)$/i.test(songBackground.path) ? (
+                          <video src={mediaUrl(songBackground.path)} className="w-full h-full object-cover" muted />
+                        ) : (
+                          <img src={mediaUrl(songBackground.path)} className="w-full h-full object-cover" alt="" />
+                        )
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <span className="material-symbols-outlined text-outline-variant text-xl">wallpaper</span>
+                        </div>
+                      )}
+                      <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <span className="material-symbols-outlined text-white text-sm">edit</span>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-xs">
+                      <span className="text-body-sm text-on-surface truncate max-w-[200px]">
+                        {songBackground ? songBackground.filename : 'No background set'}
+                      </span>
+                      <div className="flex gap-sm">
+                        <button
+                          onClick={() => setShowBgPicker(true)}
+                          className="text-label-sm font-mono text-primary hover:text-primary/80 cursor-pointer uppercase tracking-[0.05em] transition-colors"
+                        >
+                          {songBackground ? 'Change' : 'Set Background'}
+                        </button>
+                        {songBackground && (
+                          <button
+                            onClick={() => setSongBackground(null)}
+                            className="text-label-sm font-mono text-error/60 hover:text-error cursor-pointer uppercase tracking-[0.05em] transition-colors"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
+
+              {showBgPicker && (
+                <MediaPickerModal
+                  initialId={songBackground?.id ?? null}
+                  onSelect={(asset) => { setSongBackground(asset); setShowBgPicker(false); }}
+                  onClose={() => setShowBgPicker(false)}
+                />
+              )}
 
               {allTags.length > 0 && (
                 <div className="px-lg py-sm border-b border-outline-variant/20">
@@ -765,6 +843,9 @@ export default function SongEditor({ song, onClose, onSave }) {
               </span>
             </div>
             <div className="flex items-center gap-sm">
+              {saveError && (
+                <span className="text-label-sm font-mono text-error mr-sm">{saveError}</span>
+              )}
               <button
                 onClick={onClose}
                 className="px-lg h-8 text-label-sm font-mono text-on-surface-variant hover:text-on-surface rounded-lg hover:bg-surface-variant transition-colors cursor-pointer uppercase tracking-[0.05em]"

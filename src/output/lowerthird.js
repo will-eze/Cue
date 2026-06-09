@@ -1,6 +1,11 @@
 const textEl    = document.getElementById('text');
 const copyright = document.getElementById('copyright');
 
+function pathToUrl(p) {
+  if (!p) return null;
+  return 'cue-media://localhost' + p.split('/').map(encodeURIComponent).join('/');
+}
+
 function esc(str) {
   return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
@@ -51,7 +56,7 @@ window.cueOutput.onSlideUpdate((payload) => {
 
   if (type === 'logo') {
     textEl.className = 'logo-mode';
-    textEl.innerHTML = logoPath ? `<img class="logo-img" src="file://${logoPath}" alt="Logo" />` : '';
+    textEl.innerHTML = logoPath ? `<img class="logo-img" src="${pathToUrl(logoPath)}" alt="Logo" />` : '';
     copyright.textContent = '';
     return;
   }

@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import SlideList from '../components/SlideList';
 import { renderWithRuns } from '../components/SongEditor';
+import { mediaUrl } from '../utils/mediaUrl';
 
-function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, liveCapture }) {
+function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, liveCapture, backgroundPath }) {
   const slides = getSlides(item ?? null);
   const slide = item ? slides[slideIdx] : null;
   const style = slide?.style_json ? JSON.parse(slide.style_json) : null;
@@ -14,13 +15,13 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, liveCaptu
   return (
     <div className={className}>
       {/* Background media */}
-      {item?.background_override?.path && (
+      {backgroundPath && (
         <div className="absolute inset-0">
-          {/\.(mp4|webm|mov)$/i.test(item.background_override.path) ? (
-            <video src={`file://${item.background_override.path}`}
+          {/\.(mp4|webm|mov)$/i.test(backgroundPath) ? (
+            <video src={mediaUrl(backgroundPath)}
               className="w-full h-full object-cover opacity-60" autoPlay loop muted />
           ) : (
-            <img src={`file://${item.background_override.path}`}
+            <img src={mediaUrl(backgroundPath)}
               className="w-full h-full object-cover opacity-60" alt="" />
           )}
         </div>
@@ -76,7 +77,7 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, liveCaptu
 
 export default function PreviewLivePanel({
   previewItem, liveItem, previewSlideIdx, liveSlideIdx,
-  liveCapture, getSlides,
+  liveCapture, getSlides, previewBgPath, liveBgPath,
   onSelectPreviewSlide, onGoAtPreviewSlide, onSelectLiveSlide,
 }) {
   const previewSlides = previewItem ? getSlides(previewItem) : [];
@@ -95,6 +96,7 @@ export default function PreviewLivePanel({
             emptyLabel="Nothing in Preview"
             isLive={false}
             liveCapture={null}
+            backgroundPath={previewBgPath}
           />
           {/* Preview slide list */}
           <div className="flex-1 overflow-y-auto pr-xs">
@@ -124,6 +126,7 @@ export default function PreviewLivePanel({
             emptyLabel="Nothing Live"
             isLive={true}
             liveCapture={liveCapture}
+            backgroundPath={liveBgPath}
           />
           {/* Live slide list */}
           <div className="flex-1 overflow-y-auto pr-xs">

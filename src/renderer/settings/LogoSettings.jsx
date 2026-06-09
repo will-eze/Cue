@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { mediaUrl } from '../utils/mediaUrl';
 
 export default function LogoSettings() {
   const [globalLogoId, setGlobalLogoId] = useState(null);
@@ -48,7 +49,7 @@ export default function LogoSettings() {
         <div className="w-32 h-32 rounded bg-background flex items-center justify-center p-md border border-outline-variant/30 relative group shrink-0">
           {globalLogoAsset ? (
             <img
-              src={`file://${globalLogoAsset.path}`}
+              src={mediaUrl(globalLogoAsset.path)}
               className="w-full h-full object-contain"
               alt="Logo"
             />

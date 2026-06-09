@@ -2,6 +2,11 @@ const bg        = document.getElementById('background');
 const textEl    = document.getElementById('text');
 const copyright = document.getElementById('copyright');
 
+function pathToUrl(p) {
+  if (!p) return null;
+  return 'cue-media://localhost' + p.split('/').map(encodeURIComponent).join('/');
+}
+
 function esc(str) {
   return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
@@ -42,11 +47,12 @@ function applyStyle(el, s) {
 
 function setBackground(path) {
   if (!path) { bg.innerHTML = ''; return; }
+  const url = pathToUrl(path);
   const ext = path.split('.').pop().toLowerCase();
   if (['mp4','webm','mov','avi','m4v'].includes(ext)) {
-    bg.innerHTML = `<video autoplay loop muted playsinline src="file://${path}"></video>`;
+    bg.innerHTML = `<video autoplay loop muted playsinline src="${url}"></video>`;
   } else {
-    bg.innerHTML = `<img src="file://${path}" alt="" />`;
+    bg.innerHTML = `<img src="${url}" alt="" />`;
   }
 }
 
@@ -64,7 +70,7 @@ window.cueOutput.onSlideUpdate((payload) => {
   if (type === 'logo') {
     bg.innerHTML = '';
     textEl.className = 'logo-mode';
-    textEl.innerHTML = logoPath ? `<img class="logo-img" src="file://${logoPath}" alt="Logo" />` : '';
+    textEl.innerHTML = logoPath ? `<img class="logo-img" src="${pathToUrl(logoPath)}" alt="Logo" />` : '';
     copyright.textContent = '';
     return;
   }
