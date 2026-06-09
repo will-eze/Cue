@@ -62,9 +62,8 @@ function useResizeV(containerRef, defaultPct = 62) {
   return [pct, start];
 }
 
-export default function OperatorView({ transportRef, onStateChange }) {
+export default function OperatorView({ transportRef, onStateChange, displayMode = 'idle', bgRefreshTick = 0, activeServiceId, onServiceChange }) {
   const [services, setServices] = useState([]);
-  const [activeServiceId, setActiveServiceId] = useState(null);
   const [serviceData, setServiceData] = useState(null);
 
   const [previewItemId, setPreviewItemId] = useState(null);
@@ -72,38 +71,20 @@ export default function OperatorView({ transportRef, onStateChange }) {
   const [liveItemId, setLiveItemId] = useState(null);
   const [liveSlideIdx, setLiveSlideIdx] = useState(0);
   const [liveCapture, setLiveCapture] = useState(null);
-  const [globalBgSong, setGlobalBgSong] = useState(null);
-  const [globalBgSlide, setGlobalBgSlide] = useState(null);
   const [undoStack, setUndoStack] = useState(null);
   const undoTimerRef = useRef(null);
 
   useEffect(() => {
     window.cue.services.list().then((list) => {
       setServices(list);
-      if (list.length > 0) setActiveServiceId(list[0].id);
+      if (list.length > 0 && !activeServiceId) onServiceChange(list[0].id);
     });
-  }, []);
-
-  useEffect(() => {
-    async function loadGlobalBackgrounds() {
-      const [songId, slideId] = await Promise.all([
-        window.cue.settings.get('global_bg_song_id'),
-        window.cue.settings.get('global_bg_slide_id'),
-      ]);
-      const [songAsset, slideAsset] = await Promise.all([
-        songId ? window.cue.media.get(songId) : Promise.resolve(null),
-        slideId ? window.cue.media.get(slideId) : Promise.resolve(null),
-      ]);
-      setGlobalBgSong(songAsset);
-      setGlobalBgSlide(slideAsset);
-    }
-    loadGlobalBackgrounds();
-  }, []);
+  }, [bgRefreshTick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!activeServiceId) { setServiceData(null); return; }
     window.cue.services.get(activeServiceId).then(setServiceData);
-  }, [activeServiceId]);
+  }, [activeServiceId, bgRefreshTick]);
 
   useEffect(() => {
     window.cue.on('output:live-capture', (dataUrl) => setLiveCapture(dataUrl));
@@ -170,11 +151,7 @@ export default function OperatorView({ transportRef, onStateChange }) {
 
   function resolveBackground(item) {
     if (item.background_override?.path) return item.background_override.path;
-    if (item.item_type === 'song' && item.song?.default_background?.path) {
-      return item.song.default_background.path;
-    }
-    const globalBg = item.item_type === 'song' ? globalBgSong : globalBgSlide;
-    if (globalBg?.path) return globalBg.path;
+    if (item.song?.default_background?.path) return item.song.default_background.path;
     return null;
   }
 
@@ -229,7 +206,7 @@ export default function OperatorView({ transportRef, onStateChange }) {
 
   function handleClear() {
     window.cue.output.clear();
-    setLiveItemId(null);
+    // Don't clear liveItemId — clear is a text toggle, the song stays loaded.
   }
 
   function handleLogo() { window.cue.output.logo(); }
@@ -301,7 +278,7 @@ export default function OperatorView({ transportRef, onStateChange }) {
         title: new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }),
         date: new Date().toISOString().split('T')[0],
       });
-      setActiveServiceId(id);
+      onServiceChange(id);
       const list = await window.cue.services.list();
       setServices(list);
       await window.cue.services.addItem(id, { item_type: 'song', ref_id: songId });
@@ -316,7 +293,7 @@ export default function OperatorView({ transportRef, onStateChange }) {
     const id = await window.cue.services.create({ title, date: new Date().toISOString().split('T')[0] });
     const list = await window.cue.services.list();
     setServices(list);
-    setActiveServiceId(id);
+    onServiceChange(id);
   }
 
   const previewBgPath = previewItem ? resolveBackground(previewItem) : null;
@@ -337,7 +314,7 @@ export default function OperatorView({ transportRef, onStateChange }) {
             serviceData={serviceData}
             previewItemId={previewItemId}
             liveItemId={liveItemId}
-            onSelectService={setActiveServiceId}
+            onSelectService={onServiceChange}
             onClickItem={handleClickItem}
             onDoubleClickItem={handleDoubleClickItem}
             onReorder={handleReorder}
@@ -364,6 +341,7 @@ export default function OperatorView({ transportRef, onStateChange }) {
             previewSlideIdx={previewSlideIdx}
             liveSlideIdx={liveSlideIdx}
             liveCapture={liveCapture}
+            displayMode={displayMode}
             getSlides={getSlides}
             previewBgPath={previewBgPath}
             liveBgPath={liveBgPath}
@@ -385,7 +363,7 @@ export default function OperatorView({ transportRef, onStateChange }) {
 
       {/* Library */}
       <div className="flex-1 min-h-0 overflow-hidden">
-        <LibraryPanel onAddToRundown={handleAddToRundown} onSongSave={refreshService} />
+        <LibraryPanel onAddToRundown={handleAddToRundown} onSongSave={refreshService} refreshTick={bgRefreshTick} />
       </div>
 
       {undoStack && (

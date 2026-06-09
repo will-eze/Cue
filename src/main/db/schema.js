@@ -184,6 +184,27 @@ const migrations = [
         JOIN songs s ON s.id = ss.song_id;
     `);
   },
+
+  // v4 — Separate channels (content streams) from monitors (physical screens).
+  // channel_monitors holds display_bounds per physical screen assigned to a channel.
+  // Multiple monitors can share one channel and all update simultaneously on GO.
+  // Existing display_bounds on output_channels are migrated to channel_monitors.
+  function v4(database) {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS channel_monitors (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        channel_id     INTEGER NOT NULL REFERENCES output_channels(id) ON DELETE CASCADE,
+        display_bounds TEXT    NOT NULL,
+        label          TEXT,
+        active         INTEGER NOT NULL DEFAULT 1
+      );
+
+      INSERT INTO channel_monitors (channel_id, display_bounds, active)
+      SELECT id, display_bounds, 1
+      FROM output_channels
+      WHERE display_bounds IS NOT NULL AND type = 'screen';
+    `);
+  },
 ];
 
 function runMigrations() {

@@ -55,8 +55,8 @@ window.cueOutput.onSlideUpdate((payload) => {
   }
 
   if (type === 'logo') {
-    textEl.className = 'logo-mode';
-    textEl.innerHTML = logoPath ? `<img class="logo-img" src="${pathToUrl(logoPath)}" alt="Logo" />` : '';
+    textEl.className = '';
+    textEl.innerHTML = '';
     copyright.textContent = '';
     return;
   }

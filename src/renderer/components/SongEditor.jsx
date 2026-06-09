@@ -639,10 +639,13 @@ export default function SongEditor({ song, onClose, onSave }) {
       if (song?.id) {
         await window.cue.songs.update(song.id, data);
         savedId = song.id;
+        await window.cue.songs.setBackground(savedId, songBackground?.id ?? null);
       } else {
         savedId = await window.cue.songs.create(data);
+        if (songBackground?.id != null) {
+          await window.cue.songs.setBackground(savedId, songBackground.id);
+        }
       }
-      await window.cue.songs.setBackground(savedId, songBackground?.id ?? null);
       onSave();
     } catch (err) {
       console.error('[SongEditor] save failed:', err);

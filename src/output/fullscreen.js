@@ -56,11 +56,24 @@ function setBackground(path) {
   }
 }
 
+function setLogoMedia(p, scaleMode) {
+  if (!p) { textEl.innerHTML = ''; return; }
+  const url = pathToUrl(p);
+  const ext = p.split('.').pop().toLowerCase();
+  const fit = scaleMode === 'cover' ? 'cover' : 'contain';
+  if (['mp4', 'webm', 'mov', 'avi', 'm4v'].includes(ext)) {
+    textEl.innerHTML = `<video class="logo-img" style="object-fit:${fit}" autoplay loop muted playsinline src="${url}"></video>`;
+  } else {
+    textEl.innerHTML = `<img class="logo-img" style="object-fit:${fit}" src="${url}" alt="Logo" />`;
+  }
+}
+
 window.cueOutput.onSlideUpdate((payload) => {
-  const { type, text, copyright: copy, backgroundPath, logoPath, styleJson } = payload;
+  const { type, text, copyright: copy, backgroundPath, logoPath, logoScaleMode, styleJson } = payload;
 
   if (type === 'clear') {
-    bg.innerHTML = '';
+    // Keep the background — only clear text and copyright.
+    setBackground(backgroundPath);
     textEl.className = '';
     textEl.innerHTML = '';
     copyright.textContent = '';
@@ -70,7 +83,7 @@ window.cueOutput.onSlideUpdate((payload) => {
   if (type === 'logo') {
     bg.innerHTML = '';
     textEl.className = 'logo-mode';
-    textEl.innerHTML = logoPath ? `<img class="logo-img" src="${pathToUrl(logoPath)}" alt="Logo" />` : '';
+    setLogoMedia(logoPath, logoScaleMode);
     copyright.textContent = '';
     return;
   }

@@ -73,12 +73,40 @@ export function removeItem(itemId) {
   getDb().prepare('DELETE FROM service_items WHERE id=?').run(itemId);
 }
 
+export function clearItems(serviceId) {
+  getDb().prepare('DELETE FROM service_items WHERE service_id=?').run(serviceId);
+}
+
 export function setItemBackground(itemId, mediaId) {
-  getDb().prepare('UPDATE service_items SET background_override_id=? WHERE id=?').run(mediaId || null, itemId);
+  const db = getDb();
+  db.prepare('UPDATE service_items SET background_override_id=? WHERE id=?').run(mediaId || null, itemId);
+  const item = db.prepare('SELECT item_type, ref_id FROM service_items WHERE id=?').get(itemId);
+  if (item?.item_type === 'song' && item.ref_id) {
+    db.prepare(`UPDATE songs SET default_background_id=?, updated_at=datetime('now') WHERE id=?`).run(mediaId || null, item.ref_id);
+  }
 }
 
 export function setItemNotes(itemId, notes) {
   getDb().prepare('UPDATE service_items SET notes=? WHERE id=?').run(notes || null, itemId);
+}
+
+export function applyBackgroundToRundown(serviceId, mediaId) {
+  const db = getDb();
+  const songItems = db
+    .prepare(`SELECT DISTINCT ref_id FROM service_items WHERE service_id=? AND item_type='song' AND ref_id IS NOT NULL`)
+    .all(serviceId);
+
+  if (!songItems.length) return 0;
+
+  db.prepare(`UPDATE service_items SET background_override_id=? WHERE service_id=? AND item_type='song'`)
+    .run(mediaId || null, serviceId);
+
+  const updateSong = db.prepare(`UPDATE songs SET default_background_id=?, updated_at=datetime('now') WHERE id=?`);
+  db.transaction(() => {
+    songItems.forEach(({ ref_id }) => updateSong.run(mediaId || null, ref_id));
+  })();
+
+  return songItems.length;
 }
 
 export function duplicateItem(itemId) {

@@ -10,7 +10,7 @@ const NAV_ITEMS = [
   { id: 'live',     icon: 'sensors',         label: 'Live' },
 ];
 
-export default function SettingsView({ onClose }) {
+export default function SettingsView({ onClose, activeServiceId, onRundownCleared, onRundownDeleted, onLibraryCleared }) {
   return (
     <div className="flex h-full bg-background">
       {/* Side navigation */}
@@ -46,7 +46,12 @@ export default function SettingsView({ onClose }) {
 
         <OutputChannels />
         <LogoSettings />
-        <BackgroundSettings />
+        <BackgroundSettings
+          activeServiceId={activeServiceId}
+          onRundownCleared={onRundownCleared}
+          onRundownDeleted={onRundownDeleted}
+          onLibraryCleared={onLibraryCleared}
+        />
       </main>
     </div>
   );

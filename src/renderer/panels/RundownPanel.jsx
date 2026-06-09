@@ -8,6 +8,8 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import ContextMenu from '../components/ContextMenu';
 import MediaPickerModal from '../components/MediaPickerModal';
+import SongPreviewModal from '../components/SongPreviewModal';
+import SongEditor from '../components/SongEditor';
 import { mediaUrl } from '../utils/mediaUrl';
 
 function SortableItem({ item, index, isPreview, isLive, onClick, onDoubleClick, onContextMenu }) {
@@ -126,6 +128,8 @@ export default function RundownPanel({
   const [showNewService, setShowNewService] = useState(false);
   const [newServiceTitle, setNewServiceTitle] = useState('');
   const [bgPickerForItem, setBgPickerForItem] = useState(null);
+  const [previewSong, setPreviewSong] = useState(null);
+  const [editSong, setEditSong] = useState(null);
 
   const items = serviceData?.items || [];
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -255,6 +259,19 @@ export default function RundownPanel({
             ...(contextMenu.item.item_type === 'song' ? [
               { separator: true },
               {
+                label: 'Preview',
+                onClick: () => { setPreviewSong(contextMenu.item.song); setContextMenu(null); },
+              },
+              {
+                label: 'Edit',
+                onClick: async () => {
+                  const full = await window.cue.songs.get(contextMenu.item.song.id);
+                  setEditSong(full);
+                  setContextMenu(null);
+                },
+              },
+              { separator: true },
+              {
                 label: 'Set Background Override',
                 onClick: () => { setBgPickerForItem(contextMenu.item); setContextMenu(null); },
               },
@@ -281,11 +298,36 @@ export default function RundownPanel({
         <MediaPickerModal
           initialId={bgPickerForItem.background_override?.id ?? null}
           onSelect={async (asset) => {
-            await window.cue.services.setItemBackground(bgPickerForItem.id, asset?.id ?? null);
+            const mediaId = asset?.id ?? null;
+            await window.cue.services.setItemBackground(bgPickerForItem.id, mediaId);
+            if (bgPickerForItem.item_type === 'song' && bgPickerForItem.song?.id) {
+              await window.cue.songs.setBackground(bgPickerForItem.song.id, mediaId);
+            }
             onRefresh?.();
             setBgPickerForItem(null);
           }}
           onClose={() => setBgPickerForItem(null)}
+        />
+      )}
+
+      {previewSong && (
+        <SongPreviewModal
+          song={previewSong}
+          onClose={() => setPreviewSong(null)}
+          onEdit={async (song) => {
+            const full = await window.cue.songs.get(song.id);
+            setPreviewSong(null);
+            setEditSong(full);
+          }}
+          onAddToRundown={() => setPreviewSong(null)}
+        />
+      )}
+
+      {editSong !== null && (
+        <SongEditor
+          song={editSong}
+          onClose={() => setEditSong(null)}
+          onSave={() => { setEditSong(null); onRefresh?.(); }}
         />
       )}
     </div>

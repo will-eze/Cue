@@ -1,311 +1,467 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 
 export default function OutputChannels() {
   const [channels, setChannels] = useState([]);
-  const [screens, setScreens] = useState([]);
-  const [editing, setEditing] = useState(null);
-  const [newChannel, setNewChannel] = useState(null);
+  const [monitors, setMonitors] = useState([]); // all monitors flat list
+  const [screens, setScreens] = useState([]);   // connected physical displays
+  const [creatingChannel, setCreatingChannel] = useState(false);
+  const [newChannel, setNewChannel] = useState({ name: '', type: 'screen', template: 'fullscreen' });
 
-  useEffect(() => {
-    load();
-    window.cue.output.screens.list().then(setScreens);
+  const load = useCallback(async () => {
+    const [chs, mons, scrs] = await Promise.all([
+      window.cue.output.channels.list(),
+      window.cue.output.monitors.list(),
+      window.cue.output.screens.list(),
+    ]);
+    setChannels(chs);
+    setMonitors(mons);
+    setScreens(scrs);
   }, []);
 
-  function load() {
-    window.cue.output.channels.list().then(setChannels);
-  }
+  useEffect(() => { load(); }, [load]);
 
-  async function handleCreate() {
-    setNewChannel({ name: '', type: 'screen', template: 'fullscreen', active: 1 });
-  }
-
-  async function handleSaveNew() {
+  async function handleCreateChannel() {
     if (!newChannel.name.trim()) return;
     await window.cue.output.channels.create(newChannel);
-    setNewChannel(null);
+    setCreatingChannel(false);
+    setNewChannel({ name: '', type: 'screen', template: 'fullscreen' });
     load();
   }
 
-  async function handleUpdate(id, data) {
+  async function handleUpdateChannel(id, data) {
     await window.cue.output.channels.update(id, data);
-    setEditing(null);
     load();
   }
 
-  async function handleDelete(id) {
-    if (!confirm('Delete this output channel?')) return;
+  async function handleDeleteChannel(id) {
+    if (!confirm('Delete this channel and remove all its assigned screens?')) return;
     await window.cue.output.channels.delete(id);
     load();
   }
 
-  async function handleAssignDisplay(channelId, display) {
-    await window.cue.output.channels.update(channelId, {
+  async function handleAddMonitor(channelId, display) {
+    await window.cue.output.monitors.create(channelId, {
       display_bounds: JSON.stringify(display.bounds),
-      display_index: null,
+      label: display.label,
     });
     load();
   }
 
+  async function handleRemoveMonitor(monitorId) {
+    await window.cue.output.monitors.delete(monitorId);
+    load();
+  }
+
+  const channelMonitors = (channelId) => monitors.filter((m) => m.channel_id === channelId);
+
+  // Which displays are already assigned to ANY channel (for showing assignment state)
+  const assignedBounds = new Set(monitors.map((m) => m.display_bounds));
+
   return (
     <section className="space-y-md">
+      {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-headline-md font-semibold text-on-surface flex items-center gap-sm">
-          <span className="material-symbols-outlined text-primary">monitor</span>
-          Output Channels
-        </h2>
+        <div>
+          <h2 className="text-headline-md font-semibold text-on-surface flex items-center gap-sm">
+            <span className="material-symbols-outlined text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>
+              monitor
+            </span>
+            Output Channels
+          </h2>
+          <p className="text-body-sm text-on-surface-variant mt-xs">
+            Channels define what is displayed. Assign one or more screens to a channel — all update simultaneously on GO.
+          </p>
+        </div>
         <button
-          onClick={handleCreate}
-          className="bg-primary text-on-primary px-md py-xs rounded text-label-sm font-label-sm font-bold flex items-center gap-xs hover:brightness-110 active:scale-95 transition-all cursor-pointer"
+          onClick={() => setCreatingChannel(true)}
+          className="bg-primary-container text-on-primary px-md py-sm rounded-lg text-label-sm font-label-sm font-bold flex items-center gap-xs hover:brightness-110 active:scale-95 transition-all cursor-pointer shrink-0"
         >
           <span className="material-symbols-outlined text-[14px]">add</span>
-          Add Output
+          New Channel
         </button>
       </div>
 
-      {/* Connected displays info */}
+      {/* Connected displays strip */}
       {screens.length > 0 && (
-        <div className="flex flex-wrap gap-sm">
+        <div className="flex items-center gap-sm flex-wrap">
+          <span className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em] shrink-0">
+            Connected:
+          </span>
           {screens.map((d) => (
-            <div key={d.id} className="bg-surface-container border border-outline-variant/30 rounded px-sm py-xs text-label-sm font-label-sm text-on-surface-variant">
+            <span
+              key={d.id}
+              className="inline-flex items-center gap-xs bg-surface-container border border-outline-variant/30 rounded px-sm py-[3px] text-label-sm font-label-sm text-on-surface-variant"
+            >
+              <span className="material-symbols-outlined text-[12px] text-outline">monitor</span>
               {d.label}
-            </div>
+            </span>
           ))}
         </div>
       )}
 
       {/* New channel form */}
-      {newChannel && (
-        <div className="bg-surface-container border border-outline-variant/30 rounded-xl p-md space-y-md">
-          <h3 className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wider">New Output Channel</h3>
-          <div className="grid grid-cols-2 gap-md">
-            <Field label="Channel Name">
+      {creatingChannel && (
+        <div className="bg-surface-container-low border border-primary/20 rounded-xl p-md space-y-md ring-1 ring-primary/10">
+          <h3 className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em]">
+            New Channel
+          </h3>
+          <div className="grid grid-cols-3 gap-md">
+            <Field label="Channel Name" className="col-span-1">
               <input
                 autoFocus
                 value={newChannel.name}
                 onChange={(e) => setNewChannel({ ...newChannel, name: e.target.value })}
-                className="field-input"
+                onKeyDown={(e) => { if (e.key === 'Enter') handleCreateChannel(); if (e.key === 'Escape') setCreatingChannel(false); }}
                 placeholder="e.g. Main Auditorium"
+                className="field-input w-full"
               />
-            </Field>
-            <Field label="Output Type">
-              <select
-                value={newChannel.type}
-                onChange={(e) => setNewChannel({ ...newChannel, type: e.target.value })}
-                className="field-input"
-              >
-                <option value="screen">Screen Output</option>
-                <option value="ndi">NDI Stream</option>
-              </select>
             </Field>
             <Field label="Template">
               <select
                 value={newChannel.template}
                 onChange={(e) => setNewChannel({ ...newChannel, template: e.target.value })}
-                className="field-input"
+                className="field-input w-full"
               >
                 <option value="fullscreen">Fullscreen</option>
                 <option value="lowerthird">Lower Third</option>
               </select>
             </Field>
           </div>
-          <div className="flex gap-md justify-end pt-sm">
-            <button onClick={() => setNewChannel(null)} className="text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface cursor-pointer transition-colors px-md py-xs">
+          <div className="flex gap-sm justify-end">
+            <button
+              onClick={() => { setCreatingChannel(false); setNewChannel({ name: '', type: 'screen', template: 'fullscreen' }); }}
+              className="px-md py-sm text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface border border-outline-variant/30 rounded-lg cursor-pointer transition-colors"
+            >
               Cancel
             </button>
-            <button onClick={handleSaveNew} className="bg-primary text-on-primary px-md py-xs rounded text-label-sm font-label-sm font-bold hover:brightness-110 active:scale-95 cursor-pointer transition-all">
-              Create Channel
+            <button
+              onClick={handleCreateChannel}
+              disabled={!newChannel.name.trim()}
+              className="px-md py-sm text-label-sm font-label-sm font-bold bg-primary-container text-on-primary rounded-lg hover:brightness-110 active:scale-95 cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Create
             </button>
           </div>
         </div>
       )}
 
-      {/* Channels grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-gutter">
-        {channels.length === 0 ? (
-          <div className="col-span-3 text-center py-8 text-on-surface-variant text-body-md">
-            No output channels configured
-          </div>
-        ) : (
-          channels.map((ch) => (
-            <div key={ch.id}>
-              {editing?.id === ch.id ? (
-                <ChannelEditForm
-                  channel={editing}
-                  screens={screens}
-                  onChange={(data) => setEditing({ ...editing, ...data })}
-                  onSave={() => handleUpdate(ch.id, editing)}
-                  onCancel={() => setEditing(null)}
-                  onAssignDisplay={(d) => handleAssignDisplay(ch.id, d)}
-                />
-              ) : (
-                <ChannelCard
-                  channel={ch}
-                  onEdit={() => setEditing({ ...ch })}
-                  onDelete={() => handleDelete(ch.id)}
-                />
-              )}
-            </div>
-          ))
-        )}
-      </div>
+      {/* Channel cards */}
+      {channels.length === 0 && !creatingChannel ? (
+        <EmptyState onAdd={() => setCreatingChannel(true)} />
+      ) : (
+        <div className="space-y-gutter">
+          {channels.map((ch) => (
+            <ChannelCard
+              key={ch.id}
+              channel={ch}
+              monitors={channelMonitors(ch.id)}
+              screens={screens}
+              assignedBounds={assignedBounds}
+              onUpdate={(data) => handleUpdateChannel(ch.id, data)}
+              onDelete={() => handleDeleteChannel(ch.id)}
+              onAddMonitor={(display) => handleAddMonitor(ch.id, display)}
+              onRemoveMonitor={handleRemoveMonitor}
+            />
+          ))}
+        </div>
+      )}
     </section>
   );
 }
 
-function ChannelCard({ channel, onEdit, onDelete }) {
+// ─── Channel Card ────────────────────────────────────────────────────────────
+
+function ChannelCard({ channel, monitors, screens, assignedBounds, onUpdate, onDelete, onAddMonitor, onRemoveMonitor }) {
+  const [editing, setEditing] = useState(false);
+  const [editData, setEditData] = useState({});
+  const [showScreenPicker, setShowScreenPicker] = useState(false);
   const isActive = !!channel.active;
-  const bounds = channel.display_bounds ? JSON.parse(channel.display_bounds) : null;
-  const typeIcon = channel.type === 'ndi' ? 'settings_input_antenna' : 'screen_share';
+
+  function startEdit() {
+    setEditData({ name: channel.name, template: channel.template, active: channel.active });
+    setEditing(true);
+  }
+
+  async function saveEdit() {
+    await onUpdate(editData);
+    setEditing(false);
+  }
+
+  const templateLabel = channel.template === 'lowerthird' ? 'Lower Third' : 'Fullscreen';
+  const monitorCount = monitors.length;
 
   return (
-    <div className={`bg-surface-container p-md border rounded-xl space-y-sm transition-all cursor-pointer group ${
-      isActive ? 'border-primary/30' : 'border-outline-variant/30 opacity-70 grayscale hover:opacity-100 hover:grayscale-0'
-    }`}
-    style={isActive ? { boxShadow: '0 0 12px rgba(173,198,255,0.1)' } : {}}
-    onClick={onEdit}
-    >
-      <div className="flex justify-between items-start">
-        <div className="p-xs bg-primary-container/20 rounded">
-          <span className="material-symbols-outlined text-primary text-xl">{typeIcon}</span>
-        </div>
-        <span className={`text-[10px] font-label-sm px-sm py-[2px] rounded-full font-bold uppercase ${
-          isActive
-            ? 'bg-tertiary-container text-on-tertiary-container'
-            : 'bg-surface-variant text-on-surface-variant'
-        }`}>
-          {isActive ? 'ACTIVE' : 'INACTIVE'}
-        </span>
+    <div className={`bg-surface-container-low border rounded-xl overflow-hidden transition-all ${
+      isActive ? 'border-outline-variant/40' : 'border-outline-variant/20 opacity-60'
+    }`}>
+      {/* Channel header */}
+      <div className="flex items-center gap-md px-md py-sm bg-surface-container-high border-b border-outline-variant/20">
+        {/* Active dot */}
+        <span className={`w-[7px] h-[7px] rounded-full shrink-0 ${isActive ? 'bg-tertiary' : 'bg-outline-variant'}`} />
+
+        {editing ? (
+          /* Inline edit row */
+          <div className="flex items-center gap-sm flex-1 min-w-0">
+            <input
+              autoFocus
+              value={editData.name}
+              onChange={(e) => setEditData({ ...editData, name: e.target.value })}
+              onKeyDown={(e) => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') setEditing(false); }}
+              className="bg-surface-container-lowest border border-primary/40 rounded px-sm py-[3px] text-body-md text-on-surface outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 flex-1 min-w-0"
+            />
+            <select
+              value={editData.template}
+              onChange={(e) => setEditData({ ...editData, template: e.target.value })}
+              className="bg-surface-container-lowest border border-outline-variant/30 rounded px-sm py-[3px] text-label-sm font-label-sm text-on-surface outline-none focus:border-primary shrink-0"
+            >
+              <option value="fullscreen">Fullscreen</option>
+              <option value="lowerthird">Lower Third</option>
+            </select>
+            <label className="flex items-center gap-xs cursor-pointer shrink-0">
+              <input
+                type="checkbox"
+                checked={!!editData.active}
+                onChange={(e) => setEditData({ ...editData, active: e.target.checked ? 1 : 0 })}
+                className="w-3.5 h-3.5 rounded accent-primary"
+              />
+              <span className="text-label-sm font-label-sm text-on-surface-variant">Active</span>
+            </label>
+            <button
+              onClick={saveEdit}
+              className="px-sm py-[3px] text-label-sm font-label-sm font-bold bg-primary-container text-on-primary rounded cursor-pointer hover:brightness-110 transition-all shrink-0"
+            >
+              Save
+            </button>
+            <button
+              onClick={() => setEditing(false)}
+              className="text-on-surface-variant hover:text-on-surface cursor-pointer shrink-0"
+            >
+              <span className="material-symbols-outlined text-[16px]">close</span>
+            </button>
+          </div>
+        ) : (
+          /* Display row */
+          <div className="flex items-center gap-sm flex-1 min-w-0">
+            <span className="text-body-md font-semibold text-on-surface truncate">{channel.name}</span>
+            <span className="shrink-0 text-[10px] font-label-sm uppercase tracking-[0.04em] px-xs py-[1px] rounded border border-outline-variant/40 text-on-surface-variant">
+              {templateLabel}
+            </span>
+            <span className="text-label-sm font-label-sm text-on-surface-variant shrink-0">
+              {monitorCount === 0 ? 'no screens' : `${monitorCount} screen${monitorCount !== 1 ? 's' : ''}`}
+            </span>
+
+            <div className="flex-1" />
+
+            <button
+              onClick={startEdit}
+              className="text-on-surface-variant hover:text-on-surface cursor-pointer transition-colors p-xs rounded hover:bg-surface-container-highest"
+              title="Edit channel"
+            >
+              <span className="material-symbols-outlined text-[15px]">edit</span>
+            </button>
+            <button
+              onClick={onDelete}
+              className="text-on-surface-variant hover:text-error cursor-pointer transition-colors p-xs rounded hover:bg-error/10"
+              title="Delete channel"
+            >
+              <span className="material-symbols-outlined text-[15px]">delete</span>
+            </button>
+          </div>
+        )}
       </div>
-      <div>
-        <h3 className="text-headline-md font-semibold text-on-surface">{channel.name}</h3>
-        <p className="text-label-sm font-label-sm text-on-surface-variant">
-          Type: {channel.type === 'ndi' ? 'NDI Stream' : 'Physical Screen'}
+
+      {/* Monitors area */}
+      <div className="p-md">
+        {monitors.length === 0 && !showScreenPicker ? (
+          <button
+            onClick={() => setShowScreenPicker(true)}
+            className="w-full flex flex-col items-center justify-center gap-sm py-lg border-2 border-dashed border-outline-variant/30 rounded-lg hover:border-primary/40 hover:bg-primary/5 transition-all cursor-pointer group"
+          >
+            <span className="material-symbols-outlined text-2xl text-outline-variant group-hover:text-primary transition-colors">
+              add_to_queue
+            </span>
+            <span className="text-label-sm font-label-sm text-on-surface-variant group-hover:text-primary transition-colors uppercase tracking-[0.05em]">
+              Assign a Screen
+            </span>
+          </button>
+        ) : (
+          <div className="flex flex-wrap gap-sm items-start">
+            {/* Assigned monitor tiles */}
+            {monitors.map((m) => (
+              <MonitorTile
+                key={m.id}
+                monitor={m}
+                screens={screens}
+                onRemove={() => onRemoveMonitor(m.id)}
+              />
+            ))}
+
+            {/* Add screen button */}
+            {!showScreenPicker && (
+              <button
+                onClick={() => setShowScreenPicker(true)}
+                className="flex flex-col items-center justify-center gap-xs w-[100px] aspect-video border-2 border-dashed border-outline-variant/30 rounded-lg hover:border-primary/40 hover:bg-primary/5 transition-all cursor-pointer group"
+              >
+                <span className="material-symbols-outlined text-xl text-outline-variant group-hover:text-primary transition-colors">add</span>
+                <span className="text-[10px] font-label-sm text-on-surface-variant group-hover:text-primary transition-colors uppercase tracking-[0.04em]">Add Screen</span>
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Screen picker (inline) */}
+        {showScreenPicker && (
+          <ScreenPicker
+            screens={screens}
+            assignedBounds={new Set(monitors.map((m) => m.display_bounds))}
+            onPick={(display) => { onAddMonitor(display); setShowScreenPicker(false); }}
+            onClose={() => setShowScreenPicker(false)}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Monitor Tile ─────────────────────────────────────────────────────────────
+
+function MonitorTile({ monitor, screens, onRemove }) {
+  const bounds = monitor.display_bounds ? JSON.parse(monitor.display_bounds) : null;
+  const screen = bounds
+    ? screens.find(
+        (s) =>
+          s.bounds.x === bounds.x &&
+          s.bounds.y === bounds.y &&
+          s.bounds.width === bounds.width &&
+          s.bounds.height === bounds.height,
+      )
+    : null;
+  const isConnected = !!screen;
+  const label = screen?.label || (bounds ? `${bounds.width}×${bounds.height}` : 'Unknown');
+
+  return (
+    <div className={`relative group flex flex-col items-center justify-between w-[100px] aspect-video rounded-lg border-2 p-xs transition-all ${
+      isConnected
+        ? 'border-primary/40 bg-primary/5'
+        : 'border-error/30 bg-error/5'
+    }`}>
+      <span
+        className={`material-symbols-outlined text-xl ${isConnected ? 'text-primary' : 'text-error'}`}
+        style={{ fontVariationSettings: "'FILL' 1" }}
+      >
+        {isConnected ? 'monitor' : 'monitor_off'}
+      </span>
+      <span className="text-[10px] font-label-sm text-on-surface-variant text-center leading-tight line-clamp-2 w-full">
+        {label}
+      </span>
+      {!isConnected && (
+        <span className="absolute top-1 left-1 text-[9px] font-label-sm text-error uppercase">
+          Disconnected
+        </span>
+      )}
+      <button
+        onClick={onRemove}
+        className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-surface-container-high border border-outline-variant/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:bg-error hover:border-error hover:text-white"
+        title="Remove screen"
+      >
+        <span className="material-symbols-outlined text-[11px]">close</span>
+      </button>
+    </div>
+  );
+}
+
+// ─── Screen Picker ────────────────────────────────────────────────────────────
+
+function ScreenPicker({ screens, assignedBounds, onPick, onClose }) {
+  return (
+    <div className="mt-sm border border-primary/20 rounded-xl bg-surface-container-lowest p-md space-y-sm ring-1 ring-primary/10">
+      <div className="flex items-center justify-between">
+        <span className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em]">
+          Select a screen to assign
+        </span>
+        <button onClick={onClose} className="text-on-surface-variant hover:text-on-surface cursor-pointer">
+          <span className="material-symbols-outlined text-[16px]">close</span>
+        </button>
+      </div>
+
+      {screens.length === 0 ? (
+        <p className="text-body-sm text-on-surface-variant py-sm">
+          No displays detected. Connect a monitor and restart the app.
+        </p>
+      ) : (
+        <div className="flex flex-wrap gap-sm">
+          {screens.map((d) => {
+            const boundsStr = JSON.stringify(d.bounds);
+            const isAssigned = assignedBounds.has(boundsStr);
+            return (
+              <button
+                key={d.id}
+                disabled={isAssigned}
+                onClick={() => onPick(d)}
+                className={`relative flex flex-col items-center justify-center gap-xs w-[110px] aspect-video rounded-lg border-2 transition-all cursor-pointer ${
+                  isAssigned
+                    ? 'border-primary/40 bg-primary/10 cursor-not-allowed opacity-60'
+                    : 'border-outline-variant/30 hover:border-primary hover:bg-primary/5'
+                }`}
+              >
+                <span className={`material-symbols-outlined text-xl ${isAssigned ? 'text-primary' : 'text-outline'}`}
+                  style={{ fontVariationSettings: isAssigned ? "'FILL' 1" : "'FILL' 0" }}
+                >
+                  monitor
+                </span>
+                <span className="text-[10px] font-label-sm text-on-surface-variant text-center leading-tight px-xs">
+                  {d.label}
+                </span>
+                {isAssigned && (
+                  <span
+                    className="absolute top-1 right-1 material-symbols-outlined text-primary text-sm"
+                    style={{ fontVariationSettings: "'FILL' 1" }}
+                  >
+                    check_circle
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Empty State ──────────────────────────────────────────────────────────────
+
+function EmptyState({ onAdd }) {
+  return (
+    <button
+      onClick={onAdd}
+      className="w-full flex flex-col items-center justify-center gap-md py-2xl border-2 border-dashed border-outline-variant/20 rounded-xl hover:border-primary/30 hover:bg-primary/5 transition-all cursor-pointer group"
+    >
+      <span className="material-symbols-outlined text-4xl text-outline-variant group-hover:text-primary transition-colors">
+        add_to_queue
+      </span>
+      <div className="text-center">
+        <p className="text-body-md text-on-surface-variant group-hover:text-on-surface transition-colors">
+          No output channels configured
+        </p>
+        <p className="text-label-sm font-label-sm text-outline group-hover:text-primary transition-colors mt-xs uppercase tracking-[0.05em]">
+          Click to create your first channel
         </p>
       </div>
-      {bounds && (
-        <div className="pt-sm flex items-center gap-lg border-t border-outline-variant/30">
-          <div className="flex flex-col">
-            <span className="text-[10px] uppercase font-label-sm text-outline">Resolution</span>
-            <span className="text-label-sm font-label-sm">{bounds.width} × {bounds.height}</span>
-          </div>
-          {channel.ndi_fps && (
-            <div className="flex flex-col">
-              <span className="text-[10px] uppercase font-label-sm text-outline">Frame Rate</span>
-              <span className="text-label-sm font-label-sm">{channel.ndi_fps} fps</span>
-            </div>
-          )}
-        </div>
-      )}
-      <div className="flex gap-sm pt-xs opacity-0 group-hover:opacity-100 transition-opacity">
-        <button
-          onClick={(e) => { e.stopPropagation(); onEdit(); }}
-          className="text-label-sm font-label-sm text-primary hover:underline cursor-pointer"
-        >
-          Edit
-        </button>
-        <button
-          onClick={(e) => { e.stopPropagation(); onDelete(); }}
-          className="text-label-sm font-label-sm text-error hover:underline cursor-pointer"
-        >
-          Delete
-        </button>
-      </div>
-    </div>
+    </button>
   );
 }
 
-function ChannelEditForm({ channel, screens, onChange, onSave, onCancel, onAssignDisplay }) {
+// ─── Field Wrapper ────────────────────────────────────────────────────────────
+
+function Field({ label, children, className = '' }) {
   return (
-    <div className="bg-surface-container border border-primary/30 rounded-xl p-md space-y-md" style={{ boxShadow: '0 0 12px rgba(173,198,255,0.1)' }}>
-      <h3 className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wider">Edit: {channel.name}</h3>
-      <div className="grid grid-cols-2 gap-md">
-        <Field label="Channel Name">
-          <input
-            value={channel.name}
-            onChange={(e) => onChange({ name: e.target.value })}
-            className="field-input"
-          />
-        </Field>
-        <Field label="Template">
-          <select
-            value={channel.template}
-            onChange={(e) => onChange({ template: e.target.value })}
-            className="field-input"
-          >
-            <option value="fullscreen">Fullscreen</option>
-            <option value="lowerthird">Lower Third</option>
-          </select>
-        </Field>
-        {channel.type === 'ndi' && (
-          <Field label="Frame Rate">
-            <select
-              value={channel.ndi_fps || 30}
-              onChange={(e) => onChange({ ndi_fps: Number(e.target.value) })}
-              className="field-input"
-            >
-              {[24, 25, 30, 50, 60].map((fps) => <option key={fps} value={fps}>{fps} fps</option>)}
-            </select>
-          </Field>
-        )}
-        <div className="flex items-center gap-sm col-span-2">
-          <label className="flex items-center gap-sm cursor-pointer">
-            <input
-              type="checkbox"
-              checked={!!channel.active}
-              onChange={(e) => onChange({ active: e.target.checked ? 1 : 0 })}
-              className="w-4 h-4 rounded border-outline-variant bg-surface-container text-primary"
-            />
-            <span className="text-label-sm font-label-sm text-on-surface-variant">Active</span>
-          </label>
-        </div>
-      </div>
-
-      {channel.type === 'screen' && screens.length > 0 && (
-        <div className="space-y-xs">
-          <label className="text-label-sm font-label-sm text-on-surface-variant uppercase">Assign Display</label>
-          <div className="grid grid-cols-2 gap-sm">
-            {screens.map((d) => {
-              const assigned = channel.display_bounds && JSON.stringify(d.bounds) === channel.display_bounds;
-              return (
-                <button
-                  key={d.id}
-                  onClick={() => onAssignDisplay(d)}
-                  className={`aspect-video bg-surface-container-lowest border-2 rounded relative flex flex-col items-center justify-center text-center p-xs cursor-pointer transition-all ${
-                    assigned ? 'border-primary' : 'border-outline-variant/30 hover:border-primary/50'
-                  }`}
-                >
-                  <span className={`material-symbols-outlined mb-1 ${assigned ? 'text-primary' : 'text-outline-variant'}`}>monitor</span>
-                  <span className="text-[10px] font-label-sm text-on-surface leading-tight">{d.label}</span>
-                  {assigned && (
-                    <span className="absolute top-1 right-1 material-symbols-outlined text-primary text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>
-                      check_circle
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      <div className="flex gap-md justify-end pt-sm border-t border-outline-variant/20">
-        <button onClick={onCancel} className="text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface cursor-pointer transition-colors px-md py-xs border border-outline/30 rounded">
-          Cancel
-        </button>
-        <button onClick={onSave} className="bg-primary text-on-primary px-md py-xs rounded text-label-sm font-label-sm font-bold hover:brightness-110 active:scale-95 cursor-pointer transition-all">
-          Save Channel
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function Field({ label, children }) {
-  return (
-    <div className="space-y-xs">
-      <label className="text-[11px] font-label-sm text-on-surface-variant uppercase tracking-wider">{label}</label>
+    <div className={`space-y-xs ${className}`}>
+      <label className="text-[10px] font-label-sm text-on-surface-variant uppercase tracking-[0.06em]">
+        {label}
+      </label>
       {React.cloneElement(children, {
-        className: `${children.props.className || ''} w-full bg-surface-container-lowest border border-outline-variant/30 rounded px-md py-sm text-body-md text-on-surface outline-none transition-all`.trim(),
+        className: `${children.props.className || ''} bg-surface-container-lowest border border-outline-variant/30 rounded-lg px-sm py-xs text-body-md text-on-surface outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-all`.trim(),
       })}
     </div>
   );

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import OperatorView from './views/OperatorView';
+import MultiviewView from './views/MultiviewView';
 import SettingsView from './views/SettingsView';
 
 const platform = window.cue.platform; // 'darwin' | 'win32' | 'linux'
@@ -8,8 +9,13 @@ const isWin    = platform === 'win32';
 
 export default function App() {
   const [view, setView] = useState('operator');
+  const [bgRefreshTick, setBgRefreshTick] = useState(0);
+  const [activeServiceId, setActiveServiceId] = useState(null);
   const [ndiWarning, setNdiWarning] = useState(false);
   const [headerState, setHeaderState] = useState({ isLive: false, canGo: false });
+  const [outputWindows, setOutputWindows] = useState(0);
+  const [outputsEnabled, setOutputsEnabled] = useState(true);
+  const [displayMode, setDisplayMode] = useState('idle');
   const [clock, setClock] = useState(() => formatTime());
   const transportRef = useRef({ go: () => {}, clear: () => {}, logo: () => {} });
 
@@ -18,6 +24,16 @@ export default function App() {
       if (channels.length > 0) setView('settings');
     });
     window.cue.on('output:ndi-unavailable', () => setNdiWarning(true));
+    window.cue.on('output:state-changed', (s) => {
+      setOutputWindows(s.activeWindows ?? 0);
+      setOutputsEnabled(s.outputsEnabled ?? true);
+      setDisplayMode(s.displayMode ?? 'idle');
+    });
+    window.cue.output.getState().then((s) => {
+      setOutputWindows(s.activeWindows ?? 0);
+      setOutputsEnabled(s.outputsEnabled ?? true);
+      setDisplayMode(s.displayMode ?? 'idle');
+    });
   }, []);
 
   useEffect(() => {
@@ -43,7 +59,11 @@ export default function App() {
         >
           <span className="font-bold text-headline-md text-primary tracking-tight">Cue</span>
           <nav className="flex gap-xs h-full items-center">
-            <NavTab label="Operator" active={view === 'operator'} onClick={() => setView('operator')} />
+            <NavTab label="Operator" active={view === 'operator'} onClick={() => {
+              if (view === 'settings') setBgRefreshTick((t) => t + 1);
+              setView('operator');
+            }} />
+            <NavTab label="Multiview" active={view === 'multiview'} onClick={() => setView('multiview')} />
             <NavTab label="Settings" active={view === 'settings'} onClick={() => setView('settings')} />
           </nav>
         </div>
@@ -70,7 +90,17 @@ export default function App() {
         </div>
 
         <span className="w-px h-3 bg-outline-variant/40 shrink-0" />
-        <span className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em]">NDI: OK</span>
+        <div className="flex items-center gap-xs">
+          <span
+            className={`material-symbols-outlined text-[14px] ${outputWindows > 0 ? 'text-tertiary' : 'text-outline-variant'}`}
+            style={{ fontVariationSettings: "'FILL' 1" }}
+          >
+            monitor
+          </span>
+          <span className={`text-label-sm font-label-sm uppercase tracking-[0.05em] ${outputWindows > 0 ? 'text-tertiary' : 'text-on-surface-variant/50'}`}>
+            {outputWindows > 0 ? `${outputWindows} output${outputWindows !== 1 ? 's' : ''}` : 'No outputs'}
+          </span>
+        </div>
         <span className="w-px h-3 bg-outline-variant/40 shrink-0" />
         <span className="text-label-sm font-timecode-lg text-on-surface tabular-nums">{clock}</span>
 
@@ -98,33 +128,77 @@ export default function App() {
           GO
         </button>
 
-        {/* CLEAR */}
+        {/* CLEAR — active when text is cleared, background stays */}
         <button
           onClick={() => transportRef.current.clear()}
-          className="h-7 px-md text-label-sm font-label-sm font-bold uppercase bg-surface-container-high border border-error/50 text-error rounded transition-all active:scale-95 cursor-pointer hover:border-error hover:bg-error/5"
+          className={`h-7 px-md text-label-sm font-label-sm font-bold uppercase rounded transition-all active:scale-95 cursor-pointer flex items-center gap-xs ${
+            displayMode === 'cleared'
+              ? 'bg-error-container text-error border border-error/70 shadow-[0_0_8px_rgba(255,180,171,0.2)]'
+              : 'bg-surface-container-high border border-error/40 text-error/80 hover:border-error hover:text-error hover:bg-error/5'
+          }`}
         >
+          {displayMode === 'cleared' && (
+            <span className="w-[5px] h-[5px] rounded-full bg-error shrink-0" />
+          )}
           Clear
         </button>
 
-        {/* LOGO */}
+        {/* LOGO — active when logo is showing */}
         <button
           onClick={() => transportRef.current.logo()}
-          className="h-7 px-md text-label-sm font-label-sm font-bold uppercase bg-surface-container-high border border-primary/50 text-primary rounded transition-all active:scale-95 cursor-pointer hover:border-primary hover:bg-primary/5"
+          className={`h-7 px-md text-label-sm font-label-sm font-bold uppercase rounded transition-all active:scale-95 cursor-pointer flex items-center gap-xs ${
+            displayMode === 'logo'
+              ? 'bg-primary-container/40 text-primary border border-primary/70 shadow-[0_0_8px_rgba(173,198,255,0.2)]'
+              : 'bg-surface-container-high border border-primary/40 text-primary/80 hover:border-primary hover:text-primary hover:bg-primary/5'
+          }`}
         >
+          {displayMode === 'logo' && (
+            <span className="w-[5px] h-[5px] rounded-full bg-primary shrink-0" />
+          )}
           Logo
+        </button>
+
+        <span className="w-px h-3 bg-outline-variant/40 shrink-0" />
+
+        {/* LIVE — toggles output BrowserWindows on/off */}
+        <button
+          onClick={() => window.cue.output.setLive(!outputsEnabled)}
+          title={outputsEnabled ? 'Outputs running — click to close all output windows' : 'Outputs offline — click to open output windows'}
+          className={`h-7 px-md text-label-sm font-label-sm font-bold uppercase rounded transition-all active:scale-95 cursor-pointer flex items-center gap-xs ${
+            outputsEnabled
+              ? 'bg-secondary-container/60 border border-secondary/50 text-secondary hover:bg-secondary-container/80'
+              : 'bg-surface-container-high border border-outline-variant/30 text-on-surface-variant/50 hover:border-outline-variant/60'
+          }`}
+        >
+          <span className={`w-[5px] h-[5px] rounded-full shrink-0 transition-colors ${outputsEnabled ? 'bg-secondary animate-pulse' : 'bg-outline-variant'}`} />
+          Live
         </button>
       </div>
 
       {/* Main content */}
       <div className="flex-1 overflow-hidden">
-        {view === 'operator' ? (
+        {/* OperatorView always mounted — CSS-hidden when inactive so preview/live state survives tab switches */}
+        <div style={{ display: view === 'operator' ? 'flex' : 'none', height: '100%', flexDirection: 'column' }}>
           <OperatorView
             transportRef={transportRef}
             onStateChange={setHeaderState}
+            displayMode={displayMode}
+            bgRefreshTick={bgRefreshTick}
+            activeServiceId={activeServiceId}
+            onServiceChange={setActiveServiceId}
           />
-        ) : (
-          <SettingsView onClose={() => setView('operator')} />
-        )}
+        </div>
+        {view === 'multiview' && <MultiviewView />}
+        {view === 'settings' && <SettingsView
+          activeServiceId={activeServiceId}
+          onClose={() => { setBgRefreshTick((t) => t + 1); setView('operator'); }}
+          onRundownCleared={() => setBgRefreshTick((t) => t + 1)}
+          onRundownDeleted={(deletedId) => {
+            if (activeServiceId === deletedId) setActiveServiceId(null);
+            setBgRefreshTick((t) => t + 1);
+          }}
+          onLibraryCleared={() => setBgRefreshTick((t) => t + 1)}
+        />}
       </div>
     </div>
   );

@@ -9,6 +9,21 @@ function SongRow({ index, style, data }) {
   const { songs, selectedId, onSelect, onDoubleClick, onContextMenu } = data;
   const song = songs[index];
   const isSelected = selectedId === song.id;
+  const clickTimer = useRef(null);
+
+  function handleClick() {
+    if (clickTimer.current) {
+      clearTimeout(clickTimer.current);
+      clickTimer.current = null;
+      onDoubleClick(song.id);
+    } else {
+      clickTimer.current = setTimeout(() => {
+        clickTimer.current = null;
+        onSelect(song);
+      }, 220);
+    }
+  }
+
   return (
     <div
       style={{
@@ -22,8 +37,7 @@ function SongRow({ index, style, data }) {
         background: isSelected ? 'rgba(77,142,255,0.1)' : undefined,
         transition: 'background 80ms',
       }}
-      onClick={() => onSelect(song)}
-      onDoubleClick={() => onDoubleClick(song.id)}
+      onClick={handleClick}
       onContextMenu={(e) => onContextMenu(e, song)}
       onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = 'rgba(51,53,57,0.5)'; }}
       onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = ''; }}
@@ -130,7 +144,7 @@ function MediaGrid({ assets, onDelete, onSetBackground }) {
   );
 }
 
-export default function LibraryPanel({ onAddToRundown, onSongSave }) {
+export default function LibraryPanel({ onAddToRundown, onSongSave, refreshTick = 0 }) {
   const [tab, setTab] = useState('songs');
   const [searchQuery, setSearchQuery] = useState('');
   const [songs, setSongs] = useState([]);
@@ -147,7 +161,7 @@ export default function LibraryPanel({ onAddToRundown, onSongSave }) {
   const [activeFolderId, setActiveFolderId] = useState(null);
   const [importing, setImporting] = useState(false);
 
-  useEffect(() => { loadSongs(); window.cue.tags.list().then(setTags); }, []);
+  useEffect(() => { loadSongs(); window.cue.tags.list().then(setTags); }, [refreshTick]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (tab === 'media') loadMedia(); }, [tab, activeFolderId]);
 
   useEffect(() => {

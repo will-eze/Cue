@@ -5,6 +5,7 @@ export default function LogoSettings() {
   const [globalLogoId, setGlobalLogoId] = useState(null);
   const [globalLogoAsset, setGlobalLogoAsset] = useState(null);
   const [channels, setChannels] = useState([]);
+  const [scaleMode, setScaleMode] = useState('cover');
 
   useEffect(() => { load(); }, []);
 
@@ -15,7 +16,14 @@ export default function LogoSettings() {
       const assets = await window.cue.media.list(null);
       setGlobalLogoAsset(assets.find((a) => a.id === logoId) || null);
     }
+    const mode = await window.cue.settings.get('logo_scale_mode');
+    setScaleMode(mode ?? 'cover');
     window.cue.output.channels.list().then(setChannels);
+  }
+
+  async function handleScaleMode(mode) {
+    setScaleMode(mode);
+    await window.cue.settings.set('logo_scale_mode', mode);
   }
 
   async function handlePickLogo() {
@@ -85,6 +93,32 @@ export default function LogoSettings() {
         </div>
       </div>
 
+      {/* Scale mode */}
+      <div className="bg-surface-container border border-outline-variant/30 rounded-xl p-md space-y-sm">
+        <div>
+          <h4 className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em]">Logo Scale</h4>
+          <p className="text-body-sm text-on-surface-variant/70 mt-xs">
+            How the logo image is sized on the output screen.
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-sm">
+          <ScaleOption
+            active={scaleMode === 'contain'}
+            onClick={() => handleScaleMode('contain')}
+            icon="fit_screen"
+            label="Fit"
+            description="Full image visible. Black bars if aspect ratio differs."
+          />
+          <ScaleOption
+            active={scaleMode === 'cover'}
+            onClick={() => handleScaleMode('cover')}
+            icon="fullscreen"
+            label="Fill"
+            description="Fills screen completely. Edges may be cropped."
+          />
+        </div>
+      </div>
+
       {channels.length > 0 && (
         <div className="bg-surface-container border border-outline-variant/30 rounded-xl p-md">
           <h3 className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wider mb-sm">Per-Channel Status</h3>
@@ -101,5 +135,39 @@ export default function LogoSettings() {
         </div>
       )}
     </section>
+  );
+}
+
+function ScaleOption({ active, onClick, icon, label, description }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`text-left p-md rounded-lg border-2 transition-all cursor-pointer space-y-xs ${
+        active
+          ? 'border-primary bg-primary/8 shadow-[0_0_8px_rgba(173,198,255,0.12)]'
+          : 'border-outline-variant/30 bg-surface-container-low hover:border-outline-variant/60'
+      }`}
+    >
+      <div className="flex items-center gap-sm">
+        <span
+          className={`material-symbols-outlined text-[20px] ${active ? 'text-primary' : 'text-outline'}`}
+          style={{ fontVariationSettings: active ? "'FILL' 1" : "'FILL' 0" }}
+        >
+          {icon}
+        </span>
+        <span className={`text-label-sm font-label-sm font-bold uppercase tracking-[0.05em] ${active ? 'text-primary' : 'text-on-surface'}`}>
+          {label}
+        </span>
+        {active && (
+          <span
+            className="ml-auto material-symbols-outlined text-[14px] text-primary"
+            style={{ fontVariationSettings: "'FILL' 1" }}
+          >
+            check_circle
+          </span>
+        )}
+      </div>
+      <p className="text-body-sm text-on-surface-variant leading-snug">{description}</p>
+    </button>
   );
 }

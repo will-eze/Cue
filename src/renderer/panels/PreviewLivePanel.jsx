@@ -3,10 +3,17 @@ import SlideList from '../components/SlideList';
 import { renderWithRuns } from '../components/SongEditor';
 import { mediaUrl } from '../utils/mediaUrl';
 
-function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, liveCapture, backgroundPath }) {
+function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, liveCapture, backgroundPath, displayMode }) {
   const slides = getSlides(item ?? null);
   const slide = item ? slides[slideIdx] : null;
   const style = slide?.style_json ? JSON.parse(slide.style_json) : null;
+
+  // Show the live capture only for content/cleared — not for logo (keep showing the song)
+  // or idle (stale capture from a previous session).
+  const showCapture = isLive && !!liveCapture && (displayMode === 'content' || displayMode === 'cleared');
+  // Show the text/empty overlay unless the capture is taking the full frame,
+  // or we're in cleared mode (background shows, no text on output).
+  const showTextOverlay = !showCapture && !(isLive && displayMode === 'cleared');
 
   const className = `w-full aspect-video relative overflow-hidden bg-black rounded-lg shrink-0 ${
     isLive ? 'monitor-live' : item ? 'monitor-preview' : 'monitor-idle'
@@ -27,8 +34,8 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, liveCaptu
         </div>
       )}
 
-      {/* Live capture overlay */}
-      {isLive && liveCapture && (
+      {/* Live capture — only shown for content/cleared; logo mode keeps song visible */}
+      {showCapture && (
         <img src={liveCapture} className="absolute inset-0 w-full h-full object-cover" alt="live" style={{ zIndex: 2 }} />
       )}
 
@@ -41,27 +48,29 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, liveCaptu
         </span>
       </div>
 
-      {/* Slide text */}
-      <div className="absolute inset-0 flex items-center justify-center px-md text-center" style={{ zIndex: 3 }}>
-        {slide ? (
-          <p className="text-white text-[11px] leading-relaxed drop-shadow-lg" style={{
-            fontFamily: style?.fontFamily || undefined,
-            fontSize: style?.fontSize ? style.fontSize + 'px' : undefined,
-            textAlign: style?.align || 'center',
-            fontWeight: style?.bold ? 700 : 400,
-            fontStyle: style?.italic ? 'italic' : undefined,
-            color: style?.color || undefined,
-            lineHeight: style?.lineSpacing ? String(style.lineSpacing) : undefined,
-            textShadow: '0 1px 10px rgba(0,0,0,1), 0 2px 24px rgba(0,0,0,0.9)',
-          }}
-          dangerouslySetInnerHTML={{ __html: renderWithRuns(slide.content, style?.runs) }}
-          />
-        ) : (
-          <span className="text-label-sm font-label-sm uppercase tracking-widest text-outline-variant">
-            {emptyLabel}
-          </span>
-        )}
-      </div>
+      {/* Slide text — suppressed when capture covers the frame or output is cleared */}
+      {showTextOverlay && (
+        <div className="absolute inset-0 flex items-center justify-center px-md text-center" style={{ zIndex: 3 }}>
+          {slide ? (
+            <p className="text-white text-[11px] leading-relaxed drop-shadow-lg" style={{
+              fontFamily: style?.fontFamily || undefined,
+              fontSize: style?.fontSize ? style.fontSize + 'px' : undefined,
+              textAlign: style?.align || 'center',
+              fontWeight: style?.bold ? 700 : 400,
+              fontStyle: style?.italic ? 'italic' : undefined,
+              color: style?.color || undefined,
+              lineHeight: style?.lineSpacing ? String(style.lineSpacing) : undefined,
+              textShadow: '0 1px 10px rgba(0,0,0,1), 0 2px 24px rgba(0,0,0,0.9)',
+            }}
+            dangerouslySetInnerHTML={{ __html: renderWithRuns(slide.content, style?.runs) }}
+            />
+          ) : (
+            <span className="text-label-sm font-label-sm uppercase tracking-widest text-outline-variant">
+              {emptyLabel}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* ON AIR pulsing dot */}
       {isLive && item && (
@@ -77,7 +86,7 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, liveCaptu
 
 export default function PreviewLivePanel({
   previewItem, liveItem, previewSlideIdx, liveSlideIdx,
-  liveCapture, getSlides, previewBgPath, liveBgPath,
+  liveCapture, displayMode, getSlides, previewBgPath, liveBgPath,
   onSelectPreviewSlide, onGoAtPreviewSlide, onSelectLiveSlide,
 }) {
   const previewSlides = previewItem ? getSlides(previewItem) : [];
@@ -127,6 +136,7 @@ export default function PreviewLivePanel({
             isLive={true}
             liveCapture={liveCapture}
             backgroundPath={liveBgPath}
+            displayMode={displayMode}
           />
           {/* Live slide list */}
           <div className="flex-1 overflow-y-auto pr-xs">

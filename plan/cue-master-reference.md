@@ -97,15 +97,20 @@ src/
 │   │
 │   ├── views/
 │   │   ├── OperatorView.jsx  Three-panel layout. All transport state. Keyboard shortcuts.
-│   │   │                     Background resolution. buildPayload().
-│   │   └── SettingsView.jsx  Settings layout. Renders OutputChannels + LogoSettings + BackgroundSettings.
+│   │   │                     Background resolution. buildPayload(). Services list refreshes on bgRefreshTick.
+│   │   ├── SettingsView.jsx  Settings layout. Renders OutputChannels + LogoSettings + BackgroundSettings.
+│   │   │                     BackgroundSettings embeds DangerZone above the footer.
+│   │   └── MultiviewView.jsx Multi-output monitor wall. Subscribes to output:multiview-captures.
 │   │
 │   ├── panels/
 │   │   ├── RundownPanel.jsx       Service selector. DnD-sortable item list. Context menu.
 │   │   │                          MediaPickerModal for background override.
+│   │   │                          Right-click song items → Preview / Edit / Set Background Override.
 │   │   ├── PreviewLivePanel.jsx   Two MonitorFrames + two SlideLists. Background image rendering.
 │   │   └── LibraryPanel.jsx       Songs tab (react-window virtualised list) + Media tab (grid).
 │   │                              Song search + tag filter. Media import.
+│   │                              Single-click (220ms) → SongPreviewModal. Double-click → add to rundown.
+│   │                              Accepts refreshTick prop — reloads song list when tick changes.
 │   │
 │   ├── components/
 │   │   ├── SongEditor.jsx         Full song CRUD modal. Per-section styling toolbar.
@@ -116,9 +121,12 @@ src/
 │   │   └── ContextMenu.jsx        Generic right-click menu positioned by x/y coords.
 │   │
 │   ├── settings/
-│   │   ├── OutputChannels.jsx    Channel cards. Create/edit/delete. Display assignment.
+│   │   ├── OutputChannels.jsx    Channel cards. Create/edit/delete. Monitor assignment per channel.
 │   │   ├── LogoSettings.jsx      Global logo picker.
-│   │   └── BackgroundSettings.jsx Global song/slide background pickers. Disk usage. Data path.
+│   │   ├── BackgroundSettings.jsx Global song/slide background pickers. Bulk apply actions. Disk usage.
+│   │   │                          Embeds DangerZone above the system info footer.
+│   │   └── DangerZone.jsx        Destructive actions: clear rundown items, delete rundown, clear library.
+│   │                              Two-step confirm on every action. Success toast feedback.
 │   │
 │   └── utils/
 │       └── mediaUrl.js           mediaUrl(absPath) → cue-media://localhost/encoded/path
@@ -168,7 +176,14 @@ src/
 
 ### Migration system
 
-`schema.js` creates `db_version` table (single integer row) on first run and applies pending migrations in order inside a transaction. **Never delete `db_version`** — it is required to exist before any user-facing build. Current version: **2**.
+`schema.js` creates `db_version` table (single integer row) on first run and applies pending migrations in order inside a transaction. **Never delete `db_version`** — it is required to exist before any user-facing build. Current version: **4**.
+
+| Version | Change |
+|---|---|
+| v1 | Initial schema — all core tables |
+| v2 | Added `style_json` to `song_sections`, expanded type CHECK to include `refrain` |
+| v3 | Rebuilt `songs_fts` as plain contentless FTS5 (removed `contentless_delete=1` incompatible with Electron 30's SQLite 3.49) |
+| v4 | Added `channel_monitors` table — separates channels (content streams) from physical screen assignments |
 
 ### All tables
 
@@ -255,7 +270,7 @@ id INTEGER PRIMARY KEY AUTOINCREMENT
 name TEXT NOT NULL
 type TEXT NOT NULL CHECK(type IN ('screen','ndi'))
 display_index INTEGER          -- legacy, not used for matching
-display_bounds TEXT            -- JSON {"x":0,"y":0,"width":1920,"height":1080}
+display_bounds TEXT            -- legacy; physical screens now live in channel_monitors
 linked_channel_id INTEGER REFERENCES output_channels(id) ON DELETE SET NULL
 template TEXT NOT NULL DEFAULT 'fullscreen' CHECK(template IN ('fullscreen','lowerthird'))
 ndi_fps INTEGER DEFAULT 30
@@ -264,6 +279,17 @@ ndi_height INTEGER DEFAULT 1080
 logo_override_id INTEGER REFERENCES media_assets(id) ON DELETE SET NULL
 active INTEGER NOT NULL DEFAULT 1
 ```
+
+#### `channel_monitors` (v4)
+```sql
+id INTEGER PRIMARY KEY AUTOINCREMENT
+channel_id INTEGER NOT NULL REFERENCES output_channels(id) ON DELETE CASCADE
+display_bounds TEXT NOT NULL   -- JSON {"x":0,"y":0,"width":1920,"height":1080}
+label TEXT
+active INTEGER NOT NULL DEFAULT 1
+```
+
+One row per physical screen assigned to a channel. Multiple monitors can share a channel — all receive the same `slide:update` and display identical content simultaneously. Screen channels no longer store `display_bounds` on the channel row itself; `channel_monitors` is the source of truth. NDI channels have no `channel_monitors` rows.
 
 #### `settings`
 ```sql
@@ -370,6 +396,7 @@ All renderer↔main communication is via `ipcRenderer.invoke` / `ipcMain.handle`
 | `addTag(songId, tagId)` | void | — |
 | `removeTag(songId, tagId)` | void | — |
 | `setBackground(songId, mediaId\|null)` | void | Sets songs.default_background_id. |
+| `deleteAll()` | void | Deletes all songs, their sections, taggables, and all song-type service_items. Irreversible. |
 
 ### `window.cue.tags`
 
@@ -395,6 +422,8 @@ All renderer↔main communication is via `ipcRenderer.invoke` / `ipcMain.handle`
 | `setItemBackground(itemId, mediaId\|null)` | void | Sets background_override_id. |
 | `setItemNotes(itemId, notes)` | void | — |
 | `duplicateItem(itemId)` | `id` | Appends copy at end of rundown. |
+| `clearItems(serviceId)` | void | Removes all items from a rundown; keeps the service row. Used by Danger Zone. |
+| `applyBackgroundToRundown(serviceId, mediaId)` | `count` | Sets background_override_id on every song slot AND updates each song's default_background_id. |
 
 **`resolveItem()` shape** — what `services:get` returns per item:
 ```js
@@ -415,11 +444,17 @@ All renderer↔main communication is via `ipcRenderer.invoke` / `ipcMain.handle`
 | `go(payload)` | void | Dispatches to all active output windows. |
 | `clear()` | void | Clears all outputs, stops live capture. |
 | `logo()` | void | Shows logo on all outputs. |
-| `getState()` | `{isLive, livePayload, activeChannels:[ids]}` | — |
+| `setLive(enabled)` | void | Opens or closes all output BrowserWindows. Toggle in transport bar. |
+| `getState()` | `{isLive, livePayload, activeChannels:[ids], activeWindows, outputsEnabled, displayMode}` | — |
 | `channels.list()` | `[output_channel rows]` | — |
-| `channels.create(data)` | `channel` | Opens BrowserWindow immediately if active. |
-| `channels.update(id, data)` | `channel` | Syncs window (close+reopen). |
-| `channels.delete(id)` | void | Closes window and deletes DB row. |
+| `channels.create(data)` | `channel` | NDI channels open a BrowserWindow immediately; screen channels wait for monitor assignment. |
+| `channels.update(id, data)` | `channel` | Syncs window. |
+| `channels.delete(id)` | void | Closes window(s) and cascades to channel_monitors. |
+| `monitors.list(channelId?)` | `[channel_monitor rows]` | Pass channelId to filter. |
+| `monitors.create(channelId, {display_bounds, label})` | `monitor` | Assigns a physical screen to a channel and opens its BrowserWindow. |
+| `monitors.delete(monitorId)` | void | Closes window and removes row. |
+| `multiview.start()` | void | Begins capturing all output windows; emits `output:multiview-captures` at ~5fps. |
+| `multiview.stop()` | void | Stops multiview capture. |
 | `screens.list()` | `[{id, bounds, scaleFactor, label}]` | All connected displays. |
 
 **Output payload structure:**
@@ -473,8 +508,9 @@ All renderer↔main communication is via `ipcRenderer.invoke` / `ipcMain.handle`
 ### `window.cue.on(channel, callback)` / `window.cue.off(channel, callback)`
 Subscribe to main→renderer events. Allowed channels:
 - `output:unresolved-channels` — array of unresolved channel objects on startup
-- `output:state-changed` — fired after go/clear/logo
+- `output:state-changed` — fired after go/clear/logo/setLive; payload: `{activeWindows, outputsEnabled, displayMode}`
 - `output:live-capture` — data URL of captured output frame (every 200ms while live)
+- `output:multiview-captures` — array of `{channelId, dataUrl}` objects (~5fps, only while multiview is running)
 - `output:ndi-unavailable` — fired if grandiose is not installed
 - `shortcut:next` / `shortcut:prev` — reserved for future hardware remote
 
@@ -517,6 +553,15 @@ When building the output payload, `resolveBackground(item)` in `OperatorView.jsx
 `globalBgSong` / `globalBgSlide` are loaded in `OperatorView` on mount using `window.cue.media.get(id)` (fetches by ID, works regardless of folder). The resolved `backgroundPath` is an absolute filesystem path passed in the output payload. Output windows convert it to `cue-media://` via their inline `pathToUrl()`.
 
 Custom slides use `global_bg_slide_id`; songs use `global_bg_song_id`.
+
+### Background write-through (cross-rundown persistence)
+
+Setting a background on a rundown slot via "Set Background Override" **also writes to the song's own `default_background_id`**. This means the background follows the song into any new rundown it is later added to. Two code paths both do this:
+
+- `services.setItemBackground(itemId, mediaId)` — DB function; writes `service_items.background_override_id` AND `songs.default_background_id` when the item is a song.
+- `services.applyBackgroundToRundown(serviceId, mediaId)` — DB function; sets override on all song slots AND updates each distinct song's `default_background_id`.
+
+The renderer's `RundownPanel` also calls `window.cue.songs.setBackground` after the picker resolves, as a belt-and-suspenders measure.
 
 ---
 
@@ -764,7 +809,7 @@ No-header fallback: split by blank lines, all → `verse`. The user then relabel
 | Stage display / confidence monitor | High | Phase 2 item. Not yet specced. |
 | Persist panel resize state | Low | `operator_panel_splits` key — save H/V% on drag end. |
 | Tag CRUD UI | Medium | Tags can be assigned, but create/rename/delete UI is not in Settings. |
-| Song background picker in Song Editor | Medium | `songs:setBackground` IPC exists, no editor UI. Use `MediaPickerModal`. |
+| Song background picker in Song Editor | Medium | `songs:setBackground` IPC exists. Can be set via RundownPanel context menu (writes through to song). |
 | Disk space warning | Low | Warn when < 2GB free on import. Not implemented. |
 | Media unused-asset cleanup | Low | Identify media not referenced by any song or service_item. |
 | Drag asset from Library onto rundown item | Medium | Background override currently only via context menu. |

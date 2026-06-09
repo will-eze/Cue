@@ -1,4 +1,5 @@
 import { getDb } from './schema.js';
+import { get as getSetting } from './settings.js';
 
 export function search(query) {
   const db = getDb();
@@ -49,10 +50,11 @@ export function getById(id) {
 export function create(data) {
   const db = getDb();
   const { title, author, copyright, sections = [], tagIds = [] } = data;
+  const defaultBgId = getSetting('global_bg_song_id') ?? null;
   return db.transaction(() => {
     const { lastInsertRowid } = db.prepare(
-      'INSERT INTO songs (title, author, copyright) VALUES (?, ?, ?)'
-    ).run(title, author || null, copyright || null);
+      'INSERT INTO songs (title, author, copyright, default_background_id) VALUES (?, ?, ?, ?)'
+    ).run(title, author || null, copyright || null, defaultBgId);
     sections.forEach((s, i) =>
       db.prepare('INSERT INTO song_sections (song_id, type, order_index, content, style_json) VALUES (?, ?, ?, ?, ?)')
         .run(lastInsertRowid, s.type, i, s.content, s.style_json ?? null)
@@ -102,6 +104,15 @@ export function del(id) {
   if (refs.count > 0) return { hasReferences: true, count: refs.count };
   db.prepare('DELETE FROM songs WHERE id = ?').run(id);
   return { hasReferences: false };
+}
+
+export function deleteAll() {
+  const db = getDb();
+  db.transaction(() => {
+    db.prepare(`DELETE FROM taggables WHERE entity_type='song'`).run();
+    db.prepare(`DELETE FROM service_items WHERE item_type='song'`).run();
+    db.prepare('DELETE FROM songs').run();
+  })();
 }
 
 export function addTag(songId, tagId) {

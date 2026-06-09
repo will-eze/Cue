@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('cue', {
     addTag: (songId, tagId) => ipcRenderer.invoke('songs:addTag', songId, tagId),
     removeTag: (songId, tagId) => ipcRenderer.invoke('songs:removeTag', songId, tagId),
     setBackground: (songId, mediaId) => ipcRenderer.invoke('songs:setBackground', songId, mediaId),
+    deleteAll: () => ipcRenderer.invoke('songs:deleteAll'),
   },
   tags: {
     list: () => ipcRenderer.invoke('tags:list'),
@@ -31,17 +32,29 @@ contextBridge.exposeInMainWorld('cue', {
     setItemBackground: (itemId, mediaId) => ipcRenderer.invoke('services:setItemBackground', itemId, mediaId),
     setItemNotes: (itemId, notes) => ipcRenderer.invoke('services:setItemNotes', itemId, notes),
     duplicateItem: (itemId) => ipcRenderer.invoke('services:duplicateItem', itemId),
+    applyBackgroundToRundown: (serviceId, mediaId) => ipcRenderer.invoke('services:applyBackgroundToRundown', serviceId, mediaId),
+    clearItems: (serviceId) => ipcRenderer.invoke('services:clearItems', serviceId),
   },
   output: {
     go: (payload) => ipcRenderer.invoke('output:go', payload),
     clear: () => ipcRenderer.invoke('output:clear'),
     logo: () => ipcRenderer.invoke('output:logo'),
+    setLive: (enabled) => ipcRenderer.invoke('output:setLive', enabled),
     getState: () => ipcRenderer.invoke('output:getState'),
     channels: {
       list: () => ipcRenderer.invoke('output:channels:list'),
       create: (data) => ipcRenderer.invoke('output:channels:create', data),
       update: (id, data) => ipcRenderer.invoke('output:channels:update', id, data),
       delete: (id) => ipcRenderer.invoke('output:channels:delete', id),
+    },
+    monitors: {
+      list: (channelId) => ipcRenderer.invoke('output:monitors:list', channelId),
+      create: (channelId, data) => ipcRenderer.invoke('output:monitors:create', channelId, data),
+      delete: (monitorId) => ipcRenderer.invoke('output:monitors:delete', monitorId),
+    },
+    multiview: {
+      start: () => ipcRenderer.invoke('output:multiview:start'),
+      stop: () => ipcRenderer.invoke('output:multiview:stop'),
     },
     screens: {
       list: () => ipcRenderer.invoke('output:screens:list'),
@@ -88,6 +101,7 @@ contextBridge.exposeInMainWorld('cue', {
     const allowed = [
       'output:unresolved-channels', 'output:state-changed',
       'output:live-capture', 'output:ndi-unavailable',
+      'output:multiview-captures',
       'shortcut:next', 'shortcut:prev',
     ];
     if (allowed.includes(channel)) {

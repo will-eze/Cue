@@ -155,9 +155,9 @@ src/
 │   ├── output-preload.js     Minimal preload for output windows → window.cueOutput only.
 │   ├── fonts.js              BUNDLED_FONTS array + DEFAULT_FONT = 'Inter'.
 │   ├── db/
-│   │   ├── schema.js         SQLite init + migration runner (v1→v2). getDb() singleton.
-│   │   ├── songs.js          Song + section + tag CRUD. FTS5 search.
-│   │   ├── services.js       Service / rundown CRUD. resolveItem() joins media paths.
+│   │   ├── schema.js         SQLite init + migration runner (v1→v4). getDb() singleton.
+│   │   ├── songs.js          Song + section + tag CRUD. FTS5 search. deleteAll().
+│   │   ├── services.js       Service / rundown CRUD. resolveItem() joins media paths. clearItems(). setItemBackground() writes through to songs.
 │   │   ├── media.js          Import (copy to userData/media/), list, getById, delete, folders.
 │   │   └── settings.js       Key-value store. Global logo/background helpers.
 │   ├── ipc/
@@ -175,11 +175,16 @@ src/
 │   ├── App.jsx               Root. Titlebar + transport bar + Operator/Settings view switch.
 │   ├── views/
 │   │   ├── OperatorView.jsx  Three-panel layout. Transport state. Keyboard shortcuts. Background resolution.
-│   │   └── SettingsView.jsx  Settings page layout. Hosts OutputChannels + Logo + Background sections.
+│   │   │                     Services list refreshes on bgRefreshTick (picks up rundown deletes from Settings).
+│   │   ├── SettingsView.jsx  Settings page layout. Hosts OutputChannels + Logo + Background sections.
+│   │   └── MultiviewView.jsx Multi-output monitor wall. Subscribes to output:multiview-captures.
 │   ├── panels/
-│   │   ├── RundownPanel.jsx       DnD-sortable item list. Context menu. MediaPickerModal for bg override.
+│   │   ├── RundownPanel.jsx       DnD-sortable item list. Context menu with Preview/Edit/Set Background Override.
+│   │   │                          Background picker writes through to song's default_background_id.
 │   │   ├── PreviewLivePanel.jsx   Two MonitorFrames + two SlideLists. Background rendering.
 │   │   └── LibraryPanel.jsx       Virtualised song list + media grid. Search + tag filter.
+│   │                              Single-click → preview modal (220ms). Double-click → add to rundown.
+│   │                              Accepts refreshTick prop — reloads on external state changes.
 │   ├── components/
 │   │   ├── SongEditor.jsx         Full song CRUD modal. Per-section styling toolbar. Paste Song parser.
 │   │   │                          Exports renderWithRuns() used by PreviewLivePanel.
@@ -188,9 +193,12 @@ src/
 │   │   ├── SlideList.jsx          Scrollable section list. preview and live variants.
 │   │   └── ContextMenu.jsx        Generic right-click menu positioned by x/y coords.
 │   ├── settings/
-│   │   ├── OutputChannels.jsx     Channel cards. Create/edit/delete. Display assignment.
+│   │   ├── OutputChannels.jsx     Channel cards. Create/edit/delete. Monitor assignment per channel.
 │   │   ├── LogoSettings.jsx       Global logo picker.
-│   │   └── BackgroundSettings.jsx Global song/slide background pickers. Disk usage. Data path.
+│   │   ├── BackgroundSettings.jsx Global song/slide background pickers. Bulk apply. Disk usage. Data path.
+│   │   │                          Embeds DangerZone above the system footer.
+│   │   └── DangerZone.jsx         Destructive actions: clear rundown, delete rundown, clear library.
+│   │                              Two-step confirm. Uses existing removeItem IPC in a loop (no new IPC needed).
 │   └── utils/
 │       └── mediaUrl.js            mediaUrl(absPath) — see Media section above.
 ├── output/                   Plain HTML. No build step. Loaded directly by BrowserWindow.
@@ -206,7 +214,7 @@ src/
 
 **Engine**: `better-sqlite3` (synchronous — no Promises).
 **Location**: macOS `~/Library/Application Support/Cue/cue.db`, Windows `%APPDATA%\Cue\cue.db`
-**Current schema version**: 2
+**Current schema version**: 4
 
 **Media files** are copied to `userData/media/<uuid>.<ext>` on import. Original paths not retained.
 
@@ -223,9 +231,10 @@ src/
 | `service_items` | `id, service_id, item_type, ref_id, order_index, notes, content, background_override_id` |
 | `media_assets` | `id, filename, path, type, folder_id` |
 | `media_folders` | `id, name, parent_id` |
-| `output_channels` | `id, name, type, display_bounds, template, ndi_fps, ndi_width, ndi_height, active` |
+| `output_channels` | `id, name, type, template, ndi_fps, ndi_width, ndi_height, active` |
+| `channel_monitors` | `id, channel_id, display_bounds, label, active` — physical screen per channel (v4) |
 | `settings` | `key, value` (JSON-encoded values) |
-| `db_version` | `version` (integer, currently 2) |
+| `db_version` | `version` (integer, currently 4) |
 
 ### Settings keys in use
 
@@ -265,6 +274,7 @@ src/
 - `songs:create(data)` / `songs:update(id, data)` / `songs:delete(id)` → `{hasReferences, count}`
 - `songs:addTag(songId, tagId)` / `songs:removeTag(songId, tagId)`
 - `songs:setBackground(songId, mediaId|null)`
+- `songs:deleteAll()` — deletes all songs, sections, taggables, and song service_items. Irreversible.
 
 ### Tags
 - `tags:list()` / `tags:create({name, colour})` / `tags:update(id, data)` / `tags:delete(id)`
@@ -275,13 +285,19 @@ src/
 - `services:create(data)` / `services:update(id, data)` / `services:delete(id)`
 - `services:reorderItems(serviceId, orderedIds)` — single transaction
 - `services:addItem(serviceId, item)` / `services:removeItem(itemId)`
-- `services:setItemBackground(itemId, mediaId|null)` / `services:setItemNotes(itemId, notes)`
+- `services:setItemBackground(itemId, mediaId|null)` — also writes to `songs.default_background_id`
+- `services:setItemNotes(itemId, notes)`
 - `services:duplicateItem(itemId)` → new `id`
+- `services:clearItems(serviceId)` — removes all items, keeps the service row
+- `services:applyBackgroundToRundown(serviceId, mediaId)` — sets override + writes to each song's default
 
 ### Output
 - `output:go(payload)` / `output:clear()` / `output:logo()`
-- `output:getState()` → `{isLive, livePayload, activeChannels:[ids]}`
+- `output:setLive(enabled)` — opens or closes all output BrowserWindows
+- `output:getState()` → `{isLive, livePayload, activeWindows, outputsEnabled, displayMode}`
 - `output:channels:list()` / `:create(data)` / `:update(id, data)` / `:delete(id)`
+- `output:monitors:list(channelId?)` / `:create(channelId, data)` / `:delete(monitorId)` — physical screen assignments
+- `output:multiview:start()` / `:stop()` — starts/stops multiview capture loop
 - `output:screens:list()` → `[{id, bounds, scaleFactor, label}]`
 
 ### Media
@@ -307,8 +323,9 @@ src/
 
 ### Renderer events (`window.cue.on(channel, cb)`)
 - `output:unresolved-channels` — unresolved channel objects on startup
-- `output:state-changed` — after go/clear/logo
+- `output:state-changed` — after go/clear/logo/setLive; payload: `{activeWindows, outputsEnabled, displayMode}`
 - `output:live-capture` — data URL of captured output frame (every 200ms while live)
+- `output:multiview-captures` — `[{channelId, dataUrl}]` array at ~5fps (only while multiview running)
 - `output:ndi-unavailable` — grandiose not installed
 - `shortcut:next` / `shortcut:prev` — reserved for hardware remote
 
@@ -334,7 +351,9 @@ Output windows receive this via `webContents.send('slide:update', payload)`.
 
 ## Output Channels
 
-**Screen channels**: `fullscreen: true, frame: false, alwaysOnTop: true`. Display matched by **bounds** (`x, y, width, height`), never `display_index`. If bounds don't match a connected display → flagged unresolved → Settings auto-opens.
+**Channels vs Monitors**: a channel is a content stream (one template, one set of settings). A monitor is a physical screen assignment (`channel_monitors` row). One channel can drive multiple monitors simultaneously.
+
+**Screen channels**: each `channel_monitors` row opens a `BrowserWindow` with `fullscreen: true, frame: false, alwaysOnTop: true`. Display matched by `display_bounds` JSON, never `display_index`. If bounds don't match a connected display → flagged unresolved → Settings auto-opens.
 
 **NDI channels**: hidden `show: false` BrowserWindow. Loads same templates. No frames are published — `ndi.js` is a stub (`grandiose` not installed). The hidden window exists and receives `slide:update` correctly, but nothing is sent to the NDI network.
 
@@ -360,7 +379,7 @@ Target minimum resolution: **1920×1080**.
 
 ```
 ┌─── Titlebar (38px, draggable) ─────────────────────────────────┐
-│ Cue │ [Operator] [Settings]          Live●  NDI:OK  12:00  GO Clear Logo │
+│ Cue │ [Operator] [Multiview] [Settings]     Live●  12:00  GO  Clear  Logo  Live │
 ├────────────────────────────────────────────────────────────────┤
 │  ┌──── Rundown ─────┐ │ ┌──── Preview/Live ──────────────────┐ │
 │  │ service select   │ │ │ PREVIEW mon.  │  LIVE mon.         │ │
