@@ -26,7 +26,7 @@ function SortableItem({ item, index, isPreview, isLive, onClick, onDoubleClick, 
     ? item.song?.title || 'Unknown Song'
     : item.item_type === 'media'
     ? item.asset?.filename || 'Media'
-    : (item.content ? JSON.parse(item.content || '{}')?.text?.split('\n')[0] : 'Slide') || 'Slide';
+    : (item.content?.split('\n')[0]?.trim()) || 'Slide';
 
   const sublabel = item.item_type === 'song'
     ? `Song${item.song?.author ? ' · ' + item.song.author : ''}`
@@ -51,6 +51,7 @@ function SortableItem({ item, index, isPreview, isLive, onClick, onDoubleClick, 
       <button
         className="drag-handle shrink-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
         style={{ width: 14, color: '#424754' }}
+        onClick={(e) => e.stopPropagation()}
         {...attributes}
         {...listeners}
         tabIndex={-1}
@@ -122,11 +123,15 @@ function SortableItem({ item, index, isPreview, isLive, onClick, onDoubleClick, 
 
 export default function RundownPanel({
   services, activeServiceId, serviceData, previewItemId, liveItemId,
-  onSelectService, onClickItem, onDoubleClickItem, onReorder, onRemoveItem, onDuplicate, onAddService, onRefresh,
+  onSelectService, onClickItem, onDoubleClickItem, onReorder, onRemoveItem, onDuplicate,
+  onAddService, onRenameService, onDeleteService, onRefresh,
 }) {
   const [contextMenu, setContextMenu] = useState(null);
   const [showNewService, setShowNewService] = useState(false);
   const [newServiceTitle, setNewServiceTitle] = useState('');
+  const [renamingService, setRenamingService] = useState(false);
+  const [renameTitle, setRenameTitle] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [bgPickerForItem, setBgPickerForItem] = useState(null);
   const [previewSong, setPreviewSong] = useState(null);
   const [editSong, setEditSong] = useState(null);
@@ -149,29 +154,109 @@ export default function RundownPanel({
     setNewServiceTitle('');
   }
 
+  function startRename() {
+    const svc = services.find((s) => s.id === activeServiceId);
+    setRenameTitle(svc?.title || '');
+    setRenamingService(true);
+    setConfirmDelete(false);
+  }
+
+  async function confirmRename() {
+    if (renameTitle.trim()) await onRenameService?.(renameTitle.trim());
+    setRenamingService(false);
+  }
+
+  async function confirmDeleteService() {
+    setConfirmDelete(false);
+    await onDeleteService?.();
+  }
+
   return (
     <div className="flex flex-col h-full bg-surface-container-low rounded-lg border border-outline-variant/30 overflow-hidden">
       {/* Panel header */}
       <div className="px-md py-sm bg-surface-container-high border-b border-outline-variant/30 shrink-0">
         <h2 className="text-label-sm font-label-sm uppercase tracking-widest text-on-surface-variant mb-1">Rundown</h2>
-        <div className="flex items-center gap-sm">
-          <select
-            value={activeServiceId || ''}
-            onChange={(e) => onSelectService(Number(e.target.value))}
-            className="flex-1 min-w-0 bg-surface-container-lowest border border-outline-variant/30 rounded px-sm py-xs text-[11px] font-label-sm text-on-surface outline-none cursor-pointer"
-          >
-            {services.length === 0 && <option value="">No services</option>}
-            {services.map((s) => (
-              <option key={s.id} value={s.id}>{s.title}</option>
-            ))}
-          </select>
-          <button
-            onClick={() => setShowNewService(true)}
-            className="shrink-0 w-6 h-6 flex items-center justify-center bg-primary text-on-primary rounded cursor-pointer hover:brightness-110 active:scale-95 transition-all text-sm font-bold"
-          >
-            +
-          </button>
-        </div>
+
+        {renamingService ? (
+          /* Inline rename input */
+          <div className="flex items-center gap-xs">
+            <input
+              autoFocus
+              value={renameTitle}
+              onChange={(e) => setRenameTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') confirmRename();
+                if (e.key === 'Escape') setRenamingService(false);
+              }}
+              className="flex-1 min-w-0 bg-surface-container-lowest border border-primary/40 rounded px-sm py-xs text-[11px] font-label-sm text-on-surface outline-none focus:border-primary"
+            />
+            <button
+              onClick={confirmRename}
+              className="shrink-0 w-6 h-6 flex items-center justify-center text-tertiary hover:text-tertiary/80 cursor-pointer transition-colors"
+              title="Confirm rename"
+            >
+              <span className="material-symbols-outlined text-[15px]">check</span>
+            </button>
+            <button
+              onClick={() => setRenamingService(false)}
+              className="shrink-0 w-6 h-6 flex items-center justify-center text-on-surface-variant hover:text-on-surface cursor-pointer transition-colors"
+              title="Cancel"
+            >
+              <span className="material-symbols-outlined text-[15px]">close</span>
+            </button>
+          </div>
+        ) : confirmDelete ? (
+          /* Inline delete confirmation */
+          <div className="flex items-center gap-sm">
+            <span className="text-[10px] font-mono text-error uppercase tracking-[0.04em] shrink-0">Delete rundown?</span>
+            <button
+              onClick={confirmDeleteService}
+              className="text-[10px] font-mono text-error hover:text-error/70 cursor-pointer uppercase tracking-[0.04em] border border-error/40 px-sm py-[2px] rounded transition-colors"
+            >Yes</button>
+            <button
+              onClick={() => setConfirmDelete(false)}
+              className="text-[10px] font-mono text-on-surface-variant hover:text-on-surface cursor-pointer uppercase tracking-[0.04em] transition-colors"
+            >No</button>
+          </div>
+        ) : (
+          /* Normal service select row */
+          <div className="flex items-center gap-xs">
+            <select
+              value={activeServiceId || ''}
+              onChange={(e) => onSelectService(Number(e.target.value))}
+              className="flex-1 min-w-0 bg-surface-container-lowest border border-outline-variant/30 rounded px-sm py-xs text-[11px] font-label-sm text-on-surface outline-none cursor-pointer"
+            >
+              {services.length === 0 && <option value="">No services</option>}
+              {services.map((s) => (
+                <option key={s.id} value={s.id}>{s.title}</option>
+              ))}
+            </select>
+            {activeServiceId && (
+              <>
+                <button
+                  onClick={startRename}
+                  title="Rename service"
+                  className="shrink-0 w-5 h-5 flex items-center justify-center text-on-surface-variant/40 hover:text-on-surface-variant cursor-pointer transition-colors"
+                >
+                  <span className="material-symbols-outlined text-[13px]">edit</span>
+                </button>
+                <button
+                  onClick={() => setConfirmDelete(true)}
+                  title="Delete service"
+                  className="shrink-0 w-5 h-5 flex items-center justify-center text-on-surface-variant/40 hover:text-error cursor-pointer transition-colors"
+                >
+                  <span className="material-symbols-outlined text-[13px]">delete</span>
+                </button>
+              </>
+            )}
+            <button
+              onClick={() => setShowNewService(true)}
+              className="shrink-0 w-6 h-6 flex items-center justify-center bg-primary text-on-primary rounded cursor-pointer hover:brightness-110 active:scale-95 transition-all text-sm font-bold"
+            >
+              +
+            </button>
+          </div>
+        )}
       </div>
 
       {/* New service input */}

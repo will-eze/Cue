@@ -174,31 +174,36 @@ src/
 │   ├── index.css             Design system CSS: tally, monitor glow, scrollbar, animations.
 │   ├── App.jsx               Root. Titlebar + transport bar + Operator/Settings view switch.
 │   ├── views/
-│   │   ├── OperatorView.jsx  Three-panel layout. Transport state. Keyboard shortcuts. Background resolution.
-│   │   │                     Services list refreshes on bgRefreshTick (picks up rundown deletes from Settings).
-│   │   ├── SettingsView.jsx  Settings page layout. Hosts OutputChannels + Logo + Background sections.
+│   │   ├── OperatorView.jsx  Three-panel layout. Transport state. Configurable keyboard shortcuts (shortcutsRef).
+│   │   │                     Background resolution. focusSearchRef wired to LibraryPanel search (S key).
+│   │   │                     Resize state persisted to localStorage. Services list refreshes on bgRefreshTick.
+│   │   ├── SettingsView.jsx  Settings page layout. Hosts OutputChannels + Logo + Background + ShortcutSettings.
 │   │   └── MultiviewView.jsx Multi-output monitor wall. Subscribes to output:multiview-captures.
 │   ├── panels/
-│   │   ├── RundownPanel.jsx       DnD-sortable item list. Context menu with Preview/Edit/Set Background Override.
+│   │   ├── RundownPanel.jsx       Inline service rename + delete UI (no native confirm dialogs).
+│   │   │                          DnD-sortable item list. Context menu with Preview/Edit/Set Background Override.
 │   │   │                          Background picker writes through to song's default_background_id.
+│   │   │                          Props: onRenameService, onDeleteService.
 │   │   ├── PreviewLivePanel.jsx   Two MonitorFrames + two SlideLists. Background rendering.
 │   │   └── LibraryPanel.jsx       Virtualised song list + media grid. Search + tag filter.
 │   │                              Single-click → preview modal (220ms). Double-click → add to rundown.
-│   │                              Accepts refreshTick prop — reloads on external state changes.
+│   │                              Accepts refreshTick + focusSearchRef props.
 │   ├── components/
 │   │   ├── SongEditor.jsx         Full song CRUD modal. Per-section styling toolbar. Paste Song parser.
-│   │   │                          Exports renderWithRuns() used by PreviewLivePanel.
+│   │   │                          Exports renderWithRuns() used by PreviewLivePanel. Escape key closes.
 │   │   ├── SongPreviewModal.jsx   Read-only song preview. Add to Rundown / Edit actions.
 │   │   ├── MediaPickerModal.jsx   Media grid picker. Used for background override in RundownPanel.
-│   │   ├── SlideList.jsx          Scrollable section list. preview and live variants.
-│   │   └── ContextMenu.jsx        Generic right-click menu positioned by x/y coords.
+│   │   ├── SlideList.jsx          Scrollable section list. preview and live variants. Content capped max-h-24.
+│   │   └── ContextMenu.jsx        Generic right-click menu positioned by x/y coords. Escape key closes.
 │   ├── settings/
 │   │   ├── OutputChannels.jsx     Channel cards. Create/edit/delete. Monitor assignment per channel.
 │   │   ├── LogoSettings.jsx       Global logo picker.
 │   │   ├── BackgroundSettings.jsx Global song/slide background pickers. Bulk apply. Disk usage. Data path.
 │   │   │                          Embeds DangerZone above the system footer.
-│   │   └── DangerZone.jsx         Destructive actions: clear rundown, delete rundown, clear library.
-│   │                              Two-step confirm. Uses existing removeItem IPC in a loop (no new IPC needed).
+│   │   ├── DangerZone.jsx         Destructive actions: clear rundown, delete rundown, clear library.
+│   │   │                          Two-step confirm. Uses existing removeItem IPC in a loop (no new IPC needed).
+│   │   └── ShortcutSettings.jsx   Configurable transport shortcuts. Modifier selector + key inputs for
+│   │                              GO / Clear / Logo / Live Toggle. Saves to settings DB via settings:set.
 │   └── utils/
 │       └── mediaUrl.js            mediaUrl(absPath) — see Media section above.
 ├── output/                   Plain HTML. No build step. Loaded directly by BrowserWindow.
@@ -244,6 +249,17 @@ src/
 | `global_bg_song_id` | number\|null | Global default background for songs |
 | `global_bg_slide_id` | number\|null | Global default background for slides |
 | `operator_preview_layout` | string | Reserved — not yet wired in UI |
+| `keyboard_modifier` | 'meta'\|'ctrl'\|'alt' | Modifier for transport shortcuts (default: 'meta' macOS / 'ctrl' Windows) |
+| `keyboard_go` | string | Key char for GO (default: 'g') |
+| `keyboard_clear` | string | Key char for Clear (default: 'c') |
+| `keyboard_logo` | string | Key char for Logo (default: 'l') |
+| `keyboard_live` | string | Key char for Live Toggle (default: 'o') |
+
+**localStorage** (UI-only, not in DB):
+| Key | Description |
+|---|---|
+| `layout_h_pct` | Horizontal split % (default 25) |
+| `layout_v_pct` | Vertical split % (default 62) |
 
 ### `style_json` — section styling format
 
@@ -363,13 +379,22 @@ Output windows receive this via `webContents.send('slide:update', payload)`.
 
 | Key | Action |
 |---|---|
-| Space / ↓ | Next slide in **preview** only (no live change) |
-| ↑ | Previous slide in **preview** only |
+| Space / ↓ | Next slide. Auto-GOes when preview item === live item. At last slide → next rundown item. |
+| ↑ | Previous slide. Auto-GOes when preview item === live item. At first slide → prev rundown item at its last slide. |
 | G | GO — send preview item at current slide to live |
 | Escape | Clear all outputs |
 | L | Logo all outputs |
+| S | Focus song search bar in Library panel |
+| Modifier+G | GO (configurable — default Cmd/Ctrl+G) |
+| Modifier+C | Clear (configurable — default Cmd/Ctrl+C) |
+| Modifier+L | Logo (configurable — default Cmd/Ctrl+L) |
+| Modifier+O | Live Toggle (configurable — default Cmd/Ctrl+O) |
 
-Registered as a `keydown` listener on `document` in `OperatorView.jsx` — **not** `globalShortcut`. The listener suppresses shortcuts when an `INPUT`, `TEXTAREA`, or `contenteditable` has focus. Do not use `globalShortcut` — it captures at OS level and breaks typing G, L, or Space in any input field.
+Registered as a `keydown` listener on `document` in `OperatorView.jsx` — **not** `globalShortcut`. Suppressed when an `INPUT`, `TEXTAREA`, or `contenteditable` has focus. Modifier shortcuts take priority over bare-key shortcuts — if modifier is held, bare-key handling is skipped.
+
+`shortcutsRef.current` holds key bindings loaded from settings DB. Reloads on `bgRefreshTick` change. Default modifier: `'meta'` (Cmd) on macOS, `'ctrl'` on Windows, read from `window.cue.platform`.
+
+Do not use `globalShortcut` — it captures at OS level and breaks typing in any input field.
 
 ---
 
@@ -393,7 +418,7 @@ Target minimum resolution: **1920×1080**.
 └────────────────────────────────────────────────────────────────┘
 ```
 
-Panel resize: horizontal (Rundown / Preview+Live, default 25%/75%), vertical (top / Library, default 62%/38%). Resize state is not persisted (backlog item).
+Panel resize: horizontal (Rundown / Preview+Live, default 25%/75%), vertical (top / Library, default 62%/38%). Resize state persisted to `localStorage` (`layout_h_pct`, `layout_v_pct`).
 
 ---
 

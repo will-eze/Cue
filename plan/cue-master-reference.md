@@ -96,37 +96,48 @@ src/
 │   ├── App.jsx               Root. Titlebar + transport bar + view switcher (Operator/Settings).
 │   │
 │   ├── views/
-│   │   ├── OperatorView.jsx  Three-panel layout. All transport state. Keyboard shortcuts.
+│   │   ├── OperatorView.jsx  Three-panel layout. All transport state. Keyboard shortcuts (configurable via shortcutsRef).
 │   │   │                     Background resolution. buildPayload(). Services list refreshes on bgRefreshTick.
-│   │   ├── SettingsView.jsx  Settings layout. Renders OutputChannels + LogoSettings + BackgroundSettings.
+│   │   │                     Accepts outputsEnabled + onToggleLive props from App. focusSearchRef wired to LibraryPanel.
+│   │   │                     Resize state persisted to localStorage (keys: layout_h_pct, layout_v_pct).
+│   │   ├── SettingsView.jsx  Settings layout. Renders OutputChannels + LogoSettings + BackgroundSettings + ShortcutSettings.
 │   │   │                     BackgroundSettings embeds DangerZone above the footer.
 │   │   └── MultiviewView.jsx Multi-output monitor wall. Subscribes to output:multiview-captures.
 │   │
 │   ├── panels/
-│   │   ├── RundownPanel.jsx       Service selector. DnD-sortable item list. Context menu.
+│   │   ├── RundownPanel.jsx       Service selector with inline rename/delete UI (no native confirm dialogs).
+│   │   │                          DnD-sortable item list. Context menu.
 │   │   │                          MediaPickerModal for background override.
 │   │   │                          Right-click song items → Preview / Edit / Set Background Override.
+│   │   │                          Props: onRenameService, onDeleteService.
 │   │   ├── PreviewLivePanel.jsx   Two MonitorFrames + two SlideLists. Background image rendering.
 │   │   └── LibraryPanel.jsx       Songs tab (react-window virtualised list) + Media tab (grid).
 │   │                              Song search + tag filter. Media import.
 │   │                              Single-click (220ms) → SongPreviewModal. Double-click → add to rundown.
-│   │                              Accepts refreshTick prop — reloads song list when tick changes.
+│   │                              Accepts refreshTick + focusSearchRef props. focusSearchRef exposes
+│   │                              an imperative focus() function that OperatorView calls on S keypress.
 │   │
 │   ├── components/
 │   │   ├── SongEditor.jsx         Full song CRUD modal. Per-section styling toolbar.
 │   │   │                          Paste Song parser (parseSong). renderWithRuns (exported).
+│   │   │                          Escape key closes the modal (suppressed while saving).
 │   │   ├── SongPreviewModal.jsx   Read-only song preview. Add to Rundown / Edit.
 │   │   ├── MediaPickerModal.jsx   Media grid picker. Used by RundownPanel for bg override.
 │   │   ├── SlideList.jsx          Scrollable slide/section list. Preview and live variants.
+│   │   │                          Slide content capped at max-h-24 to prevent runaway tall cards.
 │   │   └── ContextMenu.jsx        Generic right-click menu positioned by x/y coords.
+│   │                              Escape key closes menu. Overflow guard accounts for separator height.
 │   │
 │   ├── settings/
 │   │   ├── OutputChannels.jsx    Channel cards. Create/edit/delete. Monitor assignment per channel.
 │   │   ├── LogoSettings.jsx      Global logo picker.
 │   │   ├── BackgroundSettings.jsx Global song/slide background pickers. Bulk apply actions. Disk usage.
 │   │   │                          Embeds DangerZone above the system info footer.
-│   │   └── DangerZone.jsx        Destructive actions: clear rundown items, delete rundown, clear library.
-│   │                              Two-step confirm on every action. Success toast feedback.
+│   │   ├── DangerZone.jsx        Destructive actions: clear rundown items, delete rundown, clear library.
+│   │   │                          Two-step confirm on every action. Success toast feedback.
+│   │   └── ShortcutSettings.jsx  Configurable keyboard shortcuts UI. Modifier selector (Cmd/Ctrl/Alt)
+│   │                              + key inputs for GO, Clear, Logo, Live Toggle. Saves to settings DB.
+│   │                              Shortcuts reload in OperatorView on next bgRefreshTick.
 │   │
 │   └── utils/
 │       └── mediaUrl.js           mediaUrl(absPath) → cue-media://localhost/encoded/path
@@ -304,10 +315,21 @@ Known keys:
 | `global_bg_song_id` | number\|null | Global default background for songs |
 | `global_bg_slide_id` | number\|null | Global default background for slides |
 | `operator_preview_layout` | 'stacked'\|'sidebyside' | Unused in current UI — reserved |
+| `keyboard_modifier` | 'meta'\|'ctrl'\|'alt' | Modifier key for transport shortcuts (default: 'meta' on macOS, 'ctrl' on Windows) |
+| `keyboard_go` | string | Key char for GO shortcut (default: 'g') |
+| `keyboard_clear` | string | Key char for Clear shortcut (default: 'c') |
+| `keyboard_logo` | string | Key char for Logo shortcut (default: 'l') |
+| `keyboard_live` | string | Key char for Live Toggle shortcut (default: 'o') |
+
+**localStorage keys** (UI state only — not in DB):
+| Key | Description |
+|---|---|
+| `layout_h_pct` | Horizontal split: Rundown panel width as % (default 25) |
+| `layout_v_pct` | Vertical split: top panels height as % (default 62) |
 
 #### `db_version`
 ```sql
-version INTEGER NOT NULL       -- current: 2
+version INTEGER NOT NULL       -- current: 4
 ```
 
 ---
@@ -667,7 +689,7 @@ Oswald is reserved for output window templates only. Do not use in operator UI.
 Panel boundaries are user-resizable:
 - **Horizontal** (Rundown width / Preview+Live width): default 25% / 75%, clamped 22–72%.
 - **Vertical** (top panels / Library): default 62% / 38%, clamped 35–80%.
-- Resize state is **not persisted** (a known gap).
+- Resize state is **persisted to `localStorage`** (`layout_h_pct`, `layout_v_pct`) — survives reloads.
 
 ---
 
@@ -693,14 +715,22 @@ liveSlideIdx     — which section index is currently on output
 | Double-click in Preview Slides list | Sends that slide to live. |
 | Single-click in Live Slides list | Sends that slide to live immediately. |
 | GO button / G key | Sends `previewItem[previewSlideIdx]` to live. |
-| Space / ↓ arrow | `previewSlideIdx++`. No live change. |
-| ↑ arrow | `previewSlideIdx--`. No live change. |
+| Space / ↓ arrow | `previewSlideIdx++`. Auto-GOes to live if `previewItemId === liveItemId`. At last slide → loads next rundown item. |
+| ↑ arrow | `previewSlideIdx--`. Auto-GOes to live if `previewItemId === liveItemId`. At first slide → loads previous rundown item at its last slide. |
 | Escape | `output:clear`. Sets `liveItemId=null`. |
 | L key | `output:logo`. |
+| S key | Focuses the song search input in LibraryPanel. |
+| Modifier+G/C/L/O | GO / Clear / Logo / Live Toggle (modifier and keys are configurable in Settings). |
 | Double-click song in Library | Adds to rundown. No preview/live change. |
 
 ### Keyboard shortcuts
-Registered as a `keydown` listener on `document` inside `OperatorView`. **Not** `globalShortcut`. The listener checks `document.activeElement` — suppressed when an `INPUT`, `TEXTAREA`, or `contenteditable` has focus. A `useRef` holds the current handler to avoid stale closures.
+Registered as a `keydown` listener on `document` inside `OperatorView`. **Not** `globalShortcut`. The listener checks `document.activeElement` — suppressed when an `INPUT`, `TEXTAREA`, or `contenteditable` has focus.
+
+Two ref patterns used to avoid stale closures:
+- `shortcutRef.current` — assigned on every render (not in `useEffect`) so the handler always captures the latest state
+- `shortcutsRef.current` — holds configurable key bindings loaded from settings DB; reloads on `bgRefreshTick` changes
+
+**Modifier priority:** modifier+key shortcuts are checked first; if the modifier is held, bare-key shortcuts are skipped. Default modifier is `Meta` (Cmd) on macOS and `Ctrl` on Windows, matching the operator's `window.cue.platform`.
 
 **Do not use `globalShortcut`** — it captures at OS level and prevents typing G, L, Space in any input field system-wide.
 
@@ -807,7 +837,6 @@ No-header fallback: split by blank lines, all → `verse`. The user then relabel
 | **NDI publish (grandiose)** | High | `ndi.js` is a stub. See §14. |
 | `linked_channel_id` logic | Medium | Field exists, settable, never read. Sync lower-third to fullscreen channel. |
 | Stage display / confidence monitor | High | Phase 2 item. Not yet specced. |
-| Persist panel resize state | Low | `operator_panel_splits` key — save H/V% on drag end. |
 | Tag CRUD UI | Medium | Tags can be assigned, but create/rename/delete UI is not in Settings. |
 | Song background picker in Song Editor | Medium | `songs:setBackground` IPC exists. Can be set via RundownPanel context menu (writes through to song). |
 | Disk space warning | Low | Warn when < 2GB free on import. Not implemented. |

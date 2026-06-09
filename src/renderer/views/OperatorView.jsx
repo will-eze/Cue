@@ -3,6 +3,8 @@ import RundownPanel from '../panels/RundownPanel';
 import PreviewLivePanel from '../panels/PreviewLivePanel';
 import LibraryPanel from '../panels/LibraryPanel';
 
+const isMac = window.cue.platform === 'darwin';
+
 function UndoToast({ message, onUndo, onDismiss }) {
   return (
     <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-md bg-surface-container-high border border-outline-variant/40 rounded-xl shadow-2xl px-lg py-sm ring-1 ring-white/5 pointer-events-auto">
@@ -22,15 +24,20 @@ function UndoToast({ message, onUndo, onDismiss }) {
   );
 }
 
-function useResizeH(containerRef, defaultPct = 40) {
-  const [pct, setPct] = useState(defaultPct);
+function useResizeH(containerRef, storageKey, defaultPct = 40) {
+  const [pct, setPct] = useState(() => {
+    const stored = storageKey && localStorage.getItem(storageKey);
+    return stored ? parseFloat(stored) : defaultPct;
+  });
   function start(e) {
     e.preventDefault();
     const startX = e.clientX;
     const startPct = pct;
     function move(ev) {
       const w = containerRef.current?.offsetWidth ?? window.innerWidth;
-      setPct(Math.max(22, Math.min(startPct + (ev.clientX - startX) / w * 100, 72)));
+      const next = Math.max(22, Math.min(startPct + (ev.clientX - startX) / w * 100, 72));
+      setPct(next);
+      if (storageKey) localStorage.setItem(storageKey, next.toFixed(1));
     }
     function up() {
       document.removeEventListener('mousemove', move);
@@ -42,15 +49,20 @@ function useResizeH(containerRef, defaultPct = 40) {
   return [pct, start];
 }
 
-function useResizeV(containerRef, defaultPct = 62) {
-  const [pct, setPct] = useState(defaultPct);
+function useResizeV(containerRef, storageKey, defaultPct = 62) {
+  const [pct, setPct] = useState(() => {
+    const stored = storageKey && localStorage.getItem(storageKey);
+    return stored ? parseFloat(stored) : defaultPct;
+  });
   function start(e) {
     e.preventDefault();
     const startY = e.clientY;
     const startPct = pct;
     function move(ev) {
       const h = containerRef.current?.offsetHeight ?? window.innerHeight;
-      setPct(Math.max(35, Math.min(startPct + (ev.clientY - startY) / h * 100, 80)));
+      const next = Math.max(35, Math.min(startPct + (ev.clientY - startY) / h * 100, 80));
+      setPct(next);
+      if (storageKey) localStorage.setItem(storageKey, next.toFixed(1));
     }
     function up() {
       document.removeEventListener('mousemove', move);
@@ -62,7 +74,10 @@ function useResizeV(containerRef, defaultPct = 62) {
   return [pct, start];
 }
 
-export default function OperatorView({ transportRef, onStateChange, displayMode = 'idle', bgRefreshTick = 0, activeServiceId, onServiceChange }) {
+export default function OperatorView({
+  transportRef, onStateChange, displayMode = 'idle', bgRefreshTick = 0,
+  activeServiceId, onServiceChange, outputsEnabled, onToggleLive,
+}) {
   const [services, setServices] = useState([]);
   const [serviceData, setServiceData] = useState(null);
 
@@ -73,6 +88,29 @@ export default function OperatorView({ transportRef, onStateChange, displayMode 
   const [liveCapture, setLiveCapture] = useState(null);
   const [undoStack, setUndoStack] = useState(null);
   const undoTimerRef = useRef(null);
+
+  // Shortcut config — loaded from settings, reloaded when bgRefreshTick changes (i.e. on return from Settings)
+  const shortcutsRef = useRef({ modifier: isMac ? 'meta' : 'ctrl', go: 'g', clear: 'c', logo: 'l', live: 'o' });
+  useEffect(() => {
+    Promise.all([
+      window.cue.settings.get('keyboard_modifier'),
+      window.cue.settings.get('keyboard_go'),
+      window.cue.settings.get('keyboard_clear'),
+      window.cue.settings.get('keyboard_logo'),
+      window.cue.settings.get('keyboard_live'),
+    ]).then(([mod, go, clear, logo, live]) => {
+      shortcutsRef.current = {
+        modifier: mod  ?? (isMac ? 'meta' : 'ctrl'),
+        go:       go   ?? 'g',
+        clear:    clear ?? 'c',
+        logo:     logo  ?? 'l',
+        live:     live  ?? 'o',
+      };
+    });
+  }, [bgRefreshTick]);
+
+  // Ref for imperatively focusing the library search bar (triggered by S key)
+  const focusSearchRef = useRef(null);
 
   useEffect(() => {
     window.cue.services.list().then((list) => {
@@ -91,15 +129,12 @@ export default function OperatorView({ transportRef, onStateChange, displayMode 
   }, []);
 
   const shortcutRef = useRef({});
-  shortcutRef.current = { handleNextSlide, handlePrevSlide, handleGo, handleClear, handleLogo };
+  shortcutRef.current = { handleNextSlide, handlePrevSlide, handleGo, handleClear, handleLogo, handleLiveToggle };
 
-  // Bind transport handlers to App header ref (updated every render — no stale closures)
   if (transportRef) {
     transportRef.current = { go: handleGo, clear: handleClear, logo: handleLogo };
   }
 
-  // Notify App header of live/preview state changes
-  // Uses previewItemId + serviceData (not previewItem, which is declared later)
   useEffect(() => {
     const hasPreview = !!(serviceData?.items?.find((i) => i.id === previewItemId));
     onStateChange?.({ isLive: !!liveItemId, canGo: hasPreview });
@@ -109,12 +144,26 @@ export default function OperatorView({ transportRef, onStateChange, displayMode 
     function onKeyDown(e) {
       const el = document.activeElement;
       if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
+
       const h = shortcutRef.current;
+      const sc = shortcutsRef.current;
+      const hasModifier = sc.modifier === 'meta' ? e.metaKey : sc.modifier === 'alt' ? e.altKey : e.ctrlKey;
+
+      if (hasModifier) {
+        const k = e.key.toLowerCase();
+        if (k === sc.go.toLowerCase())    { e.preventDefault(); h.handleGo();          return; }
+        if (k === sc.clear.toLowerCase()) { e.preventDefault(); h.handleClear();       return; }
+        if (k === sc.logo.toLowerCase())  { e.preventDefault(); h.handleLogo();        return; }
+        if (k === sc.live.toLowerCase())  { e.preventDefault(); h.handleLiveToggle();  return; }
+        return;
+      }
+
       if (e.key === ' ' || e.key === 'ArrowDown') { e.preventDefault(); h.handleNextSlide(); }
-      else if (e.key === 'ArrowUp') { e.preventDefault(); h.handlePrevSlide(); }
-      else if (e.key === 'Escape') h.handleClear();
-      else if (e.key === 'g' || e.key === 'G') h.handleGo();
-      else if (e.key === 'l' || e.key === 'L') h.handleLogo();
+      else if (e.key === 'ArrowUp')               { e.preventDefault(); h.handlePrevSlide(); }
+      else if (e.key === 'Escape')                { h.handleClear(); }
+      else if (e.key === 'g' || e.key === 'G')    { h.handleGo(); }
+      else if (e.key === 'l' || e.key === 'L')    { h.handleLogo(); }
+      else if (e.key === 's' || e.key === 'S')    { e.preventDefault(); focusSearchRef.current?.(); }
     }
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
@@ -126,7 +175,7 @@ export default function OperatorView({ transportRef, onStateChange, displayMode 
   }, [activeServiceId]);
 
   const previewItem = serviceData?.items?.find((i) => i.id === previewItemId) ?? null;
-  const liveItem = serviceData?.items?.find((i) => i.id === liveItemId) ?? null;
+  const liveItem    = serviceData?.items?.find((i) => i.id === liveItemId)    ?? null;
 
   function getSlides(item) {
     if (!item) return [];
@@ -206,20 +255,60 @@ export default function OperatorView({ transportRef, onStateChange, displayMode 
 
   function handleClear() {
     window.cue.output.clear();
-    // Don't clear liveItemId — clear is a text toggle, the song stays loaded.
   }
 
   function handleLogo() { window.cue.output.logo(); }
 
+  function handleLiveToggle() { onToggleLive?.(); }
+
   function handleNextSlide() {
-    if (!previewItem) return;
+    if (!previewItem) {
+      // Nothing in preview — load first rundown item
+      const items = serviceData?.items || [];
+      if (items.length > 0) { setPreviewItemId(items[0].id); setPreviewSlideIdx(0); }
+      return;
+    }
     const slides = getSlides(previewItem);
-    setPreviewSlideIdx((idx) => Math.min(idx + 1, slides.length - 1));
+    if (previewSlideIdx < slides.length - 1) {
+      const nextIdx = previewSlideIdx + 1;
+      setPreviewSlideIdx(nextIdx);
+      // Auto-GO when preview and live are on the same item
+      if (previewItemId === liveItemId) {
+        const payload = buildPayload(previewItem, nextIdx);
+        if (payload) { window.cue.output.go(payload); setLiveSlideIdx(nextIdx); }
+      }
+    } else {
+      // At last slide — advance to next rundown item
+      const items = serviceData?.items || [];
+      const curIdx = items.findIndex((i) => i.id === previewItemId);
+      if (curIdx < items.length - 1) {
+        setPreviewItemId(items[curIdx + 1].id);
+        setPreviewSlideIdx(0);
+      }
+    }
   }
 
   function handlePrevSlide() {
     if (!previewItem) return;
-    setPreviewSlideIdx((idx) => Math.max(idx - 1, 0));
+    if (previewSlideIdx > 0) {
+      const prevIdx = previewSlideIdx - 1;
+      setPreviewSlideIdx(prevIdx);
+      // Auto-GO when preview and live are on the same item
+      if (previewItemId === liveItemId) {
+        const payload = buildPayload(previewItem, prevIdx);
+        if (payload) { window.cue.output.go(payload); setLiveSlideIdx(prevIdx); }
+      }
+    } else {
+      // At first slide — go to previous rundown item (at its last slide)
+      const items = serviceData?.items || [];
+      const curIdx = items.findIndex((i) => i.id === previewItemId);
+      if (curIdx > 0) {
+        const prevItem = items[curIdx - 1];
+        const prevSlides = getSlides(prevItem);
+        setPreviewItemId(prevItem.id);
+        setPreviewSlideIdx(Math.max(prevSlides.length - 1, 0));
+      }
+    }
   }
 
   async function handleReorder(orderedIds) {
@@ -237,7 +326,6 @@ export default function OperatorView({ transportRef, onStateChange, displayMode 
     if (liveItemId === itemId) setLiveItemId(null);
     refreshService();
 
-    // Set up undo
     if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
     const remainingIds = items.filter((i) => i.id !== itemId).map((i) => i.id);
     const label = item?.song?.title || item?.asset?.filename || 'Item';
@@ -296,12 +384,31 @@ export default function OperatorView({ transportRef, onStateChange, displayMode 
     onServiceChange(id);
   }
 
+  async function handleRenameService(newTitle) {
+    if (!activeServiceId) return;
+    const svc = services.find((s) => s.id === activeServiceId);
+    if (!svc) return;
+    await window.cue.services.update(activeServiceId, { title: newTitle, date: svc.date, notes: svc.notes });
+    const list = await window.cue.services.list();
+    setServices(list);
+  }
+
+  async function handleDeleteService() {
+    if (!activeServiceId) return;
+    await window.cue.services.delete(activeServiceId);
+    if (previewItemId) setPreviewItemId(null);
+    if (liveItemId) setLiveItemId(null);
+    const list = await window.cue.services.list();
+    setServices(list);
+    onServiceChange(list.length > 0 ? list[0].id : null);
+  }
+
   const previewBgPath = previewItem ? resolveBackground(previewItem) : null;
   const liveBgPath    = liveItem    ? resolveBackground(liveItem)    : null;
 
   const containerRef = useRef(null);
-  const [hPct, startHDrag] = useResizeH(containerRef, 25);
-  const [vPct, startVDrag] = useResizeV(containerRef, 62);
+  const [hPct, startHDrag] = useResizeH(containerRef, 'layout_h_pct', 25);
+  const [vPct, startVDrag] = useResizeV(containerRef, 'layout_v_pct', 62);
 
   return (
     <div ref={containerRef} className="flex flex-col h-full bg-background">
@@ -321,6 +428,8 @@ export default function OperatorView({ transportRef, onStateChange, displayMode 
             onRemoveItem={handleRemoveItem}
             onDuplicate={handleDuplicateItem}
             onAddService={handleAddService}
+            onRenameService={handleRenameService}
+            onDeleteService={handleDeleteService}
             onRefresh={refreshService}
           />
         </div>
@@ -363,7 +472,12 @@ export default function OperatorView({ transportRef, onStateChange, displayMode 
 
       {/* Library */}
       <div className="flex-1 min-h-0 overflow-hidden">
-        <LibraryPanel onAddToRundown={handleAddToRundown} onSongSave={refreshService} refreshTick={bgRefreshTick} />
+        <LibraryPanel
+          onAddToRundown={handleAddToRundown}
+          onSongSave={refreshService}
+          refreshTick={bgRefreshTick}
+          focusSearchRef={focusSearchRef}
+        />
       </div>
 
       {undoStack && (

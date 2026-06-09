@@ -534,6 +534,12 @@ export default function SongEditor({ song, onClose, onSave }) {
   }, []);
 
   useEffect(() => {
+    function onKey(e) { if (e.key === 'Escape' && !saving) onClose(); }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose, saving]);
+
+  useEffect(() => {
     window.cue.tags.list().then(setAllTags);
     if (song?.id) {
       window.cue.songs.get(song.id).then((s) => {

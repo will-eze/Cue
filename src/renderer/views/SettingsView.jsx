@@ -2,6 +2,7 @@ import React from 'react';
 import OutputChannels from '../settings/OutputChannels';
 import LogoSettings from '../settings/LogoSettings';
 import BackgroundSettings from '../settings/BackgroundSettings';
+import ShortcutSettings from '../settings/ShortcutSettings';
 
 const NAV_ITEMS = [
   { id: 'rundown',  icon: 'list_alt',       label: 'Rundown' },
@@ -52,6 +53,7 @@ export default function SettingsView({ onClose, activeServiceId, onRundownCleare
           onRundownDeleted={onRundownDeleted}
           onLibraryCleared={onLibraryCleared}
         />
+        <ShortcutSettings />
       </main>
     </div>
   );

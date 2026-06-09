@@ -10,20 +10,26 @@ export default function ContextMenu({ x, y, items, onClose }) {
     function handleMouseDown(e) {
       if (ref.current && !ref.current.contains(e.target)) onCloseRef.current();
     }
+    function handleKeyDown(e) {
+      if (e.key === 'Escape') onCloseRef.current();
+    }
     // Small delay so this listener doesn't fire on the mousedown that opened the menu
     const id = setTimeout(() => {
       document.addEventListener('mousedown', handleMouseDown);
     }, 0);
+    document.addEventListener('keydown', handleKeyDown);
     return () => {
       clearTimeout(id);
       document.removeEventListener('mousedown', handleMouseDown);
+      document.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
 
   const menuWidth = 200;
   const itemCount = items.filter(i => !i.separator).length;
+  const sepCount = items.filter(i => i.separator).length;
   const left = Math.min(x, window.innerWidth - menuWidth - 8);
-  const top = Math.min(y, window.innerHeight - (itemCount * 32 + 16) - 8);
+  const top = Math.min(y, window.innerHeight - (itemCount * 32 + sepCount * 9 + 16) - 8);
 
   return createPortal(
     <div

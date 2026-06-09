@@ -37,7 +37,7 @@ export default function SlideList({ slides, activeIdx, onSelect, onDoubleClick, 
             }`}>
               {label}
             </p>
-            <p className="text-[14px] text-on-surface leading-tight whitespace-pre-wrap">
+            <p className="text-[14px] text-on-surface leading-tight whitespace-pre-wrap max-h-24 overflow-hidden">
               {slide.content}
             </p>
           </button>

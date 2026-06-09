@@ -144,7 +144,7 @@ function MediaGrid({ assets, onDelete, onSetBackground }) {
   );
 }
 
-export default function LibraryPanel({ onAddToRundown, onSongSave, refreshTick = 0 }) {
+export default function LibraryPanel({ onAddToRundown, onSongSave, refreshTick = 0, focusSearchRef }) {
   const [tab, setTab] = useState('songs');
   const [searchQuery, setSearchQuery] = useState('');
   const [songs, setSongs] = useState([]);
@@ -155,7 +155,18 @@ export default function LibraryPanel({ onAddToRundown, onSongSave, refreshTick =
   const [songContextMenu, setSongContextMenu] = useState(null);
   const [listHeight, setListHeight] = useState(300);
   const containerRef = useRef(null);
+  const searchInputRef = useRef(null);
   const searchDebounce = useRef(null);
+
+  // Expose a focus function so OperatorView can trigger search focus via keyboard (S key)
+  useEffect(() => {
+    if (focusSearchRef) {
+      focusSearchRef.current = () => {
+        setTab('songs');
+        setTimeout(() => { searchInputRef.current?.focus(); searchInputRef.current?.select(); }, 0);
+      };
+    }
+  }, [focusSearchRef]);
   const [mediaAssets, setMediaAssets] = useState([]);
   const [folderTree, setFolderTree] = useState([]);
   const [activeFolderId, setActiveFolderId] = useState(null);
@@ -252,6 +263,7 @@ export default function LibraryPanel({ onAddToRundown, onSongSave, refreshTick =
                 search
               </span>
               <input
+                ref={searchInputRef}
                 className="bg-surface-container-lowest border border-outline-variant/30 rounded-full pl-xl pr-md py-1 text-label-sm font-label-sm focus:outline-none w-56 text-on-surface"
                 placeholder="Search songs…"
                 value={searchQuery}
