@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import OutputChannels from '../settings/OutputChannels';
 import LogoSettings from '../settings/LogoSettings';
 import BackgroundSettings from '../settings/BackgroundSettings';
 import ShortcutSettings from '../settings/ShortcutSettings';
+import DangerZone from '../settings/DangerZone';
 
 const NAV_ITEMS = [
   { id: 'rundown',  icon: 'list_alt',       label: 'Rundown' },
@@ -10,6 +11,56 @@ const NAV_ITEMS = [
   { id: 'library',  icon: 'library_books',   label: 'Library' },
   { id: 'live',     icon: 'sensors',         label: 'Live' },
 ];
+
+function formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+function SettingsFooter() {
+  const [dataPath, setDataPath] = useState('');
+  const [diskUsage, setDiskUsage] = useState(null);
+
+  useEffect(() => {
+    window.cue.settings.getDataPath().then(setDataPath);
+    window.cue.settings.getDiskUsage().then(setDiskUsage);
+  }, []);
+
+  return (
+    <footer className="pt-lg border-t border-outline-variant/30 flex justify-between items-center">
+      <div className="flex items-center gap-md">
+        <div className="flex flex-col">
+          <span className="text-label-sm font-label-sm text-on-surface">System Version</span>
+          <span className="text-label-sm font-label-sm text-outline">v1.0.0 (Build 1)</span>
+        </div>
+        <div className="h-8 w-[1px] bg-outline-variant/30" />
+        <div className="flex flex-col">
+          <span className="text-label-sm font-label-sm text-on-surface">Storage</span>
+          <span className="text-label-sm font-label-sm text-outline">
+            {diskUsage !== null ? `${formatBytes(diskUsage)} used` : '—'}
+          </span>
+        </div>
+        {dataPath && (
+          <>
+            <div className="h-8 w-[1px] bg-outline-variant/30" />
+            <div className="flex flex-col">
+              <span className="text-label-sm font-label-sm text-on-surface">Data Path</span>
+              <span className="text-[10px] font-label-sm text-outline truncate max-w-48">{dataPath}</span>
+            </div>
+          </>
+        )}
+      </div>
+      <button
+        onClick={() => window.cue.settings.openDataFolder()}
+        className="bg-surface-container text-on-surface px-lg py-sm rounded text-label-sm font-label-sm hover:bg-surface-container-high transition-all cursor-pointer"
+      >
+        Open Data Folder
+      </button>
+    </footer>
+  );
+}
 
 export default function SettingsView({ onClose, activeServiceId, onRundownCleared, onRundownDeleted, onLibraryCleared }) {
   return (
@@ -36,7 +87,7 @@ export default function SettingsView({ onClose, activeServiceId, onRundownCleare
         ))}
       </aside>
 
-      {/* Main settings content — all sections in one scrollable page */}
+      {/* Main settings content */}
       <main className="flex-1 overflow-y-auto bg-background p-lg space-y-xl">
         <header className="mb-xl">
           <h1 className="text-display-lg font-bold text-on-surface">Settings</h1>
@@ -47,13 +98,15 @@ export default function SettingsView({ onClose, activeServiceId, onRundownCleare
 
         <OutputChannels />
         <LogoSettings />
-        <BackgroundSettings
+        <BackgroundSettings activeServiceId={activeServiceId} />
+        <ShortcutSettings />
+        <DangerZone
           activeServiceId={activeServiceId}
           onRundownCleared={onRundownCleared}
           onRundownDeleted={onRundownDeleted}
           onLibraryCleared={onLibraryCleared}
         />
-        <ShortcutSettings />
+        <SettingsFooter />
       </main>
     </div>
   );

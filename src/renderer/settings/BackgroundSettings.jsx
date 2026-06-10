@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { mediaUrl } from '../utils/mediaUrl';
-import DangerZone from './DangerZone';
 
 function BackgroundPicker({ label, settingKey }) {
   const [assetId, setAssetId] = useState(null);
@@ -76,19 +75,14 @@ function BackgroundPicker({ label, settingKey }) {
   );
 }
 
-export default function BackgroundSettings({ activeServiceId, onRundownCleared, onRundownDeleted, onLibraryCleared }) {
-  const [dataPath, setDataPath] = useState('');
-  const [diskUsage, setDiskUsage] = useState(null);
+export default function BackgroundSettings({ activeServiceId }) {
   const [services, setServices] = useState([]);
   const [selectedServiceId, setSelectedServiceId] = useState(null);
   const [feedback, setFeedback] = useState(null);
 
   useEffect(() => {
-    window.cue.settings.getDataPath().then(setDataPath);
-    window.cue.settings.getDiskUsage().then(setDiskUsage);
     window.cue.services.list().then((list) => {
       setServices(list);
-      // Default to the rundown currently active in the Operator view.
       const defaultId = activeServiceId ?? (list.length > 0 ? list[0].id : null);
       setSelectedServiceId(defaultId);
     });
@@ -98,13 +92,6 @@ export default function BackgroundSettings({ activeServiceId, onRundownCleared, 
   useEffect(() => {
     if (activeServiceId != null) setSelectedServiceId(activeServiceId);
   }, [activeServiceId]);
-
-  function formatBytes(bytes) {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-  }
 
   function showFeedback(msg) {
     setFeedback(msg);
@@ -222,44 +209,6 @@ export default function BackgroundSettings({ activeServiceId, onRundownCleared, 
         </div>
       )}
 
-      <DangerZone
-        activeServiceId={activeServiceId}
-        onRundownCleared={onRundownCleared}
-        onRundownDeleted={onRundownDeleted}
-        onLibraryCleared={onLibraryCleared}
-      />
-
-      {/* System info */}
-      <footer className="pt-lg border-t border-outline-variant/30 flex justify-between items-center">
-        <div className="flex items-center gap-md">
-          <div className="flex flex-col">
-            <span className="text-label-sm font-label-sm text-on-surface">System Version</span>
-            <span className="text-label-sm font-label-sm text-outline">v1.0.0 (Build 1)</span>
-          </div>
-          <div className="h-8 w-[1px] bg-outline-variant/30" />
-          <div className="flex flex-col">
-            <span className="text-label-sm font-label-sm text-on-surface">Storage</span>
-            <span className="text-label-sm font-label-sm text-outline">
-              {diskUsage !== null ? `${formatBytes(diskUsage)} used` : '—'}
-            </span>
-          </div>
-          {dataPath && (
-            <>
-              <div className="h-8 w-[1px] bg-outline-variant/30" />
-              <div className="flex flex-col">
-                <span className="text-label-sm font-label-sm text-on-surface">Data Path</span>
-                <span className="text-[10px] font-label-sm text-outline truncate max-w-48">{dataPath}</span>
-              </div>
-            </>
-          )}
-        </div>
-        <button
-          onClick={() => window.cue.settings.openDataFolder()}
-          className="bg-surface-container text-on-surface px-lg py-sm rounded text-label-sm font-label-sm hover:bg-surface-container-high transition-all cursor-pointer"
-        >
-          Open Data Folder
-        </button>
-      </footer>
     </section>
   );
 }
