@@ -20,33 +20,17 @@ export function search(query) {
   } catch { return []; }
 }
 
-export function listAll() {
-  const db = getDb();
-  const rows = db.prepare(`
-    SELECT s.id, s.title, s.author, s.copyright, s.default_background_id,
-           s.created_at, s.updated_at,
-           t.id AS tag_id, t.name AS tag_name, t.colour AS tag_colour
-    FROM songs s
-    LEFT JOIN taggables tb ON tb.entity_type = 'song' AND tb.entity_id = s.id
-    LEFT JOIN tags t ON t.id = tb.tag_id
-    ORDER BY s.title COLLATE NOCASE
-  `).all();
+const _listAllSongsStmt = () => getDb().prepare(
+  'SELECT id, title, author, copyright, default_background_id, created_at, updated_at FROM songs ORDER BY title COLLATE NOCASE'
+);
+const _listTagsForSongStmt = () => getDb().prepare(
+  `SELECT t.id, t.name, t.colour FROM tags t JOIN taggables tb ON tb.tag_id = t.id WHERE tb.entity_type = 'song' AND tb.entity_id = ?`
+);
 
-  const songMap = new Map();
-  for (const row of rows) {
-    if (!songMap.has(row.id)) {
-      songMap.set(row.id, {
-        id: row.id, title: row.title, author: row.author,
-        copyright: row.copyright, default_background_id: row.default_background_id,
-        created_at: row.created_at, updated_at: row.updated_at,
-        tags: [],
-      });
-    }
-    if (row.tag_id != null) {
-      songMap.get(row.id).tags.push({ id: row.tag_id, name: row.tag_name, colour: row.tag_colour });
-    }
-  }
-  return [...songMap.values()];
+export function listAll() {
+  const songs = _listAllSongsStmt().all();
+  const tagsStmt = _listTagsForSongStmt();
+  return songs.map((s) => ({ ...s, tags: tagsStmt.all(s.id) }));
 }
 
 export function getById(id) {
