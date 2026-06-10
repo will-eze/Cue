@@ -159,7 +159,7 @@ src/
 │   ├── output-preload.js     Minimal preload for output windows → window.cueOutput only.
 │   ├── fonts.js              BUNDLED_FONTS array + DEFAULT_FONT = 'Inter'.
 │   ├── db/
-│   │   ├── schema.js         SQLite init + migration runner (v1→v4). getDb() singleton.
+│   │   ├── schema.js         SQLite init + migration runner (v1→v5). getDb() singleton.
 │   │   ├── songs.js          Song + section + tag CRUD. FTS5 search. deleteAll().
 │   │   ├── services.js       Service / rundown CRUD. resolveItem() joins media paths. clearItems(). setItemBackground() writes through to songs.
 │   │   ├── media.js          Import (copy to userData/media/), list, getById, delete, folders.
@@ -187,7 +187,9 @@ src/
 │   │   │                     Resize state persisted to localStorage. Services list refreshes on bgRefreshTick.
 │   │   │                     Loads channel list; subscribes to output:multiview-captures (starts multiview when
 │   │   │                     live). Tracks liveChannelIdx for channel selector in PreviewLivePanel.
-│   │   ├── SettingsView.jsx  Settings page layout. Hosts OutputChannels + Logo + Background + ShortcutSettings.
+│   │   ├── SettingsView.jsx  Settings page layout. Section order: OutputChannels → Logo → Background →
+│   │   │                     ShortcutSettings → DangerZone → SettingsFooter. DangerZone and SettingsFooter
+│   │   │                     are always last — rendered at layout level, not inside sub-components.
 │   │   └── MultiviewView.jsx Multi-output monitor wall. Subscribes to output:multiview-captures. Routes NDI
 │   │                         channels to NdiTile (checkerboard bg, green ring) vs ScreenMonitorTile. Refcounted.
 │   ├── panels/
@@ -215,8 +217,7 @@ src/
 │   ├── settings/
 │   │   ├── OutputChannels.jsx     Channel cards. Create/edit/delete. Monitor assignment per channel.
 │   │   ├── LogoSettings.jsx       Global logo picker.
-│   │   ├── BackgroundSettings.jsx Global song/slide background pickers. Bulk apply. Disk usage. Data path.
-│   │   │                          Embeds DangerZone above the system footer.
+│   │   ├── BackgroundSettings.jsx Global song/slide background pickers. Bulk apply. Accepts only activeServiceId prop.
 │   │   ├── DangerZone.jsx         Destructive actions: clear rundown, delete rundown, clear library.
 │   │   │                          Two-step confirm. Uses existing removeItem IPC in a loop (no new IPC needed).
 │   │   └── ShortcutSettings.jsx   Configurable transport shortcuts. Modifier selector + key inputs for
@@ -240,7 +241,7 @@ src/
 
 **Engine**: `better-sqlite3` (synchronous — no Promises).
 **Location**: macOS `~/Library/Application Support/Cue/cue.db`, Windows `%APPDATA%\Cue\cue.db`
-**Current schema version**: 4
+**Current schema version**: 5
 
 **Media files** are copied to `userData/media/<uuid>.<ext>` on import. Original paths not retained.
 
@@ -260,7 +261,7 @@ src/
 | `output_channels` | `id, name, type, template, ndi_fps, ndi_width, ndi_height, active` |
 | `channel_monitors` | `id, channel_id, display_bounds, label, active` — physical screen per channel (v4) |
 | `settings` | `key, value` (JSON-encoded values) |
-| `db_version` | `version` (integer, currently 4) |
+| `db_version` | `version` (integer, currently 5) |
 
 ### Settings keys in use
 
@@ -361,8 +362,9 @@ src/
 - `window.cue.fonts.list` — `[{family, label, category}]`
 - `window.cue.fonts.default` — `'Inter'`
 
-### Renderer events (`window.cue.on(channel, cb)`)
-- `output:unresolved-channels` — unresolved channel objects on startup
+### Renderer events (`window.cue.on(channel, cb)` → unsubscribe function)
+`on()` returns an unsubscribe function. Always store it and call it in `useEffect` cleanup to prevent listener leaks.
+- `output:unresolved-channels` — unresolved channel objects on startup (App.jsx does NOT auto-navigate to Settings)
 - `output:state-changed` — after go/clear/logo/setLive; payload: `{activeWindows, outputsEnabled, displayMode}`
 - `output:live-capture` — data URL of captured output frame (every 200ms while live)
 - `output:multiview-captures` — `[{channelId, dataUrl, isNdi}]` array at ~5fps (only while multiview running). `isNdi: true` → sourced from ndiLastFrames JPEG cache (~1fps); `isNdi: false` → capturePage (~5fps).
@@ -393,9 +395,9 @@ Output windows receive this via `webContents.send('slide:update', payload)`.
 
 **Channels vs Monitors**: a channel is a content stream (one template, one set of settings). A monitor is a physical screen assignment (`channel_monitors` row). One channel can drive multiple monitors simultaneously.
 
-**Screen channels**: each `channel_monitors` row opens a `BrowserWindow` with `fullscreen: true, frame: false, alwaysOnTop: true`. Display matched by `display_bounds` JSON, never `display_index`. If bounds don't match a connected display → flagged unresolved → Settings auto-opens.
+**Screen channels**: each `channel_monitors` row opens a `BrowserWindow` with `fullscreen: true, frame: false, alwaysOnTop: true`. Display matched by `display_bounds` JSON, never `display_index`. If bounds don't match a connected display → flagged unresolved → `output:unresolved-channels` IPC fired; operator navigates to Settings manually.
 
-**NDI channels**: hidden `show: false`, `offscreen: true` BrowserWindow. Loaded with `?alpha=1` so the template overrides its CSS background to transparent. `ndi.js` uses `grandi` to publish BGRA frames at the configured fps. Frame capture uses the `paint` event driven by `setInterval(invalidate, frameMs)` — do NOT use `capturePage()` on NDI windows (4s+ latency due to async GPU readback and offscreen compositor throttling). An `inflight` per-sender flag drops frames when the NDI SDK is busy to prevent memory exhaustion.
+**NDI channels**: hidden `show: false`, `offscreen: true` BrowserWindow. Loaded with `?alpha=1` so the template overrides its CSS background to transparent. `ndi.js` uses `grandi` to publish BGRA frames at the configured fps. Frame capture uses the `paint` event driven by `setInterval(invalidate, frameMs)` — do NOT use `capturePage()` on NDI windows (4s+ latency due to async GPU readback and offscreen compositor throttling). An `inflight` per-sender flag drops frames when the NDI SDK is busy to prevent memory exhaustion. `startNdiCapture` **always runs** after `did-finish-load` — `startPainting()` must be called regardless of SDK availability so `ndiLastFrames` populates for multiview. Only `ndi.sendFrame()` is gated on `ndi.isAvailable()`.
 
 ---
 

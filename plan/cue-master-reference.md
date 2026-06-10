@@ -73,7 +73,7 @@ src/
 │   ├── fonts.js              BUNDLED_FONTS array + DEFAULT_FONT. Imported by preload.js.
 │   │
 │   ├── db/
-│   │   ├── schema.js         SQLite init, migration runner (v1→v2), getDb() singleton.
+│   │   ├── schema.js         SQLite init, migration runner (v1→v5), getDb() singleton.
 │   │   ├── songs.js          Song + section + tag CRUD, FTS5 search.
 │   │   ├── services.js       Service / rundown CRUD. resolveItem() joins media paths.
 │   │   ├── media.js          Media import (copy to userData/media/), list, delete, folders.
@@ -107,8 +107,9 @@ src/
 │   │   │                     Loads output channels list; subscribes to output:multiview-captures.
 │   │   │                     Starts/stops multiview capture loop when outputsEnabled changes (refcounted).
 │   │   │                     liveChannelIdx tracks which channel the live monitor displays.
-│   │   ├── SettingsView.jsx  Settings layout. Renders OutputChannels + LogoSettings + BackgroundSettings + ShortcutSettings.
-│   │   │                     BackgroundSettings embeds DangerZone above the footer.
+│   │   ├── SettingsView.jsx  Settings layout. Section order: OutputChannels → LogoSettings → BackgroundSettings →
+│   │   │                     ShortcutSettings → DangerZone → SettingsFooter (always last two). DangerZone and
+│   │   │                     SettingsFooter are rendered at layout level — not inside any sub-component.
 │   │   └── MultiviewView.jsx Multi-output monitor wall. Subscribes to output:multiview-captures.
 │   │                         NDI channels show NdiTile (checkerboard + frame). Screen channels show ScreenMonitorTile.
 │   │                         NDI channels never show "No screens assigned" — they don't use channel_monitors.
@@ -152,8 +153,8 @@ src/
 │   ├── settings/
 │   │   ├── OutputChannels.jsx    Channel cards. Create/edit/delete. Monitor assignment per channel.
 │   │   ├── LogoSettings.jsx      Global logo picker.
-│   │   ├── BackgroundSettings.jsx Global song/slide background pickers. Bulk apply actions. Disk usage.
-│   │   │                          Embeds DangerZone above the system info footer.
+│   │   ├── BackgroundSettings.jsx Global song/slide background pickers. Bulk apply actions.
+│   │   │                          Accepts only activeServiceId prop. No DangerZone or footer inside.
 │   │   ├── DangerZone.jsx        Destructive actions: clear rundown items, delete rundown, clear library.
 │   │   │                          Two-step confirm on every action. Success toast feedback.
 │   │   └── ShortcutSettings.jsx  Configurable keyboard shortcuts UI. Modifier selector (Cmd/Ctrl/Alt)
@@ -214,7 +215,7 @@ src/
 
 ### Migration system
 
-`schema.js` creates `db_version` table (single integer row) on first run and applies pending migrations in order inside a transaction. **Never delete `db_version`** — it is required to exist before any user-facing build. Current version: **4**.
+`schema.js` creates `db_version` table (single integer row) on first run and applies pending migrations in order inside a transaction. **Never delete `db_version`** — it is required to exist before any user-facing build. Current version: **5**.
 
 | Version | Change |
 |---|---|
@@ -222,6 +223,7 @@ src/
 | v2 | Added `style_json` to `song_sections`, expanded type CHECK to include `refrain` |
 | v3 | Rebuilt `songs_fts` as plain contentless FTS5 (removed `contentless_delete=1` incompatible with Electron 30's SQLite 3.49) |
 | v4 | Added `channel_monitors` table — separates channels (content streams) from physical screen assignments |
+| v5 | Added 5 query-plan indices: `song_sections(song_id)`, `service_items(service_id)`, `taggables(entity_type, entity_id)`, `channel_monitors(channel_id)`, `media_assets(folder_id)` |
 
 ### All tables
 
@@ -356,7 +358,7 @@ Known keys:
 
 #### `db_version`
 ```sql
-version INTEGER NOT NULL       -- current: 4
+version INTEGER NOT NULL       -- current: 5
 ```
 
 ---
@@ -383,7 +385,7 @@ protocol.registerSchemesAsPrivileged([
 - Extracts `pathname` via `new URL(request.url).pathname`
 - Decodes it: `decodeURIComponent(pathname)` → absolute filesystem path
 - Supports HTTP range requests (for video seeking)
-- Returns `Response` with correct MIME type
+- Returns `Response` with correct MIME type and `Cache-Control: public, max-age=31536000, immutable` — Chromium serves from disk cache after first load so repeated media displays do not re-read from disk
 
 ### CRITICAL URL GOTCHA
 
@@ -565,8 +567,8 @@ All renderer↔main communication is via `ipcRenderer.invoke` / `ipcMain.handle`
 - `fonts.list` — synchronous: `[{family, label, category}]` from `BUNDLED_FONTS`
 - `fonts.default` — synchronous: `'Inter'`
 
-### `window.cue.on(channel, callback)` / `window.cue.off(channel, callback)`
-Subscribe to main→renderer events. Allowed channels:
+### `window.cue.on(channel, callback)` → unsubscribe function
+Subscribe to main→renderer events. Returns an unsubscribe function — call it to remove the listener (e.g. in `useEffect` cleanup). Allowed channels:
 - `output:unresolved-channels` — array of unresolved channel objects on startup
 - `output:state-changed` — fired after go/clear/logo/setLive; payload: `{activeWindows, outputsEnabled, displayMode}`
 - `output:live-capture` — data URL of captured output frame (every 200ms while live)
@@ -801,9 +803,9 @@ BrowserWindow({ width: ndi_width, height: ndi_height, show: false, frame: false,
 win.loadFile(src/output/fullscreen.html, { query: { alpha: '1' } })
 // Template overrides CSS background to transparent when alpha=1.
 ```
-NDI sender is created immediately (before `did-finish-load`) so the source appears on the network instantly. After load, `startNdiCapture` begins a `setInterval` that calls `webContents.invalidate()` at the configured fps, driving Chromium's offscreen compositor. The `paint` event handler calls `image.toBitmap()` and `ndi.sendFrame()` — no async `capturePage()` overhead. An `inflight` flag per sender drops frames if the NDI SDK hasn't finished the previous `sender.video()` call, preventing unbounded buffer queue growth.
+NDI sender is created immediately (before `did-finish-load`) so the source appears on the network instantly. After load, `startNdiCapture` **always runs** regardless of whether the NDI SDK is available — `startPainting()` and the `invalidate` interval must run so that `ndiLastFrames` populates for multiview thumbnails even when grandi is not installed. The `paint` event handler guards `ndi.sendFrame()` with `ndi.isAvailable()` so frame publishing is skipped when the SDK is absent. An `inflight` flag per sender drops frames if the NDI SDK hasn't finished the previous `sender.video()` call, preventing unbounded buffer queue growth.
 
-Display matching uses **bounds** (`x, y, width, height`), never `display_index`. If stored bounds don't match any connected display, the channel is flagged as unresolved. On startup, unresolved channels are sent via `output:unresolved-channels` IPC, which causes `App.jsx` to navigate to Settings.
+Display matching uses **bounds** (`x, y, width, height`), never `display_index`. If stored bounds don't match any connected display, the channel is flagged as unresolved. On startup, unresolved channels are sent via `output:unresolved-channels` IPC. `App.jsx` does **not** auto-redirect to Settings — the operator navigates there manually.
 
 ### Template path
 ```js
@@ -932,7 +934,7 @@ No-header fallback: split by blank lines, all → `verse`. The user then relabel
    c. Register all IPC handlers (songs, services, media, output, settings)
    d. `createMainWindow()` — show operator UI
    e. `outputManager.init()` — load active channels, create BrowserWindows
-   f. On `did-finish-load`: send `output:unresolved-channels` and/or `output:ndi-unavailable` if needed
+   f. On `did-finish-load`: send `output:unresolved-channels` and/or `output:ndi-unavailable` if needed. The renderer does not auto-navigate to Settings — the operator opens it manually.
 
 ---
 
