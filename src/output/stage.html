@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Cue Stage Display</title>
+  <link rel="stylesheet" href="../fonts/fonts.css" />
+  <link rel="stylesheet" href="stage.css" />
+</head>
+<body>
+  <div id="stage">
+    <div id="topbar">
+      <div id="status" class="status-idle">
+        <span id="status-dot"></span>
+        <span id="status-text">STANDBY</span>
+      </div>
+      <div id="clock">--:--:--</div>
+    </div>
+
+    <div id="current-wrap">
+      <div id="current-label"></div>
+      <div id="current"></div>
+    </div>
+
+    <div id="next-wrap">
+      <div id="next-header">NEXT</div>
+      <div id="next-label"></div>
+      <div id="next"></div>
+    </div>
+  </div>
+  <script src="stage.js"></script>
+</body>
+</html>

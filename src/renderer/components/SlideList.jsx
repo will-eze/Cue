@@ -9,6 +9,7 @@ const SECTION_LABELS = {
   intro: 'Intro',
   outro: 'Outro',
   slide: 'Slide',
+  media: 'Media',
 };
 
 export default function SlideList({ slides, activeIdx, onSelect, onDoubleClick, variant = 'preview' }) {

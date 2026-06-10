@@ -75,20 +75,18 @@ function useResizeV(containerRef, storageKey, defaultPct = 62) {
 }
 
 export default function OperatorView({
-  transportRef, onStateChange, displayMode = 'idle', bgRefreshTick = 0,
-  activeServiceId, onServiceChange, outputsEnabled, onToggleLive,
+  transportRef, onStateChange, displayMode = 'idle', liveMediaStartAt = null, bgRefreshTick = 0,
+  activeServiceId, onServiceChange, onToggleLive,
 }) {
   const [services, setServices] = useState([]);
   const [serviceData, setServiceData] = useState(null);
   const [channels, setChannels] = useState([]);
-  const [channelCaptures, setChannelCaptures] = useState({}); // channelId → dataUrl
   const [liveChannelIdx, setLiveChannelIdx] = useState(0);
 
   const [previewItemId, setPreviewItemId] = useState(null);
   const [previewSlideIdx, setPreviewSlideIdx] = useState(0);
   const [liveItemId, setLiveItemId] = useState(null);
   const [liveSlideIdx, setLiveSlideIdx] = useState(0);
-  const [liveCapture, setLiveCapture] = useState(null);
   const [undoStack, setUndoStack] = useState(null);
   const undoTimerRef = useRef(null);
 
@@ -127,24 +125,6 @@ export default function OperatorView({
     if (!activeServiceId) { setServiceData(null); return; }
     window.cue.services.get(activeServiceId).then(setServiceData);
   }, [activeServiceId, bgRefreshTick]);
-
-  useEffect(() => {
-    const offLive  = window.cue.on('output:live-capture', (dataUrl) => setLiveCapture(dataUrl));
-    const offMulti = window.cue.on('output:multiview-captures', (captures) => {
-      const map = {};
-      for (const c of captures) { if (c.dataUrl) map[c.channelId] = c.dataUrl; }
-      setChannelCaptures(map);
-    });
-    return () => { offLive(); offMulti(); };
-  }, []);
-
-  // Keep multiview running while outputs are live so the channel toggle has fresh frames.
-  useEffect(() => {
-    if (outputsEnabled) {
-      window.cue.output.multiview.start();
-      return () => window.cue.output.multiview.stop();
-    }
-  }, [outputsEnabled]);
 
   const shortcutRef = useRef({});
   shortcutRef.current = { handleNextSlide, handlePrevSlide, handleGo, handleClear, handleLogo, handleLiveToggle };
@@ -198,25 +178,63 @@ export default function OperatorView({
   function getSlides(item) {
     if (!item) return [];
     if (item.item_type === 'song') return item.sections || [];
+    if (item.item_type === 'scripture') return item.scriptureSlides || [];
+    if (item.item_type === 'media') return [{ id: item.id, type: 'media', content: '', asset: item.asset }];
     if (item.item_type === 'slide') return [{ id: item.id, type: 'slide', content: item.content }];
     return [];
+  }
+
+  // Resolve the slide that follows (item, slideIdx) — rolling into the next
+  // rundown item's first slide at an item boundary. Used to feed the stage display.
+  function nextSlideInfo(item, slideIdx) {
+    const slides = getSlides(item);
+    if (slideIdx < slides.length - 1) {
+      const n = slides[slideIdx + 1];
+      return { text: n.content || '', label: n.type || '' };
+    }
+    const items = serviceData?.items || [];
+    const curIdx = items.findIndex((i) => i.id === item.id);
+    if (curIdx >= 0 && curIdx < items.length - 1) {
+      const nextSlides = getSlides(items[curIdx + 1]);
+      if (nextSlides.length) return { text: nextSlides[0].content || '', label: nextSlides[0].type || '' };
+    }
+    return { text: '', label: '' };
   }
 
   function buildPayload(item, slideIdx) {
     const slides = getSlides(item);
     const slide = slides[slideIdx];
     if (!slide) return null;
-    return {
+    const next = nextSlideInfo(item, slideIdx);
+    const base = {
       type: 'content',
-      text: slide.content || '',
       sectionLabel: slide.type || '',
-      copyright: item.song?.copyright || null,
+      nextText: next.text,
+      nextSectionLabel: next.label,
+      title: item.song?.title || item.asset?.filename || null,
+    };
+    // Foreground media item — full-frame video/audio/image, no text.
+    if (item.item_type === 'media' && item.asset) {
+      return {
+        ...base,
+        text: '', copyright: null, backgroundPath: null, styleJson: null,
+        media: { path: item.asset.path, type: item.asset.type },
+      };
+    }
+    return {
+      ...base,
+      text: slide.content || '',
+      // Scripture slides carry their own attribution (reference · version);
+      // songs use the song's copyright line.
+      copyright: slide.copyright ?? item.song?.copyright ?? null,
       backgroundPath: resolveBackground(item),
       styleJson: slide.style_json ? JSON.parse(slide.style_json) : null,
     };
   }
 
   function resolveBackground(item) {
+    // Foreground media shows the asset itself in the preview/live monitors.
+    if (item.item_type === 'media' && item.asset?.path) return item.asset.path;
     if (item.background_override?.path) return item.background_override.path;
     if (item.song?.default_background?.path) return item.song.default_background.path;
     return null;
@@ -346,7 +364,7 @@ export default function OperatorView({
 
     if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
     const remainingIds = items.filter((i) => i.id !== itemId).map((i) => i.id);
-    const label = item?.song?.title || item?.asset?.filename || 'Item';
+    const label = item?.song?.title || item?.asset?.filename || item?.scripture?.reference || 'Item';
     const serviceIdAtRemoval = activeServiceId;
 
     undoTimerRef.current = setTimeout(() => setUndoStack(null), 5000);
@@ -395,6 +413,44 @@ export default function OperatorView({
     }
   }
 
+  async function handleAddScripture(passage) {
+    const item = {
+      item_type: 'scripture',
+      ref_id: passage.versionId ?? null,
+      content: JSON.stringify(passage),
+    };
+    if (!activeServiceId) {
+      const id = await window.cue.services.create({
+        title: new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }),
+        date: new Date().toISOString().split('T')[0],
+      });
+      onServiceChange(id);
+      setServices(await window.cue.services.list());
+      await window.cue.services.addItem(id, item);
+      window.cue.services.get(id).then(setServiceData);
+    } else {
+      await window.cue.services.addItem(activeServiceId, item);
+      refreshService();
+    }
+  }
+
+  async function handleAddMedia(assetId) {
+    const item = { item_type: 'media', ref_id: assetId };
+    if (!activeServiceId) {
+      const id = await window.cue.services.create({
+        title: new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }),
+        date: new Date().toISOString().split('T')[0],
+      });
+      onServiceChange(id);
+      setServices(await window.cue.services.list());
+      await window.cue.services.addItem(id, item);
+      window.cue.services.get(id).then(setServiceData);
+    } else {
+      await window.cue.services.addItem(activeServiceId, item);
+      refreshService();
+    }
+  }
+
   async function handleAddService(title) {
     const id = await window.cue.services.create({ title, date: new Date().toISOString().split('T')[0] });
     const list = await window.cue.services.list();
@@ -424,9 +480,13 @@ export default function OperatorView({
   const previewBgPath = previewItem ? resolveBackground(previewItem) : null;
   const liveBgPath    = liveItem    ? resolveBackground(liveItem)    : null;
 
-  // Use the first active channel's template to drive the monitor frame rendering.
-  // Falls back to 'fullscreen' if no channels are configured yet.
-  const channelTemplate = (channels.find((c) => c.active) ?? channels[0])?.template ?? 'fullscreen';
+  // Use the first active program channel's template to drive the monitor frame
+  // rendering. Stage channels are confidence monitors, not audience output, so
+  // they never drive the operator preview. Falls back to 'fullscreen'.
+  const channelTemplate =
+    (channels.find((c) => c.active && c.template !== 'stage')
+      ?? channels.find((c) => c.active)
+      ?? channels[0])?.template ?? 'fullscreen';
 
   const containerRef = useRef(null);
   const [hPct, startHDrag] = useResizeH(containerRef, 'layout_h_pct', 25);
@@ -471,8 +531,8 @@ export default function OperatorView({
             liveItem={liveItem}
             previewSlideIdx={previewSlideIdx}
             liveSlideIdx={liveSlideIdx}
-            liveCapture={liveCapture}
             displayMode={displayMode}
+            liveMediaStartAt={liveMediaStartAt}
             getSlides={getSlides}
             previewBgPath={previewBgPath}
             liveBgPath={liveBgPath}
@@ -481,7 +541,6 @@ export default function OperatorView({
             onSelectLiveSlide={handleSelectLiveSlide}
             channelTemplate={channelTemplate}
             allChannels={channels}
-            channelCaptures={channelCaptures}
             liveChannelIdx={liveChannelIdx}
             onSetLiveChannelIdx={setLiveChannelIdx}
           />
@@ -501,6 +560,8 @@ export default function OperatorView({
       <div className="flex-1 min-h-0 overflow-hidden">
         <LibraryPanel
           onAddToRundown={handleAddToRundown}
+          onAddScripture={handleAddScripture}
+          onAddMedia={handleAddMedia}
           onSongSave={refreshService}
           refreshTick={bgRefreshTick}
           focusSearchRef={focusSearchRef}

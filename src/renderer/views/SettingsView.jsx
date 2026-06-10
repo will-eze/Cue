@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import OutputChannels from '../settings/OutputChannels';
 import LogoSettings from '../settings/LogoSettings';
 import BackgroundSettings from '../settings/BackgroundSettings';
+import BibleSettings from '../settings/BibleSettings';
 import ShortcutSettings from '../settings/ShortcutSettings';
 import DangerZone from '../settings/DangerZone';
 
@@ -99,6 +100,7 @@ export default function SettingsView({ onClose, activeServiceId, onRundownCleare
         <OutputChannels />
         <LogoSettings />
         <BackgroundSettings activeServiceId={activeServiceId} />
+        <BibleSettings />
         <ShortcutSettings />
         <DangerZone
           activeServiceId={activeServiceId}

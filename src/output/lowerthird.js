@@ -94,6 +94,16 @@ window.cueOutput.onSlideUpdate((payload) => {
     return;
   }
 
+  // Foreground media belongs on the fullscreen channel — the lower-third overlay
+  // shows nothing for it.
+  if (payload.media) {
+    ltDiv.style.background = 'transparent';
+    textEl.className = '';
+    textEl.innerHTML = '';
+    copyright.textContent = '';
+    return;
+  }
+
   textEl.className = '';
   applyStyle(textEl, styleJson);
   textEl.innerHTML = renderWithRuns(text || '', styleJson?.runs);

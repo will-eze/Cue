@@ -16,21 +16,22 @@ export default function App() {
   const [outputWindows, setOutputWindows] = useState(0);
   const [outputsEnabled, setOutputsEnabled] = useState(true);
   const [displayMode, setDisplayMode] = useState('idle');
+  // Shared start time for live foreground media — lets the operator preview seek
+  // its video to match the audience output. null when no media is live.
+  const [liveMediaStartAt, setLiveMediaStartAt] = useState(null);
   const [clock, setClock] = useState(() => formatTime());
   const transportRef = useRef({ go: () => {}, clear: () => {}, logo: () => {} });
 
   useEffect(() => {
     const offNdi   = window.cue.on('output:ndi-unavailable', () => setNdiWarning(true));
-    const offState = window.cue.on('output:state-changed', (s) => {
+    const applyState = (s) => {
       setOutputWindows(s.activeWindows ?? 0);
       setOutputsEnabled(s.outputsEnabled ?? true);
       setDisplayMode(s.displayMode ?? 'idle');
-    });
-    window.cue.output.getState().then((s) => {
-      setOutputWindows(s.activeWindows ?? 0);
-      setOutputsEnabled(s.outputsEnabled ?? true);
-      setDisplayMode(s.displayMode ?? 'idle');
-    });
+      setLiveMediaStartAt(s.livePayload?.media ? (s.livePayload.mediaStartAt ?? null) : null);
+    };
+    const offState = window.cue.on('output:state-changed', applyState);
+    window.cue.output.getState().then(applyState);
     return () => { offNdi(); offState(); };
   }, []);
 
@@ -184,6 +185,7 @@ export default function App() {
             transportRef={transportRef}
             onStateChange={setHeaderState}
             displayMode={displayMode}
+            liveMediaStartAt={liveMediaStartAt}
             bgRefreshTick={bgRefreshTick}
             activeServiceId={activeServiceId}
             onServiceChange={setActiveServiceId}

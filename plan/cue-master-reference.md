@@ -87,10 +87,12 @@ src/
 │   │   └── settings.ipc.js   Registers settings:* handlers.
 │   │
 │   └── output/
-│       ├── manager.js        Output window registry. go/clear/logo dispatch. Live capture loop.
+│       ├── manager.js        Output window registry. go/clear/logo dispatch. No operator capture loop —
+│       │                     the operator live monitor renders from payload, not capturePage.
+│       │                     go() stamps payload.mediaStartAt = Date.now() for loose video sync.
 │       │                     NDI: ndiCaptureLoops Map, ndiLastFrames Map (1fps JPEG cache for multiview).
-│       │                     startNdiCapture/stopNdiCapture. multiviewRefCount: refcounted start/stop so
-│       │                     OperatorView and MultiviewView can independently call multiview.start/stop.
+│       │                     startNdiCapture/stopNdiCapture. multiviewRefCount: refcounted start/stop —
+│       │                     multiview capture is driven only by MultiviewView (start on mount, stop on unmount).
 │       └── ndi.js            Active NDI implementation. createRequire loads @grandi/<platform>-<arch>
 │                             at runtime. createSender / sendFrame (inflight guard) / destroySender.
 │
@@ -104,8 +106,8 @@ src/
 │   │   │                     Background resolution. buildPayload(). Services list refreshes on bgRefreshTick.
 │   │   │                     Accepts outputsEnabled + onToggleLive props from App. focusSearchRef wired to LibraryPanel.
 │   │   │                     Resize state persisted to localStorage (keys: layout_h_pct, layout_v_pct).
-│   │   │                     Loads output channels list; subscribes to output:multiview-captures.
-│   │   │                     Starts/stops multiview capture loop when outputsEnabled changes (refcounted).
+│   │   │                     Loads output channels list. Does NOT capture output or subscribe to multiview —
+│   │   │                     the live monitor renders the slide from payload (no per-frame capture loop).
 │   │   │                     liveChannelIdx tracks which channel the live monitor displays.
 │   │   ├── SettingsView.jsx  Settings layout. Section order: OutputChannels → LogoSettings → BackgroundSettings →
 │   │   │                     ShortcutSettings → DangerZone → SettingsFooter (always last two). DangerZone and
@@ -124,8 +126,10 @@ src/
 │   │   │                          MonitorFrame renders a 1920×1080 virtual canvas scaled via ResizeObserver +
 │   │   │                          CSS transform — pixel-accurate match of the output template at any container size.
 │   │   │                          Supports fullscreen (textBox positioning) and lowerthird (bottom-anchored bar) layouts.
+│   │   │                          Video backgrounds use SyncedVideo (seeks to shared mediaStartAt elapsed time) —
+│   │   │                          loose sync to audience output, no screen-capture.
 │   │   │                          Channel selector strip (2+ channels): click to switch live monitor to any channel.
-│   │   │                          Props: allChannels, channelCaptures, liveChannelIdx, onSetLiveChannelIdx.
+│   │   │                          Props: allChannels, liveChannelIdx, onSetLiveChannelIdx, liveMediaStartAt.
 │   │   └── LibraryPanel.jsx       Songs tab (react-window virtualised list) + Media tab (grid).
 │   │                              Song search + tag filter. Media import.
 │   │                              Single-click (220ms) → SongPreviewModal. Double-click → add to rundown.
@@ -570,8 +574,7 @@ All renderer↔main communication is via `ipcRenderer.invoke` / `ipcMain.handle`
 ### `window.cue.on(channel, callback)` → unsubscribe function
 Subscribe to main→renderer events. Returns an unsubscribe function — call it to remove the listener (e.g. in `useEffect` cleanup). Allowed channels:
 - `output:unresolved-channels` — array of unresolved channel objects on startup
-- `output:state-changed` — fired after go/clear/logo/setLive; payload: `{activeWindows, outputsEnabled, displayMode}`
-- `output:live-capture` — data URL of captured output frame (every 200ms while live)
+- `output:state-changed` — fired after go/clear/logo/setLive; payload: `{activeWindows, outputsEnabled, displayMode, livePayload}`. `livePayload.mediaStartAt` carries the shared video-sync timestamp for the operator preview.
 - `output:multiview-captures` — array of `{channelId, dataUrl, isNdi}` objects (~5fps, only while multiview is running). `isNdi: true` for NDI channels (sourced from `ndiLastFrames` JPEG cache at ~1fps); `isNdi: false` for screen channels (capturePage at ~5fps).
 - `output:ndi-unavailable` — fired if grandiose is not installed
 - `shortcut:next` / `shortcut:prev` — reserved for future hardware remote
@@ -822,14 +825,14 @@ Works in both dev (ASAR not used) and production (path is inside ASAR).
 ### Lower-third template structure
 `lowerthird.html` uses `#lowerthird` (bottom-anchored, full-width) containing `#text` and `#copyright`. Background is always `transparent` by default — JS sets it from `ltBar` via `buildBarBg()`. The `applyStyle(el, s)` function applies all style properties including the bar background. Clear and logo events explicitly reset `ltDiv.style.background = 'transparent'`.
 
-### Live capture
-`startLiveCapture()` runs a `setInterval` at 200ms, captures the first output window via `webContents.capturePage()`, converts to data URL, and sends `output:live-capture` to the main window. This is the **operator UI live thumbnail** — unrelated to NDI.
+### Operator live monitor — render from payload, not capture
+The operator live/preview monitors **do not screen-capture the output window**. `PreviewLivePanel.jsx` `MonitorFrame` renders the slide directly from the same payload sent to outputs — a 1920×1080 virtual canvas scaled with a CSS transform — so it stays pixel-accurate without a capture loop. There is **no `startLiveCapture` and no `output:live-capture` event**; reintroducing a per-frame `capturePage()` loop for the operator UI is the v5→v7 perf regression and must not return. The live monitor updates reactively when `liveItem`/`liveSlideIdx`/`displayMode` change. Video backgrounds are loosely synced via `SyncedVideo`, which seeks to `(Date.now() - mediaStartAt)/1000` (stamped in `manager.go()`, flowed `output:state-changed` → `App` → `PreviewLivePanel`), drift-corrected every 3s past a 0.25s threshold — frame-exact sync is intentionally not attempted.
 
 ### NDI frame cache for multiview
 `ndiLastFrames` is a `Map<channelId, Buffer>` in `manager.js`. When `multiviewRefCount > 0`, the NDI `paint` event handler additionally downscales and JPEG-encodes each frame into `ndiLastFrames` at ~1fps (timestamp-gated). `runMultiviewCapture()` reads from `ndiLastFrames` to build NDI entries in the `output:multiview-captures` payload without hitting the GPU path.
 
 ### Multiview refcounting
-`multiviewRefCount` tracks the number of active subscribers (`OperatorView` + `MultiviewView` can both subscribe simultaneously). `startMultiviewCapture()` increments the count and starts the capture interval only when it goes 0→1. `stopMultiviewCapture()` decrements and clears the interval only when it reaches 0. This prevents double-interval bugs and premature stop when one subscriber unmounts.
+`multiviewRefCount` tracks active subscribers. Multiview capture is driven **only by `MultiviewView`** (start on mount, stop on unmount) — the operator workflow never starts it. `startMultiviewCapture()` increments the count and starts the capture interval only when it goes 0→1; `stopMultiviewCapture()` decrements and clears the interval only at 0. The refcount keeps the design safe if multiple subscribers ever coexist, but at idle no capture interval runs.
 
 ---
 

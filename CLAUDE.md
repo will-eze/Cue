@@ -171,7 +171,8 @@ src/
 │   │   ├── output.ipc.js     output:* handlers.
 │   │   └── settings.ipc.js   settings:* handlers.
 │   └── output/
-│       ├── manager.js        Window registry. go/clear/logo dispatch. Live capture loop.
+│       ├── manager.js        Window registry. go/clear/logo dispatch. NO operator capture loop —
+│       │                     live monitor renders from payload. go() stamps payload.mediaStartAt.
 │       │                     NDI: ndiCaptureLoops Map, startNdiCapture / stopNdiCapture.
 │       │                     ndiLastFrames Map: caches JPEG thumbnails at ~1fps when multiview is active.
 │       │                     multiviewRefCount: refcounted start/stop — interval starts only at 0→1, stops at 0.
@@ -185,8 +186,8 @@ src/
 │   │   ├── OperatorView.jsx  Three-panel layout. Transport state. Configurable keyboard shortcuts (shortcutsRef).
 │   │   │                     Background resolution. focusSearchRef wired to LibraryPanel search (S key).
 │   │   │                     Resize state persisted to localStorage. Services list refreshes on bgRefreshTick.
-│   │   │                     Loads channel list; subscribes to output:multiview-captures (starts multiview when
-│   │   │                     live). Tracks liveChannelIdx for channel selector in PreviewLivePanel.
+│   │   │                     Loads channel list; tracks liveChannelIdx for the channel selector. Does NOT
+│   │   │                     capture output or start multiview — live monitor renders from payload.
 │   │   ├── SettingsView.jsx  Settings page layout. Section order: OutputChannels → Logo → Background →
 │   │   │                     ShortcutSettings → DangerZone → SettingsFooter. DangerZone and SettingsFooter
 │   │   │                     are always last — rendered at layout level, not inside sub-components.
@@ -198,9 +199,10 @@ src/
 │   │   │                          Background picker writes through to song's default_background_id.
 │   │   │                          Props: onRenameService, onDeleteService.
 │   │   ├── PreviewLivePanel.jsx   Two MonitorFrames (1920×1080 canvas, CSS-scaled via ResizeObserver) + two
-│   │   │                          SlideLists. Template-aware: fullscreen vs lower-third layout. Channel selector
-│   │   │                          strip below live frame when 2+ channels active. Accepts allChannels,
-│   │   │                          channelCaptures, liveChannelIdx, onSetLiveChannelIdx props.
+│   │   │                          SlideLists. Renders slides from payload (no screen-capture). Video bgs use
+│   │   │                          SyncedVideo (seeks to liveMediaStartAt). Template-aware: fullscreen vs
+│   │   │                          lower-third. Channel selector strip when 2+ channels active. Accepts
+│   │   │                          allChannels, liveChannelIdx, onSetLiveChannelIdx, liveMediaStartAt props.
 │   │   └── LibraryPanel.jsx       Virtualised song list + media grid. Search + tag filter.
 │   │                              Single-click → preview modal (220ms). Double-click → add to rundown.
 │   │                              Accepts refreshTick + focusSearchRef props.
@@ -365,9 +367,8 @@ src/
 ### Renderer events (`window.cue.on(channel, cb)` → unsubscribe function)
 `on()` returns an unsubscribe function. Always store it and call it in `useEffect` cleanup to prevent listener leaks.
 - `output:unresolved-channels` — unresolved channel objects on startup (App.jsx does NOT auto-navigate to Settings)
-- `output:state-changed` — after go/clear/logo/setLive; payload: `{activeWindows, outputsEnabled, displayMode}`
-- `output:live-capture` — data URL of captured output frame (every 200ms while live)
-- `output:multiview-captures` — `[{channelId, dataUrl, isNdi}]` array at ~5fps (only while multiview running). `isNdi: true` → sourced from ndiLastFrames JPEG cache (~1fps); `isNdi: false` → capturePage (~5fps).
+- `output:state-changed` — after go/clear/logo/setLive; payload: `{activeWindows, outputsEnabled, displayMode, livePayload}`. `livePayload.mediaStartAt` is the shared video-sync timestamp for the operator preview.
+- `output:multiview-captures` — `[{channelId, dataUrl, isNdi}]` array at ~5fps (only while MultiviewView is mounted). `isNdi: true` → sourced from ndiLastFrames JPEG cache (~1fps); `isNdi: false` → capturePage (~5fps). NOTE: there is no `output:live-capture` event — the operator live monitor renders from payload, never from a capture loop.
 - `output:ndi-unavailable` — grandiose not installed
 - `shortcut:next` / `shortcut:prev` — reserved for hardware remote
 

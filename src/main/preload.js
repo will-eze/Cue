@@ -41,6 +41,9 @@ contextBridge.exposeInMainWorld('cue', {
     logo: () => ipcRenderer.invoke('output:logo'),
     setLive: (enabled) => ipcRenderer.invoke('output:setLive', enabled),
     getState: () => ipcRenderer.invoke('output:getState'),
+    media: {
+      control: (action) => ipcRenderer.invoke('output:media:control', action),
+    },
     channels: {
       list: () => ipcRenderer.invoke('output:channels:list'),
       create: (data) => ipcRenderer.invoke('output:channels:create', data),
@@ -74,6 +77,14 @@ contextBridge.exposeInMainWorld('cue', {
       tree: () => ipcRenderer.invoke('media:folders:tree'),
     },
   },
+  bible: {
+    versions: () => ipcRenderer.invoke('bible:versions:list'),
+    importFile: (filePath, meta) => ipcRenderer.invoke('bible:importFile', filePath, meta),
+    delete: (id) => ipcRenderer.invoke('bible:delete', id),
+    books: (versionId) => ipcRenderer.invoke('bible:books', versionId),
+    resolve: (versionId, ref, versesPerSlide) => ipcRenderer.invoke('bible:resolve', versionId, ref, versesPerSlide),
+    search: (versionId, query) => ipcRenderer.invoke('bible:search', versionId, query),
+  },
   settings: {
     get: (key) => ipcRenderer.invoke('settings:get', key),
     set: (key, value) => ipcRenderer.invoke('settings:set', key, value),
@@ -100,7 +111,7 @@ contextBridge.exposeInMainWorld('cue', {
   on: (channel, callback) => {
     const allowed = [
       'output:unresolved-channels', 'output:state-changed',
-      'output:live-capture', 'output:ndi-unavailable',
+      'output:ndi-unavailable',
       'output:multiview-captures',
       'shortcut:next', 'shortcut:prev',
     ];

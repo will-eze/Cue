@@ -9,6 +9,7 @@ export function registerOutputIpc() {
   ipcMain.handle('output:logo', () => outputManager.logo());
   ipcMain.handle('output:setLive', (_e, enabled) => outputManager.setOutputsEnabled(enabled));
   ipcMain.handle('output:getState', () => outputManager.getState());
+  ipcMain.handle('output:media:control', (_e, action) => outputManager.mediaControl(action));
 
   // ── Screens (connected displays) ───────────────────────────────────────────
   ipcMain.handle('output:screens:list', () => {

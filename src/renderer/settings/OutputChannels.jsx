@@ -5,6 +5,7 @@ export default function OutputChannels() {
   const [monitors, setMonitors] = useState([]); // all monitors flat list
   const [screens, setScreens] = useState([]);   // connected physical displays
   const [creatingChannel, setCreatingChannel] = useState(false);
+  const [error, setError] = useState('');
   const [newChannel, setNewChannel] = useState({ name: '', type: 'screen', template: 'fullscreen', ndi_fps: 30, ndi_width: 1920, ndi_height: 1080 });
 
   const load = useCallback(async () => {
@@ -22,15 +23,25 @@ export default function OutputChannels() {
 
   async function handleCreateChannel() {
     if (!newChannel.name.trim()) return;
-    await window.cue.output.channels.create(newChannel);
-    setCreatingChannel(false);
-    setNewChannel({ name: '', type: 'screen', template: 'fullscreen', ndi_fps: 30, ndi_width: 1920, ndi_height: 1080 });
-    load();
+    setError('');
+    try {
+      await window.cue.output.channels.create(newChannel);
+      setCreatingChannel(false);
+      setNewChannel({ name: '', type: 'screen', template: 'fullscreen', ndi_fps: 30, ndi_width: 1920, ndi_height: 1080 });
+      load();
+    } catch (e) {
+      setError(`Couldn't create channel: ${e.message || e}. If you just updated the app, fully quit and restart it.`);
+    }
   }
 
   async function handleUpdateChannel(id, data) {
-    await window.cue.output.channels.update(id, data);
-    load();
+    setError('');
+    try {
+      await window.cue.output.channels.update(id, data);
+      load();
+    } catch (e) {
+      setError(`Couldn't update channel: ${e.message || e}.`);
+    }
   }
 
   async function handleDeleteChannel(id) {
@@ -80,6 +91,16 @@ export default function OutputChannels() {
           New Channel
         </button>
       </div>
+
+      {error && (
+        <div className="bg-error-container/20 border border-error/40 rounded-lg px-md py-sm flex items-start gap-sm">
+          <span className="material-symbols-outlined text-[16px] text-error shrink-0 mt-[1px]">error</span>
+          <p className="text-body-sm text-error flex-1">{error}</p>
+          <button onClick={() => setError('')} className="text-error/70 hover:text-error cursor-pointer shrink-0">
+            <span className="material-symbols-outlined text-[15px]">close</span>
+          </button>
+        </div>
+      )}
 
       {/* Connected displays strip */}
       {screens.length > 0 && (
@@ -134,6 +155,7 @@ export default function OutputChannels() {
               >
                 <option value="fullscreen">Fullscreen</option>
                 <option value="lowerthird">Lower Third</option>
+                <option value="stage">Stage Display</option>
               </select>
             </Field>
           </div>
@@ -231,7 +253,9 @@ function ChannelCard({ channel, monitors, screens, assignedBounds, onUpdate, onD
   }
 
   const isNdi = channel.type === 'ndi';
-  const templateLabel = channel.template === 'lowerthird' ? 'Lower Third' : 'Fullscreen';
+  const templateLabel = channel.template === 'lowerthird' ? 'Lower Third'
+                      : channel.template === 'stage'      ? 'Stage Display'
+                      : 'Fullscreen';
   const monitorCount = monitors.length;
 
   return (
@@ -260,6 +284,7 @@ function ChannelCard({ channel, monitors, screens, assignedBounds, onUpdate, onD
             >
               <option value="fullscreen">Fullscreen</option>
               <option value="lowerthird">Lower Third</option>
+              <option value="stage">Stage Display</option>
             </select>
             <label className="flex items-center gap-xs cursor-pointer shrink-0">
               <input

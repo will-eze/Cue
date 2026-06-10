@@ -216,6 +216,93 @@ const migrations = [
       CREATE INDEX IF NOT EXISTS idx_media_assets_folder      ON media_assets(folder_id);
     `);
   },
+
+  // v6 — Allow the 'stage' template (stage / confidence display) on output_channels.
+  // SQLite can't ALTER a CHECK constraint, so the table is rebuilt. channel_monitors
+  // references output_channels with ON DELETE CASCADE; runMigrations disables foreign
+  // keys around the transaction so DROP TABLE does not cascade-delete monitor rows.
+  function v6(database) {
+    database.exec(`
+      CREATE TABLE output_channels_v6 (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL CHECK(type IN ('screen','ndi')),
+        display_index INTEGER,
+        display_bounds TEXT,
+        linked_channel_id INTEGER REFERENCES output_channels(id) ON DELETE SET NULL,
+        template TEXT NOT NULL DEFAULT 'fullscreen' CHECK(template IN ('fullscreen','lowerthird','stage')),
+        ndi_fps INTEGER DEFAULT 30,
+        ndi_width INTEGER DEFAULT 1920,
+        ndi_height INTEGER DEFAULT 1080,
+        logo_override_id INTEGER REFERENCES media_assets(id) ON DELETE SET NULL,
+        active INTEGER NOT NULL DEFAULT 1
+      );
+
+      INSERT INTO output_channels_v6
+        (id, name, type, display_index, display_bounds, linked_channel_id,
+         template, ndi_fps, ndi_width, ndi_height, logo_override_id, active)
+      SELECT id, name, type, display_index, display_bounds, linked_channel_id,
+         template, ndi_fps, ndi_width, ndi_height, logo_override_id, active
+      FROM output_channels;
+
+      DROP TABLE output_channels;
+      ALTER TABLE output_channels_v6 RENAME TO output_channels;
+    `);
+  },
+
+  // v7 — Scripture (Bible) module. Adds bible_versions + bible_verses (+ FTS),
+  // and expands service_items.item_type to allow 'scripture'. The service_items
+  // CHECK constraint can't be altered in place, so the table is rebuilt (FK off
+  // during migrations prevents the services ON DELETE CASCADE from firing).
+  function v7(database) {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS bible_versions (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        name       TEXT NOT NULL,
+        abbrev     TEXT NOT NULL,
+        language   TEXT,
+        created_at DATETIME NOT NULL DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE IF NOT EXISTS bible_verses (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        version_id INTEGER NOT NULL REFERENCES bible_versions(id) ON DELETE CASCADE,
+        book_num   INTEGER NOT NULL,
+        book_name  TEXT NOT NULL,
+        chapter    INTEGER NOT NULL,
+        verse      INTEGER NOT NULL,
+        text       TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_bible_verses_ref
+        ON bible_verses(version_id, book_num, chapter, verse);
+
+      CREATE VIRTUAL TABLE IF NOT EXISTS bible_verses_fts USING fts5(
+        book_name, text, content=''
+      );
+
+      CREATE TABLE service_items_v7 (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        service_id INTEGER NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+        item_type TEXT NOT NULL CHECK(item_type IN ('song','media','slide','scripture')),
+        ref_id INTEGER,
+        order_index INTEGER NOT NULL,
+        notes TEXT,
+        content TEXT,
+        background_override_id INTEGER REFERENCES media_assets(id) ON DELETE SET NULL
+      );
+
+      INSERT INTO service_items_v7
+        (id, service_id, item_type, ref_id, order_index, notes, content, background_override_id)
+      SELECT id, service_id, item_type, ref_id, order_index, notes, content, background_override_id
+      FROM service_items;
+
+      DROP TABLE service_items;
+      ALTER TABLE service_items_v7 RENAME TO service_items;
+
+      CREATE INDEX IF NOT EXISTS idx_service_items_service_id ON service_items(service_id);
+    `);
+  },
 ];
 
 function runMigrations() {
@@ -227,18 +314,30 @@ function runMigrations() {
   const pending = migrations.slice(currentVersion);
   if (!pending.length) return;
 
+  // Disable FK enforcement during migrations so table rebuilds (DROP + recreate)
+  // don't trigger ON DELETE CASCADE on referencing tables. The pragma is a no-op
+  // inside a transaction, so it must be toggled outside the db.transaction() call.
+  // Restored to ON afterwards (initDb also enables it before migrations run).
+  db.pragma('foreign_keys = OFF');
   db.transaction(() => {
     pending.forEach((migration, i) => {
       migration(db);
       db.prepare('UPDATE db_version SET version = ?').run(currentVersion + i + 1);
     });
   })();
+  db.pragma('foreign_keys = ON');
 }
 
 export function initDb() {
   const dbPath = path.join(app.getPath('userData'), 'cue.db');
   db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
+  // WAL makes synchronous=NORMAL safe (no corruption risk, just loses the last
+  // txn on OS crash) and much faster for writes. Larger page cache + in-memory
+  // temp tables keep hot reads off disk — matters for live broadcast latency.
+  db.pragma('synchronous = NORMAL');
+  db.pragma('cache_size = -16000'); // ~16MB
+  db.pragma('temp_store = MEMORY');
   db.pragma('foreign_keys = ON');
   runMigrations();
   return db;

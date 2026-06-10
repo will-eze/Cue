@@ -4,34 +4,110 @@ export function list() {
   return getDb().prepare('SELECT * FROM services ORDER BY date DESC, id DESC').all();
 }
 
-function resolveItem(db, item) {
-  const resolved = { ...item };
-  if (item.item_type === 'song' && item.ref_id) {
-    const song = db.prepare('SELECT id, title, author, copyright, default_background_id FROM songs WHERE id=?').get(item.ref_id);
-    if (song) {
-      resolved.song = song;
-      resolved.sections = db.prepare('SELECT * FROM song_sections WHERE song_id=? ORDER BY order_index').all(item.ref_id);
-      if (song.default_background_id) {
-        const bg = db.prepare('SELECT id, path, filename, type FROM media_assets WHERE id=?').get(song.default_background_id);
-        if (bg) resolved.song.default_background = bg;
-      }
+// Resolve the parsed scripture passage on an item into display slides.
+function resolveScripture(item) {
+  try {
+    const passage = JSON.parse(item.content);
+    const vps = Math.max(1, passage.versesPerSlide || 1);
+    const slides = [];
+    for (let i = 0; i < passage.verses.length; i += vps) {
+      const group = passage.verses.slice(i, i + vps);
+      const first = group[0];
+      const last = group[group.length - 1];
+      const ref = group.length > 1
+        ? `${passage.bookName} ${first.chapter}:${first.verse}-${last.verse}`
+        : `${passage.bookName} ${first.chapter}:${first.verse}`;
+      slides.push({
+        id: `${item.id}-${i}`,
+        type: ref,                              // shown as the slide label
+        content: group.map((v) => v.text).join('\n'),
+        copyright: `${ref} · ${passage.versionAbbrev}`,
+        style_json: null,
+      });
+    }
+    return { scripture: passage, scriptureSlides: slides, title: passage.reference };
+  } catch {
+    return null; // malformed passage JSON — leave unresolved
+  }
+}
+
+// Resolve a list of service_items in bulk. Previously each item issued its own
+// song / section / media queries (N+1); for a 20-item service that was 60+ round
+// trips on every load. Here we fetch every referenced song, section and media
+// asset in three IN(...) queries and stitch them together in memory.
+function resolveItems(db, items) {
+  if (!items.length) return [];
+
+  const songIds   = [...new Set(items.filter((i) => i.item_type === 'song' && i.ref_id).map((i) => i.ref_id))];
+  const mediaIds  = new Set();
+  for (const i of items) {
+    if (i.item_type === 'media' && i.ref_id) mediaIds.add(i.ref_id);
+    if (i.background_override_id) mediaIds.add(i.background_override_id);
+  }
+
+  // Songs
+  const songMap = new Map();
+  if (songIds.length) {
+    const ph = songIds.map(() => '?').join(',');
+    for (const s of db.prepare(`SELECT id, title, author, copyright, default_background_id FROM songs WHERE id IN (${ph})`).all(...songIds)) {
+      songMap.set(s.id, s);
+      if (s.default_background_id) mediaIds.add(s.default_background_id);
     }
   }
-  if (item.item_type === 'media' && item.ref_id) {
-    resolved.asset = db.prepare('SELECT * FROM media_assets WHERE id=?').get(item.ref_id);
+
+  // Sections grouped by song
+  const sectionsMap = new Map();
+  if (songIds.length) {
+    const ph = songIds.map(() => '?').join(',');
+    for (const sec of db.prepare(`SELECT * FROM song_sections WHERE song_id IN (${ph}) ORDER BY song_id, order_index`).all(...songIds)) {
+      if (!sectionsMap.has(sec.song_id)) sectionsMap.set(sec.song_id, []);
+      sectionsMap.get(sec.song_id).push(sec);
+    }
   }
-  if (item.background_override_id) {
-    resolved.background_override = db.prepare('SELECT * FROM media_assets WHERE id=?').get(item.background_override_id);
+
+  // Media assets (media items + background overrides + song default backgrounds)
+  const mediaMap = new Map();
+  if (mediaIds.size) {
+    const ids = [...mediaIds];
+    const ph = ids.map(() => '?').join(',');
+    for (const a of db.prepare(`SELECT * FROM media_assets WHERE id IN (${ph})`).all(...ids)) {
+      mediaMap.set(a.id, a);
+    }
   }
-  return resolved;
+
+  return items.map((item) => {
+    const resolved = { ...item };
+    if (item.item_type === 'song' && item.ref_id) {
+      const song = songMap.get(item.ref_id);
+      if (song) {
+        resolved.song = { ...song };
+        resolved.sections = sectionsMap.get(item.ref_id) || [];
+        if (song.default_background_id) {
+          const bg = mediaMap.get(song.default_background_id);
+          if (bg) resolved.song.default_background = bg;
+        }
+      }
+    }
+    if (item.item_type === 'media' && item.ref_id) {
+      resolved.asset = mediaMap.get(item.ref_id);
+    }
+    if (item.item_type === 'scripture' && item.content) {
+      const sc = resolveScripture(item);
+      if (sc) Object.assign(resolved, sc);
+    }
+    if (item.background_override_id) {
+      resolved.background_override = mediaMap.get(item.background_override_id);
+    }
+    return resolved;
+  });
 }
 
 export function getById(id) {
   const db = getDb();
   const service = db.prepare('SELECT * FROM services WHERE id=?').get(id);
   if (!service) return null;
-  service.items = db.prepare('SELECT * FROM service_items WHERE service_id=? ORDER BY order_index').all(id)
-    .map((item) => resolveItem(db, item));
+  const items = db.prepare('SELECT * FROM service_items WHERE service_id=? ORDER BY order_index').all(id);
+  service.items = resolveItems(db, items);
   return service;
 }
 

@@ -7,6 +7,7 @@ import { registerServicesIpc } from './ipc/services.ipc.js';
 import { registerMediaIpc } from './ipc/media.ipc.js';
 import { registerOutputIpc } from './ipc/output.ipc.js';
 import { registerSettingsIpc } from './ipc/settings.ipc.js';
+import { registerBibleIpc } from './ipc/bible.ipc.js';
 import * as outputManager from './output/manager.js';
 import { isAvailable as ndiAvailable } from './output/ndi.js';
 
@@ -16,9 +17,15 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 const MEDIA_MIME = {
+  // Images
   png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
-  webp: 'image/webp', svg: 'image/svg+xml', bmp: 'image/bmp',
+  webp: 'image/webp', svg: 'image/svg+xml', bmp: 'image/bmp', tiff: 'image/tiff',
+  // Video
   mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime',
+  m4v: 'video/mp4', avi: 'video/x-msvideo', mkv: 'video/x-matroska',
+  // Audio
+  mp3: 'audio/mpeg', wav: 'audio/wav', aac: 'audio/aac',
+  flac: 'audio/flac', ogg: 'audio/ogg', m4a: 'audio/mp4',
 };
 
 let mainWindow;
@@ -75,7 +82,10 @@ app.whenReady().then(async () => {
   // URL format: cue-media://localhost/absolute/path/to/file
   // "localhost" is used as a dummy host so Chromium's standard-scheme parser
   // doesn't promote the first path segment to the hostname field.
-  protocol.handle('cue-media', (request) => {
+  // Async handler — all fs access is non-blocking so concurrent media reads
+  // (e.g. the same clip decoded by both an output window and the operator
+  // preview) never stall the main thread mid-playback.
+  protocol.handle('cue-media', async (request) => {
     const { pathname } = new URL(request.url);
     let filePath = decodeURIComponent(pathname);
     // On Windows, URL pathname is /C:/... — strip the leading slash before the drive letter
@@ -83,7 +93,7 @@ app.whenReady().then(async () => {
       filePath = filePath.slice(1);
     }
     try {
-      const stat = fs.statSync(filePath);
+      const stat = await fs.promises.stat(filePath);
       const ext = path.extname(filePath).slice(1).toLowerCase();
       const mimeType = MEDIA_MIME[ext] || 'application/octet-stream';
       const rangeHeader = request.headers.get('range');
@@ -97,9 +107,12 @@ app.whenReady().then(async () => {
         const end   = match[2] ? parseInt(match[2], 10) : stat.size - 1;
         const chunkSize = end - start + 1;
         const buf = Buffer.allocUnsafe(chunkSize);
-        const fd = fs.openSync(filePath, 'r');
-        fs.readSync(fd, buf, 0, chunkSize, start);
-        fs.closeSync(fd);
+        const fh = await fs.promises.open(filePath, 'r');
+        try {
+          await fh.read(buf, 0, chunkSize, start);
+        } finally {
+          await fh.close();
+        }
         return new Response(buf, {
           status: 206,
           headers: {
@@ -112,7 +125,7 @@ app.whenReady().then(async () => {
         });
       }
 
-      const data = fs.readFileSync(filePath);
+      const data = await fs.promises.readFile(filePath);
       return new Response(data, {
         headers: {
           'Content-Type': mimeType,
@@ -134,6 +147,7 @@ app.whenReady().then(async () => {
   registerMediaIpc();
   registerSettingsIpc();
   registerOutputIpc();
+  registerBibleIpc();
 
   createMainWindow();
   outputManager.setMainWindow(mainWindow);

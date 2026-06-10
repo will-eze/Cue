@@ -11,7 +11,6 @@ const ndiCaptureLoops = new Map();
 // Latest downscaled JPEG per NDI channel for multiview thumbnails (1fps cache)
 const ndiLastFrames = new Map(); // channelId → Buffer
 let mainWindowRef = null;
-let captureInterval = null;
 let multiviewInterval = null;
 let multiviewRefCount = 0;
 let outputsEnabled = true;
@@ -58,7 +57,11 @@ function createMonitorWindow(channel, monitor) {
     frame: false,
     alwaysOnTop: true,
     backgroundColor: '#000000',
-    webPreferences: { preload, contextIsolation: true, nodeIntegration: false, sandbox: false },
+    webPreferences: {
+      preload, contextIsolation: true, nodeIntegration: false, sandbox: false,
+      // Allow foreground media (bumpers/clips) to autoplay with audio.
+      autoplayPolicy: 'no-user-gesture-required',
+    },
   });
   win.loadFile(getTemplatePath(channel.template || 'fullscreen'));
   // Re-dispatch current display state once the template JS is ready.
@@ -93,6 +96,7 @@ function createNdiWindow(channel) {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      autoplayPolicy: 'no-user-gesture-required',
     },
   });
   win.loadFile(getTemplatePath(channel.template || 'fullscreen'), { query: { alpha: '1' } });
@@ -301,7 +305,6 @@ function getAllOutputWindows() {
 
 function sendCurrentState() {
   if (state.displayMode === 'idle') {
-    stopLiveCapture();
     for (const win of getAllOutputWindows()) {
       win.webContents.send('slide:update', {
         type: 'clear', text: null, backgroundPath: null, logoPath: null,
@@ -310,9 +313,6 @@ function sendCurrentState() {
     }
     return;
   }
-
-  // All non-idle modes keep the live capture running so the operator panel stays current.
-  startLiveCapture();
 
   if (state.displayMode === 'cleared') {
     const bgPath = state.livePayload?.backgroundPath ?? null;
@@ -359,6 +359,11 @@ function sendCurrentState() {
 }
 
 export function go(payload) {
+  // Stamp a shared start time for foreground media so every output window — and
+  // the operator preview — can seek to the same elapsed position (same machine
+  // clock, so no skew). Lets independent <video> elements show ~the same frame
+  // without screen-capture.
+  if (payload && payload.media) payload.mediaStartAt = Date.now();
   state.livePayload = payload;
   state.displayMode = 'content';
   state.preLogoMode = null;
@@ -402,6 +407,14 @@ export function shortcut(direction) {
   notifyMainWindow(direction === 'next' ? 'shortcut:next' : 'shortcut:prev');
 }
 
+// Forward a transport command (play/pause/restart) to the foreground media
+// element on every output window. The active <video>/<audio> acts on it.
+export function mediaControl(action) {
+  for (const win of getAllOutputWindows()) {
+    win.webContents.send('media:control', action);
+  }
+}
+
 // Re-open all active channel windows (used when toggling outputs back on).
 async function reopenAllChannels() {
   const db = getDb();
@@ -433,7 +446,6 @@ export async function setOutputsEnabled(enabled) {
   outputsEnabled = enabled;
 
   if (!enabled) {
-    stopLiveCapture();
     for (const [key, win] of windows) {
       if (typeof key === 'string' && key.startsWith('ndi-')) {
         stopNdiCapture(parseInt(key.slice(4)));
@@ -498,38 +510,6 @@ export function resolveBackground(item) {
 function notifyMainWindow(channel, ...args) {
   if (mainWindowRef && !mainWindowRef.isDestroyed()) {
     mainWindowRef.webContents.send(channel, ...args);
-  }
-}
-
-function startLiveCapture() {
-  stopLiveCapture();
-  captureInterval = setInterval(async () => {
-    const db = getDb();
-    const channels = db
-      .prepare('SELECT * FROM output_channels WHERE active = 1 AND type = "screen"')
-      .all();
-    for (const channel of channels) {
-      const monitors = db
-        .prepare('SELECT * FROM channel_monitors WHERE channel_id = ? AND active = 1')
-        .all(channel.id);
-      for (const monitor of monitors) {
-        const win = windows.get(monitor.id);
-        if (win && !win.isDestroyed()) {
-          try {
-            const img = await win.webContents.capturePage();
-            notifyMainWindow('output:live-capture', img.toDataURL());
-          } catch {}
-          return;
-        }
-      }
-    }
-  }, 200);
-}
-
-function stopLiveCapture() {
-  if (captureInterval) {
-    clearInterval(captureInterval);
-    captureInterval = null;
   }
 }
 

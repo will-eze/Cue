@@ -1,0 +1,135 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  width: 100%; height: 100%;
+  background: #0a0b0d;
+  overflow: hidden;
+  color: #fff;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+#stage {
+  width: 100%; height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 2.5vh 3vw;
+  gap: 2vh;
+}
+
+/* ── Top bar — status + clock ─────────────────────────────────────────────── */
+#topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+#status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.8vw;
+  padding: 0.6vh 1.4vw;
+  border-radius: 999px;
+  font-size: 1.9vh;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  border: 1px solid currentColor;
+}
+
+#status-dot {
+  width: 1.2vh; height: 1.2vh;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.status-live   { color: #4ae176; }
+.status-cleared{ color: #ffb3ad; }
+.status-logo   { color: #adc6ff; }
+.status-idle   { color: #8c909f; }
+
+.status-live #status-dot { animation: pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+#clock {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+  font-size: 4.2vh;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #c2c6d6;
+}
+
+/* ── Current slide — the dominant element ─────────────────────────────────── */
+#current-wrap {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+#current-label {
+  font-size: 2.2vh;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #4d8eff;
+  margin-bottom: 1.5vh;
+  min-height: 2.4vh;
+}
+
+#current {
+  font-size: 7.2vh;
+  line-height: 1.18;
+  font-weight: 600;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: hidden;
+}
+
+/* ── Next slide — dimmed, half-height ─────────────────────────────────────── */
+#next-wrap {
+  flex: 0 0 30%;
+  min-height: 0;
+  border-top: 1px solid rgba(140, 144, 159, 0.25);
+  padding-top: 2vh;
+  display: flex;
+  flex-direction: column;
+  opacity: 0.62;
+}
+
+#next-header {
+  font-size: 1.7vh;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #8c909f;
+  margin-bottom: 0.8vh;
+}
+
+#next-label {
+  font-size: 1.8vh;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #adc6ff;
+  margin-bottom: 0.6vh;
+  min-height: 2vh;
+}
+
+#next {
+  font-size: 3.4vh;
+  line-height: 1.2;
+  font-weight: 500;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: hidden;
+  color: #e2e2e8;
+}
+
+/* Dim the whole content area when the audience output is cleared / on logo */
+#stage.muted #current-wrap { opacity: 0.4; }
+
+#next-wrap.empty { opacity: 0; }

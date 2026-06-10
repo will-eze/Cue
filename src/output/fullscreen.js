@@ -113,15 +113,67 @@ function setBackground(path) {
   if (!path) { bg.innerHTML = ''; return; }
   const url = pathToUrl(path);
   const ext = path.split('.').pop().toLowerCase();
-  bg.innerHTML = ['mp4','webm','mov','avi','m4v'].includes(ext)
+  bg.innerHTML = ['mp4','webm','mov','avi','m4v','mkv'].includes(ext)
     ? `<video autoplay loop muted playsinline src="${url}"></video>`
     : `<img src="${url}" alt="" />`;
 }
+
+// Drift-correction timer for the active foreground media element. Cleared
+// whenever the media element is torn down (slide change / clear / logo).
+let mediaSyncTimer = null;
+function clearMediaSync() {
+  if (mediaSyncTimer) { clearInterval(mediaSyncTimer); mediaSyncTimer = null; }
+}
+
+// Keep a media element aligned to the shared start time so all outputs (and the
+// operator preview) stay within a frame or two. Seeks only when drift exceeds a
+// threshold to avoid stutter.
+function syncMediaEl(el, startAt) {
+  clearMediaSync();
+  if (!el || !startAt) return;
+  const seek = () => {
+    const expected = (Date.now() - startAt) / 1000;
+    if (expected < 0) return;
+    if (Number.isFinite(el.duration) && expected > el.duration) return;
+    if (Math.abs((el.currentTime || 0) - expected) > 0.25) {
+      try { el.currentTime = expected; } catch {}
+    }
+  };
+  el.addEventListener('loadedmetadata', () => { seek(); el.play && el.play().catch(() => {}); }, { once: true });
+  if (el.readyState >= 1) seek();
+  mediaSyncTimer = setInterval(seek, 3000);
+}
+
+// Foreground media item (bumper/clip) — full-frame, with audio, controllable.
+// Rendered into #background but tagged so media:control can find it.
+function setForegroundMedia(media, startAt) {
+  clearMediaSync();
+  if (!media || !media.path) { bg.innerHTML = ''; return; }
+  const url = pathToUrl(media.path);
+  if (media.type === 'audio') {
+    bg.innerHTML = `<audio id="cue-media-el" autoplay src="${url}"></audio>`;
+    syncMediaEl(document.getElementById('cue-media-el'), startAt);
+  } else if (media.type === 'video') {
+    bg.innerHTML = `<video id="cue-media-el" autoplay playsinline src="${url}"></video>`;
+    syncMediaEl(document.getElementById('cue-media-el'), startAt);
+  } else {
+    bg.innerHTML = `<img src="${url}" alt="" />`;
+  }
+}
+
+window.cueOutput.onMediaControl((action) => {
+  const el = document.getElementById('cue-media-el');
+  if (!el) return;
+  if (action === 'play') el.play();
+  else if (action === 'pause') el.pause();
+  else if (action === 'restart') { el.currentTime = 0; el.play(); }
+});
 
 window.cueOutput.onSlideUpdate((payload) => {
   const { type, text, copyright: copy, backgroundPath, logoPath, logoScaleMode, styleJson } = payload;
 
   if (type === 'clear') {
+    clearMediaSync();
     setBackground(backgroundPath);
     hideLogo();
     applyStyle(null);
@@ -131,6 +183,7 @@ window.cueOutput.onSlideUpdate((payload) => {
   }
 
   if (type === 'logo') {
+    clearMediaSync();
     bg.innerHTML = '';
     applyStyle(null);
     textEl.innerHTML = '';
@@ -139,7 +192,18 @@ window.cueOutput.onSlideUpdate((payload) => {
     return;
   }
 
+  // Foreground media item (full-frame video/audio/image, no text overlay)
+  if (payload.media) {
+    hideLogo();
+    applyStyle(null);
+    textEl.innerHTML = '';
+    copyright.textContent = '';
+    setForegroundMedia(payload.media, payload.mediaStartAt);
+    return;
+  }
+
   // Content slide
+  clearMediaSync();
   hideLogo();
   setBackground(backgroundPath);
   applyStyle(styleJson);

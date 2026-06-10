@@ -26,14 +26,20 @@ function SortableItem({ item, index, isPreview, isLive, onClick, onDoubleClick, 
     ? item.song?.title || 'Unknown Song'
     : item.item_type === 'media'
     ? item.asset?.filename || 'Media'
+    : item.item_type === 'scripture'
+    ? item.scripture?.reference || item.title || 'Scripture'
     : (item.content?.split('\n')[0]?.trim()) || 'Slide';
 
   const sublabel = item.item_type === 'song'
     ? `Song${item.song?.author ? ' · ' + item.song.author : ''}`
-    : item.item_type === 'media' ? 'Media' : 'Slide';
+    : item.item_type === 'media' ? 'Media'
+    : item.item_type === 'scripture'
+    ? `Scripture${item.scripture?.versionAbbrev ? ' · ' + item.scripture.versionAbbrev : ''}`
+    : 'Slide';
 
   const typeIcon = item.item_type === 'song' ? 'music_note'
     : item.item_type === 'media' ? 'play_circle'
+    : item.item_type === 'scripture' ? 'menu_book'
     : 'article';
 
   return (
@@ -65,7 +71,8 @@ function SortableItem({ item, index, isPreview, isLive, onClick, onDoubleClick, 
 
       {/* Icon / background thumbnail */}
       {(() => {
-        const bgAsset = item.background_override || item.song?.default_background;
+        const bgAsset = item.background_override || item.song?.default_background
+          || (item.item_type === 'media' ? item.asset : null);
         return (
           <div className={`w-12 h-8 bg-black rounded overflow-hidden shrink-0 relative flex items-center justify-center ${
             isLive ? 'border border-secondary/30' : isPreview ? 'border border-primary/30' : ''
@@ -355,6 +362,21 @@ export default function RundownPanel({
                   setContextMenu(null);
                 },
               },
+              { separator: true },
+              {
+                label: 'Set Background Override',
+                onClick: () => { setBgPickerForItem(contextMenu.item); setContextMenu(null); },
+              },
+              ...(contextMenu.item.background_override ? [{
+                label: 'Clear Background Override',
+                onClick: async () => {
+                  await window.cue.services.setItemBackground(contextMenu.item.id, null);
+                  onRefresh?.();
+                  setContextMenu(null);
+                },
+              }] : []),
+            ] : []),
+            ...(contextMenu.item.item_type === 'scripture' ? [
               { separator: true },
               {
                 label: 'Set Background Override',

@@ -3,6 +3,7 @@ import { FixedSizeList as List } from 'react-window';
 import SongPreviewModal from '../components/SongPreviewModal';
 import SongEditor from '../components/SongEditor';
 import ContextMenu from '../components/ContextMenu';
+import ScripturePanel from './ScripturePanel';
 import { mediaUrl } from '../utils/mediaUrl';
 
 function SongRow({ index, style, data }) {
@@ -10,6 +11,10 @@ function SongRow({ index, style, data }) {
   const song = songs[index];
   const isSelected = selectedId === song.id;
   const clickTimer = useRef(null);
+
+  // Rows unmount/remount constantly under react-window virtualization; without
+  // this, the pending single-click timer leaks on every fast scroll.
+  useEffect(() => () => { if (clickTimer.current) clearTimeout(clickTimer.current); }, []);
 
   function handleClick() {
     if (clickTimer.current) {
@@ -87,7 +92,7 @@ function SongRow({ index, style, data }) {
   );
 }
 
-function MediaGrid({ assets, onDelete, onSetBackground }) {
+function MediaGrid({ assets, onDelete, onSetBackground, onAddToRundown }) {
   const [contextMenu, setContextMenu] = useState(null);
 
   return (
@@ -103,6 +108,8 @@ function MediaGrid({ assets, onDelete, onSetBackground }) {
             <div
               key={asset.id}
               className="group cursor-pointer"
+              title="Double-click to add to rundown"
+              onDoubleClick={() => onAddToRundown?.(asset.id)}
               onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, asset }); }}
             >
               <div className="aspect-video rounded bg-black border border-outline-variant overflow-hidden mb-xs relative">
@@ -134,6 +141,8 @@ function MediaGrid({ assets, onDelete, onSetBackground }) {
           x={contextMenu.x} y={contextMenu.y}
           onClose={() => setContextMenu(null)}
           items={[
+            { label: 'Add to Rundown', onClick: () => { onAddToRundown?.(contextMenu.asset.id); setContextMenu(null); } },
+            { separator: true },
             { label: 'Set as Global Song Background', onClick: () => { onSetBackground('song', contextMenu.asset); setContextMenu(null); } },
             { label: 'Set as Global Slide Background', onClick: () => { onSetBackground('slide', contextMenu.asset); setContextMenu(null); } },
             { separator: true },
@@ -145,7 +154,7 @@ function MediaGrid({ assets, onDelete, onSetBackground }) {
   );
 }
 
-export default function LibraryPanel({ onAddToRundown, onSongSave, refreshTick = 0, focusSearchRef }) {
+export default function LibraryPanel({ onAddToRundown, onAddScripture, onAddMedia, onSongSave, refreshTick = 0, focusSearchRef }) {
   const [tab, setTab] = useState('songs');
   const [searchQuery, setSearchQuery] = useState('');
   const [songs, setSongs] = useState([]);
@@ -253,6 +262,9 @@ export default function LibraryPanel({ onAddToRundown, onSongSave, refreshTick =
           </LibTab>
           <LibTab active={tab === 'media'} onClick={() => setTab('media')}>
             Media{tab === 'media' && mediaAssets.length > 0 ? ` · ${mediaAssets.length}` : ''}
+          </LibTab>
+          <LibTab active={tab === 'scripture'} onClick={() => setTab('scripture')}>
+            Scripture
           </LibTab>
         </div>
 
@@ -380,8 +392,13 @@ export default function LibraryPanel({ onAddToRundown, onSongSave, refreshTick =
               ))}
             </ul>
           </div>
-          <MediaGrid assets={mediaAssets} onDelete={handleDeleteMedia} onSetBackground={handleSetBackground} />
+          <MediaGrid assets={mediaAssets} onDelete={handleDeleteMedia} onSetBackground={handleSetBackground} onAddToRundown={onAddMedia} />
         </div>
+      )}
+
+      {/* Scripture tab */}
+      {tab === 'scripture' && (
+        <ScripturePanel onAdd={onAddScripture} />
       )}
 
       {previewSong && (

@@ -17,7 +17,33 @@ function buildBarBg(ltBar) {
 const NATIVE_W = 1920;
 const NATIVE_H = 1080;
 
-function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, liveCapture, backgroundPath, displayMode, channelTemplate }) {
+// A <video> that seeks to a shared elapsed time so the live monitor tracks the
+// audience output to within a frame or two — no screen-capture needed. Only
+// re-seeks past a drift threshold to avoid stutter.
+function SyncedVideo({ src, startAt, style }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const v = ref.current;
+    if (!v) return;
+    const seek = () => {
+      if (!startAt) return;
+      const expected = (Date.now() - startAt) / 1000;
+      if (expected < 0) return;
+      if (Number.isFinite(v.duration) && expected > v.duration) return;
+      if (Math.abs((v.currentTime || 0) - expected) > 0.25) {
+        try { v.currentTime = expected; } catch {}
+      }
+    };
+    const onMeta = () => { seek(); v.play && v.play().catch(() => {}); };
+    v.addEventListener('loadedmetadata', onMeta);
+    if (v.readyState >= 1) onMeta();
+    const id = setInterval(seek, 3000);
+    return () => { v.removeEventListener('loadedmetadata', onMeta); clearInterval(id); };
+  }, [src, startAt]);
+  return <video ref={ref} src={src} style={style} muted playsInline />;
+}
+
+function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroundPath, displayMode, channelTemplate, mediaStartAt }) {
   const wrapRef = useRef(null);
   const [scale, setScale] = useState(0.5);
 
@@ -35,8 +61,10 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, liveCaptu
   const style  = slide?.style_json ? JSON.parse(slide.style_json) : null;
   const isLT   = channelTemplate === 'lowerthird';
 
-  const showCapture = isLive && !!liveCapture && (displayMode === 'content' || displayMode === 'cleared');
-  const showScaled  = !showCapture && !(isLive && displayMode === 'cleared');
+  // The monitor renders the slide from the payload (no screen-capture). In the
+  // live 'cleared' state the audience output keeps the background but hides the
+  // text, so we mirror that by suppressing the text block.
+  const hideText = isLive && displayMode === 'cleared';
 
   // Match the output templates' default shadow exactly
   const shadow    = style?.textShadow;
@@ -72,11 +100,9 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, liveCaptu
       }`}
     >
       {/* Scaled 1920×1080 canvas — pixel-accurate match of the output template */}
-      {showScaled && (
-        <>
-          {slide ? (
-            <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
-              <div style={{ width: NATIVE_W, height: NATIVE_H, transform: `scale(${scale})`, transformOrigin: 'top left', position: 'relative' }}>
+      {slide ? (
+        <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
+          <div style={{ width: NATIVE_W, height: NATIVE_H, transform: `scale(${scale})`, transformOrigin: 'top left', position: 'relative' }}>
                 {/* Background */}
                 {isLT ? (
                   <div style={{
@@ -86,14 +112,20 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, liveCaptu
                   }} />
                 ) : backgroundPath && (
                   <div style={{ position: 'absolute', inset: 0 }}>
-                    {/\.(mp4|webm|mov)$/i.test(backgroundPath)
-                      ? <video src={mediaUrl(backgroundPath)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} autoPlay loop muted />
+                    {/\.(mp4|webm|mov|m4v|avi|mkv)$/i.test(backgroundPath)
+                      ? (mediaStartAt
+                        ? <SyncedVideo src={mediaUrl(backgroundPath)} startAt={mediaStartAt} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        : <video src={mediaUrl(backgroundPath)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} autoPlay loop muted />)
+                      : /\.(mp3|wav|aac|flac|ogg|m4a)$/i.test(backgroundPath)
+                      ? <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <span className="material-symbols-outlined" style={{ fontSize: 220, color: '#4ae176' }}>volume_up</span>
+                        </div>
                       : <img src={mediaUrl(backgroundPath)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />}
                   </div>
                 )}
 
                 {/* Content */}
-                {isLT ? (
+                {!hideText && (isLT ? (
                   // Lower third: bottom-anchored, matches lowerthird.html exactly
                   <div style={{
                     position: 'absolute', bottom: 0, left: 0, right: 0,
@@ -120,23 +152,16 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, liveCaptu
                       <p style={textStyle} dangerouslySetInnerHTML={{ __html: renderWithRuns(slide.content, style?.runs) }} />
                     </div>
                   );
-                })()}
-              </div>
-            </div>
-          ) : (
-            // No content selected
-            <div className="absolute inset-0 flex items-center justify-center">
-              <span className="text-label-sm font-label-sm uppercase tracking-widest text-outline-variant">
-                {emptyLabel}
-              </span>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* Live capture — replaces scaled canvas when available */}
-      {showCapture && (
-        <img src={liveCapture} className="absolute inset-0 w-full h-full object-cover" alt="live" style={{ zIndex: 2 }} />
+                })())}
+          </div>
+        </div>
+      ) : (
+        // No content selected
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className="text-label-sm font-label-sm uppercase tracking-widest text-outline-variant">
+            {emptyLabel}
+          </span>
+        </div>
       )}
 
       {/* State badge */}
@@ -162,24 +187,25 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, liveCaptu
 
 export default function PreviewLivePanel({
   previewItem, liveItem, previewSlideIdx, liveSlideIdx,
-  liveCapture, displayMode, getSlides, previewBgPath, liveBgPath,
+  displayMode, getSlides, previewBgPath, liveBgPath,
   onSelectPreviewSlide, onGoAtPreviewSlide, onSelectLiveSlide,
-  channelTemplate,
-  allChannels = [], channelCaptures = {}, liveChannelIdx = 0, onSetLiveChannelIdx,
+  channelTemplate, liveMediaStartAt = null,
+  allChannels = [], liveChannelIdx = 0, onSetLiveChannelIdx,
 }) {
   const previewSlides = previewItem ? getSlides(previewItem) : [];
   const liveSlides    = liveItem    ? getSlides(liveItem)    : [];
 
-  // Derive capture + template for the selected live channel
-  const selectedChannel     = allChannels[liveChannelIdx] ?? allChannels[0] ?? null;
-  const selectedTemplate    = selectedChannel?.template ?? channelTemplate;
-  // For the selected channel: screen channels use liveCapture (fast 200ms path) at idx 0,
-  // NDI or non-primary channels use the multiview cache.
-  const liveCaptureForFrame = (liveChannelIdx === 0 && selectedChannel?.type !== 'ndi')
-    ? liveCapture
-    : (selectedChannel ? channelCaptures[selectedChannel.id] ?? null : liveCapture);
+  // Template for the selected live channel — the live monitor renders the live
+  // slide from the payload using this channel's template (no screen-capture).
+  const selectedChannel  = allChannels[liveChannelIdx] ?? allChannels[0] ?? null;
+  const selectedTemplate = selectedChannel?.template ?? channelTemplate;
 
   const multiChannel = allChannels.length > 1;
+
+  // Foreground media transport — shown when a video/audio clip is live.
+  const liveMediaType = liveItem?.item_type === 'media' ? liveItem.asset?.type : null;
+  const showTransport = liveMediaType === 'video' || liveMediaType === 'audio';
+  const mediaControl = (action) => window.cue.output.media?.control(action);
 
   return (
     <div className="flex flex-col h-full gap-gutter">
@@ -194,7 +220,6 @@ export default function PreviewLivePanel({
             getSlides={getSlides}
             emptyLabel="Nothing in Preview"
             isLive={false}
-            liveCapture={null}
             backgroundPath={previewBgPath}
             channelTemplate={channelTemplate}
           />
@@ -223,11 +248,37 @@ export default function PreviewLivePanel({
             getSlides={getSlides}
             emptyLabel="Nothing Live"
             isLive={true}
-            liveCapture={liveCaptureForFrame}
             backgroundPath={liveBgPath}
             displayMode={displayMode}
             channelTemplate={selectedTemplate}
+            mediaStartAt={liveMediaStartAt}
           />
+
+          {/* Foreground media transport */}
+          {showTransport && (
+            <div className="flex items-center gap-xs flex-shrink-0">
+              <span className="material-symbols-outlined text-[14px] text-tertiary shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>
+                {liveMediaType === 'audio' ? 'volume_up' : 'movie'}
+              </span>
+              <span className="text-[9px] font-mono uppercase tracking-[0.05em] text-on-surface-variant truncate flex-1 min-w-0">
+                {liveItem.asset?.filename}
+              </span>
+              {[
+                { action: 'play', icon: 'play_arrow', label: 'Play' },
+                { action: 'pause', icon: 'pause', label: 'Pause' },
+                { action: 'restart', icon: 'restart_alt', label: 'Restart' },
+              ].map((b) => (
+                <button
+                  key={b.action}
+                  onClick={() => mediaControl(b.action)}
+                  title={b.label}
+                  className="flex items-center justify-center w-7 h-6 rounded border border-outline-variant/30 bg-surface-container text-on-surface-variant hover:border-primary/50 hover:text-primary transition-colors cursor-pointer shrink-0"
+                >
+                  <span className="material-symbols-outlined text-[14px]">{b.icon}</span>
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Channel selector — only shown when 2+ channels */}
           {multiChannel && (
@@ -235,7 +286,6 @@ export default function PreviewLivePanel({
               {allChannels.map((ch, idx) => {
                 const isSelected = idx === liveChannelIdx;
                 const isNdi = ch.type === 'ndi';
-                const hasFrame = !!channelCaptures[ch.id];
                 return (
                   <button
                     key={ch.id}
@@ -248,7 +298,7 @@ export default function PreviewLivePanel({
                     }`}
                   >
                     {isNdi && (
-                      <span className={`w-[5px] h-[5px] rounded-full flex-shrink-0 ${hasFrame ? 'bg-tertiary' : 'bg-outline-variant'}`} />
+                      <span className={`w-[5px] h-[5px] rounded-full flex-shrink-0 ${isSelected ? 'bg-tertiary' : 'bg-outline-variant'}`} />
                     )}
                     {!isNdi && (
                       <span className="material-symbols-outlined text-[10px]" style={{ fontVariationSettings: "'FILL' 1" }}>
