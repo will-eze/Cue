@@ -94,7 +94,7 @@ function SortableItem({ item, index, isPreview, isLive, onClick, onDoubleClick, 
         <p className={`text-label-sm font-bold truncate ${
           isLive ? 'text-secondary' : isPreview ? 'text-primary' : 'text-on-surface'
         }`}>
-          {String(index + 1).padStart(2, '0')}. {label}
+          {label}
         </p>
         <p className="text-[10px] text-on-surface-variant truncate mt-0.5">{sublabel}</p>
       </div>

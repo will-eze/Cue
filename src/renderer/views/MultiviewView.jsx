@@ -136,17 +136,17 @@ function ChannelGroup({ channel, isLive }) {
       </div>
 
       {/* Tiles */}
-      {isNdi ? (
-        <NdiTile channel={channel} isLive={isLive && isActive} />
-      ) : hasMonitors ? (
-        <div className="grid gap-gutter" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))' }}>
-          {channel.monitors.map((m) => (
+      <div className="grid gap-gutter" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))' }}>
+        {isNdi ? (
+          <NdiTile channel={channel} isLive={isLive && isActive} />
+        ) : hasMonitors ? (
+          channel.monitors.map((m) => (
             <ScreenMonitorTile key={m.id} monitor={m} isLive={isLive && isActive} />
-          ))}
-        </div>
-      ) : (
-        <NoScreensPlaceholder />
-      )}
+          ))
+        ) : (
+          <NoScreensPlaceholder />
+        )}
+      </div>
     </div>
   );
 }
@@ -160,7 +160,7 @@ function NdiTile({ channel, isLive }) {
   const isLT       = channel.template === 'lowerthird';
 
   return (
-    <div className={`relative rounded-lg overflow-hidden transition-all max-w-[640px] ${
+    <div className={`relative rounded-lg overflow-hidden transition-all ${
       isLive && hasCapture
         ? 'ring-2 ring-tertiary shadow-[0_0_20px_rgba(74,225,118,0.1)]'
         : 'ring-1 ring-outline-variant/30'

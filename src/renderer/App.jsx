@@ -20,9 +20,7 @@ export default function App() {
   const transportRef = useRef({ go: () => {}, clear: () => {}, logo: () => {} });
 
   useEffect(() => {
-    window.cue.on('output:unresolved-channels', (channels) => {
-      if (channels.length > 0) setView('settings');
-    });
+    window.cue.on('output:unresolved-channels', () => {});
     window.cue.on('output:ndi-unavailable', () => setNdiWarning(true));
     window.cue.on('output:state-changed', (s) => {
       setOutputWindows(s.activeWindows ?? 0);

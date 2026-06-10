@@ -98,7 +98,7 @@ function createNdiWindow(channel) {
   win.loadFile(getTemplatePath(channel.template || 'fullscreen'), { query: { alpha: '1' } });
   win.webContents.once('did-finish-load', () => {
     if (state.displayMode !== 'idle') sendCurrentState();
-    if (ndi.isAvailable()) startNdiCapture(channel.id, win, channel);
+    startNdiCapture(channel.id, win, channel);
   });
   return win;
 }
@@ -130,7 +130,7 @@ function startNdiCapture(channelId, win, channel) {
     const { width, height } = image.getSize();
     if (width > 0 && height > 0) {
       lastSentAt = now;
-      ndi.sendFrame(channelId, image.toBitmap(), width, height, fps);
+      if (ndi.isAvailable()) ndi.sendFrame(channelId, image.toBitmap(), width, height, fps);
       // Cache a downscaled JPEG at ~1fps for the multiview thumbnail
       if (multiviewRefCount > 0 && now - lastCachedAt >= 950) {
         lastCachedAt = now;
