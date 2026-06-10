@@ -10,6 +10,8 @@ export function registerOutputIpc() {
   ipcMain.handle('output:setLive', (_e, enabled) => outputManager.setOutputsEnabled(enabled));
   ipcMain.handle('output:getState', () => outputManager.getState());
   ipcMain.handle('output:media:control', (_e, action) => outputManager.mediaControl(action));
+  ipcMain.handle('output:media:seek', (_e, pos) => outputManager.mediaSeek(pos));
+  ipcMain.handle('output:media:set-muted', (_e, muted) => outputManager.mediaSetMuted(muted));
 
   // ── Screens (connected displays) ───────────────────────────────────────────
   ipcMain.handle('output:screens:list', () => {
@@ -30,8 +32,8 @@ export function registerOutputIpc() {
     const db = getDb();
     const { lastInsertRowid } = db
       .prepare(
-        `INSERT INTO output_channels (name, type, template, ndi_fps, ndi_width, ndi_height, active)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO output_channels (name, type, template, ndi_fps, ndi_width, ndi_height, ndi_audio_muted, active)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         data.name,
@@ -40,6 +42,7 @@ export function registerOutputIpc() {
         data.ndi_fps || 30,
         data.ndi_width || 1920,
         data.ndi_height || 1080,
+        data.ndi_audio_muted !== undefined ? (data.ndi_audio_muted ? 1 : 0) : 1,
         1,
       );
     const channel = db.prepare('SELECT * FROM output_channels WHERE id = ?').get(lastInsertRowid);
@@ -53,7 +56,7 @@ export function registerOutputIpc() {
     const fields = [];
     const vals = [];
     const allowed = ['name', 'type', 'template', 'ndi_fps', 'ndi_width', 'ndi_height',
-      'logo_override_id', 'active'];
+      'logo_override_id', 'ndi_audio_muted', 'active'];
     for (const k of allowed) {
       if (k in data) { fields.push(`${k} = ?`); vals.push(data[k]); }
     }
@@ -69,6 +72,10 @@ export function registerOutputIpc() {
     // CASCADE deletes channel_monitors rows too (FK ON DELETE CASCADE).
     getDb().prepare('DELETE FROM output_channels WHERE id = ?').run(id);
   });
+
+  // ── Stage display ──────────────────────────────────────────────────────────
+  ipcMain.handle('output:stage:message', (_e, text) => outputManager.setStageMessage(text));
+  ipcMain.handle('output:stage:timer',   (_e, action, seconds) => outputManager.stageTimerCmd(action, seconds));
 
   // ── Multiview capture ──────────────────────────────────────────────────────
   ipcMain.handle('output:multiview:start', () => outputManager.startMultiviewCapture());

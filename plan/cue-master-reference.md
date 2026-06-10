@@ -73,7 +73,7 @@ src/
 │   ├── fonts.js              BUNDLED_FONTS array + DEFAULT_FONT. Imported by preload.js.
 │   │
 │   ├── db/
-│   │   ├── schema.js         SQLite init, migration runner (v1→v5), getDb() singleton.
+│   │   ├── schema.js         SQLite init, migration runner (v1→v9), getDb() singleton.
 │   │   ├── songs.js          Song + section + tag CRUD, FTS5 search.
 │   │   ├── services.js       Service / rundown CRUD. resolveItem() joins media paths.
 │   │   ├── media.js          Media import (copy to userData/media/), list, delete, folders.
@@ -89,7 +89,11 @@ src/
 │   └── output/
 │       ├── manager.js        Output window registry. go/clear/logo dispatch. No operator capture loop —
 │       │                     the operator live monitor renders from payload, not capturePage.
-│       │                     go() stamps payload.mediaStartAt = Date.now() for loose video sync.
+│       │                     Owns the foreground-media `transport` { active, startAt, pausedAt, loop, muted }
+│       │                     (machine-clock based). go() stamps it; mediaControl/mediaSeek/mediaSetMuted mutate it;
+│       │                     broadcastTransport() pushes `media:transport` to every window + `output:media-transport`
+│       │                     to the renderer. isPrimaryAudioMonitor() picks the single program-audio window (?mute=).
+│       │                     Stage timer/message state (stageTimerCmd, setStageMessage) → stage:timer / stage:message.
 │       │                     NDI: ndiCaptureLoops Map, ndiLastFrames Map (1fps JPEG cache for multiview).
 │       │                     startNdiCapture/stopNdiCapture. multiviewRefCount: refcounted start/stop —
 │       │                     multiview capture is driven only by MultiviewView (start on mount, stop on unmount).
@@ -100,6 +104,8 @@ src/
 │   ├── main.jsx              React entry point. Mounts <App />.
 │   ├── index.css             Design system CSS: tally classes, monitor glow, scrollbar, fonts.
 │   ├── App.jsx               Root. Titlebar + transport bar + view switcher (Operator/Settings).
+│   │                         StagePanel popover (Stage button): presenter countdown timer + stage message,
+│   │                         driven via window.cue.output.stage.timer / .message.
 │   │
 │   ├── views/
 │   │   ├── OperatorView.jsx  Three-panel layout. All transport state. Keyboard shortcuts (configurable via shortcutsRef).
@@ -121,15 +127,20 @@ src/
 │   │   │                          DnD-sortable item list. Context menu.
 │   │   │                          MediaPickerModal for background override.
 │   │   │                          Right-click song items → Preview / Edit / Set Background Override.
+│   │   │                          Media items show a LOOP badge when media_loop; context menu Enable/Disable Loop
+│   │   │                          → window.cue.services.setItemLoop.
 │   │   │                          Props: onRenameService, onDeleteService.
 │   │   ├── PreviewLivePanel.jsx   Two MonitorFrames (Preview + Live) + two SlideLists.
 │   │   │                          MonitorFrame renders a 1920×1080 virtual canvas scaled via ResizeObserver +
 │   │   │                          CSS transform — pixel-accurate match of the output template at any container size.
 │   │   │                          Supports fullscreen (textBox positioning) and lowerthird (bottom-anchored bar) layouts.
-│   │   │                          Video backgrounds use SyncedVideo (seeks to shared mediaStartAt elapsed time) —
-│   │   │                          loose sync to audience output, no screen-capture.
+│   │   │                          Video backgrounds use SyncedVideo — locked to the shared `transport` via the same
+│   │   │                          wall-clock + playbackRate algorithm as the output players (muted; no screen-capture).
+│   │   │                          Foreground-media transport bar: timeline scrubber (media.seek), current/total time,
+│   │   │                          program-audio mute button (media.setMuted), play/pause + restart (media.control).
+│   │   │                          Subscribes to output:media-transport; useMediaDuration() probes clip length.
 │   │   │                          Channel selector strip (2+ channels): click to switch live monitor to any channel.
-│   │   │                          Props: allChannels, liveChannelIdx, onSetLiveChannelIdx, liveMediaStartAt.
+│   │   │                          Props: allChannels, liveChannelIdx, onSetLiveChannelIdx.
 │   │   └── LibraryPanel.jsx       Songs tab (react-window virtualised list) + Media tab (grid).
 │   │                              Song search + tag filter. Media import.
 │   │                              Single-click (220ms) → SongPreviewModal. Double-click → add to rundown.
@@ -156,6 +167,7 @@ src/
 │   │
 │   ├── settings/
 │   │   ├── OutputChannels.jsx    Channel cards. Create/edit/delete. Monitor assignment per channel.
+│   │   │                          NDI cards have an audio mute toggle (ndi_audio_muted) — volume_off/volume_up.
 │   │   ├── LogoSettings.jsx      Global logo picker.
 │   │   ├── BackgroundSettings.jsx Global song/slide background pickers. Bulk apply actions.
 │   │   │                          Accepts only activeServiceId prop. No DangerZone or footer inside.
@@ -169,18 +181,30 @@ src/
 │       └── mediaUrl.js           mediaUrl(absPath) → cue-media://localhost/encoded/path
 │
 ├── output/                   Plain HTML — no build step, no React, served directly.
+│   ├── media-player.js       Shared classic script (loaded before fullscreen.js/stage.js). window.CueMediaPlayer.
+│   │                         attach(el, {loop, baseMuted, transport}) locks one <video>/<audio> to the shared
+│   │                         transport: wall-clock-derived position, playbackRate convergence (±6%, preservesPitch),
+│   │                         native loop, el.muted = baseMuted || transport.muted. Subscribes to onMediaTransport.
 │   ├── fullscreen.html       #background + #content (#text-wrap > #text, #logo-wrap, #copyright).
 │   ├── fullscreen.css        Fullscreen output styles. #text-wrap is absolutely positioned by JS.
 │   │                         #logo-wrap is a separate sibling (never overwrites #text).
 │   ├── fullscreen.js         applyStyle(s): positions #text-wrap via textBox %, applies all style props to #text.
 │   │                         showLogo/hideLogo use #logo-wrap. Supports: verticalAlign, letterSpacing,
 │   │                         uppercase, textShadow (buildShadow), textStroke, textBox, underline in runs.
-│   │                         Detects ?alpha=1 → transparent CSS background (NDI alpha channels).
+│   │                         Detects ?alpha=1 (IS_NDI) → transparent background; ?mute=1 (MUTE_AUDIO) → base mute.
+│   │                         Foreground media via CueMediaPlayer.attach (single element, native loop). No clock-master
+│   │                         time reporting, no dual-element loop swap.
 │   ├── lowerthird.html       #lowerthird > #text + #copyright. Background always transparent (composited in OBS).
 │   ├── lowerthird.css        #lowerthird: bottom-anchored, background: transparent (controlled by JS via ltBar).
-│   └── lowerthird.js         applyStyle(el, s): applies all style props including ltBar gradient to #lowerthird.
-│                             buildBarBg(ltBar): null → transparent; {color,opacity,solid} → CSS gradient or solid.
-│                             Clear/logo events reset bar background to transparent.
+│   ├── lowerthird.js         applyStyle(el, s): applies all style props including ltBar gradient to #lowerthird.
+│   │                         buildBarBg(ltBar): null → transparent; {color,opacity,solid} → CSS gradient or solid.
+│   │                         Clear/logo events reset bar background to transparent.
+│   ├── stage.html            Confidence monitor. #top-bar (local time / REMAINING timer / VIDEO countdown),
+│   │                         #content (#media-wrap + #current-text, #next-text), #bottom-bar (#message-text).
+│   ├── stage.css             Stage monitor styles — info bars, progress track, countdown colour states, message alert.
+│   └── stage.js              Receives slide:update + stage:timer + stage:message. Video preview via CueMediaPlayer
+│                             (always baseMuted). VIDEO countdown derives remaining from transport + clip duration —
+│                             loops with the clip (never ∞), freezes on pause. Presenter countdown timer + message bar.
 │
 └── fonts/
     ├── fonts.css             All @font-face declarations. font-display: block.
@@ -219,7 +243,7 @@ src/
 
 ### Migration system
 
-`schema.js` creates `db_version` table (single integer row) on first run and applies pending migrations in order inside a transaction. **Never delete `db_version`** — it is required to exist before any user-facing build. Current version: **5**.
+`schema.js` creates `db_version` table (single integer row) on first run and applies pending migrations in order inside a transaction. **Never delete `db_version`** — it is required to exist before any user-facing build. Current version: **9**. Migrations run with foreign keys disabled, so table-rebuild migrations (v6, v7) do not cascade-delete referencing rows.
 
 | Version | Change |
 |---|---|
@@ -228,6 +252,10 @@ src/
 | v3 | Rebuilt `songs_fts` as plain contentless FTS5 (removed `contentless_delete=1` incompatible with Electron 30's SQLite 3.49) |
 | v4 | Added `channel_monitors` table — separates channels (content streams) from physical screen assignments |
 | v5 | Added 5 query-plan indices: `song_sections(song_id)`, `service_items(service_id)`, `taggables(entity_type, entity_id)`, `channel_monitors(channel_id)`, `media_assets(folder_id)` |
+| v6 | Rebuilt `output_channels` to add `'stage'` to the `template` CHECK (stage / confidence display) |
+| v7 | Scripture module: added `bible_versions`, `bible_verses` (+ `bible_verses_fts`); rebuilt `service_items` to add `'scripture'` to the `item_type` CHECK |
+| v8 | Added `service_items.media_loop` (INTEGER, default 0) — per-item looping flag for video/audio |
+| v9 | Added `output_channels.ndi_audio_muted` (INTEGER, default 1) — per-NDI-channel audio mute |
 
 ### All tables
 
@@ -300,12 +328,21 @@ notes TEXT
 ```sql
 id INTEGER PRIMARY KEY AUTOINCREMENT
 service_id INTEGER NOT NULL REFERENCES services(id) ON DELETE CASCADE
-item_type TEXT NOT NULL CHECK(item_type IN ('song','media','slide'))
+item_type TEXT NOT NULL CHECK(item_type IN ('song','media','slide','scripture'))  -- 'scripture' added v7
 ref_id INTEGER               -- song id, media_asset id, or null for custom slides
 order_index INTEGER NOT NULL
 notes TEXT
 content TEXT                 -- for item_type='slide': JSON {text, ...} or plain text
 background_override_id INTEGER REFERENCES media_assets(id) ON DELETE SET NULL
+media_loop INTEGER NOT NULL DEFAULT 0   -- v8: loop this media item's video/audio
+```
+
+#### `bible_versions` / `bible_verses` (v7 — scripture module)
+```sql
+-- bible_versions: id, name, abbrev, language, created_at
+-- bible_verses:   id, version_id→bible_versions(ON DELETE CASCADE),
+--                 book_num, book_name, chapter, verse, text
+-- bible_verses_fts: contentless FTS5 over (book_name, text)
 ```
 
 #### `output_channels`
@@ -316,11 +353,12 @@ type TEXT NOT NULL CHECK(type IN ('screen','ndi'))
 display_index INTEGER          -- legacy, not used for matching
 display_bounds TEXT            -- legacy; physical screens now live in channel_monitors
 linked_channel_id INTEGER REFERENCES output_channels(id) ON DELETE SET NULL
-template TEXT NOT NULL DEFAULT 'fullscreen' CHECK(template IN ('fullscreen','lowerthird'))
+template TEXT NOT NULL DEFAULT 'fullscreen' CHECK(template IN ('fullscreen','lowerthird','stage'))  -- 'stage' added v6
 ndi_fps INTEGER DEFAULT 30
 ndi_width INTEGER DEFAULT 1920
 ndi_height INTEGER DEFAULT 1080
 logo_override_id INTEGER REFERENCES media_assets(id) ON DELETE SET NULL
+ndi_audio_muted INTEGER NOT NULL DEFAULT 1   -- v9: per-NDI-channel audio mute (1 = muted)
 active INTEGER NOT NULL DEFAULT 1
 ```
 
@@ -487,6 +525,7 @@ All renderer↔main communication is via `ipcRenderer.invoke` / `ipcMain.handle`
 | `removeItem(itemId)` | void | — |
 | `setItemBackground(itemId, mediaId\|null)` | void | Sets background_override_id. |
 | `setItemNotes(itemId, notes)` | void | — |
+| `setItemLoop(itemId, loop)` | void | Sets service_items.media_loop (0/1) — looping for a media item. |
 | `duplicateItem(itemId)` | `id` | Appends copy at end of rundown. |
 | `clearItems(serviceId)` | void | Removes all items from a rundown; keeps the service row. Used by Danger Zone. |
 | `applyBackgroundToRundown(serviceId, mediaId)` | `count` | Sets background_override_id on every song slot AND updates each song's default_background_id. |
@@ -511,9 +550,14 @@ All renderer↔main communication is via `ipcRenderer.invoke` / `ipcMain.handle`
 | `clear()` | void | Clears all outputs, stops live capture. |
 | `logo()` | void | Shows logo on all outputs. |
 | `setLive(enabled)` | void | Opens or closes all output BrowserWindows. Toggle in transport bar. |
-| `getState()` | `{isLive, livePayload, activeChannels:[ids], activeWindows, outputsEnabled, displayMode}` | — |
+| `getState()` | `{isLive, livePayload, activeChannels:[ids], activeWindows, outputsEnabled, displayMode, transport}` | `transport` = current media transport snapshot. |
+| `media.control(action)` | void | `action` ∈ `'play' \| 'pause' \| 'restart'` — mutates the transport, broadcast to all surfaces. |
+| `media.seek(pos)` | void | Scrub foreground media to `pos` seconds (preserves paused state). |
+| `media.setMuted(muted)` | void | Toggle program (audience) audio. Stage + operator preview stay silent regardless. |
+| `stage.message(text)` | void | Set/clear the confidence-monitor presenter message (`''` clears). |
+| `stage.timer(action, seconds?)` | void | Presenter countdown: `action` ∈ `'set'(seconds) \| 'start' \| 'pause' \| 'reset'`. |
 | `channels.list()` | `[output_channel rows]` | — |
-| `channels.create(data)` | `channel` | NDI channels open a BrowserWindow immediately; screen channels wait for monitor assignment. |
+| `channels.create(data)` | `channel` | NDI channels open a BrowserWindow immediately; screen channels wait for monitor assignment. `data.ndi_audio_muted` (default 1). |
 | `channels.update(id, data)` | `channel` | Syncs window. |
 | `channels.delete(id)` | void | Closes window(s) and cascades to channel_monitors. |
 | `monitors.list(channelId?)` | `[channel_monitor rows]` | Pass channelId to filter. |
@@ -533,8 +577,25 @@ All renderer↔main communication is via `ipcRenderer.invoke` / `ipcMain.handle`
   backgroundPath: string | null,    // absolute filesystem path (not a URL)
   logoPath: string | null,          // absolute filesystem path
   styleJson: object | null,         // parsed style_json
+  media: { path, type: 'video'|'audio'|'image', loop: bool } | undefined,  // foreground media item
+  transport: { active, startAt, pausedAt, loop, muted } | undefined,       // snapshot for media items
 }
 ```
+
+**Media transport model** — foreground media (bumpers/clips) is synced across every surface (screen
+outputs, NDI, operator live monitor, confidence monitor) by a single main-process `transport`:
+```js
+transport = { active, startAt, pausedAt, loop, muted }
+// position(now) = ((pausedAt ?? now) - startAt) / 1000   (mod duration when loop)
+```
+`go()` stamps it; `mediaControl/mediaSeek/mediaSetMuted` mutate it; `broadcastTransport()` pushes
+`media:transport` to every output window and `output:media-transport` to the renderer. Each player
+(`media-player.js`, stage video, `SyncedVideo`) derives its playhead from the shared machine clock —
+no clock-master election, no per-window time reporting — and converges via `playbackRate` nudging
+(hard-seek only on >0.5 s drift / scrub / pause). Looping uses the native `loop` attribute (single
+element) for clean gapless audio. **Program audio comes from one window only** (`isPrimaryAudioMonitor`
+→ `?mute=` query param); stage is always muted; `media.setMuted` layers a live program mute as
+`el.muted = baseMuted || transport.muted`.
 
 ### `window.cue.media`
 
@@ -574,7 +635,8 @@ All renderer↔main communication is via `ipcRenderer.invoke` / `ipcMain.handle`
 ### `window.cue.on(channel, callback)` → unsubscribe function
 Subscribe to main→renderer events. Returns an unsubscribe function — call it to remove the listener (e.g. in `useEffect` cleanup). Allowed channels:
 - `output:unresolved-channels` — array of unresolved channel objects on startup
-- `output:state-changed` — fired after go/clear/logo/setLive; payload: `{activeWindows, outputsEnabled, displayMode, livePayload}`. `livePayload.mediaStartAt` carries the shared video-sync timestamp for the operator preview.
+- `output:state-changed` — fired after go/clear/logo/setLive; payload: `{activeWindows, outputsEnabled, displayMode, livePayload, transport}`.
+- `output:media-transport` — fired whenever the media transport changes (go / play / pause / restart / seek / setMuted); payload: `{ active, startAt, pausedAt, loop, muted }`. The operator UI follows this to drive `SyncedVideo` and the transport bar. (There is NO `output:media-time` event — the old clock-master time-reporting chain was removed.)
 - `output:multiview-captures` — array of `{channelId, dataUrl, isNdi}` objects (~5fps, only while multiview is running). `isNdi: true` for NDI channels (sourced from `ndiLastFrames` JPEG cache at ~1fps); `isNdi: false` for screen channels (capturePage at ~5fps).
 - `output:ndi-unavailable` — fired if grandiose is not installed
 - `shortcut:next` / `shortcut:prev` — reserved for future hardware remote
@@ -825,8 +887,17 @@ Works in both dev (ASAR not used) and production (path is inside ASAR).
 ### Lower-third template structure
 `lowerthird.html` uses `#lowerthird` (bottom-anchored, full-width) containing `#text` and `#copyright`. Background is always `transparent` by default — JS sets it from `ltBar` via `buildBarBg()`. The `applyStyle(el, s)` function applies all style properties including the bar background. Clear and logo events explicitly reset `ltDiv.style.background = 'transparent'`.
 
+### Confidence / stage template structure
+`stage.html` (template `'stage'`, a channel whose monitors run `stage.js`) is the presenter monitor:
+`#top-bar` shows local clock, the presenter countdown timer (REMAINING, driven by `stage:timer`), and
+a VIDEO countdown; `#content` shows the current slide / muted video preview (`#media-wrap`) plus the
+coming-next text; `#bottom-bar` shows the presenter message (`stage:message`). The stage video is
+always muted and locked to the shared `transport` via `CueMediaPlayer`. The VIDEO countdown derives
+remaining time from `transport` + the clip's own duration — it loops with the clip (never shows ∞) and
+freezes while paused.
+
 ### Operator live monitor — render from payload, not capture
-The operator live/preview monitors **do not screen-capture the output window**. `PreviewLivePanel.jsx` `MonitorFrame` renders the slide directly from the same payload sent to outputs — a 1920×1080 virtual canvas scaled with a CSS transform — so it stays pixel-accurate without a capture loop. There is **no `startLiveCapture` and no `output:live-capture` event**; reintroducing a per-frame `capturePage()` loop for the operator UI is the v5→v7 perf regression and must not return. The live monitor updates reactively when `liveItem`/`liveSlideIdx`/`displayMode` change. Video backgrounds are loosely synced via `SyncedVideo`, which seeks to `(Date.now() - mediaStartAt)/1000` (stamped in `manager.go()`, flowed `output:state-changed` → `App` → `PreviewLivePanel`), drift-corrected every 3s past a 0.25s threshold — frame-exact sync is intentionally not attempted.
+The operator live/preview monitors **do not screen-capture the output window**. `PreviewLivePanel.jsx` `MonitorFrame` renders the slide directly from the same payload sent to outputs — a 1920×1080 virtual canvas scaled with a CSS transform — so it stays pixel-accurate without a capture loop. There is **no `startLiveCapture` and no `output:live-capture` event**; reintroducing a per-frame `capturePage()` loop for the operator UI is the v5→v7 perf regression and must not return. The live monitor updates reactively when `liveItem`/`liveSlideIdx`/`displayMode` change. Foreground-media video is synced via `SyncedVideo` (muted), which follows the shared `transport` using the same wall-clock-derived position + `playbackRate` convergence as the output players (`output:media-transport` → `PreviewLivePanel` local state). This is the **same transport engine used by every audience surface** — there is no separate clock-master time-reporting path anymore.
 
 ### NDI frame cache for multiview
 `ndiLastFrames` is a `Map<channelId, Buffer>` in `manager.js`. When `multiviewRefCount > 0`, the NDI `paint` event handler additionally downscales and JPEG-encodes each frame into `ndiLastFrames` at ~1fps (timestamp-gated). `runMultiviewCapture()` reads from `ndiLastFrames` to build NDI entries in the `output:multiview-captures` payload without hitting the GPU path.
@@ -918,7 +989,7 @@ No-header fallback: split by blank lines, all → `verse`. The user then relabel
 |---|---|---|
 | ~~NDI publish~~ | ~~High~~ | Implemented. See §14. |
 | `linked_channel_id` logic | Medium | Field exists, settable, never read. Sync lower-third to fullscreen channel. |
-| Stage display / confidence monitor | High | Phase 2 item. Not yet specced. |
+| ~~Stage display / confidence monitor~~ | ~~High~~ | Implemented — `stage` template, StagePanel (timer + message), VIDEO countdown. |
 | Tag CRUD UI | Medium | Tags can be assigned, but create/rename/delete UI is not in Settings. |
 | ~~Song background picker in Song Editor~~ | ~~Medium~~ | Implemented. Media picker in `SlidePreview` calls `songs:setBackground`. |
 | Disk space warning | Low | Warn when < 2GB free on import. Not implemented. |

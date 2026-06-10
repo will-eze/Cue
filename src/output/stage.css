@@ -1,135 +1,263 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
-html, body {
+html, body, #app {
   width: 100%; height: 100%;
-  background: #0a0b0d;
+  background: #111317;
   overflow: hidden;
-  color: #fff;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-}
-
-#stage {
-  width: 100%; height: 100%;
-  display: flex;
-  flex-direction: column;
-  padding: 2.5vh 3vw;
-  gap: 2vh;
-}
-
-/* ── Top bar — status + clock ─────────────────────────────────────────────── */
-#topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-shrink: 0;
-}
-
-#status {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.8vw;
-  padding: 0.6vh 1.4vw;
-  border-radius: 999px;
-  font-size: 1.9vh;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  border: 1px solid currentColor;
-}
-
-#status-dot {
-  width: 1.2vh; height: 1.2vh;
-  border-radius: 50%;
-  background: currentColor;
-  flex-shrink: 0;
-}
-
-.status-live   { color: #4ae176; }
-.status-cleared{ color: #ffb3ad; }
-.status-logo   { color: #adc6ff; }
-.status-idle   { color: #8c909f; }
-
-.status-live #status-dot { animation: pulse 1.4s ease-in-out infinite; }
-@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
-
-#clock {
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: 'tnum';
-  font-size: 4.2vh;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: #c2c6d6;
-}
-
-/* ── Current slide — the dominant element ─────────────────────────────────── */
-#current-wrap {
-  flex: 1 1 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
-
-#current-label {
-  font-size: 2.2vh;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: #4d8eff;
-  margin-bottom: 1.5vh;
-  min-height: 2.4vh;
-}
-
-#current {
-  font-size: 7.2vh;
-  line-height: 1.18;
-  font-weight: 600;
-  white-space: pre-wrap;
-  word-break: break-word;
-  overflow: hidden;
-}
-
-/* ── Next slide — dimmed, half-height ─────────────────────────────────────── */
-#next-wrap {
-  flex: 0 0 30%;
-  min-height: 0;
-  border-top: 1px solid rgba(140, 144, 159, 0.25);
-  padding-top: 2vh;
-  display: flex;
-  flex-direction: column;
-  opacity: 0.62;
-}
-
-#next-header {
-  font-size: 1.7vh;
-  font-weight: 700;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: #8c909f;
-  margin-bottom: 0.8vh;
-}
-
-#next-label {
-  font-size: 1.8vh;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: #adc6ff;
-  margin-bottom: 0.6vh;
-  min-height: 2vh;
-}
-
-#next {
-  font-size: 3.4vh;
-  line-height: 1.2;
-  font-weight: 500;
-  white-space: pre-wrap;
-  word-break: break-word;
-  overflow: hidden;
   color: #e2e2e8;
 }
 
-/* Dim the whole content area when the audience output is cleared / on logo */
-#stage.muted #current-wrap { opacity: 0.4; }
+#app {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+}
 
-#next-wrap.empty { opacity: 0; }
+/* ── Top bar — 12% of viewport height ─────────────────────────────────────── */
+#top-bar {
+  flex: 0 0 12%;
+  min-height: 0;
+  overflow: hidden;
+  background: #1a1c20;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+  display: flex;
+  align-items: stretch;
+}
+
+.bar-col {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0.8% 2%;
+  gap: 0.5vmin;
+}
+
+.bar-divider {
+  flex-shrink: 0;
+  width: 1px;
+  background: rgba(255,255,255,0.07);
+  margin: 2% 0;
+}
+
+.bar-label {
+  display: flex;
+  align-items: center;
+  gap: 0.6vmin;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 1.1vmin;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #424754;
+  flex-shrink: 0;
+}
+
+.bar-value {
+  font-size: 4.5vmin;
+  font-weight: 700;
+  line-height: 1;
+  color: #e2e2e8;
+  flex-shrink: 0;
+}
+
+.bar-value.mono {
+  font-family: 'Inter', monospace;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+  letter-spacing: -0.01em;
+}
+
+/* Time — blue */
+#time-col .bar-value { color: #adc6ff; }
+
+/* Timer colour states */
+.timer-idle    { color: #2a2e38; }
+.timer-running { color: #ffb3ad; }
+.timer-paused  { color: #c2c6d6; }
+.timer-expired { color: #ffb3ad; animation: blink 0.8s step-end infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.15} }
+
+.timer-icon {
+  font-size: 1.4vmin;
+  color: #424754;
+  line-height: 1;
+}
+
+/* Progress bar under timer */
+.progress-track {
+  width: 65%;
+  height: 0.4vmin;
+  min-height: 2px;
+  background: rgba(255,255,255,0.07);
+  border-radius: 99px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+#timer-bar {
+  height: 100%;
+  width: 100%;
+  background: #a40217;
+  border-radius: 99px;
+  transition: width 0.9s linear, background 0.3s;
+}
+
+/* Video countdown states */
+.counter-idle    { color: #2a2e38; }
+.counter-active  { color: #4ae176; }
+.counter-warning { color: #ffb3ad; animation: blink 1s step-end infinite; }
+.counter-ended   { color: #424754; }
+
+/* ── Content area (full width, flex remaining) ─────────────────────────────── */
+#content {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: #0c0e12;
+}
+
+#current-section {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2.5% 6%;
+  text-align: center;
+}
+
+#media-wrap {
+  display: none;
+  position: absolute;
+  inset: 0;
+  background: #000;
+  overflow: hidden;
+}
+#media-wrap.active {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#media-wrap video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* font-size set dynamically by JS auto-fit */
+#current-text {
+  font-weight: 700;
+  line-height: 1.15;
+  color: #ffffff;
+  white-space: pre-wrap;
+  word-break: break-word;
+  text-align: center;
+  width: 100%;
+  overflow: hidden;
+}
+
+#app.muted #current-section { opacity: 0.25; }
+
+#slide-divider {
+  flex-shrink: 0;
+  height: 1px;
+  background: rgba(255,255,255,0.08);
+}
+
+/* Next row — fixed proportion, never grows beyond ~20% of content area */
+#next-section {
+  flex: 0 0 auto;
+  max-height: 20%;
+  overflow: hidden;
+  display: flex;
+  align-items: baseline;
+  gap: 1.5%;
+  padding: 1.2% 6%;
+}
+
+#next-caption {
+  flex-shrink: 0;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 1.1vmin;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #4d8eff;
+  white-space: nowrap;
+}
+
+#next-text {
+  font-size: 2.4vmin;
+  font-weight: 400;
+  line-height: 1.3;
+  color: rgba(255,255,255,0.4);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: hidden;
+}
+
+#app.muted #next-section { opacity: 0.25; }
+
+/* ── Bottom message bar — 10% of viewport height ──────────────────────────── */
+#bottom-bar {
+  flex: 0 0 10%;
+  min-height: 0;
+  overflow: hidden;
+  background: #1a1c20;
+  border-top: 1px solid rgba(255,255,255,0.07);
+  display: flex;
+  align-items: center;
+  padding: 0 4%;
+}
+
+#message-text { width: 100%; overflow: hidden; }
+
+.msg-empty {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 1.2vmin;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(140,144,159,0.25);
+}
+.msg-empty::before { content: 'NO MESSAGES'; }
+
+.msg-alert {
+  display: flex;
+  align-items: center;
+  gap: 1.5%;
+  background: rgba(164,2,23,0.3);
+  border: 1px solid rgba(255,179,173,0.25);
+  border-radius: 0.5vmin;
+  padding: 1% 2%;
+  width: 100%;
+  overflow: hidden;
+}
+.msg-alert-icon {
+  flex-shrink: 0;
+  font-size: 2.2vmin;
+  color: #ffb3ad;
+  line-height: 1;
+}
+.msg-alert-text {
+  font-size: 2.6vmin;
+  font-weight: 700;
+  color: #ffb3ad;
+  letter-spacing: 0.04em;
+  line-height: 1.25;
+  text-transform: uppercase;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: hidden;
+}

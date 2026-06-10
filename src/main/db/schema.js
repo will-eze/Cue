@@ -303,6 +303,22 @@ const migrations = [
       CREATE INDEX IF NOT EXISTS idx_service_items_service_id ON service_items(service_id);
     `);
   },
+
+  // v8 — Add media_loop flag to service_items for looping video/audio playback.
+  function v8(database) {
+    database.exec(`
+      ALTER TABLE service_items ADD COLUMN media_loop INTEGER NOT NULL DEFAULT 0;
+    `);
+  },
+
+  // v9 — Per-NDI-channel audio mute flag. Default 1 (muted) prevents doubled
+  // audio when a screen output and NDI output play the same media simultaneously.
+  // Users who route NDI audio to a broadcast system can disable this per-channel.
+  function v9(database) {
+    database.exec(`
+      ALTER TABLE output_channels ADD COLUMN ndi_audio_muted INTEGER NOT NULL DEFAULT 1;
+    `);
+  },
 ];
 
 function runMigrations() {

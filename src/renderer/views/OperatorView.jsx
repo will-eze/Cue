@@ -218,7 +218,7 @@ export default function OperatorView({
       return {
         ...base,
         text: '', copyright: null, backgroundPath: null, styleJson: null,
-        media: { path: item.asset.path, type: item.asset.type },
+        media: { path: item.asset.path, type: item.asset.type, loop: !!item.media_loop },
       };
     }
     return {
@@ -477,6 +477,12 @@ export default function OperatorView({
     onServiceChange(list.length > 0 ? list[0].id : null);
   }
 
+  function handleRestartMedia() {
+    if (!liveItem) return;
+    const payload = buildPayload(liveItem, liveSlideIdx);
+    if (payload) window.cue.output.go(payload);
+  }
+
   const previewBgPath = previewItem ? resolveBackground(previewItem) : null;
   const liveBgPath    = liveItem    ? resolveBackground(liveItem)    : null;
 
@@ -533,6 +539,7 @@ export default function OperatorView({
             liveSlideIdx={liveSlideIdx}
             displayMode={displayMode}
             liveMediaStartAt={liveMediaStartAt}
+            onRestartMedia={handleRestartMedia}
             getSlides={getSlides}
             previewBgPath={previewBgPath}
             liveBgPath={liveBgPath}

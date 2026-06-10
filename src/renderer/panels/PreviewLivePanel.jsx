@@ -17,33 +17,114 @@ function buildBarBg(ltBar) {
 const NATIVE_W = 1920;
 const NATIVE_H = 1080;
 
-// A <video> that seeks to a shared elapsed time so the live monitor tracks the
-// audience output to within a frame or two — no screen-capture needed. Only
-// re-seeks past a drift threshold to avoid stutter.
-function SyncedVideo({ src, startAt, style }) {
+// Position (seconds) derived from the shared transport — identical maths to the
+// output players, so the operator UI agrees with every audience surface.
+function transportPosition(t, duration) {
+  if (!t || !t.active) return 0;
+  const now = Date.now();
+  const ref = (t.pausedAt != null) ? t.pausedAt : now;
+  let pos = (ref - t.startAt) / 1000;
+  if (pos < 0) pos = 0;
+  if (duration > 0) pos = t.loop ? pos % duration : Math.min(pos, duration);
+  return pos;
+}
+
+function fmtClock(sec) {
+  if (!Number.isFinite(sec) || sec < 0) sec = 0;
+  sec = Math.floor(sec);
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+}
+
+// Probes media duration without showing the element. Covers both video and audio.
+function useMediaDuration(path, type) {
+  const [duration, setDuration] = useState(0);
+  useEffect(() => {
+    setDuration(0);
+    if (!path || (type !== 'video' && type !== 'audio')) return;
+    const el = document.createElement(type === 'audio' ? 'audio' : 'video');
+    el.preload = 'metadata';
+    el.src = mediaUrl(path);
+    const onMeta = () => { if (Number.isFinite(el.duration)) setDuration(el.duration); };
+    el.addEventListener('loadedmetadata', onMeta);
+    return () => { el.removeEventListener('loadedmetadata', onMeta); try { el.src = ''; } catch {} };
+  }, [path, type]);
+  return duration;
+}
+
+// Muted preview video locked to the shared transport — same wall-clock + smooth
+// playbackRate convergence used by the output players. Always silent (the operator
+// preview never carries program audio).
+function SyncedVideo({ src, transport, loop, style }) {
   const ref = useRef(null);
+  const transportRef = useRef(transport);
+  transportRef.current = transport;
+  const tickRef = useRef(() => {});
+
   useEffect(() => {
     const v = ref.current;
     if (!v) return;
-    const seek = () => {
-      if (!startAt) return;
-      const expected = (Date.now() - startAt) / 1000;
-      if (expected < 0) return;
-      if (Number.isFinite(v.duration) && expected > v.duration) return;
-      if (Math.abs((v.currentTime || 0) - expected) > 0.25) {
-        try { v.currentTime = expected; } catch {}
-      }
+    try { v.preservesPitch = true; } catch {}
+
+    const computeExpected = () => {
+      const t = transportRef.current;
+      if (!t || !t.active) return null;
+      const dur = v.duration;
+      const now = Date.now();
+      const r = (t.pausedAt != null) ? t.pausedAt : now;
+      let pos = (r - t.startAt) / 1000;
+      if (pos < 0) pos = 0;
+      if (Number.isFinite(dur) && dur > 0) pos = loop ? pos % dur : Math.min(pos, dur);
+      return pos;
     };
-    const onMeta = () => { seek(); v.play && v.play().catch(() => {}); };
-    v.addEventListener('loadedmetadata', onMeta);
+
+    const wrappedDelta = (cur, expected, dur) => {
+      let d = cur - expected;
+      if (loop && Number.isFinite(dur) && dur > 0) {
+        if (d > dur / 2) d -= dur; else if (d < -dur / 2) d += dur;
+      }
+      return d;
+    };
+
+    const tick = () => {
+      const t = transportRef.current;
+      if (!t || !t.active) return;
+      const expected = computeExpected();
+      if (expected == null) return;
+      const dur = v.duration;
+      if (t.pausedAt != null) {
+        if (!v.paused) v.pause();
+        v.playbackRate = 1;
+        if (Number.isFinite(expected) && Math.abs((v.currentTime || 0) - expected) > 0.05) {
+          try { v.currentTime = expected; } catch {}
+        }
+        return;
+      }
+      if (v.paused) v.play().catch(() => {});
+      const drift = wrappedDelta(v.currentTime || 0, expected, dur);
+      if (Math.abs(drift) > 0.5) { try { v.currentTime = expected; } catch {} v.playbackRate = 1; }
+      else { let rr = 1 - drift * 0.5; rr = Math.max(0.94, Math.min(1.06, rr)); v.playbackRate = rr; }
+    };
+    tickRef.current = tick;
+
+    const onMeta = () => {
+      const expected = computeExpected();
+      if (expected != null && Number.isFinite(expected)) { try { v.currentTime = expected; } catch {} }
+      tick();
+    };
+    v.addEventListener('loadedmetadata', onMeta, { once: true });
     if (v.readyState >= 1) onMeta();
-    const id = setInterval(seek, 3000);
+
+    const id = setInterval(tick, 250);
     return () => { v.removeEventListener('loadedmetadata', onMeta); clearInterval(id); };
-  }, [src, startAt]);
-  return <video ref={ref} src={src} style={style} muted playsInline />;
+  }, [src, loop]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Snap immediately on pause/play/seek instead of waiting for the next tick.
+  useEffect(() => { tickRef.current(); }, [transport]);
+
+  return <video ref={ref} src={src} loop={loop} style={style} muted playsInline />;
 }
 
-function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroundPath, displayMode, channelTemplate, mediaStartAt }) {
+function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroundPath, displayMode, channelTemplate, transport }) {
   const wrapRef = useRef(null);
   const [scale, setScale] = useState(0.5);
 
@@ -113,8 +194,8 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
                 ) : backgroundPath && (
                   <div style={{ position: 'absolute', inset: 0 }}>
                     {/\.(mp4|webm|mov|m4v|avi|mkv)$/i.test(backgroundPath)
-                      ? (mediaStartAt
-                        ? <SyncedVideo src={mediaUrl(backgroundPath)} startAt={mediaStartAt} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      ? (transport?.active
+                        ? <SyncedVideo src={mediaUrl(backgroundPath)} transport={transport} loop={item?.item_type === 'media' && !!item?.media_loop} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                         : <video src={mediaUrl(backgroundPath)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} autoPlay loop muted />)
                       : /\.(mp3|wav|aac|flac|ogg|m4a)$/i.test(backgroundPath)
                       ? <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -189,23 +270,50 @@ export default function PreviewLivePanel({
   previewItem, liveItem, previewSlideIdx, liveSlideIdx,
   displayMode, getSlides, previewBgPath, liveBgPath,
   onSelectPreviewSlide, onGoAtPreviewSlide, onSelectLiveSlide,
-  channelTemplate, liveMediaStartAt = null,
+  channelTemplate,
   allChannels = [], liveChannelIdx = 0, onSetLiveChannelIdx,
 }) {
   const previewSlides = previewItem ? getSlides(previewItem) : [];
   const liveSlides    = liveItem    ? getSlides(liveItem)    : [];
 
-  // Template for the selected live channel — the live monitor renders the live
-  // slide from the payload using this channel's template (no screen-capture).
   const selectedChannel  = allChannels[liveChannelIdx] ?? allChannels[0] ?? null;
   const selectedTemplate = selectedChannel?.template ?? channelTemplate;
-
   const multiChannel = allChannels.length > 1;
 
   // Foreground media transport — shown when a video/audio clip is live.
   const liveMediaType = liveItem?.item_type === 'media' ? liveItem.asset?.type : null;
   const showTransport = liveMediaType === 'video' || liveMediaType === 'audio';
-  const mediaControl = (action) => window.cue.output.media?.control(action);
+
+  // Shared transport state (start/pause/loop/mute) from the main process.
+  const [transport, setTransport] = useState(null);
+  useEffect(() => {
+    let active = true;
+    window.cue.output.getState?.().then((s) => { if (active && s?.transport) setTransport(s.transport); });
+    const off = window.cue.on('output:media-transport', (t) => setTransport(t));
+    return () => { active = false; off(); };
+  }, []);
+
+  const isPaused = transport?.pausedAt != null;
+  const isMuted  = !!transport?.muted;
+
+  const mediaDuration = useMediaDuration(liveMediaType ? liveItem?.asset?.path : null, liveMediaType);
+
+  // Advance the scrubber/readout ~4×/s while playing.
+  const [, forceTick] = useState(0);
+  useEffect(() => {
+    if (!showTransport || isPaused) return;
+    const id = setInterval(() => forceTick((n) => n + 1), 250);
+    return () => clearInterval(id);
+  }, [showTransport, isPaused]);
+
+  const [scrub, setScrub] = useState(null); // non-null while dragging the timeline
+  const position = scrub != null ? scrub : transportPosition(transport, mediaDuration);
+
+  function handleTogglePlayPause() { window.cue.output.media?.control(isPaused ? 'play' : 'pause'); }
+  function handleRestart()         { window.cue.output.media?.control('restart'); }
+  function handleMute()            { window.cue.output.media?.setMuted(!isMuted); }
+  function handleScrub(e)          { const v = Number(e.target.value); setScrub(v); window.cue.output.media?.seek(v); }
+  function handleScrubCommit()     { setScrub(null); }
 
   return (
     <div className="flex flex-col h-full gap-gutter">
@@ -251,32 +359,63 @@ export default function PreviewLivePanel({
             backgroundPath={liveBgPath}
             displayMode={displayMode}
             channelTemplate={selectedTemplate}
-            mediaStartAt={liveMediaStartAt}
+            transport={transport}
           />
 
           {/* Foreground media transport */}
           {showTransport && (
-            <div className="flex items-center gap-xs flex-shrink-0">
-              <span className="material-symbols-outlined text-[14px] text-tertiary shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>
-                {liveMediaType === 'audio' ? 'volume_up' : 'movie'}
-              </span>
-              <span className="text-[9px] font-mono uppercase tracking-[0.05em] text-on-surface-variant truncate flex-1 min-w-0">
-                {liveItem.asset?.filename}
-              </span>
-              {[
-                { action: 'play', icon: 'play_arrow', label: 'Play' },
-                { action: 'pause', icon: 'pause', label: 'Pause' },
-                { action: 'restart', icon: 'restart_alt', label: 'Restart' },
-              ].map((b) => (
+            <div className="flex flex-col gap-xs flex-shrink-0">
+              <div className="flex items-center gap-xs">
+                <span className="material-symbols-outlined text-[14px] text-tertiary shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>
+                  {liveMediaType === 'audio' ? 'volume_up' : 'movie'}
+                </span>
+                <span className="text-[9px] font-mono uppercase tracking-[0.05em] text-on-surface-variant truncate flex-1 min-w-0">
+                  {liveItem.asset?.filename}
+                </span>
+                <span className="text-[9px] font-mono text-on-surface-variant tabular-nums shrink-0">
+                  {fmtClock(position)} / {mediaDuration ? fmtClock(mediaDuration) : '--:--'}
+                </span>
+              </div>
+              <div className="flex items-center gap-xs">
+                <input
+                  type="range"
+                  min={0}
+                  max={mediaDuration || 0}
+                  step="0.05"
+                  value={Math.min(position, mediaDuration || 0)}
+                  onChange={handleScrub}
+                  onMouseUp={handleScrubCommit}
+                  onTouchEnd={handleScrubCommit}
+                  disabled={!mediaDuration}
+                  title="Scrub"
+                  className="flex-1 h-1 accent-primary cursor-pointer disabled:opacity-40 disabled:cursor-default"
+                />
                 <button
-                  key={b.action}
-                  onClick={() => mediaControl(b.action)}
-                  title={b.label}
+                  onClick={handleMute}
+                  title={isMuted ? 'Unmute program audio' : 'Mute program audio'}
+                  className={`flex items-center justify-center w-7 h-6 rounded border transition-colors cursor-pointer shrink-0 ${
+                    isMuted
+                      ? 'border-secondary/50 bg-surface-container text-secondary'
+                      : 'border-outline-variant/30 bg-surface-container text-on-surface-variant hover:border-primary/50 hover:text-primary'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[14px]">{isMuted ? 'volume_off' : 'volume_up'}</span>
+                </button>
+                <button
+                  onClick={handleTogglePlayPause}
+                  title={isPaused ? 'Play' : 'Pause'}
                   className="flex items-center justify-center w-7 h-6 rounded border border-outline-variant/30 bg-surface-container text-on-surface-variant hover:border-primary/50 hover:text-primary transition-colors cursor-pointer shrink-0"
                 >
-                  <span className="material-symbols-outlined text-[14px]">{b.icon}</span>
+                  <span className="material-symbols-outlined text-[14px]">{isPaused ? 'play_arrow' : 'pause'}</span>
                 </button>
-              ))}
+                <button
+                  onClick={handleRestart}
+                  title="Restart"
+                  className="flex items-center justify-center w-7 h-6 rounded border border-outline-variant/30 bg-surface-container text-on-surface-variant hover:border-primary/50 hover:text-primary transition-colors cursor-pointer shrink-0"
+                >
+                  <span className="material-symbols-outlined text-[14px]">restart_alt</span>
+                </button>
+              </div>
             </div>
           )}
 

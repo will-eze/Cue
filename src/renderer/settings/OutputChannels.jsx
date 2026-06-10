@@ -6,7 +6,7 @@ export default function OutputChannels() {
   const [screens, setScreens] = useState([]);   // connected physical displays
   const [creatingChannel, setCreatingChannel] = useState(false);
   const [error, setError] = useState('');
-  const [newChannel, setNewChannel] = useState({ name: '', type: 'screen', template: 'fullscreen', ndi_fps: 30, ndi_width: 1920, ndi_height: 1080 });
+  const [newChannel, setNewChannel] = useState({ name: '', type: 'screen', template: 'fullscreen', ndi_fps: 30, ndi_width: 1920, ndi_height: 1080, ndi_audio_muted: 1 });
 
   const load = useCallback(async () => {
     const [chs, mons, scrs] = await Promise.all([
@@ -27,7 +27,7 @@ export default function OutputChannels() {
     try {
       await window.cue.output.channels.create(newChannel);
       setCreatingChannel(false);
-      setNewChannel({ name: '', type: 'screen', template: 'fullscreen', ndi_fps: 30, ndi_width: 1920, ndi_height: 1080 });
+      setNewChannel({ name: '', type: 'screen', template: 'fullscreen', ndi_fps: 30, ndi_width: 1920, ndi_height: 1080, ndi_audio_muted: 1 });
       load();
     } catch (e) {
       setError(`Couldn't create channel: ${e.message || e}. If you just updated the app, fully quit and restart it.`);
@@ -160,7 +160,7 @@ export default function OutputChannels() {
             </Field>
           </div>
           {newChannel.type === 'ndi' && (
-            <div className="grid grid-cols-3 gap-md pt-xs border-t border-outline-variant/20">
+            <div className="grid grid-cols-4 gap-md pt-xs border-t border-outline-variant/20">
               <Field label="Width (px)">
                 <input
                   type="number"
@@ -190,11 +190,23 @@ export default function OutputChannels() {
                   <option value={60}>60 fps</option>
                 </select>
               </Field>
+              <div className="space-y-xs">
+                <div className="text-[10px] font-label-sm text-on-surface-variant uppercase tracking-[0.06em]">Audio</div>
+                <label className="flex items-center gap-xs h-[34px] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={!!newChannel.ndi_audio_muted}
+                    onChange={(e) => setNewChannel({ ...newChannel, ndi_audio_muted: e.target.checked ? 1 : 0 })}
+                    className="w-3.5 h-3.5 rounded accent-primary"
+                  />
+                  <span className="text-label-sm font-label-sm text-on-surface-variant">Mute audio</span>
+                </label>
+              </div>
             </div>
           )}
           <div className="flex gap-sm justify-end">
             <button
-              onClick={() => { setCreatingChannel(false); setNewChannel({ name: '', type: 'screen', template: 'fullscreen', ndi_fps: 30, ndi_width: 1920, ndi_height: 1080 }); }}
+              onClick={() => { setCreatingChannel(false); setNewChannel({ name: '', type: 'screen', template: 'fullscreen', ndi_fps: 30, ndi_width: 1920, ndi_height: 1080, ndi_audio_muted: 1 }); }}
               className="px-md py-sm text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface border border-outline-variant/30 rounded-lg cursor-pointer transition-colors"
             >
               Cancel
@@ -353,9 +365,25 @@ function ChannelCard({ channel, monitors, screens, assignedBounds, onUpdate, onD
 
       {/* Monitors area — NDI channels don't use physical screens */}
       {isNdi ? (
-        <div className="px-md py-sm flex items-center gap-sm text-on-surface-variant text-label-sm font-label-sm border-t border-outline-variant/10">
-          <span className="material-symbols-outlined text-[14px] text-tertiary">wifi_tethering</span>
-          Broadcasts as <span className="text-on-surface font-semibold">&quot;Cue - {channel.name}&quot;</span> on the local network — add as NDI Source in OBS.
+        <div className="px-md py-sm flex items-center justify-between gap-md border-t border-outline-variant/10">
+          <div className="flex items-center gap-sm text-on-surface-variant text-label-sm font-label-sm">
+            <span className="material-symbols-outlined text-[14px] text-tertiary">wifi_tethering</span>
+            Broadcasts as <span className="text-on-surface font-semibold">&quot;Cue - {channel.name}&quot;</span> on the local network — add as NDI Source in OBS.
+          </div>
+          <button
+            onClick={() => onUpdate({ ndi_audio_muted: channel.ndi_audio_muted ? 0 : 1 })}
+            className={`shrink-0 flex items-center gap-xs px-sm py-[3px] rounded border text-[10px] font-label-sm uppercase tracking-[0.04em] transition-all cursor-pointer ${
+              channel.ndi_audio_muted
+                ? 'border-outline-variant/40 text-on-surface-variant hover:border-primary/40 hover:text-on-surface'
+                : 'border-tertiary/50 text-tertiary bg-tertiary/10 hover:border-secondary/50 hover:text-secondary hover:bg-secondary/10'
+            }`}
+            title={channel.ndi_audio_muted ? 'Audio muted — click to enable' : 'Audio enabled — click to mute'}
+          >
+            <span className="material-symbols-outlined text-[12px]" style={{ fontVariationSettings: "'FILL' 1" }}>
+              {channel.ndi_audio_muted ? 'volume_off' : 'volume_up'}
+            </span>
+            {channel.ndi_audio_muted ? 'Audio Muted' : 'Audio On'}
+          </button>
         </div>
       ) : (
       <div className="p-md">

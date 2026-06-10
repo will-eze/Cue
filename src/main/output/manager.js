@@ -15,6 +15,12 @@ let multiviewInterval = null;
 let multiviewRefCount = 0;
 let outputsEnabled = true;
 
+// Stage display state — persisted so newly opened stage windows can be synced.
+let stageState = {
+  timer: { totalSeconds: 0, remainingSeconds: 0, running: false, startedAt: null },
+  message: '',
+};
+
 // displayMode drives what every output window shows:
 //   'idle'    — nothing was ever GO'd; outputs show black
 //   'content' — slide text + background showing
@@ -24,6 +30,17 @@ let state = {
   livePayload: null,       // last GO'd payload; preserved through clear/logo toggles
   displayMode: 'idle',
   preLogoMode: null,       // mode to restore when logo is toggled off
+};
+
+// Foreground-media transport. Machine-clock based so every output window and the
+// operator renderer derive the SAME playhead (no skew, no clock-master election).
+//   position(now) = ((pausedAt ?? now) - startAt) / 1000   (mod duration if loop)
+let transport = {
+  active: false,   // a foreground media item is loaded
+  startAt: 0,      // Date.now() baseline for position 0
+  pausedAt: null,  // Date.now() when paused, else null
+  loop: false,
+  muted: false,    // program (audience) audio mute — layered on top of per-window base mute
 };
 
 function getOutputPreloadPath() {
@@ -63,13 +80,38 @@ function createMonitorWindow(channel, monitor) {
       autoplayPolicy: 'no-user-gesture-required',
     },
   });
-  win.loadFile(getTemplatePath(channel.template || 'fullscreen'));
+  // Program audio comes from a single primary source. Only the primary screen
+  // output is unmuted; stage/confidence monitors never carry audio. Layered with
+  // the live program mute inside the template (el.muted = baseMuted || transport.muted).
+  const baseMuted = channel.template === 'stage' || !isPrimaryAudioMonitor(channel.id, monitor.id);
+  win.loadFile(getTemplatePath(channel.template || 'fullscreen'), {
+    query: { mute: baseMuted ? '1' : '0' },
+  });
   // Re-dispatch current display state once the template JS is ready.
   // Without this, IPC sent before onSlideUpdate is registered is silently dropped.
   win.webContents.once('did-finish-load', () => {
-    if (state.displayMode !== 'idle') sendCurrentState();
+    sendStateToWindow(win, channel);
+    if (channel.template === 'stage') sendStageState(win);
   });
   return win;
+}
+
+// The primary audio monitor = first active monitor of the first active non-NDI,
+// non-stage channel. Exactly one window emits program audio, avoiding doubled /
+// phased audio when several outputs run on the same machine.
+function isPrimaryAudioMonitor(channelId, monitorId) {
+  const db = getDb();
+  const channels = db
+    .prepare("SELECT * FROM output_channels WHERE active = 1 AND type != 'ndi' ORDER BY id")
+    .all()
+    .filter((c) => c.template !== 'stage');
+  if (channels.length === 0) return false;
+  const primaryChannel = channels[0];
+  if (primaryChannel.id !== channelId) return false;
+  const monitor = db
+    .prepare('SELECT * FROM channel_monitors WHERE channel_id = ? AND active = 1 ORDER BY id LIMIT 1')
+    .get(channelId);
+  return !!monitor && monitor.id === monitorId;
 }
 
 function createNdiWindow(channel) {
@@ -99,9 +141,12 @@ function createNdiWindow(channel) {
       autoplayPolicy: 'no-user-gesture-required',
     },
   });
-  win.loadFile(getTemplatePath(channel.template || 'fullscreen'), { query: { alpha: '1' } });
+  win.loadFile(getTemplatePath(channel.template || 'fullscreen'), {
+    query: { alpha: '1', mute: channel.ndi_audio_muted !== 0 ? '1' : '0' },
+  });
   win.webContents.once('did-finish-load', () => {
-    if (state.displayMode !== 'idle') sendCurrentState();
+    sendStateToWindow(win, channel);
+    if (channel.template === 'stage') sendStageState(win);
     startNdiCapture(channel.id, win, channel);
   });
   return win;
@@ -211,7 +256,7 @@ export async function openMonitor(channelId, monitor) {
 
   // Re-dispatch current state once the template is ready.
   win.webContents.once('did-finish-load', () => {
-    if (state.displayMode !== 'idle') sendCurrentState();
+    sendStateToWindow(win, channel);
   });
 }
 
@@ -303,6 +348,44 @@ function getAllOutputWindows() {
 
 // ── Display state machine ─────────────────────────────────────────────────────
 
+// Send the current display state to a single window only.
+// Used when a window is first opened so that already-playing windows
+// are not disturbed (avoids restarting media on screen output windows).
+function sendStateToWindow(win, channel) {
+  if (win.isDestroyed()) return;
+
+  if (state.displayMode === 'idle') {
+    win.webContents.send('slide:update', {
+      type: 'clear', text: null, backgroundPath: null, logoPath: null,
+      copyright: null, sectionLabel: null,
+    });
+    return;
+  }
+
+  if (state.displayMode === 'cleared') {
+    win.webContents.send('slide:update', {
+      type: 'clear', text: null, backgroundPath: state.livePayload?.backgroundPath ?? null,
+      logoPath: null, copyright: null, sectionLabel: null,
+    });
+    return;
+  }
+
+  if (state.displayMode === 'logo') {
+    const db = getDb();
+    const scaleSetting = db.prepare('SELECT value FROM settings WHERE key = ?').get('logo_scale_mode');
+    const logoScaleMode = scaleSetting ? JSON.parse(scaleSetting.value) : 'cover';
+    const logoPath = channel ? resolveLogo(channel) : null;
+    win.webContents.send('slide:update', {
+      type: 'logo', logoPath, logoScaleMode, text: null,
+      backgroundPath: null, copyright: null, sectionLabel: null,
+    });
+    return;
+  }
+
+  // content
+  win.webContents.send('slide:update', { ...state.livePayload, type: 'content', transport: { ...transport } });
+}
+
 function sendCurrentState() {
   if (state.displayMode === 'idle') {
     for (const win of getAllOutputWindows()) {
@@ -354,20 +437,30 @@ function sendCurrentState() {
 
   // displayMode === 'content'
   for (const win of getAllOutputWindows()) {
-    win.webContents.send('slide:update', { ...state.livePayload, type: 'content' });
+    win.webContents.send('slide:update', { ...state.livePayload, type: 'content', transport: { ...transport } });
   }
 }
 
 export function go(payload) {
-  // Stamp a shared start time for foreground media so every output window — and
-  // the operator preview — can seek to the same elapsed position (same machine
-  // clock, so no skew). Lets independent <video> elements show ~the same frame
-  // without screen-capture.
-  if (payload && payload.media) payload.mediaStartAt = Date.now();
+  // Stamp a fresh transport so every output window — and the operator preview —
+  // derive the same playhead from the shared machine clock (no skew, no capture).
+  if (payload && payload.media) {
+    transport = {
+      active: true,
+      startAt: Date.now(),
+      pausedAt: null,
+      loop: !!payload.media.loop,
+      muted: false,          // new clip starts audible; operator can mute live
+    };
+    payload.mediaStartAt = transport.startAt; // kept for backward-compat consumers
+  } else {
+    transport = { active: false, startAt: 0, pausedAt: null, loop: false, muted: false };
+  }
   state.livePayload = payload;
   state.displayMode = 'content';
   state.preLogoMode = null;
   sendCurrentState();
+  broadcastTransport();
   notifyMainWindow('output:state-changed', getState());
 }
 
@@ -407,12 +500,48 @@ export function shortcut(direction) {
   notifyMainWindow(direction === 'next' ? 'shortcut:next' : 'shortcut:prev');
 }
 
-// Forward a transport command (play/pause/restart) to the foreground media
-// element on every output window. The active <video>/<audio> acts on it.
-export function mediaControl(action) {
-  for (const win of getAllOutputWindows()) {
-    win.webContents.send('media:control', action);
+// Broadcast the current transport to every output window (screen, NDI, stage)
+// and to the operator renderer. Using the windows Map directly ensures stage
+// windows are never excluded. Every player derives its playhead from this.
+function broadcastTransport() {
+  const snapshot = { ...transport };
+  for (const [, win] of windows) {
+    try { if (!win.isDestroyed()) win.webContents.send('media:transport', snapshot); } catch {}
   }
+  notifyMainWindow('output:media-transport', snapshot);
+}
+
+// Transport command from the operator: play / pause / restart.
+export function mediaControl(action) {
+  if (!transport.active) return;
+  const now = Date.now();
+  if (action === 'pause') {
+    if (transport.pausedAt == null) transport.pausedAt = now;
+  } else if (action === 'play') {
+    if (transport.pausedAt != null) {
+      transport.startAt += now - transport.pausedAt; // keep elapsed continuous
+      transport.pausedAt = null;
+    }
+  } else if (action === 'restart') {
+    transport.startAt = now;
+    transport.pausedAt = null;
+  }
+  broadcastTransport();
+}
+
+// Scrub to an absolute position (seconds). Preserves the paused state.
+export function mediaSeek(pos) {
+  if (!transport.active || !Number.isFinite(pos)) return;
+  const now = Date.now();
+  transport.startAt = now - pos * 1000;
+  if (transport.pausedAt != null) transport.pausedAt = now;
+  broadcastTransport();
+}
+
+// Toggle program (audience) audio. Stage + operator preview stay silent always.
+export function mediaSetMuted(muted) {
+  transport.muted = !!muted;
+  broadcastTransport();
 }
 
 // Re-open all active channel windows (used when toggling outputs back on).
@@ -470,6 +599,7 @@ export function getState() {
     activeWindows: windows.size,
     activeChannels: [...windows.keys()],
     outputsEnabled,
+    transport: { ...transport },
   };
 }
 
@@ -505,6 +635,61 @@ export function resolveBackground(item) {
     if (a) return a.path;
   }
   return null;
+}
+
+function getAllStageWindows() {
+  // Detect by loaded URL rather than DB template value — avoids misses from
+  // type coercion, stale cache, or windows opened before the template column
+  // was set correctly.
+  const wins = [];
+  for (const [, win] of windows) {
+    if (!win || win.isDestroyed()) continue;
+    try {
+      if (win.webContents.getURL().includes('stage.html')) wins.push(win);
+    } catch {}
+  }
+  return wins;
+}
+
+function sendStageState(win) {
+  win.webContents.send('stage:timer',   { ...stageState.timer });
+  win.webContents.send('stage:message', { text: stageState.message });
+}
+
+export function setStageMessage(text) {
+  stageState.message = text ?? '';
+  for (const win of getAllStageWindows()) {
+    win.webContents.send('stage:message', { text: stageState.message });
+  }
+}
+
+export function stageTimerCmd(action, seconds) {
+  const t = stageState.timer;
+  if (action === 'set') {
+    t.totalSeconds     = seconds;
+    t.remainingSeconds = seconds;
+    t.running          = false;
+    t.startedAt        = null;
+  } else if (action === 'start') {
+    if (!t.running) {
+      t.startedAt = Date.now();
+      t.running   = true;
+    }
+  } else if (action === 'pause') {
+    if (t.running && t.startedAt) {
+      const elapsed = (Date.now() - t.startedAt) / 1000;
+      t.remainingSeconds = Math.max(0, t.remainingSeconds - elapsed);
+      t.running   = false;
+      t.startedAt = null;
+    }
+  } else if (action === 'reset') {
+    t.remainingSeconds = t.totalSeconds;
+    t.running          = false;
+    t.startedAt        = null;
+  }
+  for (const win of getAllStageWindows()) {
+    win.webContents.send('stage:timer', { ...t });
+  }
 }
 
 function notifyMainWindow(channel, ...args) {

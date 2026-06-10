@@ -4,7 +4,9 @@ const textEl   = document.getElementById('text');
 const logoWrap = document.getElementById('logo-wrap');
 const copyright = document.getElementById('copyright');
 
-if (new URLSearchParams(location.search).get('alpha') === '1') {
+const IS_NDI    = new URLSearchParams(location.search).get('alpha') === '1';
+const MUTE_AUDIO = new URLSearchParams(location.search).get('mute')  === '1';
+if (IS_NDI) {
   document.documentElement.style.background = 'transparent';
   document.body.style.background = 'transparent';
 }
@@ -118,62 +120,56 @@ function setBackground(path) {
     : `<img src="${url}" alt="" />`;
 }
 
-// Drift-correction timer for the active foreground media element. Cleared
-// whenever the media element is torn down (slide change / clear / logo).
-let mediaSyncTimer = null;
-function clearMediaSync() {
-  if (mediaSyncTimer) { clearInterval(mediaSyncTimer); mediaSyncTimer = null; }
+// ── Foreground media (bumpers/clips) ─────────────────────────────────────────
+// A single <video>/<audio> element driven by the shared CueMediaPlayer, which
+// locks it to the main-process transport (wall-clock derived position, smooth
+// playbackRate convergence, native looping for clean gapless audio). Pause /
+// play / restart / scrub / mute all arrive as transport updates — no per-window
+// clock-master reporting, no dual-element loop swap.
+let mediaPlayer = null;
+
+function clearForegroundMedia() {
+  if (mediaPlayer) { mediaPlayer.destroy(); mediaPlayer = null; }
 }
 
-// Keep a media element aligned to the shared start time so all outputs (and the
-// operator preview) stay within a frame or two. Seeks only when drift exceeds a
-// threshold to avoid stutter.
-function syncMediaEl(el, startAt) {
-  clearMediaSync();
-  if (!el || !startAt) return;
-  const seek = () => {
-    const expected = (Date.now() - startAt) / 1000;
-    if (expected < 0) return;
-    if (Number.isFinite(el.duration) && expected > el.duration) return;
-    if (Math.abs((el.currentTime || 0) - expected) > 0.25) {
-      try { el.currentTime = expected; } catch {}
-    }
-  };
-  el.addEventListener('loadedmetadata', () => { seek(); el.play && el.play().catch(() => {}); }, { once: true });
-  if (el.readyState >= 1) seek();
-  mediaSyncTimer = setInterval(seek, 3000);
-}
-
-// Foreground media item (bumper/clip) — full-frame, with audio, controllable.
-// Rendered into #background but tagged so media:control can find it.
-function setForegroundMedia(media, startAt) {
-  clearMediaSync();
-  if (!media || !media.path) { bg.innerHTML = ''; return; }
+function setForegroundMedia(media, transport) {
+  clearForegroundMedia();
+  bg.innerHTML = '';
+  if (!media || !media.path) return;
   const url = pathToUrl(media.path);
-  if (media.type === 'audio') {
-    bg.innerHTML = `<audio id="cue-media-el" autoplay src="${url}"></audio>`;
-    syncMediaEl(document.getElementById('cue-media-el'), startAt);
-  } else if (media.type === 'video') {
-    bg.innerHTML = `<video id="cue-media-el" autoplay playsinline src="${url}"></video>`;
-    syncMediaEl(document.getElementById('cue-media-el'), startAt);
-  } else {
-    bg.innerHTML = `<img src="${url}" alt="" />`;
-  }
-}
 
-window.cueOutput.onMediaControl((action) => {
-  const el = document.getElementById('cue-media-el');
-  if (!el) return;
-  if (action === 'play') el.play();
-  else if (action === 'pause') el.pause();
-  else if (action === 'restart') { el.currentTime = 0; el.play(); }
-});
+  if (media.type === 'image') {
+    bg.innerHTML = `<img src="${url}" alt="" />`;
+    return;
+  }
+
+  const el = document.createElement(media.type === 'audio' ? 'audio' : 'video');
+  el.id = 'cue-media-el';
+  el.src = url;
+  if (media.type === 'video') {
+    el.setAttribute('playsinline', '');
+    Object.assign(el.style, {
+      position: 'absolute', inset: '0',
+      width: '100%', height: '100%', objectFit: 'cover',
+    });
+  }
+  el.preload = 'auto';
+  bg.appendChild(el);
+
+  // baseMuted = MUTE_AUDIO (window role); the player layers the live program
+  // mute (transport.muted) on top so only the audience feed is silenced.
+  mediaPlayer = window.CueMediaPlayer.attach(el, {
+    loop: !!media.loop,
+    baseMuted: MUTE_AUDIO,
+    transport,
+  });
+}
 
 window.cueOutput.onSlideUpdate((payload) => {
   const { type, text, copyright: copy, backgroundPath, logoPath, logoScaleMode, styleJson } = payload;
 
   if (type === 'clear') {
-    clearMediaSync();
+    clearForegroundMedia();
     setBackground(backgroundPath);
     hideLogo();
     applyStyle(null);
@@ -183,7 +179,7 @@ window.cueOutput.onSlideUpdate((payload) => {
   }
 
   if (type === 'logo') {
-    clearMediaSync();
+    clearForegroundMedia();
     bg.innerHTML = '';
     applyStyle(null);
     textEl.innerHTML = '';
@@ -198,12 +194,12 @@ window.cueOutput.onSlideUpdate((payload) => {
     applyStyle(null);
     textEl.innerHTML = '';
     copyright.textContent = '';
-    setForegroundMedia(payload.media, payload.mediaStartAt);
+    setForegroundMedia(payload.media, payload.transport);
     return;
   }
 
   // Content slide
-  clearMediaSync();
+  clearForegroundMedia();
   hideLogo();
   setBackground(backgroundPath);
   applyStyle(styleJson);

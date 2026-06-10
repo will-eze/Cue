@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld('cue', {
     removeItem: (itemId) => ipcRenderer.invoke('services:removeItem', itemId),
     setItemBackground: (itemId, mediaId) => ipcRenderer.invoke('services:setItemBackground', itemId, mediaId),
     setItemNotes: (itemId, notes) => ipcRenderer.invoke('services:setItemNotes', itemId, notes),
+    setItemLoop:  (itemId, loop)  => ipcRenderer.invoke('services:setItemLoop',  itemId, loop),
     duplicateItem: (itemId) => ipcRenderer.invoke('services:duplicateItem', itemId),
     applyBackgroundToRundown: (serviceId, mediaId) => ipcRenderer.invoke('services:applyBackgroundToRundown', serviceId, mediaId),
     clearItems: (serviceId) => ipcRenderer.invoke('services:clearItems', serviceId),
@@ -43,6 +44,8 @@ contextBridge.exposeInMainWorld('cue', {
     getState: () => ipcRenderer.invoke('output:getState'),
     media: {
       control: (action) => ipcRenderer.invoke('output:media:control', action),
+      seek: (pos) => ipcRenderer.invoke('output:media:seek', pos),
+      setMuted: (muted) => ipcRenderer.invoke('output:media:set-muted', muted),
     },
     channels: {
       list: () => ipcRenderer.invoke('output:channels:list'),
@@ -58,6 +61,10 @@ contextBridge.exposeInMainWorld('cue', {
     multiview: {
       start: () => ipcRenderer.invoke('output:multiview:start'),
       stop: () => ipcRenderer.invoke('output:multiview:stop'),
+    },
+    stage: {
+      message: (text)           => ipcRenderer.invoke('output:stage:message', text),
+      timer:   (action, seconds) => ipcRenderer.invoke('output:stage:timer', action, seconds),
     },
     screens: {
       list: () => ipcRenderer.invoke('output:screens:list'),
@@ -113,6 +120,7 @@ contextBridge.exposeInMainWorld('cue', {
       'output:unresolved-channels', 'output:state-changed',
       'output:ndi-unavailable',
       'output:multiview-captures',
+      'output:media-transport',
       'shortcut:next', 'shortcut:prev',
     ];
     if (!allowed.includes(channel)) return () => {};

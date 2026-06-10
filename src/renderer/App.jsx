@@ -22,6 +22,20 @@ export default function App() {
   const [clock, setClock] = useState(() => formatTime());
   const transportRef = useRef({ go: () => {}, clear: () => {}, logo: () => {} });
 
+  // Stage controls panel
+  const [stageOpen, setStageOpen] = useState(false);
+  const stagePanelRef = useRef(null);
+
+  // Close stage panel on outside click
+  useEffect(() => {
+    if (!stageOpen) return;
+    const handler = (e) => {
+      if (stagePanelRef.current && !stagePanelRef.current.contains(e.target)) setStageOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [stageOpen]);
+
   useEffect(() => {
     const offNdi   = window.cue.on('output:ndi-unavailable', () => setNdiWarning(true));
     const applyState = (s) => {
@@ -175,6 +189,24 @@ export default function App() {
           <span className={`w-[5px] h-[5px] rounded-full shrink-0 transition-colors ${outputsEnabled ? 'bg-secondary animate-pulse' : 'bg-outline-variant'}`} />
           Live
         </button>
+
+        {/* STAGE — opens confidence monitor controls */}
+        <div className="relative" ref={stagePanelRef}>
+          <button
+            onClick={() => setStageOpen((v) => !v)}
+            title="Stage display controls"
+            className={`h-7 px-md text-label-sm font-label-sm font-bold uppercase rounded transition-all active:scale-95 cursor-pointer flex items-center gap-xs ${
+              stageOpen
+                ? 'bg-surface-container-highest border border-outline-variant/60 text-on-surface'
+                : 'bg-surface-container-high border border-outline-variant/30 text-on-surface-variant/70 hover:border-outline-variant/60 hover:text-on-surface'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[13px]" style={{ fontVariationSettings: "'FILL' 1" }}>monitor_heart</span>
+            Stage
+          </button>
+
+          {stageOpen && <StagePanel />}
+        </div>
       </div>
 
       {/* Main content */}
@@ -227,6 +259,176 @@ function NavTab({ label, active, onClick }) {
     >
       {label}
     </button>
+  );
+}
+
+// ── Stage controls popover ────────────────────────────────────────────────────
+function fmtSecs(s) {
+  s = Math.max(0, Math.round(s));
+  return `${String(Math.floor(s / 60)).padStart(2,'0')}:${String(s % 60).padStart(2,'0')}`;
+}
+
+function StagePanel() {
+  const [mins, setMins]       = useState(10);
+  const [secs, setSecs]       = useState(0);
+  const [remaining, setRemaining] = useState(600); // displayed countdown
+  const [running, setRunning] = useState(false);
+  const [stageMsg, setStageMsg] = useState('');
+
+  const tickRef      = useRef(null);
+  const startedAtRef = useRef(null);
+  const remAtStartRef = useRef(0);
+
+  useEffect(() => () => { if (tickRef.current) clearInterval(tickRef.current); }, []);
+
+  function stopTick() {
+    if (tickRef.current) { clearInterval(tickRef.current); tickRef.current = null; }
+  }
+
+  function startTick(fromRemaining) {
+    stopTick();
+    startedAtRef.current  = Date.now();
+    remAtStartRef.current = fromRemaining;
+    tickRef.current = setInterval(() => {
+      const elapsed = (Date.now() - startedAtRef.current) / 1000;
+      const rem     = Math.max(0, remAtStartRef.current - elapsed);
+      setRemaining(rem);
+      if (rem <= 0) { stopTick(); setRunning(false); }
+    }, 100);
+  }
+
+  function adjMins(delta) {
+    const n = Math.max(0, Math.min(99, mins + delta));
+    setMins(n);
+    if (!running) setRemaining(n * 60 + secs);
+  }
+
+  function adjSecs(delta) {
+    const n = Math.max(0, Math.min(59, secs + delta));
+    setSecs(n);
+    if (!running) setRemaining(mins * 60 + n);
+  }
+
+  function handleSet() {
+    const total = mins * 60 + secs;
+    if (total <= 0) return;
+    stopTick();
+    setRemaining(total);
+    setRunning(false);
+    window.cue.output.stage.timer('set', total);
+  }
+
+  function handleToggle() {
+    if (running) {
+      stopTick();
+      const elapsed = startedAtRef.current ? (Date.now() - startedAtRef.current) / 1000 : 0;
+      const rem = Math.max(0, remAtStartRef.current - elapsed);
+      setRemaining(rem);
+      setRunning(false);
+      window.cue.output.stage.timer('pause');
+    } else {
+      const cur = remaining > 0 ? remaining : mins * 60 + secs;
+      startTick(cur);
+      setRunning(true);
+      window.cue.output.stage.timer('start');
+    }
+  }
+
+  function handleReset() {
+    stopTick();
+    const total = mins * 60 + secs;
+    setRemaining(total);
+    setRunning(false);
+    window.cue.output.stage.timer('reset');
+  }
+
+  function sendMsg() { window.cue.output.stage.message(stageMsg); }
+  function clearMsg() { setStageMsg(''); window.cue.output.stage.message(''); }
+
+  const dispColor = running ? 'text-secondary' : remaining > 0 ? 'text-on-surface' : 'text-outline-variant';
+
+  return (
+    <div className="absolute right-0 top-[calc(100%+6px)] w-76 bg-surface-container-low border border-outline-variant/30 rounded-xl shadow-2xl ring-1 ring-white/5 z-50 overflow-hidden" style={{ width: 296 }}>
+      <div className="px-md pt-md pb-md flex flex-col gap-md">
+
+        {/* ── Timer ── */}
+        <div>
+          <p className="text-[10px] font-mono uppercase tracking-[0.1em] text-outline mb-sm">Time Remaining</p>
+
+          {/* Live countdown display */}
+          <div className={`text-center font-mono font-bold tabular-nums mb-sm transition-colors ${dispColor}`} style={{ fontSize: 36 }}>
+            {fmtSecs(remaining)}
+          </div>
+
+          {/* MM : SS spin controls */}
+          <div className="flex items-center justify-center gap-sm mb-sm">
+            {/* Minutes */}
+            <div className="flex flex-col items-center gap-[3px]">
+              <button onClick={() => adjMins(1)}  className="w-7 h-5 flex items-center justify-center text-[11px] text-on-surface-variant hover:text-on-surface bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant/30 rounded cursor-pointer transition-colors">▲</button>
+              <span className="text-[22px] font-mono font-bold tabular-nums text-on-surface w-10 text-center leading-none py-[2px]">{String(mins).padStart(2,'0')}</span>
+              <button onClick={() => adjMins(-1)} className="w-7 h-5 flex items-center justify-center text-[11px] text-on-surface-variant hover:text-on-surface bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant/30 rounded cursor-pointer transition-colors">▼</button>
+              <span className="text-[9px] font-mono uppercase tracking-[0.1em] text-outline mt-[2px]">min</span>
+            </div>
+
+            <span className="text-[24px] font-bold text-outline-variant pb-4">:</span>
+
+            {/* Seconds */}
+            <div className="flex flex-col items-center gap-[3px]">
+              <button onClick={() => adjSecs(10)} className="w-7 h-5 flex items-center justify-center text-[11px] text-on-surface-variant hover:text-on-surface bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant/30 rounded cursor-pointer transition-colors">▲</button>
+              <span className="text-[22px] font-mono font-bold tabular-nums text-on-surface w-10 text-center leading-none py-[2px]">{String(secs).padStart(2,'0')}</span>
+              <button onClick={() => adjSecs(-10)} className="w-7 h-5 flex items-center justify-center text-[11px] text-on-surface-variant hover:text-on-surface bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant/30 rounded cursor-pointer transition-colors">▼</button>
+              <span className="text-[9px] font-mono uppercase tracking-[0.1em] text-outline mt-[2px]">sec</span>
+            </div>
+          </div>
+
+          {/* Action row */}
+          <div className="flex gap-xs">
+            <button onClick={handleSet}
+              className="h-7 px-sm text-[10px] font-mono uppercase tracking-[0.05em] bg-surface-container-high border border-outline-variant/40 text-on-surface-variant hover:border-outline-variant hover:text-on-surface rounded transition-colors cursor-pointer whitespace-nowrap">
+              Set
+            </button>
+            <button onClick={handleToggle}
+              className={`flex-1 h-7 text-[10px] font-mono uppercase tracking-[0.05em] rounded border transition-colors cursor-pointer ${
+                running
+                  ? 'bg-surface-container-high border-outline-variant/40 text-on-surface-variant hover:border-outline-variant'
+                  : 'bg-tertiary-container/80 border-tertiary/50 text-tertiary hover:bg-tertiary-container'
+              }`}>
+              {running ? '⏸ Pause' : '▶ Start'}
+            </button>
+            <button onClick={handleReset}
+              className="h-7 px-sm text-[10px] font-mono uppercase tracking-[0.05em] bg-surface-container-high border border-outline-variant/40 text-on-surface-variant hover:border-outline-variant hover:text-on-surface rounded transition-colors cursor-pointer">
+              ↺
+            </button>
+          </div>
+        </div>
+
+        <div className="h-px bg-outline-variant/20" />
+
+        {/* ── Message ── */}
+        <div>
+          <p className="text-[10px] font-mono uppercase tracking-[0.1em] text-outline mb-sm">Stage Message</p>
+          <textarea
+            value={stageMsg}
+            onChange={(e) => setStageMsg(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) sendMsg(); }}
+            placeholder="Type a message for the presenter…"
+            rows={2}
+            className="w-full px-sm py-xs bg-surface-container-lowest border border-outline-variant/50 rounded-lg text-[12px] text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/30 outline-none resize-none custom-scrollbar"
+          />
+          <div className="flex gap-xs mt-xs">
+            <button onClick={sendMsg} disabled={!stageMsg.trim()}
+              className="flex-1 h-7 text-[10px] font-mono uppercase tracking-[0.05em] bg-primary-container/70 border border-primary/40 text-primary hover:bg-primary-container rounded transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed">
+              Send
+            </button>
+            <button onClick={clearMsg}
+              className="h-7 px-sm text-[10px] font-mono uppercase tracking-[0.05em] bg-surface-container-high border border-outline-variant/40 text-on-surface-variant hover:border-outline-variant hover:text-on-surface rounded transition-colors cursor-pointer">
+              Clear
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
   );
 }
 

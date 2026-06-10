@@ -2,31 +2,61 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Cue Stage Display</title>
+  <title>Cue Stage Monitor</title>
   <link rel="stylesheet" href="../fonts/fonts.css" />
   <link rel="stylesheet" href="stage.css" />
 </head>
 <body>
-  <div id="stage">
-    <div id="topbar">
-      <div id="status" class="status-idle">
-        <span id="status-dot"></span>
-        <span id="status-text">STANDBY</span>
+  <div id="app">
+
+    <!-- Top info bar -->
+    <div id="top-bar">
+      <div class="bar-col" id="time-col">
+        <div class="bar-label">LOCAL TIME</div>
+        <div class="bar-value mono" id="time-value">--:--:-- --</div>
       </div>
-      <div id="clock">--:--:--</div>
+
+      <div class="bar-divider"></div>
+
+      <div class="bar-col" id="timer-col">
+        <div class="bar-label">
+          <span>REMAINING</span>
+          <span class="timer-icon" id="timer-state-icon">&#9203;</span>
+        </div>
+        <div class="bar-value mono timer-idle" id="timer-value">00:00</div>
+        <div class="progress-track"><div id="timer-bar"></div></div>
+      </div>
+
+      <div class="bar-divider"></div>
+
+      <div class="bar-col" id="counter-col">
+        <div class="bar-label" id="counter-label">VIDEO</div>
+        <div class="bar-value mono counter-idle" id="counter-value">--:--</div>
+      </div>
     </div>
 
-    <div id="current-wrap">
-      <div id="current-label"></div>
-      <div id="current"></div>
+    <!-- Main content: current + next slides, full width -->
+    <div id="content">
+      <div id="current-section">
+        <div id="media-wrap"></div>
+        <div id="current-text"></div>
+      </div>
+
+      <div id="slide-divider"></div>
+
+      <div id="next-section">
+        <span id="next-caption">COMING NEXT</span>
+        <span id="next-text">—</span>
+      </div>
     </div>
 
-    <div id="next-wrap">
-      <div id="next-header">NEXT</div>
-      <div id="next-label"></div>
-      <div id="next"></div>
+    <!-- Bottom message bar -->
+    <div id="bottom-bar">
+      <div id="message-text" class="msg-empty"></div>
     </div>
+
   </div>
+  <script src="media-player.js"></script>
   <script src="stage.js"></script>
 </body>
 </html>

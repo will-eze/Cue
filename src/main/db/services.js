@@ -166,6 +166,10 @@ export function setItemNotes(itemId, notes) {
   getDb().prepare('UPDATE service_items SET notes=? WHERE id=?').run(notes || null, itemId);
 }
 
+export function setItemLoop(itemId, loop) {
+  getDb().prepare('UPDATE service_items SET media_loop=? WHERE id=?').run(loop ? 1 : 0, itemId);
+}
+
 export function applyBackgroundToRundown(serviceId, mediaId) {
   const db = getDb();
   const songItems = db

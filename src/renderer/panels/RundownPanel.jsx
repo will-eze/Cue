@@ -118,6 +118,11 @@ function SortableItem({ item, index, isPreview, isLive, onClick, onDoubleClick, 
             PRVW
           </span>
         )}
+        {item.item_type === 'media' && !!item.media_loop && (
+          <span className="font-label-sm text-[9px] tracking-wider bg-primary-container/20 text-primary border border-primary/30 px-xs py-[2px] rounded uppercase">
+            LOOP
+          </span>
+        )}
         {item.notes && (
           <span className="font-label-sm text-[9px] tracking-wider bg-surface-variant text-on-surface-variant px-xs py-[2px] rounded uppercase">
             NOTE
@@ -390,6 +395,17 @@ export default function RundownPanel({
                   setContextMenu(null);
                 },
               }] : []),
+            ] : []),
+            ...(contextMenu.item.item_type === 'media' ? [
+              { separator: true },
+              {
+                label: contextMenu.item.media_loop ? 'Disable Loop' : 'Enable Loop',
+                onClick: async () => {
+                  await window.cue.services.setItemLoop(contextMenu.item.id, !contextMenu.item.media_loop);
+                  onRefresh?.();
+                  setContextMenu(null);
+                },
+              },
             ] : []),
             { separator: true },
             {
