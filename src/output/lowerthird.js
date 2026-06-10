@@ -3,7 +3,10 @@ const copyright = document.getElementById('copyright');
 
 function pathToUrl(p) {
   if (!p) return null;
-  return 'cue-media://localhost' + p.split('/').map(encodeURIComponent).join('/');
+  // Normalize Windows backslashes and ensure a leading / before encoding
+  const normalized = p.replace(/\\/g, '/');
+  const pathPart = normalized.startsWith('/') ? normalized : '/' + normalized;
+  return 'cue-media://localhost' + pathPart.split('/').map(encodeURIComponent).join('/');
 }
 
 function esc(str) {

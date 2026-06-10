@@ -2,9 +2,19 @@ const bg        = document.getElementById('background');
 const textEl    = document.getElementById('text');
 const copyright = document.getElementById('copyright');
 
+// NDI alpha channels load with ?alpha=1 — override the black CSS background so
+// capturePage() returns BGRA frames where empty areas are fully transparent.
+if (new URLSearchParams(location.search).get('alpha') === '1') {
+  document.documentElement.style.background = 'transparent';
+  document.body.style.background = 'transparent';
+}
+
 function pathToUrl(p) {
   if (!p) return null;
-  return 'cue-media://localhost' + p.split('/').map(encodeURIComponent).join('/');
+  // Normalize Windows backslashes and ensure a leading / before encoding
+  const normalized = p.replace(/\\/g, '/');
+  const pathPart = normalized.startsWith('/') ? normalized : '/' + normalized;
+  return 'cue-media://localhost' + pathPart.split('/').map(encodeURIComponent).join('/');
 }
 
 function esc(str) {

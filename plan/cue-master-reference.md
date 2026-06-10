@@ -28,7 +28,7 @@ Both use cases run simultaneously — there are no modes or separate application
 | `@dnd-kit/sortable` | 8.0.0 | — |
 | `react-window` | 1.8.10 | Virtualised song list. |
 | `tailwindcss` | 3.4.4 | Operator UI styling. |
-| `grandiose` | **NOT INSTALLED** | NDI output — add when implementing NDI publish. Run `npm run rebuild` after. |
+| `grandi` | installed | NDI output. ESM-only; loaded at runtime via `createRequire` to bypass Vite's CJS bundler. Platform binaries: `@grandi/darwin-arm64`, `@grandi/darwin-x64`, `@grandi/win32-x64`, etc. Listed in `forge.config.js` `rebuildConfig.extraModules` and `vite.main.config.js` `external`. |
 
 ---
 
@@ -42,7 +42,7 @@ Main process (Node.js)
   ├── File system (media import/serve)
   ├── IPC bridge (ipcMain.handle)
   ├── Output window lifecycle
-  └── NDI stub (grandiose wrapper, currently no-op)
+  └── NDI (grandi wrapper — active, publishes BGRA frames)
 
 Renderer process (Chromium + React)
   └── Operator UI — communicates with main only via window.cue (contextBridge)
@@ -88,7 +88,9 @@ src/
 │   │
 │   └── output/
 │       ├── manager.js        Output window registry. go/clear/logo dispatch. Live capture loop.
-│       └── ndi.js            Stub. Tries require('grandiose'), sets flag. No publish logic.
+│       │                     NDI: ndiCaptureLoops Map, startNdiCapture/stopNdiCapture.
+│       └── ndi.js            Active NDI implementation. createRequire loads @grandi/<platform>-<arch>
+│                             at runtime. createSender / sendFrame (inflight guard) / destroySender.
 │
 ├── renderer/
 │   ├── main.jsx              React entry point. Mounts <App />.
@@ -146,6 +148,7 @@ src/
 │   ├── fullscreen.html       Background + text + copyright layout (covers full display).
 │   ├── fullscreen.css        Fullscreen output styles.
 │   ├── fullscreen.js         Handles slide:update. setBackground(). applyStyle(). logo mode.
+│   │                         Detects ?alpha=1 query param → overrides CSS bg to transparent (NDI).
 │   ├── lowerthird.html       Lower-third band layout.
 │   ├── lowerthird.css        Lower-third styles.
 │   └── lowerthird.js         Handles slide:update. Text + logo only (no background).
@@ -370,12 +373,21 @@ Chromium's standard-scheme URL parser treats `cue-media:///Users/...` as having 
 ```js
 export function mediaUrl(absPath) {
   if (!absPath) return null;
-  const encoded = absPath.split('/').map((seg) => encodeURIComponent(seg)).join('/');
+  // Normalize Windows backslashes → forward slashes; ensure leading /
+  const normalized = absPath.replace(/\\/g, '/');
+  const pathPart = normalized.startsWith('/') ? normalized : '/' + normalized;
+  const encoded = pathPart.split('/').map((seg) => encodeURIComponent(seg)).join('/');
   return 'cue-media://localhost' + encoded;
 }
 ```
 
-Use this function everywhere in renderer code. Output templates (`fullscreen.js`, `lowerthird.js`) have an equivalent inline `pathToUrl()` function.
+Use this function everywhere in renderer code. Output templates (`fullscreen.js`, `lowerthird.js`) have an equivalent inline `pathToUrl()` with the same Windows normalization.
+
+### Windows protocol handler
+On Windows, `new URL('cue-media://localhost/C:/Users/...').pathname` returns `/C:/Users/...` — the leading `/` before the drive letter must be stripped before calling `fs.statSync`. `main/index.js` handles this:
+```js
+if (process.platform === 'win32' && /^\/[A-Za-z]:\//.test(filePath)) filePath = filePath.slice(1);
+```
 
 ### Media import flow
 
@@ -395,7 +407,9 @@ Use this function everywhere in renderer code. Output templates (`fullscreen.js`
 // In output templates (fullscreen.js / lowerthird.js):
 function pathToUrl(p) {
   if (!p) return null;
-  return 'cue-media://localhost' + p.split('/').map(encodeURIComponent).join('/');
+  const normalized = p.replace(/\\/g, '/');
+  const pathPart = normalized.startsWith('/') ? normalized : '/' + normalized;
+  return 'cue-media://localhost' + pathPart.split('/').map(encodeURIComponent).join('/');
 }
 ```
 
@@ -749,10 +763,13 @@ win.loadFile(src/output/fullscreen.html)
 
 **NDI channel:**
 ```js
-BrowserWindow({ width: ndi_width, height: ndi_height, show: false, frame: false, transparent: true,
-  webPreferences: { preload: output-preload.js } })
-win.loadFile(src/output/fullscreen.html)
+BrowserWindow({ width: ndi_width, height: ndi_height, show: false, frame: false,
+  backgroundColor: '#00000000',
+  webPreferences: { offscreen: true, preload: output-preload.js } })
+win.loadFile(src/output/fullscreen.html, { query: { alpha: '1' } })
+// Template overrides CSS background to transparent when alpha=1.
 ```
+NDI sender is created immediately (before `did-finish-load`) so the source appears on the network instantly. After load, `startNdiCapture` begins a `setInterval` that calls `webContents.invalidate()` at the configured fps, driving Chromium's offscreen compositor. The `paint` event handler calls `image.toBitmap()` and `ndi.sendFrame()` — no async `capturePage()` overhead. An `inflight` flag per sender drops frames if the NDI SDK hasn't finished the previous `sender.video()` call, preventing unbounded buffer queue growth.
 
 Display matching uses **bounds** (`x, y, width, height`), never `display_index`. If stored bounds don't match any connected display, the channel is flagged as unresolved. On startup, unresolved channels are sent via `output:unresolved-channels` IPC, which causes `App.jsx` to navigate to Settings.
 
@@ -770,21 +787,30 @@ Works in both dev (ASAR not used) and production (path is inside ASAR).
 
 ---
 
-## 14. NDI Status
+## 14. NDI
 
-**Current state:** Infrastructure only. Non-functional for actual NDI publish.
+**Current state:** Fully implemented. NDI channels publish BGRA frames with alpha transparency over the local network. OBS (and any NDI receiver) picks up the source and composites it natively without chroma keying.
 
-What exists:
-- `ndi.js` — tries `require('grandiose')`, sets `ndiAvailable` flag. That's it.
-- NDI channels create a hidden BrowserWindow and receive `slide:update` payloads correctly.
-- On startup, if grandiose is absent, `App.jsx` shows an amber "NDI SDK missing" warning badge.
+### Package: `grandi`
+`grandiose` (the original npm package) could not be compiled on macOS (uses `itoa`, a Windows-only function). `grandi` is an actively maintained fork with prebuilt N-API binaries per platform. Loaded via `createRequire(import.meta.url)` to bypass Vite's CJS bundler (a static ESM import would be converted to `require('grandi')`, which fails because grandi is ESM-only).
 
-What does NOT exist:
-- `grandiose` in `package.json`
-- `capturePage()` → `grandiose.send()` loop
-- `linked_channel_id` consuming logic
+### Constants (hardcoded in `ndi.js`)
+`grandi`'s TypeScript enums are not exported by the native binary — only by the ESM wrapper, which we cannot import in a CJS bundle:
+- `FOURCC_BGRA = 1095911234` — 32-bit BGRA pixel format with alpha
+- `FORMAT_TYPE_PROGRESSIVE = 1` — progressive scan
 
-To implement: add `grandiose` to `package.json`, `npm run rebuild`, implement capture loop in `ndi.js`.
+### Frame capture strategy
+Offscreen rendering (`offscreen: true` BrowserWindow) + `paint` event + `setInterval(invalidate, frameMs)`:
+- `invalidate()` forces Chromium's offscreen compositor to render a new frame at the target rate (without it, the compositor throttles repaints for hidden windows)
+- `paint` event delivers the CPU BGRA bitmap directly — no async GPU→CPU readback overhead
+- A timestamp gate in `onPaint` prevents burst over-firing if invalidate and content changes coincide
+- An `inflight` boolean per sender drops frames when the NDI SDK hasn't completed the previous `sender.video()` call — prevents 8MB buffer queue buildup and crashes
+
+### OBS workflow
+1. Settings → Output Channels → create NDI type channel
+2. Source appears as `"Cue - <name>"` on the local NDI network
+3. OBS → Sources → NDI Source → select the source
+4. Alpha is preserved — text composites over camera without chroma keying
 
 ---
 
@@ -834,7 +860,7 @@ No-header fallback: split by blank lines, all → `verse`. The user then relabel
 
 | Item | Priority | Notes |
 |---|---|---|
-| **NDI publish (grandiose)** | High | `ndi.js` is a stub. See §14. |
+| ~~NDI publish~~ | ~~High~~ | Implemented. See §14. |
 | `linked_channel_id` logic | Medium | Field exists, settable, never read. Sync lower-third to fullscreen channel. |
 | Stage display / confidence monitor | High | Phase 2 item. Not yet specced. |
 | Tag CRUD UI | Medium | Tags can be assigned, but create/rename/delete UI is not in Settings. |

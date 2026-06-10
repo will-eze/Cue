@@ -7,6 +7,10 @@
  */
 export function mediaUrl(absPath) {
   if (!absPath) return null;
-  const encoded = absPath.split('/').map((seg) => encodeURIComponent(seg)).join('/');
+  // Normalize Windows backslashes → forward slashes, then ensure a leading /
+  // so the URL is always cue-media://localhost/... regardless of platform.
+  const normalized = absPath.replace(/\\/g, '/');
+  const pathPart = normalized.startsWith('/') ? normalized : '/' + normalized;
+  const encoded = pathPart.split('/').map((seg) => encodeURIComponent(seg)).join('/');
   return 'cue-media://localhost' + encoded;
 }

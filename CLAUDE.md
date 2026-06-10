@@ -95,12 +95,12 @@ Use container levels (`surface-container-*`) for tonal elevation — **no box sh
 | React / react-dom | 18.3.1 | — |
 | Vite + @electron-forge/plugin-vite | 5.3.1 / 7.4.0 | `npm start` = dev. `npm run make` = distributable. |
 | better-sqlite3 | 11.1.2 | Synchronous SQLite. Rebuild on Electron bump. |
-| grandiose | **NOT INSTALLED** | NDI output. Add when implementing NDI publish, then `npm run rebuild`. |
+| grandi | installed | NDI output. ESM-only — loaded via `createRequire` at runtime (never static import). Platform binaries: `@grandi/<os>-<arch>`. Listed in `forge.config.js` `extraModules` and `vite.main.config.js` `external`. |
 | Tailwind CSS | 3.4.4 | Operator UI styling. |
 | react-window | 1.8.10 | Virtualised song list. |
 | @dnd-kit/core + sortable | 6.1.0 / 8.0.0 | Drag-to-reorder in rundown and song editor. |
 
-After any Electron version bump: `npm run rebuild` recompiles `better-sqlite3` (and `grandiose` when installed).
+After any Electron version bump: `npm run rebuild` recompiles `better-sqlite3` and `grandi`.
 
 ---
 
@@ -130,18 +130,22 @@ All media file URLs use `cue-media://` — a custom Electron protocol that serve
 // src/renderer/utils/mediaUrl.js — use this everywhere in renderer code
 export function mediaUrl(absPath) {
   if (!absPath) return null;
-  const encoded = absPath.split('/').map((seg) => encodeURIComponent(seg)).join('/');
+  const normalized = absPath.replace(/\\/g, '/');
+  const pathPart = normalized.startsWith('/') ? normalized : '/' + normalized;
+  const encoded = pathPart.split('/').map((seg) => encodeURIComponent(seg)).join('/');
   return 'cue-media://localhost' + encoded;
 }
 
 // Output templates (fullscreen.js / lowerthird.js) — identical inline helper
 function pathToUrl(p) {
   if (!p) return null;
-  return 'cue-media://localhost' + p.split('/').map(encodeURIComponent).join('/');
+  const normalized = p.replace(/\\/g, '/');
+  const pathPart = normalized.startsWith('/') ? normalized : '/' + normalized;
+  return 'cue-media://localhost' + pathPart.split('/').map(encodeURIComponent).join('/');
 }
 ```
 
-The protocol handler in `main/index.js` extracts the path from `new URL(request.url).pathname`, which correctly returns `/Users/...` when the hostname is `localhost`.
+The protocol handler in `main/index.js` extracts the path from `new URL(request.url).pathname`. On Windows the pathname is `/C:/...` — the handler strips the leading `/` before the drive letter. On macOS it is `/Users/...` unchanged.
 
 ---
 
@@ -168,7 +172,9 @@ src/
 │   │   └── settings.ipc.js   settings:* handlers.
 │   └── output/
 │       ├── manager.js        Window registry. go/clear/logo dispatch. Live capture loop.
-│       └── ndi.js            Stub only — tries require('grandiose'), no publish logic.
+│       │                     NDI: ndiCaptureLoops Map, startNdiCapture / stopNdiCapture.
+│       └── ndi.js            Active NDI implementation. createRequire loads @grandi/<platform>-<arch>.
+│                             createSender / sendFrame (inflight guard) / destroySender / isAvailable.
 ├── renderer/
 │   ├── main.jsx              React entry — mounts <App />.
 │   ├── index.css             Design system CSS: tally, monitor glow, scrollbar, animations.
@@ -371,7 +377,7 @@ Output windows receive this via `webContents.send('slide:update', payload)`.
 
 **Screen channels**: each `channel_monitors` row opens a `BrowserWindow` with `fullscreen: true, frame: false, alwaysOnTop: true`. Display matched by `display_bounds` JSON, never `display_index`. If bounds don't match a connected display → flagged unresolved → Settings auto-opens.
 
-**NDI channels**: hidden `show: false` BrowserWindow. Loads same templates. No frames are published — `ndi.js` is a stub (`grandiose` not installed). The hidden window exists and receives `slide:update` correctly, but nothing is sent to the NDI network.
+**NDI channels**: hidden `show: false`, `offscreen: true` BrowserWindow. Loaded with `?alpha=1` so the template overrides its CSS background to transparent. `ndi.js` uses `grandi` to publish BGRA frames at the configured fps. Frame capture uses the `paint` event driven by `setInterval(invalidate, frameMs)` — do NOT use `capturePage()` on NDI windows (4s+ latency due to async GPU readback and offscreen compositor throttling). An `inflight` per-sender flag drops frames when the NDI SDK is busy to prevent memory exhaustion.
 
 ---
 

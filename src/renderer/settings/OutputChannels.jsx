@@ -5,7 +5,7 @@ export default function OutputChannels() {
   const [monitors, setMonitors] = useState([]); // all monitors flat list
   const [screens, setScreens] = useState([]);   // connected physical displays
   const [creatingChannel, setCreatingChannel] = useState(false);
-  const [newChannel, setNewChannel] = useState({ name: '', type: 'screen', template: 'fullscreen' });
+  const [newChannel, setNewChannel] = useState({ name: '', type: 'screen', template: 'fullscreen', ndi_fps: 30, ndi_width: 1920, ndi_height: 1080 });
 
   const load = useCallback(async () => {
     const [chs, mons, scrs] = await Promise.all([
@@ -24,7 +24,7 @@ export default function OutputChannels() {
     if (!newChannel.name.trim()) return;
     await window.cue.output.channels.create(newChannel);
     setCreatingChannel(false);
-    setNewChannel({ name: '', type: 'screen', template: 'fullscreen' });
+    setNewChannel({ name: '', type: 'screen', template: 'fullscreen', ndi_fps: 30, ndi_width: 1920, ndi_height: 1080 });
     load();
   }
 
@@ -105,8 +105,8 @@ export default function OutputChannels() {
           <h3 className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em]">
             New Channel
           </h3>
-          <div className="grid grid-cols-3 gap-md">
-            <Field label="Channel Name" className="col-span-1">
+          <div className="grid grid-cols-4 gap-md">
+            <Field label="Channel Name" className="col-span-2">
               <input
                 autoFocus
                 value={newChannel.name}
@@ -115,6 +115,16 @@ export default function OutputChannels() {
                 placeholder="e.g. Main Auditorium"
                 className="field-input w-full"
               />
+            </Field>
+            <Field label="Type">
+              <select
+                value={newChannel.type}
+                onChange={(e) => setNewChannel({ ...newChannel, type: e.target.value })}
+                className="field-input w-full"
+              >
+                <option value="screen">Screen</option>
+                <option value="ndi">NDI</option>
+              </select>
             </Field>
             <Field label="Template">
               <select
@@ -127,9 +137,42 @@ export default function OutputChannels() {
               </select>
             </Field>
           </div>
+          {newChannel.type === 'ndi' && (
+            <div className="grid grid-cols-3 gap-md pt-xs border-t border-outline-variant/20">
+              <Field label="Width (px)">
+                <input
+                  type="number"
+                  value={newChannel.ndi_width}
+                  onChange={(e) => setNewChannel({ ...newChannel, ndi_width: parseInt(e.target.value) || 1920 })}
+                  className="field-input w-full"
+                />
+              </Field>
+              <Field label="Height (px)">
+                <input
+                  type="number"
+                  value={newChannel.ndi_height}
+                  onChange={(e) => setNewChannel({ ...newChannel, ndi_height: parseInt(e.target.value) || 1080 })}
+                  className="field-input w-full"
+                />
+              </Field>
+              <Field label="Frame Rate">
+                <select
+                  value={newChannel.ndi_fps}
+                  onChange={(e) => setNewChannel({ ...newChannel, ndi_fps: parseInt(e.target.value) })}
+                  className="field-input w-full"
+                >
+                  <option value={24}>24 fps</option>
+                  <option value={25}>25 fps</option>
+                  <option value={30}>30 fps</option>
+                  <option value={50}>50 fps</option>
+                  <option value={60}>60 fps</option>
+                </select>
+              </Field>
+            </div>
+          )}
           <div className="flex gap-sm justify-end">
             <button
-              onClick={() => { setCreatingChannel(false); setNewChannel({ name: '', type: 'screen', template: 'fullscreen' }); }}
+              onClick={() => { setCreatingChannel(false); setNewChannel({ name: '', type: 'screen', template: 'fullscreen', ndi_fps: 30, ndi_width: 1920, ndi_height: 1080 }); }}
               className="px-md py-sm text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface border border-outline-variant/30 rounded-lg cursor-pointer transition-colors"
             >
               Cancel
@@ -187,6 +230,7 @@ function ChannelCard({ channel, monitors, screens, assignedBounds, onUpdate, onD
     setEditing(false);
   }
 
+  const isNdi = channel.type === 'ndi';
   const templateLabel = channel.template === 'lowerthird' ? 'Lower Third' : 'Fullscreen';
   const monitorCount = monitors.length;
 
@@ -243,12 +287,24 @@ function ChannelCard({ channel, monitors, screens, assignedBounds, onUpdate, onD
           /* Display row */
           <div className="flex items-center gap-sm flex-1 min-w-0">
             <span className="text-body-md font-semibold text-on-surface truncate">{channel.name}</span>
+            {isNdi && (
+              <span className="shrink-0 text-[10px] font-label-sm uppercase tracking-[0.04em] px-xs py-[1px] rounded border border-tertiary/50 text-tertiary bg-tertiary/10">
+                NDI
+              </span>
+            )}
             <span className="shrink-0 text-[10px] font-label-sm uppercase tracking-[0.04em] px-xs py-[1px] rounded border border-outline-variant/40 text-on-surface-variant">
               {templateLabel}
             </span>
-            <span className="text-label-sm font-label-sm text-on-surface-variant shrink-0">
-              {monitorCount === 0 ? 'no screens' : `${monitorCount} screen${monitorCount !== 1 ? 's' : ''}`}
-            </span>
+            {!isNdi && (
+              <span className="text-label-sm font-label-sm text-on-surface-variant shrink-0">
+                {monitorCount === 0 ? 'no screens' : `${monitorCount} screen${monitorCount !== 1 ? 's' : ''}`}
+              </span>
+            )}
+            {isNdi && (
+              <span className="text-label-sm font-label-sm text-on-surface-variant shrink-0">
+                {channel.ndi_width || 1920}×{channel.ndi_height || 1080} · {channel.ndi_fps || 30}fps
+              </span>
+            )}
 
             <div className="flex-1" />
 
@@ -270,7 +326,13 @@ function ChannelCard({ channel, monitors, screens, assignedBounds, onUpdate, onD
         )}
       </div>
 
-      {/* Monitors area */}
+      {/* Monitors area — NDI channels don't use physical screens */}
+      {isNdi ? (
+        <div className="px-md py-sm flex items-center gap-sm text-on-surface-variant text-label-sm font-label-sm border-t border-outline-variant/10">
+          <span className="material-symbols-outlined text-[14px] text-tertiary">wifi_tethering</span>
+          Broadcasts as <span className="text-on-surface font-semibold">&quot;Cue - {channel.name}&quot;</span> on the local network — add as NDI Source in OBS.
+        </div>
+      ) : (
       <div className="p-md">
         {monitors.length === 0 && !showScreenPicker ? (
           <button
@@ -319,6 +381,7 @@ function ChannelCard({ channel, monitors, screens, assignedBounds, onUpdate, onD
           />
         )}
       </div>
+      )}
     </div>
   );
 }

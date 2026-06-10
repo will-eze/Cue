@@ -1,10 +1,13 @@
 import { BrowserWindow, screen, app } from 'electron';
 import path from 'path';
 import { getDb } from '../db/schema.js';
+import * as ndi from './ndi.js';
 
 // windows keyed by monitor.id (integer) for screen monitors,
 // or 'ndi-{channelId}' (string) for NDI channels.
 const windows = new Map();
+// Per-NDI-channel paint listeners: channelId → { win, onPaint }
+const ndiCaptureLoops = new Map();
 let mainWindowRef = null;
 let captureInterval = null;
 let multiviewInterval = null;
@@ -64,17 +67,90 @@ function createMonitorWindow(channel, monitor) {
 }
 
 function createNdiWindow(channel) {
+  // Create the NDI sender immediately — the source appears on the NDI network as
+  // soon as grandi.send() resolves, independently of the window render lifecycle.
+  // (Gating this on did-finish-load caused the sender to never be created on
+  // macOS because transparent+hidden windows may not initialize a render surface.)
+  ndi.createSender(channel.id, channel.name);
+
   const preload = getOutputPreloadPath();
   const win = new BrowserWindow({
     width: channel.ndi_width || 1920,
     height: channel.ndi_height || 1080,
     show: false,
     frame: false,
-    transparent: true,
-    webPreferences: { preload, contextIsolation: true, nodeIntegration: false, sandbox: false },
+    // Offscreen rendering renders to an in-memory BGRA buffer via the 'paint'
+    // event. This is more reliable than transparent+show:false (which has known
+    // macOS issues where the render surface never initializes) and gives direct
+    // per-frame access without polling capturePage().
+    backgroundColor: '#00000000',
+    webPreferences: {
+      offscreen: true,
+      preload,
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+    },
   });
-  win.loadFile(getTemplatePath(channel.template || 'fullscreen'));
+  win.loadFile(getTemplatePath(channel.template || 'fullscreen'), { query: { alpha: '1' } });
+  win.webContents.once('did-finish-load', () => {
+    if (state.displayMode !== 'idle') sendCurrentState();
+    if (ndi.isAvailable()) startNdiCapture(channel.id, win, channel);
+  });
   return win;
+}
+
+function startNdiCapture(channelId, win, channel) {
+  const fps = channel.ndi_fps || 30;
+  const frameMs = Math.round(1000 / fps);
+
+  win.webContents.setFrameRate(fps);
+  win.webContents.startPainting();
+
+  // The 'paint' event delivers the BGRA buffer directly from Chromium's
+  // compositor — no async GPU→CPU readback, no copy overhead.
+  // capturePage() was causing 4s+ delays because: (a) it's async and slow at
+  // 1920×1080, and (b) Chromium throttles offscreen repaints for hidden windows,
+  // so stale frames could linger until the compositor decided to re-render.
+  //
+  // invalidate() on a setInterval drives the offscreen compositor at the target
+  // frame rate. Without it, the compositor only repaints when content changes,
+  // and may batch/defer those repaints for hidden windows. With it, every tick
+  // produces a fresh paint event — slide changes appear within one frame interval.
+  let lastSentAt = 0;
+  const onPaint = (_event, _dirty, image) => {
+    const now = Date.now();
+    // Enforce the target frame interval in case invalidate() fires paint events
+    // faster than expected (e.g. when content changes coincide with our timer tick).
+    if (now - lastSentAt < frameMs - 2) return;
+    const { width, height } = image.getSize();
+    if (width > 0 && height > 0) {
+      lastSentAt = now;
+      ndi.sendFrame(channelId, image.toBitmap(), width, height, fps);
+    }
+  };
+  win.webContents.on('paint', onPaint);
+
+  const timer = setInterval(() => {
+    if (!win.isDestroyed()) win.webContents.invalidate();
+  }, frameMs);
+
+  ndiCaptureLoops.set(channelId, { win, onPaint, timer });
+}
+
+function stopNdiCapture(channelId) {
+  const entry = ndiCaptureLoops.get(channelId);
+  if (entry) {
+    clearInterval(entry.timer);
+    if (!entry.win.isDestroyed()) {
+      try {
+        entry.win.webContents.off('paint', entry.onPaint);
+        entry.win.webContents.stopPainting();
+      } catch {}
+    }
+  }
+  ndiCaptureLoops.delete(channelId);
+  ndi.destroySender(channelId);
 }
 
 export async function init() {
@@ -139,6 +215,7 @@ export async function syncChannel(channelId) {
   for (const m of allMonitors) closeMonitor(m.id);
 
   // Close NDI window if present.
+  stopNdiCapture(channelId);
   const ndiKey = `ndi-${channelId}`;
   const ndiWin = windows.get(ndiKey);
   if (ndiWin && !ndiWin.isDestroyed()) ndiWin.close();
@@ -168,6 +245,7 @@ export function closeChannel(channelId) {
     .all(channelId);
   for (const m of monitors) closeMonitor(m.id);
 
+  stopNdiCapture(channelId);
   const ndiKey = `ndi-${channelId}`;
   const ndiWin = windows.get(ndiKey);
   if (ndiWin && !ndiWin.isDestroyed()) ndiWin.close();
@@ -175,7 +253,10 @@ export function closeChannel(channelId) {
 }
 
 export function closeAll() {
-  for (const [, win] of windows) {
+  for (const [key, win] of windows) {
+    if (typeof key === 'string' && key.startsWith('ndi-')) {
+      stopNdiCapture(parseInt(key.slice(4)));
+    }
     if (win && !win.isDestroyed()) win.close();
   }
   windows.clear();
@@ -340,7 +421,10 @@ export async function setOutputsEnabled(enabled) {
 
   if (!enabled) {
     stopLiveCapture();
-    for (const [, win] of windows) {
+    for (const [key, win] of windows) {
+      if (typeof key === 'string' && key.startsWith('ndi-')) {
+        stopNdiCapture(parseInt(key.slice(4)));
+      }
       if (win && !win.isDestroyed()) win.close();
     }
     windows.clear();

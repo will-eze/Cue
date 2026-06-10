@@ -77,7 +77,11 @@ app.whenReady().then(async () => {
   // doesn't promote the first path segment to the hostname field.
   protocol.handle('cue-media', (request) => {
     const { pathname } = new URL(request.url);
-    const filePath = decodeURIComponent(pathname);
+    let filePath = decodeURIComponent(pathname);
+    // On Windows, URL pathname is /C:/... — strip the leading slash before the drive letter
+    if (process.platform === 'win32' && /^\/[A-Za-z]:\//.test(filePath)) {
+      filePath = filePath.slice(1);
+    }
     try {
       const stat = fs.statSync(filePath);
       const ext = path.extname(filePath).slice(1).toLowerCase();

@@ -5,7 +5,7 @@ module.exports = {
     executableName: 'cue',
   },
   rebuildConfig: {
-    extraModules: ['better-sqlite3'],
+    extraModules: ['better-sqlite3', 'grandi'],
   },
   makers: [
     {
