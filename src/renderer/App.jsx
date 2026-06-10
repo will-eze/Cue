@@ -20,9 +20,8 @@ export default function App() {
   const transportRef = useRef({ go: () => {}, clear: () => {}, logo: () => {} });
 
   useEffect(() => {
-    window.cue.on('output:unresolved-channels', () => {});
-    window.cue.on('output:ndi-unavailable', () => setNdiWarning(true));
-    window.cue.on('output:state-changed', (s) => {
+    const offNdi   = window.cue.on('output:ndi-unavailable', () => setNdiWarning(true));
+    const offState = window.cue.on('output:state-changed', (s) => {
       setOutputWindows(s.activeWindows ?? 0);
       setOutputsEnabled(s.outputsEnabled ?? true);
       setDisplayMode(s.displayMode ?? 'idle');
@@ -32,6 +31,7 @@ export default function App() {
       setOutputsEnabled(s.outputsEnabled ?? true);
       setDisplayMode(s.displayMode ?? 'idle');
     });
+    return () => { offNdi(); offState(); };
   }, []);
 
   useEffect(() => {

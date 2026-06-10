@@ -88,6 +88,9 @@ app.whenReady().then(async () => {
       const mimeType = MEDIA_MIME[ext] || 'application/octet-stream';
       const rangeHeader = request.headers.get('range');
 
+      // Media files use UUID names and never change — cache forever.
+      const cacheHeaders = { 'Cache-Control': 'public, max-age=31536000, immutable' };
+
       if (rangeHeader) {
         const match = /bytes=(\d*)-(\d*)/.exec(rangeHeader);
         const start = match[1] ? parseInt(match[1], 10) : 0;
@@ -104,6 +107,7 @@ app.whenReady().then(async () => {
             'Content-Range': `bytes ${start}-${end}/${stat.size}`,
             'Accept-Ranges': 'bytes',
             'Content-Length': String(chunkSize),
+            ...cacheHeaders,
           },
         });
       }
@@ -114,6 +118,7 @@ app.whenReady().then(async () => {
           'Content-Type': mimeType,
           'Accept-Ranges': 'bytes',
           'Content-Length': String(stat.size),
+          ...cacheHeaders,
         },
       });
     } catch (err) {

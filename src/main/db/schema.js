@@ -205,6 +205,17 @@ const migrations = [
       WHERE display_bounds IS NOT NULL AND type = 'screen';
     `);
   },
+
+  // v5 — Add indices on FK and filter columns to eliminate full table scans.
+  function v5(database) {
+    database.exec(`
+      CREATE INDEX IF NOT EXISTS idx_song_sections_song_id    ON song_sections(song_id);
+      CREATE INDEX IF NOT EXISTS idx_service_items_service_id ON service_items(service_id);
+      CREATE INDEX IF NOT EXISTS idx_taggables_entity         ON taggables(entity_type, entity_id);
+      CREATE INDEX IF NOT EXISTS idx_channel_monitors_channel ON channel_monitors(channel_id);
+      CREATE INDEX IF NOT EXISTS idx_media_assets_folder      ON media_assets(folder_id);
+    `);
+  },
 ];
 
 function runMigrations() {

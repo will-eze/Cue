@@ -21,8 +21,8 @@ export default function MultiviewView() {
 
   useEffect(() => {
     load();
-    window.cue.on('output:state-changed', (s) => setIsLive(s.isLive));
-    window.cue.on('output:multiview-captures', (captures) => {
+    const offState = window.cue.on('output:state-changed', (s) => setIsLive(s.isLive));
+    const offCapts = window.cue.on('output:multiview-captures', (captures) => {
       const monMap = {}, ndiMap = {};
       for (const c of captures) {
         if (c.isNdi) ndiMap[c.channelId] = c.dataUrl;
@@ -33,7 +33,7 @@ export default function MultiviewView() {
       setLastUpdated(Date.now());
     });
     window.cue.output.multiview.start();
-    return () => { window.cue.output.multiview.stop(); };
+    return () => { offState(); offCapts(); window.cue.output.multiview.stop(); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const groups = channels.map((ch) => ({

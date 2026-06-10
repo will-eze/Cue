@@ -4,34 +4,60 @@ export function list() {
   return getDb().prepare('SELECT * FROM services ORDER BY date DESC, id DESC').all();
 }
 
-function resolveItem(db, item) {
-  const resolved = { ...item };
-  if (item.item_type === 'song' && item.ref_id) {
-    const song = db.prepare('SELECT id, title, author, copyright, default_background_id FROM songs WHERE id=?').get(item.ref_id);
-    if (song) {
-      resolved.song = song;
-      resolved.sections = db.prepare('SELECT * FROM song_sections WHERE song_id=? ORDER BY order_index').all(item.ref_id);
-      if (song.default_background_id) {
-        const bg = db.prepare('SELECT id, path, filename, type FROM media_assets WHERE id=?').get(song.default_background_id);
-        if (bg) resolved.song.default_background = bg;
-      }
-    }
-  }
-  if (item.item_type === 'media' && item.ref_id) {
-    resolved.asset = db.prepare('SELECT * FROM media_assets WHERE id=?').get(item.ref_id);
-  }
-  if (item.background_override_id) {
-    resolved.background_override = db.prepare('SELECT * FROM media_assets WHERE id=?').get(item.background_override_id);
-  }
-  return resolved;
-}
-
 export function getById(id) {
   const db = getDb();
   const service = db.prepare('SELECT * FROM services WHERE id=?').get(id);
   if (!service) return null;
-  service.items = db.prepare('SELECT * FROM service_items WHERE service_id=? ORDER BY order_index').all(id)
-    .map((item) => resolveItem(db, item));
+
+  const items = db.prepare('SELECT * FROM service_items WHERE service_id=? ORDER BY order_index').all(id);
+  if (!items.length) { service.items = []; return service; }
+
+  // Collect distinct IDs needed across all items in a single pass
+  const songIds      = [...new Set(items.filter(i => i.item_type === 'song'  && i.ref_id).map(i => i.ref_id))];
+  const overrideIds  = [...new Set(items.filter(i => i.background_override_id).map(i => i.background_override_id))];
+  const mediaRefIds  = [...new Set(items.filter(i => i.item_type === 'media' && i.ref_id).map(i => i.ref_id))];
+
+  // Batch-load songs and their sections (2 queries regardless of rundown size)
+  const songMap = new Map();
+  if (songIds.length) {
+    const ph = songIds.map(() => '?').join(',');
+    db.prepare(`SELECT id, title, author, copyright, default_background_id FROM songs WHERE id IN (${ph})`).all(...songIds)
+      .forEach(s => songMap.set(s.id, { ...s, sections: [] }));
+    db.prepare(`SELECT * FROM song_sections WHERE song_id IN (${ph}) ORDER BY order_index`).all(...songIds)
+      .forEach(sec => { const s = songMap.get(sec.song_id); if (s) s.sections.push(sec); });
+  }
+
+  // Collect background IDs from songs and resolve all media in one query
+  const songBgIds   = [...new Set([...songMap.values()].filter(s => s.default_background_id).map(s => s.default_background_id))];
+  const allMediaIds = [...new Set([...overrideIds, ...mediaRefIds, ...songBgIds])];
+
+  const mediaMap = new Map();
+  if (allMediaIds.length) {
+    const ph = allMediaIds.map(() => '?').join(',');
+    db.prepare(`SELECT id, path, filename, type FROM media_assets WHERE id IN (${ph})`).all(...allMediaIds)
+      .forEach(m => mediaMap.set(m.id, m));
+  }
+
+  // Attach backgrounds to songs using the media map
+  for (const song of songMap.values()) {
+    if (song.default_background_id) song.default_background = mediaMap.get(song.default_background_id) ?? null;
+  }
+
+  // Resolve each item from in-memory maps — no further DB queries
+  service.items = items.map(item => {
+    const resolved = { ...item };
+    if (item.item_type === 'song' && item.ref_id) {
+      const song = songMap.get(item.ref_id);
+      if (song) { resolved.song = song; resolved.sections = song.sections; }
+    }
+    if (item.item_type === 'media' && item.ref_id) {
+      resolved.asset = mediaMap.get(item.ref_id) ?? null;
+    }
+    if (item.background_override_id) {
+      resolved.background_override = mediaMap.get(item.background_override_id) ?? null;
+    }
+    return resolved;
+  });
   return service;
 }
 

@@ -104,9 +104,10 @@ contextBridge.exposeInMainWorld('cue', {
       'output:multiview-captures',
       'shortcut:next', 'shortcut:prev',
     ];
-    if (allowed.includes(channel)) {
-      ipcRenderer.on(channel, (_event, ...args) => callback(...args));
-    }
+    if (!allowed.includes(channel)) return () => {};
+    const wrapper = (_event, ...args) => callback(...args);
+    ipcRenderer.on(channel, wrapper);
+    return () => ipcRenderer.removeListener(channel, wrapper);
   },
   off: (channel, callback) => {
     ipcRenderer.removeListener(channel, callback);

@@ -129,12 +129,13 @@ export default function OperatorView({
   }, [activeServiceId, bgRefreshTick]);
 
   useEffect(() => {
-    window.cue.on('output:live-capture', (dataUrl) => setLiveCapture(dataUrl));
-    window.cue.on('output:multiview-captures', (captures) => {
+    const offLive  = window.cue.on('output:live-capture', (dataUrl) => setLiveCapture(dataUrl));
+    const offMulti = window.cue.on('output:multiview-captures', (captures) => {
       const map = {};
       for (const c of captures) { if (c.dataUrl) map[c.channelId] = c.dataUrl; }
       setChannelCaptures(map);
     });
+    return () => { offLive(); offMulti(); };
   }, []);
 
   // Keep multiview running while outputs are live so the channel toggle has fresh frames.

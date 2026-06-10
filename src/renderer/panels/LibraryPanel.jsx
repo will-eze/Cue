@@ -109,7 +109,8 @@ function MediaGrid({ assets, onDelete, onSetBackground }) {
                 {asset.type === 'image' ? (
                   <img src={mediaUrl(asset.path)}
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform"
-                    alt={asset.filename} />
+                    alt={asset.filename}
+                    loading="lazy" />
                 ) : asset.type === 'video' ? (
                   <>
                     <video src={mediaUrl(asset.path)}
@@ -349,6 +350,7 @@ export default function LibraryPanel({ onAddToRundown, onSongSave, refreshTick =
                   onDoubleClick: (songId) => onAddToRundown(songId),
                   onContextMenu: (e, song) => { e.preventDefault(); setSongContextMenu({ x: e.clientX, y: e.clientY, song }); },
                 }}
+                itemKey={(index, data) => data.songs[index].id}
                 width="100%"
               >
                 {SongRow}
