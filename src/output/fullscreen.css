@@ -24,11 +24,20 @@ html, body {
   position: absolute;
   inset: 0;
   z-index: 1;
+}
+
+/* Text wrap — JS positions this absolutely; defaults below are overridden by applyStyle */
+#text-wrap {
+  position: absolute;
+  left: 5%;
+  top: 5%;
+  width: 90%;
+  height: 90%;
   display: flex;
   flex-direction: column;
-  align-items: center;
   justify-content: center;
-  padding: 80px 120px;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 #text {
@@ -40,18 +49,24 @@ html, body {
   text-shadow: 0 2px 16px rgba(0,0,0,0.8), 0 0 40px rgba(0,0,0,0.6);
   white-space: pre-wrap;
   word-break: break-word;
+  width: 100%;
 }
 
-#text.logo-mode {
+/* Logo overlay — separate element, never destroys #text */
+#logo-wrap {
   position: absolute;
   inset: 0;
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: center;
-  padding: 0;
+  z-index: 2;
 }
 
-#text.logo-mode .logo-img {
+#logo-wrap.logo-active {
+  display: flex;
+}
+
+#logo-wrap .logo-img {
   width: 100%;
   height: 100%;
   object-fit: contain;
@@ -65,4 +80,5 @@ html, body {
   color: rgba(255,255,255,0.7);
   font-size: 20px;
   text-shadow: 0 1px 6px rgba(0,0,0,0.8);
+  z-index: 2;
 }

@@ -6,11 +6,14 @@ import * as ndi from './ndi.js';
 // windows keyed by monitor.id (integer) for screen monitors,
 // or 'ndi-{channelId}' (string) for NDI channels.
 const windows = new Map();
-// Per-NDI-channel paint listeners: channelId → { win, onPaint }
+// Per-NDI-channel paint listeners: channelId → { win, onPaint, timer }
 const ndiCaptureLoops = new Map();
+// Latest downscaled JPEG per NDI channel for multiview thumbnails (1fps cache)
+const ndiLastFrames = new Map(); // channelId → Buffer
 let mainWindowRef = null;
 let captureInterval = null;
 let multiviewInterval = null;
+let multiviewRefCount = 0;
 let outputsEnabled = true;
 
 // displayMode drives what every output window shows:
@@ -118,6 +121,7 @@ function startNdiCapture(channelId, win, channel) {
   // and may batch/defer those repaints for hidden windows. With it, every tick
   // produces a fresh paint event — slide changes appear within one frame interval.
   let lastSentAt = 0;
+  let lastCachedAt = 0;
   const onPaint = (_event, _dirty, image) => {
     const now = Date.now();
     // Enforce the target frame interval in case invalidate() fires paint events
@@ -127,6 +131,14 @@ function startNdiCapture(channelId, win, channel) {
     if (width > 0 && height > 0) {
       lastSentAt = now;
       ndi.sendFrame(channelId, image.toBitmap(), width, height, fps);
+      // Cache a downscaled JPEG at ~1fps for the multiview thumbnail
+      if (multiviewRefCount > 0 && now - lastCachedAt >= 950) {
+        lastCachedAt = now;
+        try {
+          const small = image.resize({ width: 640 });
+          ndiLastFrames.set(channelId, small.toJPEG(72));
+        } catch {}
+      }
     }
   };
   win.webContents.on('paint', onPaint);
@@ -150,6 +162,7 @@ function stopNdiCapture(channelId) {
     }
   }
   ndiCaptureLoops.delete(channelId);
+  ndiLastFrames.delete(channelId);
   ndi.destroySender(channelId);
 }
 
@@ -525,12 +538,15 @@ function stopLiveCapture() {
 // the result map to the renderer for the Multiview tab.
 
 export function startMultiviewCapture() {
-  stopMultiviewCapture();
-  multiviewInterval = setInterval(runMultiviewCapture, 500);
+  multiviewRefCount++;
+  if (multiviewRefCount === 1) {
+    multiviewInterval = setInterval(runMultiviewCapture, 500);
+  }
 }
 
 export function stopMultiviewCapture() {
-  if (multiviewInterval) {
+  multiviewRefCount = Math.max(0, multiviewRefCount - 1);
+  if (multiviewRefCount === 0 && multiviewInterval) {
     clearInterval(multiviewInterval);
     multiviewInterval = null;
   }
@@ -540,38 +556,43 @@ async function runMultiviewCapture() {
   const db = getDb();
   const channels = db.prepare('SELECT * FROM output_channels ORDER BY id').all();
 
-  // Build the list of (channel, monitor) pairs to capture in parallel.
+  // NDI channels — use cached frames from the paint event loop (no capturePage needed)
+  const ndiCaptures = channels
+    .filter((ch) => ch.type === 'ndi')
+    .map((ch) => {
+      const buf = ndiLastFrames.get(ch.id);
+      return {
+        isNdi:     true,
+        channelId: ch.id,
+        monitorId: null,
+        dataUrl:   buf ? `data:image/jpeg;base64,${buf.toString('base64')}` : null,
+      };
+    });
+
+  // Screen monitor channels — capturePage in parallel
   const jobs = [];
   for (const channel of channels) {
     if (channel.type === 'ndi') continue;
     const monitors = db
       .prepare('SELECT * FROM channel_monitors WHERE channel_id = ? ORDER BY id')
       .all(channel.id);
-    for (const monitor of monitors) {
-      jobs.push({ channel, monitor });
-    }
+    for (const monitor of monitors) jobs.push({ channel, monitor });
   }
 
-  const captures = await Promise.all(
+  const screenCaptures = await Promise.all(
     jobs.map(async ({ channel, monitor }) => {
       const win = windows.get(monitor.id);
       let dataUrl = null;
       if (win && !win.isDestroyed()) {
         try {
           const img = await win.webContents.capturePage();
-          // Downscale to 640px wide JPEG — adequate for multiview thumbnails.
           const small = img.resize({ width: 640 });
-          const buf = small.toJPEG(72);
-          dataUrl = `data:image/jpeg;base64,${buf.toString('base64')}`;
+          dataUrl = `data:image/jpeg;base64,${small.toJPEG(72).toString('base64')}`;
         } catch {}
       }
-      return {
-        monitorId: monitor.id,
-        channelId: channel.id,
-        dataUrl,
-      };
+      return { isNdi: false, monitorId: monitor.id, channelId: channel.id, dataUrl };
     }),
   );
 
-  notifyMainWindow('output:multiview-captures', captures);
+  notifyMainWindow('output:multiview-captures', [...ndiCaptures, ...screenCaptures]);
 }

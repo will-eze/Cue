@@ -80,6 +80,9 @@ export default function OperatorView({
 }) {
   const [services, setServices] = useState([]);
   const [serviceData, setServiceData] = useState(null);
+  const [channels, setChannels] = useState([]);
+  const [channelCaptures, setChannelCaptures] = useState({}); // channelId → dataUrl
+  const [liveChannelIdx, setLiveChannelIdx] = useState(0);
 
   const [previewItemId, setPreviewItemId] = useState(null);
   const [previewSlideIdx, setPreviewSlideIdx] = useState(0);
@@ -117,6 +120,7 @@ export default function OperatorView({
       setServices(list);
       if (list.length > 0 && !activeServiceId) onServiceChange(list[0].id);
     });
+    window.cue.output.channels.list().then(setChannels);
   }, [bgRefreshTick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -126,7 +130,20 @@ export default function OperatorView({
 
   useEffect(() => {
     window.cue.on('output:live-capture', (dataUrl) => setLiveCapture(dataUrl));
+    window.cue.on('output:multiview-captures', (captures) => {
+      const map = {};
+      for (const c of captures) { if (c.dataUrl) map[c.channelId] = c.dataUrl; }
+      setChannelCaptures(map);
+    });
   }, []);
+
+  // Keep multiview running while outputs are live so the channel toggle has fresh frames.
+  useEffect(() => {
+    if (outputsEnabled) {
+      window.cue.output.multiview.start();
+      return () => window.cue.output.multiview.stop();
+    }
+  }, [outputsEnabled]);
 
   const shortcutRef = useRef({});
   shortcutRef.current = { handleNextSlide, handlePrevSlide, handleGo, handleClear, handleLogo, handleLiveToggle };
@@ -406,6 +423,10 @@ export default function OperatorView({
   const previewBgPath = previewItem ? resolveBackground(previewItem) : null;
   const liveBgPath    = liveItem    ? resolveBackground(liveItem)    : null;
 
+  // Use the first active channel's template to drive the monitor frame rendering.
+  // Falls back to 'fullscreen' if no channels are configured yet.
+  const channelTemplate = (channels.find((c) => c.active) ?? channels[0])?.template ?? 'fullscreen';
+
   const containerRef = useRef(null);
   const [hPct, startHDrag] = useResizeH(containerRef, 'layout_h_pct', 25);
   const [vPct, startVDrag] = useResizeV(containerRef, 'layout_v_pct', 62);
@@ -457,6 +478,11 @@ export default function OperatorView({
             onSelectPreviewSlide={handleSelectPreviewSlide}
             onGoAtPreviewSlide={handleGoAtPreviewSlide}
             onSelectLiveSlide={handleSelectLiveSlide}
+            channelTemplate={channelTemplate}
+            allChannels={channels}
+            channelCaptures={channelCaptures}
+            liveChannelIdx={liveChannelIdx}
+            onSetLiveChannelIdx={setLiveChannelIdx}
           />
         </div>
       </div>

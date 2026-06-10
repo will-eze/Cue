@@ -173,6 +173,8 @@ src/
 │   └── output/
 │       ├── manager.js        Window registry. go/clear/logo dispatch. Live capture loop.
 │       │                     NDI: ndiCaptureLoops Map, startNdiCapture / stopNdiCapture.
+│       │                     ndiLastFrames Map: caches JPEG thumbnails at ~1fps when multiview is active.
+│       │                     multiviewRefCount: refcounted start/stop — interval starts only at 0→1, stops at 0.
 │       └── ndi.js            Active NDI implementation. createRequire loads @grandi/<platform>-<arch>.
 │                             createSender / sendFrame (inflight guard) / destroySender / isAvailable.
 ├── renderer/
@@ -183,19 +185,28 @@ src/
 │   │   ├── OperatorView.jsx  Three-panel layout. Transport state. Configurable keyboard shortcuts (shortcutsRef).
 │   │   │                     Background resolution. focusSearchRef wired to LibraryPanel search (S key).
 │   │   │                     Resize state persisted to localStorage. Services list refreshes on bgRefreshTick.
+│   │   │                     Loads channel list; subscribes to output:multiview-captures (starts multiview when
+│   │   │                     live). Tracks liveChannelIdx for channel selector in PreviewLivePanel.
 │   │   ├── SettingsView.jsx  Settings page layout. Hosts OutputChannels + Logo + Background + ShortcutSettings.
-│   │   └── MultiviewView.jsx Multi-output monitor wall. Subscribes to output:multiview-captures.
+│   │   └── MultiviewView.jsx Multi-output monitor wall. Subscribes to output:multiview-captures. Routes NDI
+│   │                         channels to NdiTile (checkerboard bg, green ring) vs ScreenMonitorTile. Refcounted.
 │   ├── panels/
 │   │   ├── RundownPanel.jsx       Inline service rename + delete UI (no native confirm dialogs).
 │   │   │                          DnD-sortable item list. Context menu with Preview/Edit/Set Background Override.
 │   │   │                          Background picker writes through to song's default_background_id.
 │   │   │                          Props: onRenameService, onDeleteService.
-│   │   ├── PreviewLivePanel.jsx   Two MonitorFrames + two SlideLists. Background rendering.
+│   │   ├── PreviewLivePanel.jsx   Two MonitorFrames (1920×1080 canvas, CSS-scaled via ResizeObserver) + two
+│   │   │                          SlideLists. Template-aware: fullscreen vs lower-third layout. Channel selector
+│   │   │                          strip below live frame when 2+ channels active. Accepts allChannels,
+│   │   │                          channelCaptures, liveChannelIdx, onSetLiveChannelIdx props.
 │   │   └── LibraryPanel.jsx       Virtualised song list + media grid. Search + tag filter.
 │   │                              Single-click → preview modal (220ms). Double-click → add to rundown.
 │   │                              Accepts refreshTick + focusSearchRef props.
 │   ├── components/
-│   │   ├── SongEditor.jsx         Full song CRUD modal. Per-section styling toolbar. Paste Song parser.
+│   │   ├── SongEditor.jsx         Full song CRUD modal. 2-row FormattingToolbar (row 2: textbox presets for
+│   │   │                          fullscreen, bar controls for lower-third). SlidePreview (fullscreen) and
+│   │   │                          LowerThirdPreview rendered at 1920×1080, CSS-scaled. Background picker in
+│   │   │                          SlidePreview. ltBar style prop (null=transparent). Paste Song parser.
 │   │   │                          Exports renderWithRuns() used by PreviewLivePanel. Escape key closes.
 │   │   ├── SongPreviewModal.jsx   Read-only song preview. Add to Rundown / Edit actions.
 │   │   ├── MediaPickerModal.jsx   Media grid picker. Used for background override in RundownPanel.
@@ -213,8 +224,12 @@ src/
 │   └── utils/
 │       └── mediaUrl.js            mediaUrl(absPath) — see Media section above.
 ├── output/                   Plain HTML. No build step. Loaded directly by BrowserWindow.
-│   ├── fullscreen.html / .css / .js
-│   └── lowerthird.html / .css / .js
+│   ├── fullscreen.html       #background + #content (#text-wrap > #text, #logo-wrap sibling, #copyright).
+│   │   / .css / .js          applyStyle positions #text-wrap via textBox %; supports all style_json props.
+│   │                         showLogo/hideLogo use #logo-wrap (separate from text, never overwrites it).
+│   └── lowerthird.html       #lowerthird (background: transparent by default, JS sets from ltBar).
+│       / .css / .js          buildBarBg(ltBar): null→transparent; {color,opacity,solid}→gradient or solid.
+│                             Clear/logo events reset bar to transparent.
 └── fonts/
     └── fonts.css + *.woff2   6 families (Inter, Montserrat, Lato, Oswald, Playfair Display, EB Garamond)
 ```
@@ -271,12 +286,15 @@ src/
 
 ```json
 {
-  "align": "center",      "bold": false,      "italic": false,
-  "fontFamily": null,     "fontSize": null,   "color": null,
-  "lineSpacing": null,    "runs": []
+  "align": "center",      "bold": false,        "italic": false,
+  "underline": false,     "uppercase": false,   "fontFamily": null,
+  "fontSize": null,       "color": null,        "lineSpacing": null,
+  "letterSpacing": null,  "verticalAlign": null, "textShadow": null,
+  "textStroke": null,     "textBox": null,      "ltBar": null,
+  "runs": []
 }
 ```
-`null` means "use template defaults." `fontFamily` must match a family in `fonts.css`. FTS5 indexes `content` only.
+`null` means "use template defaults." `fontFamily` must match a family in `fonts.css`. `textBox`/`verticalAlign` apply to fullscreen only. `ltBar` applies to lower-third only (`null` = transparent bar). FTS5 indexes `content` only.
 
 ### Background resolution order
 
@@ -347,7 +365,7 @@ src/
 - `output:unresolved-channels` — unresolved channel objects on startup
 - `output:state-changed` — after go/clear/logo/setLive; payload: `{activeWindows, outputsEnabled, displayMode}`
 - `output:live-capture` — data URL of captured output frame (every 200ms while live)
-- `output:multiview-captures` — `[{channelId, dataUrl}]` array at ~5fps (only while multiview running)
+- `output:multiview-captures` — `[{channelId, dataUrl, isNdi}]` array at ~5fps (only while multiview running). `isNdi: true` → sourced from ndiLastFrames JPEG cache (~1fps); `isNdi: false` → capturePage (~5fps).
 - `output:ndi-unavailable` — grandiose not installed
 - `shortcut:next` / `shortcut:prev` — reserved for hardware remote
 

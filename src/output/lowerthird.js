@@ -1,3 +1,4 @@
+const ltDiv     = document.getElementById('lowerthird');
 const textEl    = document.getElementById('text');
 const copyright = document.getElementById('copyright');
 
@@ -25,6 +26,7 @@ function renderWithRuns(text, runs) {
     const st = [];
     if (run.bold)       st.push('font-weight:700');
     if (run.italic)     st.push('font-style:italic');
+    if (run.underline)  st.push('text-decoration:underline');
     if (run.color)      st.push('color:' + run.color);
     if (run.fontFamily) st.push("font-family:" + String(run.fontFamily).replace(/"/g, "'"));
     if (run.fontSize)   st.push('font-size:' + Number(run.fontSize) + 'px');
@@ -36,21 +38,48 @@ function renderWithRuns(text, runs) {
   return html;
 }
 
+function buildShadow(shadow) {
+  if (!shadow) return '';
+  if (!shadow.enabled) return 'none';
+  return `${shadow.x ?? 0}px ${shadow.y ?? 2}px ${shadow.blur ?? 16}px ${shadow.color ?? '#000'}`;
+}
+
+function buildBarBg(ltBar) {
+  if (!ltBar) return 'transparent';
+  const c  = ltBar.color   ?? '#000000';
+  const op = ltBar.opacity ?? 0.8;
+  const r  = parseInt(c.slice(1, 3), 16) || 0;
+  const g  = parseInt(c.slice(3, 5), 16) || 0;
+  const b  = parseInt(c.slice(5, 7), 16) || 0;
+  if (ltBar.solid) return `rgba(${r},${g},${b},${op})`;
+  return `linear-gradient(to top, rgba(${r},${g},${b},${op}) 0%, rgba(${r},${g},${b},${(op * 0.7).toFixed(2)}) 70%, transparent 100%)`;
+}
+
 function applyStyle(el, s) {
-  if (!s) return;
-  el.style.fontFamily = s.fontFamily || '';
-  el.style.textAlign  = s.align      || '';
-  el.style.fontWeight = s.bold       ? '700' : '400';
-  el.style.fontStyle  = s.italic     ? 'italic' : 'normal';
-  el.style.fontSize   = s.fontSize   ? s.fontSize + 'px' : '';
-  el.style.color      = s.color      || '';
-  el.style.lineHeight = s.lineSpacing ? String(s.lineSpacing) : '';
+  if (!s) { ltDiv.style.background = 'transparent'; return; }
+  el.style.fontFamily      = s.fontFamily   || '';
+  el.style.textAlign       = s.align        || '';
+  el.style.fontWeight      = s.bold         ? '700' : '400';
+  el.style.fontStyle       = s.italic       ? 'italic' : 'normal';
+  el.style.textDecoration  = s.underline    ? 'underline' : 'none';
+  el.style.fontSize        = s.fontSize     ? s.fontSize + 'px' : '';
+  el.style.color           = s.color        || '';
+  el.style.lineHeight      = s.lineSpacing  ? String(s.lineSpacing) : '';
+  el.style.letterSpacing   = s.letterSpacing ? s.letterSpacing + 'em' : '';
+  el.style.textTransform   = s.uppercase    ? 'uppercase' : 'none';
+  const sh = buildShadow(s.textShadow);
+  if (sh) el.style.textShadow = sh;
+  el.style.webkitTextStroke = (s.textStroke && s.textStroke.enabled)
+    ? `${s.textStroke.width ?? 2}px ${s.textStroke.color ?? '#000'}`
+    : '';
+  ltDiv.style.background = buildBarBg(s.ltBar);
 }
 
 window.cueOutput.onSlideUpdate((payload) => {
   const { type, text, copyright: copy, logoPath, styleJson } = payload;
 
   if (type === 'clear') {
+    ltDiv.style.background = 'transparent';
     textEl.className = '';
     textEl.innerHTML = '';
     copyright.textContent = '';
@@ -58,6 +87,7 @@ window.cueOutput.onSlideUpdate((payload) => {
   }
 
   if (type === 'logo') {
+    ltDiv.style.background = 'transparent';
     textEl.className = '';
     textEl.innerHTML = '';
     copyright.textContent = '';

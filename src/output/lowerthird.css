@@ -11,7 +11,7 @@ html, body {
   position: absolute;
   bottom: 0; left: 0; right: 0;
   padding: 24px 60px 32px;
-  background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.6) 70%, transparent 100%);
+  background: transparent;
   min-height: 160px;
   display: flex;
   flex-direction: column;

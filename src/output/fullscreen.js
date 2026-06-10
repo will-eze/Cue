@@ -1,9 +1,9 @@
-const bg        = document.getElementById('background');
-const textEl    = document.getElementById('text');
+const bg       = document.getElementById('background');
+const textWrap = document.getElementById('text-wrap');
+const textEl   = document.getElementById('text');
+const logoWrap = document.getElementById('logo-wrap');
 const copyright = document.getElementById('copyright');
 
-// NDI alpha channels load with ?alpha=1 — override the black CSS background so
-// capturePage() returns BGRA frames where empty areas are fully transparent.
 if (new URLSearchParams(location.search).get('alpha') === '1') {
   document.documentElement.style.background = 'transparent';
   document.body.style.background = 'transparent';
@@ -11,7 +11,6 @@ if (new URLSearchParams(location.search).get('alpha') === '1') {
 
 function pathToUrl(p) {
   if (!p) return null;
-  // Normalize Windows backslashes and ensure a leading / before encoding
   const normalized = p.replace(/\\/g, '/');
   const pathPart = normalized.startsWith('/') ? normalized : '/' + normalized;
   return 'cue-media://localhost' + pathPart.split('/').map(encodeURIComponent).join('/');
@@ -33,6 +32,7 @@ function renderWithRuns(text, runs) {
     const st = [];
     if (run.bold)       st.push('font-weight:700');
     if (run.italic)     st.push('font-style:italic');
+    if (run.underline)  st.push('text-decoration:underline');
     if (run.color)      st.push('color:' + run.color);
     if (run.fontFamily) st.push("font-family:" + String(run.fontFamily).replace(/"/g, "'"));
     if (run.fontSize)   st.push('font-size:' + Number(run.fontSize) + 'px');
@@ -44,47 +44,87 @@ function renderWithRuns(text, runs) {
   return html;
 }
 
-function applyStyle(el, s) {
-  if (!s) return;
-  el.style.fontFamily = s.fontFamily || '';
-  el.style.textAlign  = s.align      || '';
-  el.style.fontWeight = s.bold       ? '700' : '400';
-  el.style.fontStyle  = s.italic     ? 'italic' : 'normal';
-  el.style.fontSize   = s.fontSize   ? s.fontSize + 'px' : '';
-  el.style.color      = s.color      || '';
-  el.style.lineHeight = s.lineSpacing ? String(s.lineSpacing) : '';
+function buildShadow(shadow) {
+  if (!shadow) return '0 2px 16px rgba(0,0,0,0.8), 0 0 40px rgba(0,0,0,0.6)';
+  if (!shadow.enabled) return 'none';
+  return `${shadow.x ?? 0}px ${shadow.y ?? 2}px ${shadow.blur ?? 16}px ${shadow.color ?? '#000'}`;
+}
+
+function applyStyle(s) {
+  if (!s) {
+    textWrap.style.cssText = '';
+    textEl.style.cssText   = '';
+    return;
+  }
+
+  // Position/size the text box
+  const tb = s.textBox;
+  textWrap.style.position      = 'absolute';
+  textWrap.style.left          = (tb ? tb.x : 5) + '%';
+  textWrap.style.top           = (tb ? tb.y : 5) + '%';
+  textWrap.style.width         = (tb ? tb.w : 90) + '%';
+  textWrap.style.height        = (tb ? tb.h : 90) + '%';
+  textWrap.style.display       = 'flex';
+  textWrap.style.flexDirection = 'column';
+  textWrap.style.justifyContent = s.verticalAlign === 'top'    ? 'flex-start'
+                                : s.verticalAlign === 'bottom' ? 'flex-end'
+                                : 'center';
+  textWrap.style.overflow  = 'hidden';
+  textWrap.style.boxSizing = 'border-box';
+  textWrap.style.padding   = '0';
+
+  // Text styles
+  textEl.style.fontFamily      = s.fontFamily   || '';
+  textEl.style.textAlign       = s.align        || 'center';
+  textEl.style.fontWeight      = s.bold         ? '700' : '400';
+  textEl.style.fontStyle       = s.italic       ? 'italic' : 'normal';
+  textEl.style.textDecoration  = s.underline    ? 'underline' : 'none';
+  textEl.style.fontSize        = s.fontSize     ? s.fontSize + 'px' : '';
+  textEl.style.color           = s.color        || '';
+  textEl.style.lineHeight      = s.lineSpacing  ? String(s.lineSpacing) : '';
+  textEl.style.letterSpacing   = s.letterSpacing ? s.letterSpacing + 'em' : '';
+  textEl.style.textTransform   = s.uppercase    ? 'uppercase' : 'none';
+  textEl.style.textShadow      = buildShadow(s.textShadow);
+  textEl.style.webkitTextStroke = (s.textStroke && s.textStroke.enabled)
+    ? `${s.textStroke.width ?? 2}px ${s.textStroke.color ?? '#000'}`
+    : '';
+  textEl.style.whiteSpace = 'pre-wrap';
+  textEl.style.wordBreak  = 'break-word';
+  textEl.style.width      = '100%';
+}
+
+function showLogo(p, scaleMode) {
+  if (!p) { logoWrap.innerHTML = ''; logoWrap.className = ''; return; }
+  const url = pathToUrl(p);
+  const ext = p.split('.').pop().toLowerCase();
+  const fit = scaleMode === 'cover' ? 'cover' : 'contain';
+  logoWrap.innerHTML = ['mp4','webm','mov','avi','m4v'].includes(ext)
+    ? `<video class="logo-img" style="object-fit:${fit}" autoplay loop muted playsinline src="${url}"></video>`
+    : `<img class="logo-img" style="object-fit:${fit}" src="${url}" alt="Logo" />`;
+  logoWrap.className = 'logo-active';
+}
+
+function hideLogo() {
+  logoWrap.innerHTML = '';
+  logoWrap.className = '';
 }
 
 function setBackground(path) {
   if (!path) { bg.innerHTML = ''; return; }
   const url = pathToUrl(path);
   const ext = path.split('.').pop().toLowerCase();
-  if (['mp4','webm','mov','avi','m4v'].includes(ext)) {
-    bg.innerHTML = `<video autoplay loop muted playsinline src="${url}"></video>`;
-  } else {
-    bg.innerHTML = `<img src="${url}" alt="" />`;
-  }
-}
-
-function setLogoMedia(p, scaleMode) {
-  if (!p) { textEl.innerHTML = ''; return; }
-  const url = pathToUrl(p);
-  const ext = p.split('.').pop().toLowerCase();
-  const fit = scaleMode === 'cover' ? 'cover' : 'contain';
-  if (['mp4', 'webm', 'mov', 'avi', 'm4v'].includes(ext)) {
-    textEl.innerHTML = `<video class="logo-img" style="object-fit:${fit}" autoplay loop muted playsinline src="${url}"></video>`;
-  } else {
-    textEl.innerHTML = `<img class="logo-img" style="object-fit:${fit}" src="${url}" alt="Logo" />`;
-  }
+  bg.innerHTML = ['mp4','webm','mov','avi','m4v'].includes(ext)
+    ? `<video autoplay loop muted playsinline src="${url}"></video>`
+    : `<img src="${url}" alt="" />`;
 }
 
 window.cueOutput.onSlideUpdate((payload) => {
   const { type, text, copyright: copy, backgroundPath, logoPath, logoScaleMode, styleJson } = payload;
 
   if (type === 'clear') {
-    // Keep the background — only clear text and copyright.
     setBackground(backgroundPath);
-    textEl.className = '';
+    hideLogo();
+    applyStyle(null);
     textEl.innerHTML = '';
     copyright.textContent = '';
     return;
@@ -92,15 +132,17 @@ window.cueOutput.onSlideUpdate((payload) => {
 
   if (type === 'logo') {
     bg.innerHTML = '';
-    textEl.className = 'logo-mode';
-    setLogoMedia(logoPath, logoScaleMode);
+    applyStyle(null);
+    textEl.innerHTML = '';
     copyright.textContent = '';
+    showLogo(logoPath, logoScaleMode);
     return;
   }
 
+  // Content slide
+  hideLogo();
   setBackground(backgroundPath);
-  textEl.className = '';
-  applyStyle(textEl, styleJson);
+  applyStyle(styleJson);
   textEl.innerHTML = renderWithRuns(text || '', styleJson?.runs);
   copyright.textContent = copy || '';
 });

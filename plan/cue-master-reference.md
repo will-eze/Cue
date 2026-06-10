@@ -88,7 +88,9 @@ src/
 │   │
 │   └── output/
 │       ├── manager.js        Output window registry. go/clear/logo dispatch. Live capture loop.
-│       │                     NDI: ndiCaptureLoops Map, startNdiCapture/stopNdiCapture.
+│       │                     NDI: ndiCaptureLoops Map, ndiLastFrames Map (1fps JPEG cache for multiview).
+│       │                     startNdiCapture/stopNdiCapture. multiviewRefCount: refcounted start/stop so
+│       │                     OperatorView and MultiviewView can independently call multiview.start/stop.
 │       └── ndi.js            Active NDI implementation. createRequire loads @grandi/<platform>-<arch>
 │                             at runtime. createSender / sendFrame (inflight guard) / destroySender.
 │
@@ -102,9 +104,14 @@ src/
 │   │   │                     Background resolution. buildPayload(). Services list refreshes on bgRefreshTick.
 │   │   │                     Accepts outputsEnabled + onToggleLive props from App. focusSearchRef wired to LibraryPanel.
 │   │   │                     Resize state persisted to localStorage (keys: layout_h_pct, layout_v_pct).
+│   │   │                     Loads output channels list; subscribes to output:multiview-captures.
+│   │   │                     Starts/stops multiview capture loop when outputsEnabled changes (refcounted).
+│   │   │                     liveChannelIdx tracks which channel the live monitor displays.
 │   │   ├── SettingsView.jsx  Settings layout. Renders OutputChannels + LogoSettings + BackgroundSettings + ShortcutSettings.
 │   │   │                     BackgroundSettings embeds DangerZone above the footer.
 │   │   └── MultiviewView.jsx Multi-output monitor wall. Subscribes to output:multiview-captures.
+│   │                         NDI channels show NdiTile (checkerboard + frame). Screen channels show ScreenMonitorTile.
+│   │                         NDI channels never show "No screens assigned" — they don't use channel_monitors.
 │   │
 │   ├── panels/
 │   │   ├── RundownPanel.jsx       Service selector with inline rename/delete UI (no native confirm dialogs).
@@ -112,7 +119,12 @@ src/
 │   │   │                          MediaPickerModal for background override.
 │   │   │                          Right-click song items → Preview / Edit / Set Background Override.
 │   │   │                          Props: onRenameService, onDeleteService.
-│   │   ├── PreviewLivePanel.jsx   Two MonitorFrames + two SlideLists. Background image rendering.
+│   │   ├── PreviewLivePanel.jsx   Two MonitorFrames (Preview + Live) + two SlideLists.
+│   │   │                          MonitorFrame renders a 1920×1080 virtual canvas scaled via ResizeObserver +
+│   │   │                          CSS transform — pixel-accurate match of the output template at any container size.
+│   │   │                          Supports fullscreen (textBox positioning) and lowerthird (bottom-anchored bar) layouts.
+│   │   │                          Channel selector strip (2+ channels): click to switch live monitor to any channel.
+│   │   │                          Props: allChannels, channelCaptures, liveChannelIdx, onSetLiveChannelIdx.
 │   │   └── LibraryPanel.jsx       Songs tab (react-window virtualised list) + Media tab (grid).
 │   │                              Song search + tag filter. Media import.
 │   │                              Single-click (220ms) → SongPreviewModal. Double-click → add to rundown.
@@ -120,9 +132,16 @@ src/
 │   │                              an imperative focus() function that OperatorView calls on S keypress.
 │   │
 │   ├── components/
-│   │   ├── SongEditor.jsx         Full song CRUD modal. Per-section styling toolbar.
-│   │   │                          Paste Song parser (parseSong). renderWithRuns (exported).
-│   │   │                          Escape key closes the modal (suppressed while saving).
+│   │   ├── SongEditor.jsx         Full-screen song CRUD modal (createPortal). Sections sidebar with DnD reorder.
+│   │   │                          Two-tab preview: Fullscreen (1920×1080 scaled SlidePreview) + Lower Third (LowerThirdPreview).
+│   │   │                          FormattingToolbar: Row 1 (font/size/color/B/I/U/AA/H-align/V-align/Reset).
+│   │   │                          Row 2 (line/track spacing, shadow on+controls, stroke on+controls,
+│   │   │                                 Box presets+x/y/w/h — fullscreen only;
+│   │   │                                 Bar on+color+opacity+solid toggle — lower-third only).
+│   │   │                          SlidePreview: ResizeObserver scales 1920×1080 canvas. LowerThirdPreview: checkerboard.
+│   │   │                          DEFAULT_STYLE includes ltBar (lower-third gradient bar control).
+│   │   │                          TEXTBOX_PRESETS: Full / Top / Middle / Bottom / L3.
+│   │   │                          Paste Song parser (parseSong). renderWithRuns (exported). Escape key closes.
 │   │   ├── SongPreviewModal.jsx   Read-only song preview. Add to Rundown / Edit.
 │   │   ├── MediaPickerModal.jsx   Media grid picker. Used by RundownPanel for bg override.
 │   │   ├── SlideList.jsx          Scrollable slide/section list. Preview and live variants.
@@ -145,13 +164,18 @@ src/
 │       └── mediaUrl.js           mediaUrl(absPath) → cue-media://localhost/encoded/path
 │
 ├── output/                   Plain HTML — no build step, no React, served directly.
-│   ├── fullscreen.html       Background + text + copyright layout (covers full display).
-│   ├── fullscreen.css        Fullscreen output styles.
-│   ├── fullscreen.js         Handles slide:update. setBackground(). applyStyle(). logo mode.
-│   │                         Detects ?alpha=1 query param → overrides CSS bg to transparent (NDI).
-│   ├── lowerthird.html       Lower-third band layout.
-│   ├── lowerthird.css        Lower-third styles.
-│   └── lowerthird.js         Handles slide:update. Text + logo only (no background).
+│   ├── fullscreen.html       #background + #content (#text-wrap > #text, #logo-wrap, #copyright).
+│   ├── fullscreen.css        Fullscreen output styles. #text-wrap is absolutely positioned by JS.
+│   │                         #logo-wrap is a separate sibling (never overwrites #text).
+│   ├── fullscreen.js         applyStyle(s): positions #text-wrap via textBox %, applies all style props to #text.
+│   │                         showLogo/hideLogo use #logo-wrap. Supports: verticalAlign, letterSpacing,
+│   │                         uppercase, textShadow (buildShadow), textStroke, textBox, underline in runs.
+│   │                         Detects ?alpha=1 → transparent CSS background (NDI alpha channels).
+│   ├── lowerthird.html       #lowerthird > #text + #copyright. Background always transparent (composited in OBS).
+│   ├── lowerthird.css        #lowerthird: bottom-anchored, background: transparent (controlled by JS via ltBar).
+│   └── lowerthird.js         applyStyle(el, s): applies all style props including ltBar gradient to #lowerthird.
+│                             buildBarBg(ltBar): null → transparent; {color,opacity,solid} → CSS gradient or solid.
+│                             Clear/logo events reset bar background to transparent.
 │
 └── fonts/
     ├── fonts.css             All @font-face declarations. font-display: block.
@@ -489,8 +513,8 @@ All renderer↔main communication is via `ipcRenderer.invoke` / `ipcMain.handle`
 | `monitors.list(channelId?)` | `[channel_monitor rows]` | Pass channelId to filter. |
 | `monitors.create(channelId, {display_bounds, label})` | `monitor` | Assigns a physical screen to a channel and opens its BrowserWindow. |
 | `monitors.delete(monitorId)` | void | Closes window and removes row. |
-| `multiview.start()` | void | Begins capturing all output windows; emits `output:multiview-captures` at ~5fps. |
-| `multiview.stop()` | void | Stops multiview capture. |
+| `multiview.start()` | void | Begins capturing all output windows; emits `output:multiview-captures` at ~5fps. Refcounted — interval starts only when count goes 0→1. |
+| `multiview.stop()` | void | Decrements refcount; stops capture only when count reaches 0. Safe for multiple subscribers. |
 | `screens.list()` | `[{id, bounds, scaleFactor, label}]` | All connected displays. |
 
 **Output payload structure:**
@@ -546,7 +570,7 @@ Subscribe to main→renderer events. Allowed channels:
 - `output:unresolved-channels` — array of unresolved channel objects on startup
 - `output:state-changed` — fired after go/clear/logo/setLive; payload: `{activeWindows, outputsEnabled, displayMode}`
 - `output:live-capture` — data URL of captured output frame (every 200ms while live)
-- `output:multiview-captures` — array of `{channelId, dataUrl}` objects (~5fps, only while multiview is running)
+- `output:multiview-captures` — array of `{channelId, dataUrl, isNdi}` objects (~5fps, only while multiview is running). `isNdi: true` for NDI channels (sourced from `ndiLastFrames` JPEG cache at ~1fps); `isNdi: false` for screen channels (capturePage at ~5fps).
 - `output:ndi-unavailable` — fired if grandiose is not installed
 - `shortcut:next` / `shortcut:prev` — reserved for future hardware remote
 
@@ -558,20 +582,28 @@ Subscribe to main→renderer events. Allowed channels:
 
 ```json
 {
-  "align":       "center",   // "left" | "center" | "right"
-  "bold":        false,
-  "italic":      false,
-  "fontFamily":  null,       // CSS family string matching fonts.css, or null for default
-  "fontSize":    null,       // number (px) or null
-  "color":       null,       // hex string or null
-  "lineSpacing": null,       // CSS line-height multiplier or null
-  "runs":        []          // reserved: [{start, end, bold, italic, color, fontFamily, fontSize}]
+  "align":         "center",   // "left" | "center" | "right"
+  "bold":          false,
+  "italic":        false,
+  "underline":     false,
+  "uppercase":     false,
+  "fontFamily":    null,       // CSS family string matching fonts.css, or null for default
+  "fontSize":      null,       // number (px) or null
+  "color":         null,       // hex string or null
+  "lineSpacing":   null,       // CSS line-height multiplier or null
+  "letterSpacing": null,       // em value or null
+  "verticalAlign": null,       // "top" | "center" | "bottom" or null (fullscreen only)
+  "textShadow":    null,       // { enabled, x, y, blur, color } or null
+  "textStroke":    null,       // { enabled, width, color } or null
+  "textBox":       null,       // { x, y, w, h } percent of 1920×1080 canvas (fullscreen only)
+  "ltBar":         null,       // { color, opacity, solid } — lower-third bar; null = transparent
+  "runs":          []          // [{start, end, bold, italic, underline, color, fontFamily, fontSize}]
 }
 ```
 
-`SongEditor.jsx` holds style as a parsed JS object per section. `serializeStyle()` converts to JSON only if at least one non-default value is set; otherwise saves `null`.
+`null` on any property means "use template defaults." `textBox` and `verticalAlign` apply only to fullscreen channels. `ltBar` applies only to lower-third channels (`null` = transparent background, no bar). `SongEditor.jsx` calls `serializeStyle()` to convert to JSON; saves `null` when all values are default.
 
-`renderWithRuns(text, runs)` is exported from `SongEditor.jsx` and used in `PreviewLivePanel.jsx` to render text with run-level styling in the monitor frame. Output templates have an equivalent inline copy.
+`renderWithRuns(text, runs)` is exported from `SongEditor.jsx` and used in `PreviewLivePanel.jsx` to render text with run-level styling in the monitor frame. Output templates have an equivalent inline copy. Runs support `underline`.
 
 ---
 
@@ -782,8 +814,20 @@ Works in both dev (ASAR not used) and production (path is inside ASAR).
 ### go / clear / logo dispatch
 `manager.go(payload)` iterates all active windows and sends `webContents.send('slide:update', payload)`. The `payload.backgroundPath` is an absolute filesystem path — the output template converts it to `cue-media://` using its inline `pathToUrl()`.
 
+### Fullscreen template structure
+`fullscreen.html` uses `#background` for the full-bleed media, `#text-wrap` (absolutely positioned by JS via `textBox` percentage values) as the text container, `#logo-wrap` as a separate sibling for the logo overlay (never overwrites `#text`), and `#copyright`. The `applyStyle(s)` function positions `#text-wrap` via CSS `left/top/width/height` percent strings, applies all style properties (verticalAlign, letterSpacing, uppercase, textShadow, textStroke, underline in runs) to the inner `#text` element. `showLogo`/`hideLogo` toggle a `.logo-active` class on `#logo-wrap`.
+
+### Lower-third template structure
+`lowerthird.html` uses `#lowerthird` (bottom-anchored, full-width) containing `#text` and `#copyright`. Background is always `transparent` by default — JS sets it from `ltBar` via `buildBarBg()`. The `applyStyle(el, s)` function applies all style properties including the bar background. Clear and logo events explicitly reset `ltDiv.style.background = 'transparent'`.
+
 ### Live capture
 `startLiveCapture()` runs a `setInterval` at 200ms, captures the first output window via `webContents.capturePage()`, converts to data URL, and sends `output:live-capture` to the main window. This is the **operator UI live thumbnail** — unrelated to NDI.
+
+### NDI frame cache for multiview
+`ndiLastFrames` is a `Map<channelId, Buffer>` in `manager.js`. When `multiviewRefCount > 0`, the NDI `paint` event handler additionally downscales and JPEG-encodes each frame into `ndiLastFrames` at ~1fps (timestamp-gated). `runMultiviewCapture()` reads from `ndiLastFrames` to build NDI entries in the `output:multiview-captures` payload without hitting the GPU path.
+
+### Multiview refcounting
+`multiviewRefCount` tracks the number of active subscribers (`OperatorView` + `MultiviewView` can both subscribe simultaneously). `startMultiviewCapture()` increments the count and starts the capture interval only when it goes 0→1. `stopMultiviewCapture()` decrements and clears the interval only when it reaches 0. This prevents double-interval bugs and premature stop when one subscriber unmounts.
 
 ---
 
@@ -841,8 +885,17 @@ Offscreen rendering (`offscreen: true` BrowserWindow) + `paint` event + `setInte
 
 `SongEditor.jsx` is a full-screen modal (via `createPortal`). Key internals:
 
-**Per-section styling toolbar** — each section row shows inline controls:
-Font family, font size (32–128px), colour swatch (native `<input type="color">`), bold, italic, align L/C/R, reset button. State held as parsed JS objects. Serialised to `style_json` on save.
+**Two-row formatting toolbar (`FormattingToolbar`)** — row 1 (always visible): font family, font size (32–128px), colour swatch, bold, italic, underline, align L/C/R, vertical align T/C/B, letter spacing, uppercase, reset. Row 2 (template-dependent):
+- Fullscreen channels: textbox preset selector (TEXTBOX_PRESETS: Full, Title, Lower-Third Band, Left Column, Right Column) + manual x/y/w/h inputs
+- Lower-third channels: bar toggle (On/Off), colour swatch, opacity slider, solid/gradient toggle
+
+`previewTemplate` prop determines which row 2 is shown. Set from `OperatorView`'s active channel template. `FormattingToolbar` receives it as a prop.
+
+**Run-level styling** — selected text gets bold/italic/underline/colour/font overrides stored as `runs: [{start,end,...}]` in `style_json`. `renderWithRuns(text, runs)` converts to `<span style="...">` HTML. Exported from `SongEditor.jsx`; used by `PreviewLivePanel.jsx` and inline copies in output templates.
+
+**Live preview pane** — always-visible `SlidePreview` (fullscreen) or `LowerThirdPreview` (lower-third), rendered at 1920×1080 then CSS-scaled to fit the preview column. Background picker (media or colour) wired to `songs:setBackground`. Background shows in fullscreen preview; lower-third preview shows checkerboard (transparent, composited externally).
+
+**`ltBar`** — `null` by default (transparent lower-third bar). When set: `{ color, opacity, solid }`. `buildBarBg(ltBar)` computes a `linear-gradient` (default) or `rgba()` solid. Same function duplicated in `SongEditor.jsx`, `PreviewLivePanel.jsx`, and `lowerthird.js`.
 
 **Paste Song parser (`parseSong`)** — pure regex, no API. Detection priority:
 1. `[Verse 1]` bracketed labels
@@ -851,8 +904,6 @@ Font family, font size (32–128px), colour swatch (native `<input type="color">
 No-header fallback: split by blank lines, all → `verse`. The user then relabels.
 
 **Section ordering** — drag-to-reorder via `@dnd-kit`. Each section has a local `_key` for stable React identity.
-
-**`renderWithRuns(text, runs)`** is exported from `SongEditor.jsx` and imported by `PreviewLivePanel.jsx` to render inline HTML with run-level styling in the monitor frame.
 
 ---
 
@@ -864,7 +915,7 @@ No-header fallback: split by blank lines, all → `verse`. The user then relabel
 | `linked_channel_id` logic | Medium | Field exists, settable, never read. Sync lower-third to fullscreen channel. |
 | Stage display / confidence monitor | High | Phase 2 item. Not yet specced. |
 | Tag CRUD UI | Medium | Tags can be assigned, but create/rename/delete UI is not in Settings. |
-| Song background picker in Song Editor | Medium | `songs:setBackground` IPC exists. Can be set via RundownPanel context menu (writes through to song). |
+| ~~Song background picker in Song Editor~~ | ~~Medium~~ | Implemented. Media picker in `SlidePreview` calls `songs:setBackground`. |
 | Disk space warning | Low | Warn when < 2GB free on import. Not implemented. |
 | Media unused-asset cleanup | Low | Identify media not referenced by any song or service_item. |
 | Drag asset from Library onto rundown item | Medium | Background override currently only via context menu. |
