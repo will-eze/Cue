@@ -147,7 +147,7 @@ export default function OperatorView({
   }, [activeServiceId, bgRefreshTick]);
 
   const shortcutRef = useRef({});
-  shortcutRef.current = { handleNextSlide, handlePrevSlide, handleGo, handleClear, handleLogo, handleLiveToggle };
+  shortcutRef.current = { handleNextSlide, handlePrevSlide, handleNextLiveSlide, handleGo, handleClear, handleLogo, handleLiveToggle };
 
   if (transportRef) {
     transportRef.current = { go: handleGo, clear: handleClear, logo: handleLogo };
@@ -176,7 +176,10 @@ export default function OperatorView({
         return;
       }
 
-      if (e.key === ' ' || e.key === 'ArrowDown') { e.preventDefault(); h.handleNextSlide(); }
+      // Space always drives LIVE forward; arrow keys drive PREVIEW (auto-GOing
+      // when preview and live are the same item).
+      if (e.key === ' ')                          { e.preventDefault(); h.handleNextLiveSlide(); }
+      else if (e.key === 'ArrowDown')             { e.preventDefault(); h.handleNextSlide(); }
       else if (e.key === 'ArrowUp')               { e.preventDefault(); h.handlePrevSlide(); }
       else if (e.key === 'Escape')                { h.handleClear(); }
       else if (e.key === 'g' || e.key === 'G')    { h.handleGo(); }
@@ -415,6 +418,45 @@ export default function OperatorView({
         const prevSlides = getSlides(prevItem);
         setPreviewItemId(prevItem.id);
         setPreviewSlideIdx(Math.max(prevSlides.length - 1, 0));
+      }
+    }
+  }
+
+  // Space bar — advance the LIVE item forward. Within the live item it sends the
+  // next slide; at the last slide it rolls into the next rundown item (and loads
+  // it into preview too). Scripture-live (synthetic, not in the rundown) just
+  // advances within its own slides.
+  function handleNextLiveSlide() {
+    if (!liveItem) {
+      // Nothing live yet — GO the current preview to start the live bus.
+      if (previewItem) handleGo();
+      return;
+    }
+    const slides = getSlides(liveItem);
+    if (liveSlideIdx < slides.length - 1) {
+      const nextIdx = liveSlideIdx + 1;
+      const payload = buildPayload(liveItem, nextIdx);
+      if (payload) {
+        window.cue.output.go(payload);
+        setLiveSlideIdx(nextIdx);
+        if (liveItemId === previewItemId) setPreviewSlideIdx(nextIdx);
+      }
+      return;
+    }
+    // At the last slide — advance to the next rundown item (scripture-live is not
+    // in the rundown, so curIdx is -1 and we stop at the boundary).
+    const items = serviceData?.items || [];
+    const curIdx = items.findIndex((i) => i.id === liveItemId);
+    if (curIdx >= 0 && curIdx < items.length - 1) {
+      const nextItem = items[curIdx + 1];
+      const payload = buildPayload(nextItem, 0);
+      if (payload) {
+        window.cue.output.go(payload);
+        setLiveItemId(nextItem.id);
+        setLiveSlideIdx(0);
+        setLiveScripture(null);
+        setPreviewItemId(nextItem.id);
+        setPreviewSlideIdx(0);
       }
     }
   }

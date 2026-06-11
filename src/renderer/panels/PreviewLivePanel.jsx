@@ -124,6 +124,85 @@ function SyncedVideo({ src, transport, loop, style }) {
   return <video ref={ref} src={src} loop={loop} style={style} muted playsInline />;
 }
 
+// Confidence-monitor layout — mirrors output/stage.html + stage.css at native
+// 1920×1080 so it scales identically to the other monitor templates. Shows the
+// top status bar (live clock + idle timer/video slots), the current slide text
+// big on a dark background, the COMING NEXT row, and the message bar.
+function StageMonitor({ slide, item, slides, slideIdx, copyrightText, copyrightRight, transport, hideText }) {
+  const [clock, setClock] = useState('');
+  useEffect(() => {
+    const fmt = () => setClock(new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }));
+    fmt();
+    const id = setInterval(fmt, 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const barCol     = { flex: '1 1 0', minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 2%', gap: 8 };
+  const barLabel   = { fontFamily: '"JetBrains Mono", ui-monospace, monospace', fontSize: 13, fontWeight: 500, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#424754' };
+  const barValue   = { fontSize: 48, fontWeight: 700, lineHeight: 1, fontVariantNumeric: 'tabular-nums' };
+  const barDivider = { flexShrink: 0, width: 1, background: 'rgba(255,255,255,0.07)', margin: '2% 0' };
+
+  const isMediaItem = item?.item_type === 'media';
+  const mediaPath   = isMediaItem ? item?.asset?.path : null;
+  const isVideo     = mediaPath && /\.(mp4|webm|mov|m4v|avi|mkv)$/i.test(mediaPath);
+  const nextText    = slides[slideIdx + 1]?.content || '';
+  const refText     = copyrightRight ? copyrightText : null; // scripture reference
+
+  return (
+    <div style={{ width: NATIVE_W, height: NATIVE_H, display: 'flex', flexDirection: 'column', background: '#111317', fontFamily: 'Inter, sans-serif', color: '#e2e2e8' }}>
+      {/* Top status bar */}
+      <div style={{ flex: '0 0 12%', minHeight: 0, background: '#1a1c20', borderBottom: '1px solid rgba(255,255,255,0.07)', display: 'flex' }}>
+        <div style={barCol}>
+          <div style={barLabel}>LOCAL TIME</div>
+          <div style={{ ...barValue, color: '#adc6ff' }}>{clock}</div>
+        </div>
+        <div style={barDivider} />
+        <div style={barCol}>
+          <div style={barLabel}>REMAINING</div>
+          <div style={{ ...barValue, color: '#2a2e38' }}>00:00</div>
+        </div>
+        <div style={barDivider} />
+        <div style={barCol}>
+          <div style={barLabel}>VIDEO</div>
+          <div style={{ ...barValue, color: '#2a2e38' }}>--:--</div>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div style={{ flex: '1 1 0', minHeight: 0, background: '#0c0e12', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ position: 'relative', flex: '1 1 0', minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2.5% 6%', textAlign: 'center' }}>
+          {isVideo ? (
+            transport?.active
+              ? <SyncedVideo src={mediaUrl(mediaPath)} transport={transport} loop={!!item?.media_loop} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
+              : <video src={mediaUrl(mediaPath)} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} autoPlay loop muted />
+          ) : !hideText && (
+            <>
+              {refText && (
+                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: '1.5% 6% 0', textAlign: 'center', fontFamily: '"JetBrains Mono", ui-monospace, monospace', fontSize: 34, fontWeight: 600, letterSpacing: '0.04em', color: '#adc6ff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {refText}
+                </div>
+              )}
+              <div style={{ fontWeight: 700, lineHeight: 1.15, color: '#ffffff', whiteSpace: 'pre-wrap', wordBreak: 'break-word', textAlign: 'center', width: '100%', fontSize: 88, overflow: 'hidden' }}>
+                {slide?.content || ''}
+              </div>
+            </>
+          )}
+        </div>
+        <div style={{ flexShrink: 0, height: 1, background: 'rgba(255,255,255,0.08)' }} />
+        <div style={{ flex: '0 0 auto', maxHeight: '20%', overflow: 'hidden', display: 'flex', alignItems: 'baseline', gap: '1.5%', padding: '1.2% 6%' }}>
+          <span style={{ flexShrink: 0, fontFamily: '"JetBrains Mono", ui-monospace, monospace', fontSize: 13, fontWeight: 500, letterSpacing: '0.18em', textTransform: 'uppercase', color: '#4d8eff', whiteSpace: 'nowrap' }}>COMING NEXT</span>
+          <span style={{ fontSize: 26, fontWeight: 400, lineHeight: 1.3, color: 'rgba(255,255,255,0.4)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflow: 'hidden' }}>{nextText || '—'}</span>
+        </div>
+      </div>
+
+      {/* Bottom message bar */}
+      <div style={{ flex: '0 0 10%', minHeight: 0, background: '#1a1c20', borderTop: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', padding: '0 4%' }}>
+        <div style={{ fontFamily: '"JetBrains Mono", ui-monospace, monospace', fontSize: 14, fontWeight: 500, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(140,144,159,0.25)' }}>NO MESSAGES</div>
+      </div>
+    </div>
+  );
+}
+
 function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroundPath, displayMode, channelTemplate, transport }) {
   const wrapRef = useRef(null);
   const [scale, setScale] = useState(0.5);
@@ -141,6 +220,7 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
   const slide  = item ? slides[slideIdx] : null;
   const style  = slide?.style_json ? JSON.parse(slide.style_json) : null;
   const isLT   = channelTemplate === 'lowerthird';
+  const isStage = channelTemplate === 'stage';
 
   // Attribution line — scripture slides carry "Book c:v (VERSION)", songs use the
   // song copyright. Scripture sits bottom-right; everything else stays centred.
@@ -190,6 +270,19 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
       {slide ? (
         <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
           <div style={{ width: NATIVE_W, height: NATIVE_H, transform: `scale(${scale})`, transformOrigin: 'top left', position: 'relative' }}>
+                {isStage ? (
+                  <StageMonitor
+                    slide={slide}
+                    item={item}
+                    slides={slides}
+                    slideIdx={slideIdx}
+                    copyrightText={copyrightText}
+                    copyrightRight={copyrightRight}
+                    transport={transport}
+                    hideText={hideText}
+                  />
+                ) : (
+                <>
                 {/* Background */}
                 {isLT ? (
                   <div style={{
@@ -256,6 +349,8 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
                   }}>
                     {copyrightText}
                   </div>
+                )}
+                </>
                 )}
           </div>
         </div>

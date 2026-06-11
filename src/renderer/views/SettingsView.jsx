@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import OutputChannels from '../settings/OutputChannels';
 import LogoSettings from '../settings/LogoSettings';
 import BackgroundSettings from '../settings/BackgroundSettings';
@@ -6,11 +6,15 @@ import BibleSettings from '../settings/BibleSettings';
 import ShortcutSettings from '../settings/ShortcutSettings';
 import DangerZone from '../settings/DangerZone';
 
-const NAV_ITEMS = [
-  { id: 'rundown',  icon: 'list_alt',       label: 'Rundown' },
-  { id: 'preview',  icon: 'visibility',      label: 'Preview' },
-  { id: 'library',  icon: 'library_books',   label: 'Library' },
-  { id: 'live',     icon: 'sensors',         label: 'Live' },
+// Each section is an anchor in the scrollable settings column. Clicking a nav
+// item smooth-scrolls to it; the active item is tracked as the user scrolls.
+const SECTIONS = [
+  { id: 'channels',   icon: 'cast',            label: 'Channels' },
+  { id: 'logo',       icon: 'image',           label: 'Logo' },
+  { id: 'background',  icon: 'wallpaper',       label: 'Background' },
+  { id: 'bible',      icon: 'menu_book',       label: 'Bible' },
+  { id: 'shortcuts',  icon: 'keyboard',        label: 'Shortcuts' },
+  { id: 'danger',     icon: 'warning',         label: 'Danger' },
 ];
 
 function formatBytes(bytes) {
@@ -64,32 +68,71 @@ function SettingsFooter() {
 }
 
 export default function SettingsView({ onClose, activeServiceId, onRundownCleared, onRundownDeleted, onLibraryCleared }) {
+  const scrollRef = useRef(null);
+  const sectionRefs = useRef({});
+  const [active, setActive] = useState(SECTIONS[0].id);
+
+  function scrollTo(id) {
+    const el = sectionRefs.current[id];
+    const root = scrollRef.current;
+    if (!el || !root) return;
+    root.scrollTo({ top: el.offsetTop - 24, behavior: 'smooth' });
+    setActive(id);
+  }
+
+  // Highlight the section currently in view as the operator scrolls.
+  useEffect(() => {
+    const root = scrollRef.current;
+    if (!root) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+        if (visible) setActive(visible.target.dataset.section);
+      },
+      { root, rootMargin: '-20% 0px -70% 0px', threshold: 0 }
+    );
+    Object.values(sectionRefs.current).forEach((el) => el && io.observe(el));
+    return () => io.disconnect();
+  }, []);
+
+  const setRef = (id) => (el) => { sectionRefs.current[id] = el; };
+
   return (
     <div className="flex h-full bg-background">
-      {/* Side navigation */}
-      <aside className="flex flex-col w-20 h-full py-md gap-sm bg-surface-container-low items-center border-r border-outline-variant/20 shrink-0">
-        <div className="mb-lg px-xs text-center">
-          <span
-            className="material-symbols-outlined text-2xl text-primary"
-            style={{ fontVariationSettings: "'FILL' 1" }}
-          >
-            tune
-          </span>
-        </div>
-        {NAV_ITEMS.map((item) => (
-          <button
-            key={item.id}
-            onClick={item.id === 'rundown' ? onClose : undefined}
-            className="flex flex-col items-center gap-xs py-sm w-16 group hover:bg-surface-variant rounded-lg transition-all active:scale-95 cursor-pointer text-on-surface-variant hover:text-primary"
-          >
-            <span className="material-symbols-outlined">{item.icon}</span>
-            <span className="text-label-sm font-label-sm">{item.label}</span>
-          </button>
-        ))}
+      {/* Section navigation */}
+      <aside className="flex flex-col w-24 h-full py-md gap-xs bg-surface-container-low items-center border-r border-outline-variant/20 shrink-0">
+        <button
+          onClick={onClose}
+          title="Back to Operator"
+          className="mb-md flex flex-col items-center gap-xs py-sm w-20 rounded-lg text-on-surface-variant hover:text-primary hover:bg-surface-variant transition-all active:scale-95 cursor-pointer"
+        >
+          <span className="material-symbols-outlined">arrow_back</span>
+          <span className="text-label-sm font-label-sm">Back</span>
+        </button>
+
+        {SECTIONS.map((item) => {
+          const isActive = active === item.id;
+          return (
+            <button
+              key={item.id}
+              onClick={() => scrollTo(item.id)}
+              className={`flex flex-col items-center gap-xs py-sm w-20 rounded-lg transition-all active:scale-95 cursor-pointer ${
+                isActive
+                  ? 'bg-surface-variant text-primary'
+                  : 'text-on-surface-variant hover:text-primary hover:bg-surface-variant'
+              }`}
+            >
+              <span className="material-symbols-outlined" style={isActive ? { fontVariationSettings: "'FILL' 1" } : undefined}>{item.icon}</span>
+              <span className="text-label-sm font-label-sm">{item.label}</span>
+            </button>
+          );
+        })}
       </aside>
 
       {/* Main settings content */}
-      <main className="flex-1 overflow-y-auto bg-background p-lg space-y-xl">
+      <main ref={scrollRef} className="flex-1 overflow-y-auto bg-background p-lg space-y-xl">
         <header className="mb-xl">
           <h1 className="text-display-lg font-bold text-on-surface">Settings</h1>
           <p className="text-body-md text-on-surface-variant mt-xs">
@@ -97,17 +140,19 @@ export default function SettingsView({ onClose, activeServiceId, onRundownCleare
           </p>
         </header>
 
-        <OutputChannels />
-        <LogoSettings />
-        <BackgroundSettings activeServiceId={activeServiceId} />
-        <BibleSettings />
-        <ShortcutSettings />
-        <DangerZone
-          activeServiceId={activeServiceId}
-          onRundownCleared={onRundownCleared}
-          onRundownDeleted={onRundownDeleted}
-          onLibraryCleared={onLibraryCleared}
-        />
+        <section ref={setRef('channels')} data-section="channels" className="scroll-mt-lg"><OutputChannels /></section>
+        <section ref={setRef('logo')} data-section="logo" className="scroll-mt-lg"><LogoSettings /></section>
+        <section ref={setRef('background')} data-section="background" className="scroll-mt-lg"><BackgroundSettings activeServiceId={activeServiceId} /></section>
+        <section ref={setRef('bible')} data-section="bible" className="scroll-mt-lg"><BibleSettings /></section>
+        <section ref={setRef('shortcuts')} data-section="shortcuts" className="scroll-mt-lg"><ShortcutSettings /></section>
+        <section ref={setRef('danger')} data-section="danger" className="scroll-mt-lg">
+          <DangerZone
+            activeServiceId={activeServiceId}
+            onRundownCleared={onRundownCleared}
+            onRundownDeleted={onRundownDeleted}
+            onLibraryCleared={onLibraryCleared}
+          />
+        </section>
         <SettingsFooter />
       </main>
     </div>
