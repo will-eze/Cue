@@ -1,10 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import ContextMenu from '../components/ContextMenu';
+import OnlineBibleModal from '../components/OnlineBibleModal';
 
 export default function BibleSettings() {
   const [versions, setVersions] = useState([]);
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [importMenu, setImportMenu] = useState(null);
+  const [showOnline, setShowOnline] = useState(false);
 
   const load = useCallback(async () => {
     setVersions(await window.cue.bible.versions());
@@ -49,7 +53,7 @@ export default function BibleSettings() {
           </p>
         </div>
         <button
-          onClick={handleImport}
+          onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setImportMenu({ x: r.right - 200, y: r.bottom + 4 }); }}
           disabled={importing}
           className="bg-primary-container text-on-primary px-md py-sm rounded-lg text-label-sm font-label-sm font-bold flex items-center gap-xs hover:brightness-110 active:scale-95 transition-all cursor-pointer shrink-0 disabled:opacity-50"
         >
@@ -57,6 +61,21 @@ export default function BibleSettings() {
           {importing ? 'Importing…' : 'Import Translation'}
         </button>
       </div>
+
+      {importMenu && (
+        <ContextMenu
+          x={importMenu.x} y={importMenu.y}
+          onClose={() => setImportMenu(null)}
+          items={[
+            { label: 'Import from Online', onClick: () => { setImportMenu(null); setShowOnline(true); } },
+            { label: 'Import from File', onClick: () => { setImportMenu(null); handleImport(); } },
+          ]}
+        />
+      )}
+
+      {showOnline && (
+        <OnlineBibleModal onClose={() => setShowOnline(false)} onImported={load} />
+      )}
 
       {error && (
         <div className="bg-error-container/20 border border-error/30 rounded-lg px-md py-sm text-body-sm text-error">

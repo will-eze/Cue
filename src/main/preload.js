@@ -87,8 +87,13 @@ contextBridge.exposeInMainWorld('cue', {
   bible: {
     versions: () => ipcRenderer.invoke('bible:versions:list'),
     importFile: (filePath, meta) => ipcRenderer.invoke('bible:importFile', filePath, meta),
+    onlineList: () => ipcRenderer.invoke('bible:online:list'),
+    onlineDownload: (abbrev) => ipcRenderer.invoke('bible:online:download', abbrev),
     delete: (id) => ipcRenderer.invoke('bible:delete', id),
     books: (versionId) => ipcRenderer.invoke('bible:books', versionId),
+    chapters: (versionId, bookNum) => ipcRenderer.invoke('bible:chapters', versionId, bookNum),
+    verses: (versionId, bookNum, chapter) => ipcRenderer.invoke('bible:verses', versionId, bookNum, chapter),
+    adjacent: (versionId, bookNum, chapter, verse, dir) => ipcRenderer.invoke('bible:adjacent', versionId, bookNum, chapter, verse, dir),
     resolve: (versionId, ref, versesPerSlide) => ipcRenderer.invoke('bible:resolve', versionId, ref, versesPerSlide),
     search: (versionId, query) => ipcRenderer.invoke('bible:search', versionId, query),
   },

@@ -165,6 +165,44 @@ function setForegroundMedia(media, transport) {
   });
 }
 
+// Apply an optional reference/attribution style (scripture) to the #copyright
+// element. Empty values fall back to the stylesheet defaults; resets cleanly for
+// songs (which pass no copyrightStyle).
+function applyCopyrightStyle(el, cs, defaultAlign) {
+  el.style.textAlign       = (cs && cs.align) || defaultAlign || 'center';
+  el.style.fontFamily      = cs?.fontFamily || '';
+  el.style.fontSize        = cs?.fontSize ? cs.fontSize + 'px' : '';
+  el.style.color           = cs?.color || '';
+  el.style.fontWeight      = cs?.bold ? '700' : '';
+  el.style.fontStyle       = cs?.italic ? 'italic' : '';
+  el.style.textDecoration  = cs?.underline ? 'underline' : '';
+  el.style.textTransform   = cs?.uppercase ? 'uppercase' : '';
+  el.style.letterSpacing   = cs?.letterSpacing ? cs.letterSpacing + 'em' : '';
+  el.style.textShadow      = cs?.textShadow?.enabled
+    ? `${cs.textShadow.x ?? 0}px ${cs.textShadow.y ?? 2}px ${cs.textShadow.blur ?? 16}px ${cs.textShadow.color ?? '#000'}` : '';
+  el.style.webkitTextStroke = cs?.textStroke?.enabled
+    ? `${cs.textStroke.width ?? 2}px ${cs.textStroke.color ?? '#000'}` : '';
+  // Position: free (anchored at x%,y%) or default (bottom band, symmetric inset).
+  if (cs?.pos) {
+    el.style.left = cs.pos.x + '%';
+    el.style.top = cs.pos.y + '%';
+    el.style.right = 'auto';
+    el.style.bottom = 'auto';
+    el.style.whiteSpace = 'nowrap';
+    el.style.paddingLeft = '0';
+    el.style.paddingRight = '0';
+    el.style.textAlign = cs.align || 'left';
+  } else {
+    el.style.left = '';
+    el.style.top = '';
+    el.style.right = '';
+    el.style.bottom = '';
+    el.style.whiteSpace = '';
+    el.style.paddingLeft = '60px';
+    el.style.paddingRight = '60px';
+  }
+}
+
 window.cueOutput.onSlideUpdate((payload) => {
   const { type, text, copyright: copy, backgroundPath, logoPath, logoScaleMode, styleJson } = payload;
 
@@ -205,4 +243,6 @@ window.cueOutput.onSlideUpdate((payload) => {
   applyStyle(styleJson);
   textEl.innerHTML = renderWithRuns(text || '', styleJson?.runs);
   copyright.textContent = copy || '';
+  // Scripture attribution ("John 1:1 (KJV)") sits bottom-right (stylable); song copyright centred.
+  applyCopyrightStyle(copyright, payload.copyrightStyle, payload.copyrightAlign === 'right' ? 'right' : 'center');
 });

@@ -16,7 +16,10 @@ export function set(key, value) {
 export function setGlobalLogo(mediaId) { set('global_logo_id', mediaId); }
 
 export function setGlobalBackground(type, mediaId) {
-  set(type === 'song' ? 'global_bg_song_id' : 'global_bg_slide_id', mediaId);
+  const key = type === 'song' ? 'global_bg_song_id'
+    : type === 'scripture' ? 'global_bg_scripture_id'
+    : 'global_bg_slide_id';
+  set(key, mediaId);
 }
 
 export function applyBackgroundToAll(type, mediaId) {

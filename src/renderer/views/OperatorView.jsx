@@ -87,6 +87,26 @@ export default function OperatorView({
   const [previewSlideIdx, setPreviewSlideIdx] = useState(0);
   const [liveItemId, setLiveItemId] = useState(null);
   const [liveSlideIdx, setLiveSlideIdx] = useState(0);
+  // Scripture sent live directly from the Scriptures tab — a synthetic live source
+  // that isn't a rundown item. Mutually exclusive with a live rundown item.
+  const [liveScripture, setLiveScripture] = useState(null); // { item } | null
+
+  // Global scripture appearance — style applied to every verse + default background.
+  // Edited in the Scriptures tab (ScriptureEditor) / Settings; resolution mirrors songs.
+  const [scriptureStyle, setScriptureStyle] = useState(null);     // verse style_json | null
+  const [scriptureRefStyle, setScriptureRefStyle] = useState(null); // reference style_json | null
+  const [scriptureBgPath, setScriptureBgPath] = useState(null);   // resolved media path | null
+
+  const loadScriptureDefaults = useCallback(async () => {
+    const styleJson = await window.cue.settings.get('scripture_style_json');
+    setScriptureStyle(styleJson || null);
+    const refJson = await window.cue.settings.get('scripture_ref_style_json');
+    setScriptureRefStyle(refJson || null);
+    const bgId = await window.cue.settings.get('global_bg_scripture_id');
+    const bg = bgId ? await window.cue.media.get(bgId) : null;
+    setScriptureBgPath(bg?.path || null);
+  }, []);
+  useEffect(() => { loadScriptureDefaults(); }, [loadScriptureDefaults, bgRefreshTick]);
   const [undoStack, setUndoStack] = useState(null);
   const undoTimerRef = useRef(null);
 
@@ -135,8 +155,8 @@ export default function OperatorView({
 
   useEffect(() => {
     const hasPreview = !!(serviceData?.items?.find((i) => i.id === previewItemId));
-    onStateChange?.({ isLive: !!liveItemId, canGo: hasPreview });
-  }, [liveItemId, previewItemId, serviceData]); // eslint-disable-line react-hooks/exhaustive-deps
+    onStateChange?.({ isLive: !!liveItemId || !!liveScripture, canGo: hasPreview });
+  }, [liveItemId, liveScripture, previewItemId, serviceData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     function onKeyDown(e) {
@@ -173,12 +193,25 @@ export default function OperatorView({
   }, [activeServiceId]);
 
   const previewItem = serviceData?.items?.find((i) => i.id === previewItemId) ?? null;
-  const liveItem    = serviceData?.items?.find((i) => i.id === liveItemId)    ?? null;
+  const liveItem    = liveScripture
+    ? liveScripture.item
+    : (serviceData?.items?.find((i) => i.id === liveItemId) ?? null);
 
   function getSlides(item) {
     if (!item) return [];
     if (item.item_type === 'song') return item.sections || [];
-    if (item.item_type === 'scripture') return item.scriptureSlides || [];
+    if (item.item_type === 'scripture') {
+      const slides = item.scriptureSlides || [];
+      // Inject the global scripture verse style + reference style so the monitors
+      // render scripture exactly as the audience output does.
+      if (!scriptureStyle && !scriptureRefStyle) return slides;
+      const styleStr = scriptureStyle ? JSON.stringify(scriptureStyle) : null;
+      return slides.map((s) => ({
+        ...s,
+        style_json: s.style_json ?? styleStr,
+        _refStyle: scriptureRefStyle,
+      }));
+    }
     if (item.item_type === 'media') return [{ id: item.id, type: 'media', content: '', asset: item.asset }];
     if (item.item_type === 'slide') return [{ id: item.id, type: 'slide', content: item.content }];
     return [];
@@ -224,9 +257,12 @@ export default function OperatorView({
     return {
       ...base,
       text: slide.content || '',
-      // Scripture slides carry their own attribution (reference · version);
+      // Scripture slides carry their own attribution (reference (version));
       // songs use the song's copyright line.
       copyright: slide.copyright ?? item.song?.copyright ?? null,
+      // Scripture attribution sits bottom-right; song copyright stays centred.
+      copyrightAlign: item.item_type === 'scripture' ? 'right' : undefined,
+      copyrightStyle: item.item_type === 'scripture' ? scriptureRefStyle : undefined,
       backgroundPath: resolveBackground(item),
       styleJson: slide.style_json ? JSON.parse(slide.style_json) : null,
     };
@@ -236,6 +272,7 @@ export default function OperatorView({
     // Foreground media shows the asset itself in the preview/live monitors.
     if (item.item_type === 'media' && item.asset?.path) return item.asset.path;
     if (item.background_override?.path) return item.background_override.path;
+    if (item.item_type === 'scripture') return scriptureBgPath;
     if (item.song?.default_background?.path) return item.song.default_background.path;
     return null;
   }
@@ -254,6 +291,7 @@ export default function OperatorView({
       window.cue.output.go(payload);
       setLiveItemId(item.id);
       setLiveSlideIdx(0);
+      setLiveScripture(null);
     }
   }
 
@@ -267,6 +305,7 @@ export default function OperatorView({
       setLiveItemId(previewItem.id);
       setLiveSlideIdx(idx);
       setPreviewSlideIdx(idx);
+      setLiveScripture(null);
     }
   }
 
@@ -286,11 +325,44 @@ export default function OperatorView({
       window.cue.output.go(payload);
       setLiveItemId(previewItem.id);
       setLiveSlideIdx(previewSlideIdx);
+      setLiveScripture(null);
     }
+  }
+
+  // Send a single scripture verse live, straight from the Scriptures tab. This is
+  // a non-rundown live source, so it clears any live rundown item and renders the
+  // live monitor from a synthetic scripture item.
+  function handleScriptureLive(v) {
+    const ref = `${v.bookName} ${v.chapter}:${v.verse}`;
+    const slide = {
+      id: `scripture-live-${v.bookNum}-${v.chapter}-${v.verse}`,
+      type: ref,
+      content: v.text,
+      copyright: `${ref} (${v.versionAbbrev})`,
+      style_json: null,
+    };
+    const payload = {
+      type: 'content',
+      sectionLabel: ref,
+      nextText: '',
+      nextSectionLabel: '',
+      title: ref,
+      text: v.text,
+      copyright: `${ref} (${v.versionAbbrev})`,
+      copyrightAlign: 'right',
+      copyrightStyle: scriptureRefStyle,
+      backgroundPath: scriptureBgPath,
+      styleJson: scriptureStyle,
+    };
+    window.cue.output.go(payload);
+    setLiveScripture({ item: { id: '__scripture_live__', item_type: 'scripture', scriptureSlides: [slide], scripture: { reference: ref } } });
+    setLiveItemId(null);
+    setLiveSlideIdx(0);
   }
 
   function handleClear() {
     window.cue.output.clear();
+    setLiveScripture(null);
   }
 
   function handleLogo() { window.cue.output.logo(); }
@@ -568,6 +640,8 @@ export default function OperatorView({
         <LibraryPanel
           onAddToRundown={handleAddToRundown}
           onAddScripture={handleAddScripture}
+          onScriptureLive={handleScriptureLive}
+          onScriptureStyleSaved={loadScriptureDefaults}
           onAddMedia={handleAddMedia}
           onSongSave={refreshService}
           refreshTick={bgRefreshTick}

@@ -108,4 +108,23 @@ window.cueOutput.onSlideUpdate((payload) => {
   applyStyle(textEl, styleJson);
   textEl.innerHTML = renderWithRuns(text || '', styleJson?.runs);
   copyright.textContent = copy || '';
+  // Scripture attribution ("John 1:1 (KJV)") right-aligned + stylable; song copyright inherits.
+  applyCopyrightStyle(copyright, payload.copyrightStyle, payload.copyrightAlign === 'right' ? 'right' : '');
 });
+
+// Apply an optional reference style (scripture) to the lower-third #copyright.
+function applyCopyrightStyle(el, cs, defaultAlign) {
+  el.style.textAlign       = (cs && cs.align) || defaultAlign || '';
+  el.style.fontFamily      = cs?.fontFamily || '';
+  el.style.fontSize        = cs?.fontSize ? cs.fontSize + 'px' : '';
+  el.style.color           = cs?.color || '';
+  el.style.fontWeight      = cs?.bold ? '700' : '';
+  el.style.fontStyle       = cs?.italic ? 'italic' : '';
+  el.style.textDecoration  = cs?.underline ? 'underline' : '';
+  el.style.textTransform   = cs?.uppercase ? 'uppercase' : '';
+  el.style.letterSpacing   = cs?.letterSpacing ? cs.letterSpacing + 'em' : '';
+  el.style.textShadow      = cs?.textShadow?.enabled
+    ? `${cs.textShadow.x ?? 0}px ${cs.textShadow.y ?? 2}px ${cs.textShadow.blur ?? 16}px ${cs.textShadow.color ?? '#000'}` : '';
+  el.style.webkitTextStroke = cs?.textStroke?.enabled
+    ? `${cs.textStroke.width ?? 2}px ${cs.textStroke.color ?? '#000'}` : '';
+}

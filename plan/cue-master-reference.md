@@ -77,14 +77,19 @@ src/
 │   │   ├── songs.js          Song + section + tag CRUD, FTS5 search.
 │   │   ├── services.js       Service / rundown CRUD. resolveItem() joins media paths.
 │   │   ├── media.js          Media import (copy to userData/media/), list, delete, folders.
-│   │   └── settings.js       Key-value settings store. Global logo/background helpers.
+│   │   ├── settings.js       Key-value settings store. Global logo/background helpers (song/scripture/slide).
+│   │   ├── bible.js          Version + verse queries (books/chapters/verses/adjacent/search/resolve). importVersion,
+│   │   │                     deleteVersion, seedBundledBibles, getbible online catalog (listOnlineVersions/downloadOnlineVersion).
+│   │   ├── bible-import.js   Parsers: book-array / flat / nested-object JSON + Zefania XML. deriveAbbrev (word initials).
+│   │   └── bible-books.js    Canonical 66-book order + abbreviation lookup (lookupBook).
 │   │
 │   ├── ipc/
 │   │   ├── songs.ipc.js      Registers songs:*, tags:* handlers.
 │   │   ├── services.ipc.js   Registers services:* handlers.
 │   │   ├── media.ipc.js      Registers media:* handlers.
 │   │   ├── output.ipc.js     Registers output:* handlers. Calls outputManager and getDb directly.
-│   │   └── settings.ipc.js   Registers settings:* handlers.
+│   │   ├── settings.ipc.js   Registers settings:* handlers.
+│   │   └── bible.ipc.js      Registers bible:* handlers (versions/books/chapters/verses/adjacent/resolve/search/importFile/delete/online:*).
 │   │
 │   └── output/
 │       ├── manager.js        Output window registry. go/clear/logo dispatch. No operator capture loop —
@@ -141,11 +146,14 @@ src/
 │   │   │                          Subscribes to output:media-transport; useMediaDuration() probes clip length.
 │   │   │                          Channel selector strip (2+ channels): click to switch live monitor to any channel.
 │   │   │                          Props: allChannels, liveChannelIdx, onSetLiveChannelIdx.
-│   │   └── LibraryPanel.jsx       Songs tab (react-window virtualised list) + Media tab (grid).
-│   │                              Song search + tag filter. Media import.
-│   │                              Single-click (220ms) → SongPreviewModal. Double-click → add to rundown.
-│   │                              Accepts refreshTick + focusSearchRef props. focusSearchRef exposes
-│   │                              an imperative focus() function that OperatorView calls on S keypress.
+│   │   ├── LibraryPanel.jsx       Songs tab (react-window virtualised list) + Media tab (grid) + Scripture tab.
+│   │   │                          Song search + tag filter. Media import. Passes scripture callbacks through.
+│   │   │                          Single-click (220ms) → SongPreviewModal. Double-click → add to rundown.
+│   │   │                          Accepts refreshTick + focusSearchRef props. focusSearchRef exposes
+│   │   │                          an imperative focus() function that OperatorView calls on S keypress.
+│   │   └── ScripturePanel.jsx     Live verse browser (Scripture tab). Translation rail (select/delete/import/appearance),
+│   │                              predictive Book→Chapter→Verse reference bar (autofocus), whole-chapter verse list,
+│   │                              ↑/↓ live nav, right-click menu, OnlineBibleModal + ScriptureEditor hosts.
 │   │
 │   ├── components/
 │   │   ├── SongEditor.jsx         Full-screen song CRUD modal (createPortal). Sections sidebar with DnD reorder.
@@ -159,6 +167,9 @@ src/
 │   │   │                          TEXTBOX_PRESETS: Full / Top / Middle / Bottom / L3.
 │   │   │                          Paste Song parser (parseSong). renderWithRuns (exported). Escape key closes.
 │   │   ├── SongPreviewModal.jsx   Read-only song preview. Add to Rundown / Edit.
+│   │   ├── ScriptureEditor.jsx    Global scripture appearance modal. Verse/Reference target toggle, drag/resize,
+│   │   │                          object align, background. Reuses SongEditor exports. Saves scripture_*_json + bg.
+│   │   ├── OnlineBibleModal.jsx   getbible.net catalog browser. Multi-select download with licence warning.
 │   │   ├── MediaPickerModal.jsx   Media grid picker. Used by RundownPanel for bg override.
 │   │   ├── SlideList.jsx          Scrollable slide/section list. Preview and live variants.
 │   │   │                          Slide content capped at max-h-24 to prevent runaway tall cards.
@@ -169,7 +180,8 @@ src/
 │   │   ├── OutputChannels.jsx    Channel cards. Create/edit/delete. Monitor assignment per channel.
 │   │   │                          NDI cards have an audio mute toggle (ndi_audio_muted) — volume_off/volume_up.
 │   │   ├── LogoSettings.jsx      Global logo picker.
-│   │   ├── BackgroundSettings.jsx Global song/slide background pickers. Bulk apply actions.
+│   │   ├── BackgroundSettings.jsx Global song/scripture/slide background pickers. Bulk apply actions.
+│   │   ├── BibleSettings.jsx     Installed translations list (delete) + Import (file/online) menu.
 │   │   │                          Accepts only activeServiceId prop. No DangerZone or footer inside.
 │   │   ├── DangerZone.jsx        Destructive actions: clear rundown items, delete rundown, clear library.
 │   │   │                          Two-step confirm on every action. Success toast feedback.
@@ -227,8 +239,12 @@ src/
 - `vite.preload.config.js` — builds preloads
 - `vite.renderer.config.js` — builds renderer React app
 - `tailwind.config.js` — custom design tokens (see §10)
-- `forge.config.js` — Electron Forge packaging config
+- `forge.config.js` — Electron Forge packaging config (`extraResource: ['./resources/bible']`)
 - `index.html` — Vite renderer entry HTML
+
+**Project-root data/tooling (outside `src/`):**
+- `resources/bible/{kjv,web}.json` — bundled public-domain translations (seeded on first run; shipped via `extraResource`)
+- `scripts/build-bibles.mjs` — regenerates the seed JSON from getbible.net v2 (`node scripts/build-bibles.mjs`)
 
 ---
 
@@ -384,7 +400,10 @@ Known keys:
 |---|---|---|
 | `global_logo_id` | number\|null | Media asset ID for global logo |
 | `global_bg_song_id` | number\|null | Global default background for songs |
+| `global_bg_scripture_id` | number\|null | Global default background for scripture |
 | `global_bg_slide_id` | number\|null | Global default background for slides |
+| `scripture_style_json` | object\|null | Global style_json applied to every scripture verse; `null` = template defaults |
+| `scripture_ref_style_json` | object\|null | Global style_json for the scripture reference line; optional `pos:{x,y}` free-positions it; `null` = default right-aligned bottom |
 | `operator_preview_layout` | 'stacked'\|'sidebyside' | Unused in current UI — reserved |
 | `keyboard_modifier` | 'meta'\|'ctrl'\|'alt' | Modifier key for transport shortcuts (default: 'meta' on macOS, 'ctrl' on Windows) |
 | `keyboard_go` | string | Key char for GO shortcut (default: 'g') |
@@ -573,7 +592,9 @@ All renderer↔main communication is via `ipcRenderer.invoke` / `ipcMain.handle`
   type: 'content' | 'clear' | 'logo',
   text: string | null,
   sectionLabel: string | null,
-  copyright: string | null,
+  copyright: string | null,            // scripture reference "Book c:v (VERSION)"; songs use their copyright line
+  copyrightAlign: 'right' | undefined, // 'right' for scripture (bottom-right); songs/default centred
+  copyrightStyle: object | undefined,  // scripture reference style_json (font/size/colour/align + optional pos:{x,y})
   backgroundPath: string | null,    // absolute filesystem path (not a URL)
   logoPath: string | null,          // absolute filesystem path
   styleJson: object | null,         // parsed style_json
@@ -619,11 +640,27 @@ element) for clean gapless audio. **Program audio comes from one window only** (
 | `get(key)` | Returns JSON-parsed value or null. |
 | `set(key, value)` | JSON-encodes value, upserts. |
 | `setGlobalLogo(mediaId\|null)` | Sets `global_logo_id`. |
-| `setGlobalBackground(type, mediaId\|null)` | type: `'song'` or `'slide'`. |
+| `setGlobalBackground(type, mediaId\|null)` | type: `'song'`, `'scripture'`, or `'slide'`. |
 | `applyBackgroundToAll(type, mediaId)` | Bulk-updates all songs.default_background_id (song type only). |
 | `getDiskUsage()` | Delegates to media.getDiskUsage(). |
 | `getDataPath()` | Returns app.getPath('userData'). |
 | `openDataFolder()` | Opens userData in Finder/Explorer. |
+
+### `window.cue.bible`
+
+| Method | Returns | Notes |
+|---|---|---|
+| `versions()` | `[{id, name, abbrev, language, verse_count}]` | Installed translations. |
+| `books(versionId)` | `[{book_num, book_name}]` | Canonical order. |
+| `chapters(versionId, bookNum)` | `[chapterNum, …]` | Ascending. |
+| `verses(versionId, bookNum, chapter)` | `{bookNum, bookName, chapter, verses:[{chapter, verse, text}]}` | Whole chapter — drives the live verse list. |
+| `adjacent(versionId, bookNum, chapter, verse, dir)` | next/prev verse `{book_num, book_name, chapter, verse, text}` or null | `dir` 1\|-1; rolls across chapter/book boundaries. Powers ↑/↓ live nav. |
+| `resolve(versionId, ref, versesPerSlide?)` | passage payload | Free-text reference → self-contained passage (Add-to-Rundown scripture items). |
+| `search(versionId, query)` | `[{book_name, book_num, chapter, verse, text}]` | FTS5 verse search. |
+| `importFile(filePath, meta)` | `{ok, id, name, count}` \| `{ok:false, error}` | Imports JSON / Zefania XML. |
+| `delete(id)` | void | Removes a translation (FTS purge + cascade). |
+| `online:list` (`onlineList()`) | `{ok, versions:[{abbrev, name, language, license, restricted, installed}]}` | getbible.net v2 catalog (117 versions); installed matched by name. |
+| `online:download` (`onlineDownload(abbrev)`) | `{ok, id, name, count}` \| `{ok, already:true}` \| `{ok:false, error}` | Fetch (main-process) + normalize + import one version. |
 
 ### `window.cue.dialog`
 - `openFile(options)` → `{canceled, filePaths}` — wraps `dialog.showOpenDialog`.
@@ -688,6 +725,14 @@ When building the output payload, `resolveBackground(item)` in `OperatorView.jsx
 `globalBgSong` / `globalBgSlide` are loaded in `OperatorView` on mount using `window.cue.media.get(id)` (fetches by ID, works regardless of folder). The resolved `backgroundPath` is an absolute filesystem path passed in the output payload. Output windows convert it to `cue-media://` via their inline `pathToUrl()`.
 
 Custom slides use `global_bg_slide_id`; songs use `global_bg_song_id`.
+
+**Scripture** has no per-entity record, so the global default stands in for the per-song layer:
+```
+1. item.background_override.path   — per-rundown-slot override (rundown items only)
+2. scriptureBgPath                 — global scripture default (settings.global_bg_scripture_id)
+3. null → black screen
+```
+`OperatorView.loadScriptureDefaults()` reads `scripture_style_json` (verse), `scripture_ref_style_json` (reference) and `global_bg_scripture_id` (resolved to a path), refreshed on `bgRefreshTick` and after `ScriptureEditor` saves (`onScriptureStyleSaved`). `getSlides()` injects the verse style + `_refStyle` into scripture slides for the monitors; `resolveBackground()` falls back to `scriptureBgPath`. Both the rundown path (`buildPayload`) and the live-from-tab path (`handleScriptureLive`) carry `copyrightStyle` + `copyrightAlign:'right'`.
 
 ### Background write-through (cross-rundown persistence)
 
@@ -961,15 +1006,18 @@ Offscreen rendering (`offscreen: true` BrowserWindow) + `paint` event + `setInte
 
 `SongEditor.jsx` is a full-screen modal (via `createPortal`). Key internals:
 
-**Two-row formatting toolbar (`FormattingToolbar`)** — row 1 (always visible): font family, font size (32–128px), colour swatch, bold, italic, underline, align L/C/R, vertical align T/C/B, letter spacing, uppercase, reset. Row 2 (template-dependent):
-- Fullscreen channels: textbox preset selector (TEXTBOX_PRESETS: Full, Title, Lower-Third Band, Left Column, Right Column) + manual x/y/w/h inputs
+**Two-row formatting toolbar (`FormattingToolbar`)** — row 1 (always visible): font family, font size, colour swatch, bold, italic, underline, *text* align L/C/R/justify, *text* vertical align T/C/B (within the box), letter spacing, uppercase, reset. Row 2 (template-dependent):
+- Fullscreen channels: text box **Fill** (box = content window) + **object-align** buttons (`align_horizontal_*` / `align_vertical_*`, snap the box within the content window via `objAlign('h'|'v', …)`) + manual X/Y/W/H inputs
 - Lower-third channels: bar toggle (On/Off), colour swatch, opacity slider, solid/gradient toggle
+- `simple` prop (scripture reference target) hides v-align/text-box/bar and adds a Pos Bottom/Free + X/Y control for the reference `pos`
 
-`previewTemplate` prop determines which row 2 is shown. Set from `OperatorView`'s active channel template. `FormattingToolbar` receives it as a prop.
+`previewTemplate` prop determines which row 2 is shown. `FormattingToolbar`, `SlidePreview`, `LowerThirdPreview`, `copyrightCss`, `copyrightFontCss`, `renderWithRuns`, `DEFAULT_STYLE`, `styleIsDefault` are **exported** from `SongEditor.jsx` and reused by `ScriptureEditor.jsx` and `PreviewLivePanel.jsx`.
 
-**Run-level styling** — selected text gets bold/italic/underline/colour/font overrides stored as `runs: [{start,end,...}]` in `style_json`. `renderWithRuns(text, runs)` converts to `<span style="...">` HTML. Exported from `SongEditor.jsx`; used by `PreviewLivePanel.jsx` and inline copies in output templates.
+**Run-level styling** — selected text gets bold/italic/underline/colour/font overrides stored as `runs: [{start,end,...}]` in `style_json`. `renderWithRuns(text, runs)` converts to `<span style="...">` HTML.
 
-**Live preview pane** — always-visible `SlidePreview` (fullscreen) or `LowerThirdPreview` (lower-third), rendered at 1920×1080 then CSS-scaled to fit the preview column. Background picker (media or colour) wired to `songs:setBackground`. Background shows in fullscreen preview; lower-third preview shows checkerboard (transparent, composited externally).
+**Live preview pane** — always-visible `SlidePreview` (fullscreen) or `LowerThirdPreview` (lower-third), rendered at 1920×1080 then CSS-scaled (height-bound 16:9 box so it never overflows the footer). Background picker wired to `songs:setBackground`.
+
+**PowerPoint-style positioning (editor previews)** — a fixed `CONTENT_BOX = {x:5,y:5,w:90,h:90}` "content window" (safe-area guide) is drawn over the background. `style.textBox{x,y,w,h}` is the text box: **drag** the body to move, **8 resize handles** (`TB_HANDLES`, counter-scaled to constant visual size; `resizeBox()` keeps the opposite edge fixed) to resize, anywhere on screen. *Text align* aligns text within the box; *object align* snaps the box within the content window. The reference is draggable too (`onRefPosChange`; converts bottom-anchor → `pos{x,y}` via bounding-rect measurement, no jump). `SlidePreview` props: `onTextBoxChange`, `onRefPosChange`. Output already honours `textBox.h` + `verticalAlign`, so positioning is editor-only — no template changes.
 
 **`ltBar`** — `null` by default (transparent lower-third bar). When set: `{ color, opacity, solid }`. `buildBarBg(ltBar)` computes a `linear-gradient` (default) or `rgba()` solid. Same function duplicated in `SongEditor.jsx`, `PreviewLivePanel.jsx`, and `lowerthird.js`.
 
@@ -983,7 +1031,31 @@ No-header fallback: split by blank lines, all → `verse`. The user then relabel
 
 ---
 
-## 17. Known Gaps and Backlog
+## 17. Scripture Module
+
+### Data + storage
+`bible_versions` / `bible_verses` (+ `bible_verses_fts`) from migration v7. Verse text is stored normalized; book numbering/names follow the canonical 66-book Protestant order in `db/bible-books.js` so free-text references resolve across translations. DB layer in `db/bible.js`: `listVersions`, `listBooks`, `listChapters`, `listVerses`, `adjacentVerse` (canonical-order next/prev across chapter/book boundaries), `resolvePassage`, `search`, `importVersion`, `deleteVersion`.
+
+### Bundled translations
+**KJV + WEB** (both public domain) ship as normalized seed JSON in `resources/bible/` (built by `scripts/build-bibles.mjs` from getbible.net v2). `seedBundledBibles()` imports any missing bundled version on startup. `forge.config.js` `extraResource: ['./resources/bible']` packages them. ESV/NIV/NKJV etc. are NOT bundled (copyrighted).
+
+### Importing
+The Import button (Scriptures rail + Settings → Bible Translations) opens a menu: **Import from File** or **Import from Online** (`OnlineBibleModal`).
+- **File** (`db/bible-import.js`): accepts 4 shapes — thiagobodruk book-array JSON, flat verse-list JSON, nested object JSON (`{Book:{chapter:{verse:"text"}}}`, the `meaningless`/BibleGateway shape; "Info" key ignored), and Zefania XML. Abbreviation is derived by `deriveAbbrev(name)` — initials of each word ("King James Version" → "KJV"); single word uppercased whole; parentheticals stripped.
+- **Online**: getbible.net v2 catalog with per-version licence; multi-select download. Network + parse in main process (`fetch` + `AbortSignal.timeout`). Download keys off the catalog `abbrev` (the real getbible slug); the stored abbreviation is re-derived from the name. Install/dedupe matched by name. A licence warning + "what's available" note are shown; no version is blocked (operator responsibility).
+
+### Scriptures tab (`ScripturePanel.jsx`)
+EasyWorship-style live verse browser, a live source independent of the rundown. Left rail: translation picker (hover-delete per version with inline ✓/✕ confirm) + Import + Appearance. Predictive reference bar auto-focused on open: Book autocompletes → Tab → Chapter → Tab → Verse; Enter sends the selected verse live. Verse list shows the whole loaded chapter; single-click selects (preview only), double-click / Enter / right-click→Send Live sends live; with the list focused ↑/↓ move the selection AND send it live (rolling across chapter/book via `adjacent`). Right-click menu also adds verse/chapter to the rundown. Going live → `OperatorView.handleScriptureLive` → `output.go` + synthetic `liveScripture` item (clears any live rundown item; rundown GO clears `liveScripture`). LIVE marker self-clears via `output:state-changed`.
+
+### Scripture appearance (`ScriptureEditor.jsx`)
+Styling counterpart to `SongEditor`, reusing its exported toolbar/preview/helpers. **Verse Text / Reference** target toggle switches what the toolbar edits: verse style (`scripture_style_json`) or reference-line style (`scripture_ref_style_json`, `simple` toolbar mode). Plus default background (`global_bg_scripture_id`). All apply to every verse — text is fixed. Reference renders as `Book c:v (VERSION)`, default right-aligned with symmetric 60px inset, stylable, and free-positionable (`pos{x,y}`, drag or X/Y).
+
+### Reference rendering across surfaces
+The reference flows in the payload as `copyright` (text), `copyrightAlign` (`'right'` for scripture), and `copyrightStyle` (the ref style incl. optional `pos`). Applied by `applyCopyrightStyle` in `fullscreen.js`/`lowerthird.js` (lower-third ignores `pos` — the bar owns layout) and `copyrightCss` in the operator monitors (via `slide._refStyle`). The **confidence monitor** (`stage.html` `#current-ref`) shows the reference above the verse in its own legible styling (auto-fit reserves space for it).
+
+---
+
+## 18. Known Gaps and Backlog
 
 | Item | Priority | Notes |
 |---|---|---|
@@ -999,20 +1071,21 @@ No-header fallback: split by blank lines, all → `verse`. The user then relabel
 
 ---
 
-## 18. App Startup Sequence
+## 19. App Startup Sequence
 
 1. `protocol.registerSchemesAsPrivileged` — must be synchronous before app ready
 2. `app.whenReady()`:
    a. `protocol.handle('cue-media', ...)` — register media file server
    b. `initDb()` — open SQLite, run pending migrations
-   c. Register all IPC handlers (songs, services, media, output, settings)
-   d. `createMainWindow()` — show operator UI
-   e. `outputManager.init()` — load active channels, create BrowserWindows
-   f. On `did-finish-load`: send `output:unresolved-channels` and/or `output:ndi-unavailable` if needed. The renderer does not auto-navigate to Settings — the operator opens it manually.
+   c. `seedBundledBibles()` — import any missing bundled translation (KJV + WEB) from `resources/bible/*.json` (matched by abbrev). Packaged path `process.resourcesPath/bible`; dev path `app.getAppPath()/resources/bible`.
+   d. Register all IPC handlers (songs, services, media, output, settings, bible)
+   e. `createMainWindow()` — show operator UI
+   f. `outputManager.init()` — load active channels, create BrowserWindows
+   g. On `did-finish-load`: send `output:unresolved-channels` and/or `output:ndi-unavailable` if needed. The renderer does not auto-navigate to Settings — the operator opens it manually.
 
 ---
 
-## 19. Running the App
+## 20. Running the App
 
 ```bash
 npm start          # dev mode — Vite dev server + Electron, DevTools auto-open

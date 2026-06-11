@@ -3,6 +3,9 @@ module.exports = {
     asar: true,
     name: 'Cue',
     executableName: 'cue',
+    // Bundled public-domain Bible translations (KJV + WEB). Copied into the app's
+    // Resources/ dir (outside the asar) and seeded into the DB on first run.
+    extraResource: ['./resources/bible'],
   },
   rebuildConfig: {
     extraModules: ['better-sqlite3', 'grandi'],

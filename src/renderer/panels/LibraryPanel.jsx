@@ -154,7 +154,7 @@ function MediaGrid({ assets, onDelete, onSetBackground, onAddToRundown }) {
   );
 }
 
-export default function LibraryPanel({ onAddToRundown, onAddScripture, onAddMedia, onSongSave, refreshTick = 0, focusSearchRef }) {
+export default function LibraryPanel({ onAddToRundown, onAddScripture, onScriptureLive, onScriptureStyleSaved, onAddMedia, onSongSave, refreshTick = 0, focusSearchRef }) {
   const [tab, setTab] = useState('songs');
   const [searchQuery, setSearchQuery] = useState('');
   const [songs, setSongs] = useState([]);
@@ -398,7 +398,7 @@ export default function LibraryPanel({ onAddToRundown, onAddScripture, onAddMedi
 
       {/* Scripture tab */}
       {tab === 'scripture' && (
-        <ScripturePanel onAdd={onAddScripture} />
+        <ScripturePanel onAdd={onAddScripture} onGoLive={onScriptureLive} onStyleSaved={onScriptureStyleSaved} />
       )}
 
       {previewSong && (

@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { mediaUrl } from '../utils/mediaUrl';
 
+const typeFromKey = (k) => k.includes('song') ? 'song' : k.includes('scripture') ? 'scripture' : 'slide';
+
 function BackgroundPicker({ label, settingKey }) {
   const [assetId, setAssetId] = useState(null);
   const [asset, setAsset] = useState(null);
@@ -18,7 +20,7 @@ function BackgroundPicker({ label, settingKey }) {
       properties: ['openFile'],
     });
     if (result.canceled || !result.filePaths.length) return;
-    const type = settingKey.includes('song') ? 'song' : 'slide';
+    const type = typeFromKey(settingKey);
     const imported = await window.cue.media.import(result.filePaths);
     if (imported.length) {
       await window.cue.settings.setGlobalBackground(type, imported[0].id);
@@ -28,7 +30,7 @@ function BackgroundPicker({ label, settingKey }) {
   }
 
   async function handleClear() {
-    const type = settingKey.includes('song') ? 'song' : 'slide';
+    const type = typeFromKey(settingKey);
     await window.cue.settings.setGlobalBackground(type, null);
     setAssetId(null);
     setAsset(null);
@@ -134,6 +136,7 @@ export default function BackgroundSettings({ activeServiceId }) {
         </div>
         <div className="flex gap-md">
           <BackgroundPicker label="Songs" settingKey="global_bg_song_id" />
+          <BackgroundPicker label="Scripture" settingKey="global_bg_scripture_id" />
           <BackgroundPicker label="Slides" settingKey="global_bg_slide_id" />
         </div>
       </div>

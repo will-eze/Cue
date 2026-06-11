@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import SlideList from '../components/SlideList';
-import { renderWithRuns } from '../components/SongEditor';
+import { renderWithRuns, copyrightCss } from '../components/SongEditor';
 import { mediaUrl } from '../utils/mediaUrl';
 
 function buildBarBg(ltBar) {
@@ -142,6 +142,12 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
   const style  = slide?.style_json ? JSON.parse(slide.style_json) : null;
   const isLT   = channelTemplate === 'lowerthird';
 
+  // Attribution line — scripture slides carry "Book c:v (VERSION)", songs use the
+  // song copyright. Scripture sits bottom-right; everything else stays centred.
+  const copyrightText  = slide ? (slide.copyright ?? item?.song?.copyright ?? null) : null;
+  const copyrightRight = item?.item_type === 'scripture';
+  const copyrightStyle = slide?._refStyle ?? null; // scripture reference style
+
   // The monitor renders the slide from the payload (no screen-capture). In the
   // live 'cleared' state the audience output keeps the background but hides the
   // text, so we mirror that by suppressing the text block.
@@ -216,6 +222,11 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
                     display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
                   }}>
                     <p style={textStyle} dangerouslySetInnerHTML={{ __html: renderWithRuns(slide.content, style?.runs) }} />
+                    {copyrightText && (
+                      <div style={{ fontSize: 18, color: 'rgba(255,255,255,0.7)', marginTop: 4, ...copyrightCss(copyrightStyle, copyrightRight ? 'right' : 'left', false), paddingLeft: undefined, paddingRight: undefined }}>
+                        {copyrightText}
+                      </div>
+                    )}
                   </div>
                 ) : (() => {
                   const tb = style?.textBox || { x: 5, y: 5, w: 90, h: 90 };
@@ -234,6 +245,18 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
                     </div>
                   );
                 })())}
+
+                {/* Attribution / copyright — matches fullscreen.css #copyright */}
+                {!hideText && !isLT && copyrightText && (
+                  <div style={{
+                    position: 'absolute', bottom: 40, left: 0, right: 0,
+                    color: 'rgba(255,255,255,0.7)', fontSize: 20,
+                    textShadow: '0 1px 6px rgba(0,0,0,0.8)', zIndex: 2,
+                    ...copyrightCss(copyrightStyle, copyrightRight ? 'right' : 'center'),
+                  }}>
+                    {copyrightText}
+                  </div>
+                )}
           </div>
         </div>
       ) : (

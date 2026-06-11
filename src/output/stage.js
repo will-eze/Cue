@@ -1,6 +1,7 @@
 // ── Element refs ──────────────────────────────────────────────────────────────
 const appEl        = document.getElementById('app');
 const currentEl    = document.getElementById('current-text');
+const currentRefEl = document.getElementById('current-ref');
 const mediaWrapEl  = document.getElementById('media-wrap');
 const nextEl       = document.getElementById('next-text');
 const timerEl      = document.getElementById('timer-value');
@@ -33,10 +34,13 @@ function fitCurrentText() {
   fitRaf = requestAnimationFrame(() => {
     const section = currentEl.parentElement;
     const secStyles = getComputedStyle(section);
-    const availH = section.clientHeight
+    let availH = section.clientHeight
       - parseFloat(secStyles.paddingTop)
       - parseFloat(secStyles.paddingBottom)
       - 4; // small safety gap
+
+    // Reserve room for the scripture reference overlay (top) when shown.
+    if (currentRefEl.classList.contains('active')) availH -= currentRefEl.offsetHeight + 8;
 
     if (availH <= 0) return;
 
@@ -169,10 +173,17 @@ function showStageVideo(mediaPath, loop, transport) {
 }
 
 // ── Slide state ───────────────────────────────────────────────────────────────
-let lastContent = { text: '', label: '', nextText: '' };
+let lastContent = { text: '', label: '', nextText: '', ref: '' };
 
 function renderContent() {
   currentEl.innerHTML = esc(lastContent.text).replace(/\n/g, '<br>');
+  if (lastContent.ref) {
+    currentRefEl.textContent = lastContent.ref;
+    currentRefEl.classList.add('active');
+  } else {
+    currentRefEl.textContent = '';
+    currentRefEl.classList.remove('active');
+  }
   nextEl.innerHTML = lastContent.nextText
     ? esc(lastContent.nextText).replace(/\n/g, '<br>')
     : '<span style="opacity:0.3;font-style:italic">—</span>';
@@ -261,10 +272,12 @@ window.cueOutput.onSlideUpdate((payload) => {
 
   if (type === 'content') {
     stageTransport = media ? (payload.transport || null) : null;
+    // Scripture carries a "Book c:v (VERSION)" reference (copyrightAlign 'right').
+    const ref = (!media && payload.copyrightAlign === 'right') ? (payload.copyright || '') : '';
     if (media && media.type === 'video') {
       // Muted video preview; the countdown starts on loadedmetadata.
       showStageVideo(media.path, !!media.loop, payload.transport);
-      lastContent = { text: '', label: '', nextText: nextText || '' };
+      lastContent = { text: '', label: '', nextText: nextText || '', ref: '' };
     } else {
       clearStageVideo();
       stopCounter();
@@ -274,9 +287,10 @@ window.cueOutput.onSlideUpdate((payload) => {
           text: icon + ' ' + (payload.title || media.path.split(/[\\/]/).pop()),
           label: '',
           nextText: nextText || '',
+          ref: '',
         };
       } else {
-        lastContent = { text: text || '', label: sectionLabel || '', nextText: nextText || '' };
+        lastContent = { text: text || '', label: sectionLabel || '', nextText: nextText || '', ref };
       }
     }
     renderContent();

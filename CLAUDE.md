@@ -214,8 +214,8 @@ src/
 │   │                              Single-click → preview modal (220ms). Double-click → add to rundown.
 │   │                              Accepts refreshTick + focusSearchRef props.
 │   ├── components/
-│   │   ├── SongEditor.jsx         Full song CRUD modal. 2-row FormattingToolbar (row 2: textbox presets for
-│   │   │                          fullscreen, bar controls for lower-third). SlidePreview (fullscreen) and
+│   │   ├── SongEditor.jsx         Full song CRUD modal. 2-row FormattingToolbar (row 2: text box Fill +
+│   │   │                          object-align + X/Y/W/H for fullscreen, bar controls for lower-third). SlidePreview (fullscreen) and
 │   │   │                          LowerThirdPreview rendered at 1920×1080, CSS-scaled. Background picker in
 │   │   │                          SlidePreview. ltBar style prop (null=transparent). Paste Song parser.
 │   │   │                          Exports renderWithRuns() used by PreviewLivePanel. Escape key closes.
@@ -291,7 +291,10 @@ Recent migrations: v6 `'stage'` template, v7 scripture (`bible_versions`/`bible_
 |---|---|---|
 | `global_logo_id` | number\|null | Global logo media asset ID |
 | `global_bg_song_id` | number\|null | Global default background for songs |
+| `global_bg_scripture_id` | number\|null | Global default background for scripture |
 | `global_bg_slide_id` | number\|null | Global default background for slides |
+| `scripture_style_json` | object\|null | Global style_json applied to every scripture verse (edited in ScriptureEditor); `null` = template defaults |
+| `scripture_ref_style_json` | object\|null | Global style_json for the scripture reference line ("John 1:1 (KJV)"); `null` = default right-aligned attribution. Optional `pos:{x,y}` (percent) free-positions it (drag or X/Y in the editor); absent = bottom band |
 | `operator_preview_layout` | string | Reserved — not yet wired in UI |
 | `keyboard_modifier` | 'meta'\|'ctrl'\|'alt' | Modifier for transport shortcuts (default: 'meta' macOS / 'ctrl' Windows) |
 | `keyboard_go` | string | Key char for GO (default: 'g') |
@@ -319,12 +322,22 @@ Recent migrations: v6 `'stage'` template, v7 scripture (`bible_versions`/`bible_
 ```
 `null` means "use template defaults." `fontFamily` must match a family in `fonts.css`. `textBox`/`verticalAlign` apply to fullscreen only. `ltBar` applies to lower-third only (`null` = transparent bar). FTS5 indexes `content` only.
 
+**Positioning model (editor previews, `SlidePreview`)**: a fixed `CONTENT_BOX = {x:5,y:5,w:90,h:90}` "content window" (safe-area guide) sits over the background. `style.textBox{x,y,w,h}` is the actual text box — **draggable + resizable** (8 PowerPoint-style handles, counter-scaled to stay constant visual size; `resizeBox()` keeps the opposite edge fixed) and can be moved anywhere on screen. **Two alignments**: *text align* = text within the box (`align` horizontal + `verticalAlign` top/middle/bottom); *object align* = snaps the box within the content window (`objAlign('h'|'v', …)`, keeps box size). Output already honours `textBox.h` + `verticalAlign`, so these are editor-only — no template changes. The reference is draggable too (converts bottom-anchor → `pos{x,y}` via bounding-rect measurement so there's no jump).
+
 ### Background resolution order
 
+Songs:
 1. `service_items.background_override_id` — per-slot override
 2. `songs.default_background_id` — per-song default
 3. `settings.global_bg_song_id` / `global_bg_slide_id` — global type default
 4. `null` → black screen
+
+Scripture (no per-entity record, so the global default stands in for the per-song layer):
+1. `service_items.background_override_id` — per-slot override (rundown items only)
+2. `settings.global_bg_scripture_id` — global scripture default
+3. `null` → black screen
+
+Scripture style + background resolution is applied in the **renderer** (`OperatorView`): `loadScriptureDefaults()` reads `scripture_style_json` + `global_bg_scripture_id` (refreshed on `bgRefreshTick` and after the ScriptureEditor saves via `onScriptureStyleSaved`). `getSlides()` injects the style into scripture slides; `resolveBackground()` falls back to the scripture default. Both the rundown path (`buildPayload`) and the live-from-tab path (`handleScriptureLive`) flow through these.
 
 ---
 
@@ -378,9 +391,27 @@ Recent migrations: v6 `'stage'` template, v7 scripture (`bible_versions`/`bible_
 
 ### Settings
 - `settings:get(key)` / `settings:set(key, value)`
-- `settings:setGlobalLogo(mediaId|null)` / `settings:setGlobalBackground(type, mediaId|null)`
+- `settings:setGlobalLogo(mediaId|null)` / `settings:setGlobalBackground(type, mediaId|null)` — `type`: `'song'|'scripture'|'slide'`
 - `settings:applyBackgroundToAll(type, mediaId)` — bulk update, UI must confirm
 - `settings:getDiskUsage()` / `settings:getDataPath()` / `settings:openDataFolder()`
+
+### Scripture (Bible) — `window.cue.bible.*`
+- `bible:versions:list()` → `[{id, name, abbrev, language, verse_count}]`
+- `bible:books(versionId)` → `[{book_num, book_name}]` (canonical order)
+- `bible:chapters(versionId, bookNum)` → `[chapterNum, …]`
+- `bible:verses(versionId, bookNum, chapter)` → `{bookNum, bookName, chapter, verses:[{chapter, verse, text}]}`
+- `bible:adjacent(versionId, bookNum, chapter, verse, dir)` → next/prev verse in canonical order (`dir` 1|-1), rolls across chapter/book boundaries; `null` at the ends. Powers ↑/↓ live navigation.
+- `bible:resolve(versionId, ref, versesPerSlide?)` → self-contained passage payload (used for Add-to-Rundown scripture items)
+- `bible:search(versionId, query)` → FTS5 verse search
+- `bible:importFile(filePath, meta)` / `bible:delete(id)` — import / remove a translation. `bible-import.js` accepts 4 shapes: thiagobodruk book-array JSON, flat verse-list JSON (`[{book,chapter,verse,text}]` / `{verses:[…]}`), nested object JSON (`{Book:{chapter:{verse:"text"}}}` — the `meaningless`/BibleGateway shape, "Info" key ignored), and Zefania XML.
+- `bible:online:list()` → `{ok, versions:[{abbrev, name, language, license, restricted, installed}]}` — getbible.net v2 catalog (117 versions), main-process `fetch`
+- `bible:online:download(abbrev)` → `{ok, id, name, count}` | `{ok, already:true}` | `{ok:false, error}` — fetch + normalize + import one version
+
+**Importing translations**: the Import button (Scriptures tab rail + Settings → Bible Translations) opens a two-option menu — **Import from File** (the existing JSON / Zefania XML picker) or **Import from Online** (`OnlineBibleModal`). The online modal lists the getbible.net v2 catalog with per-version licence + install state, multi-select, and downloads + imports the chosen versions into the DB (persists like any import). A licence warning is shown but no version is blocked — responsibility rests with the operator (copyrighted versions require a licence). Network + parsing happen in the main process (`listOnlineVersions` / `downloadOnlineVersion` in `db/bible.js`, `fetch` + `AbortSignal.timeout`).
+
+**Bundled translations**: KJV + WEB (both public domain) ship as normalized seed JSON in `resources/bible/` (built by `scripts/build-bibles.mjs` from getbible.net v2). `seedBundledBibles()` imports any missing bundled version on startup (matched by abbrev). `forge.config.js` `extraResource` copies `resources/bible` into the packaged app; resolved at `process.resourcesPath/bible` (packaged) or `app.getAppPath()/resources/bible` (dev). ESV is NOT bundled — copyrighted, not freely redistributable.
+
+**Scriptures tab (live verse browser)** — `ScripturePanel.jsx`, an EasyWorship-style live source independent of the rundown. Predictive reference bar (Book autocompletes → Tab → Chapter → Tab → Verse; Enter sends live). The verse list shows the whole loaded chapter; single-click selects (preview only, no live), double-click / Enter sends live, and with the list focused ↑/↓ move the selection AND send it live. Going live calls `OperatorView.handleScriptureLive` → `output.go` + a synthetic `liveScripture` item (clears any live rundown item; rundown GO clears `liveScripture`). The panel drops its LIVE marker via `output:state-changed` when the output is cleared or replaced. Verse rows have a **right-click context menu** (Send Live / Add Verse to Rundown / Add Chapter to Rundown) in addition to the reference-bar Add button. The **Appearance** button opens `ScriptureEditor` (`components/ScriptureEditor.jsx`) — the styling counterpart to `SongEditor`, reusing its exported `FormattingToolbar` / `SlidePreview` / `LowerThirdPreview` / `copyrightCss` / `DEFAULT_STYLE` / `styleIsDefault`. A **Verse Text / Reference** target toggle switches what the toolbar edits: the verse style (`scripture_style_json`) or the reference-line style (`scripture_ref_style_json`, edited with `simple` toolbar mode — no text-box/v-align/bar, but adds a Pos Bottom/Free + X/Y control). **Positioning**: the verse text box and the reference are **draggable** in the editor preview (`SlidePreview` `onTextBoxChange`/`onRefPosChange`; pointer delta ÷ scale → percent), with numeric inputs as the precise alternative — verse via `textBox{x,y,w,h}`, reference via `pos{x,y}` (free) or bottom-anchored when `pos` is absent. Plus the default scripture background (`global_bg_scripture_id`). All three apply to every verse — no per-section editing since the text is fixed. The reference style threads through as the payload `copyrightStyle` (applied by `applyCopyrightStyle` in fullscreen/lowerthird templates and `copyrightCss` in the operator monitors via `slide._refStyle`). The **confidence monitor** (`stage.html` `#current-ref`) shows the reference (`Book c:v (VERSION)`) above the verse in its own legible styling — not the custom output style.
 
 ### Dialog
 - `dialog:openFile(options)` → `{canceled, filePaths}`
@@ -407,7 +438,9 @@ Recent migrations: v6 `'stage'` template, v7 scripture (`bible_versions`/`bible_
   type: 'content' | 'clear' | 'logo',
   text: string | null,
   sectionLabel: string | null,
-  copyright: string | null,
+  copyright: string | null,        // scripture reference is "Book c:v (VERSION)"; songs use their copyright line
+  copyrightAlign: 'right' | undefined, // 'right' for scripture (bottom-right); songs/default centred
+  copyrightStyle: object | undefined,  // scripture reference style_json (font/size/colour/align + optional pos:{x,y}); applied to #copyright
   backgroundPath: string | null,   // absolute filesystem path — output template encodes to cue-media://
   logoPath: string | null,
   styleJson: object | null,        // parsed style_json from song_sections

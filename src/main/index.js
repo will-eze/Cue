@@ -8,6 +8,7 @@ import { registerMediaIpc } from './ipc/media.ipc.js';
 import { registerOutputIpc } from './ipc/output.ipc.js';
 import { registerSettingsIpc } from './ipc/settings.ipc.js';
 import { registerBibleIpc } from './ipc/bible.ipc.js';
+import { seedBundledBibles } from './db/bible.js';
 import * as outputManager from './output/manager.js';
 import { isAvailable as ndiAvailable } from './output/ndi.js';
 
@@ -141,6 +142,7 @@ app.whenReady().then(async () => {
   });
 
   initDb();
+  seedBundledBibles();
 
   registerSongsIpc();
   registerServicesIpc();

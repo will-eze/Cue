@@ -21,7 +21,7 @@ function resolveScripture(item) {
         id: `${item.id}-${i}`,
         type: ref,                              // shown as the slide label
         content: group.map((v) => v.text).join('\n'),
-        copyright: `${ref} · ${passage.versionAbbrev}`,
+        copyright: `${ref} (${passage.versionAbbrev})`,
         style_json: null,
       });
     }

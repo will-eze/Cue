@@ -15,7 +15,7 @@ import { CSS } from '@dnd-kit/utilities';
 const SECTION_TYPES = ['verse', 'chorus', 'refrain', 'bridge', 'pre-chorus', 'tag', 'intro', 'outro'];
 const FONT_SIZES    = [18, 24, 28, 32, 36, 40, 48, 56, 64, 72, 80, 96, 112, 128, 144, 160];
 
-const DEFAULT_STYLE = {
+export const DEFAULT_STYLE = {
   fontFamily:    null,
   fontSize:      null,
   color:         null,
@@ -108,7 +108,7 @@ function extractContentAndRuns(el) {
   return { text: text.trimEnd(), runs };
 }
 
-function styleIsDefault(s) {
+export function styleIsDefault(s) {
   if (!s) return true;
   return !s.fontFamily && !s.fontSize && !s.color && !s.bold && !s.italic &&
     !s.underline && !s.uppercase && (!s.align || s.align === 'center') &&
@@ -133,6 +133,46 @@ function buildShadowCss(shadow) {
 function buildStrokeCss(stroke) {
   if (!stroke || !stroke.enabled) return undefined;
   return `${stroke.width ?? 2}px ${stroke.color ?? '#000000'}`;
+}
+
+// Build a CSS style object for an attribution/reference line from a style_json
+// subset (font/size/colour/align/weight/etc). Used by the scripture reference,
+// which is stylable; `null` style falls back to the caller's base + defaultAlign.
+// Font/colour props of a reference style (no layout) — shared by the editor's
+// draggable reference target and copyrightCss.
+export function copyrightFontCss(cs) {
+  const o = {};
+  if (!cs) return o;
+  if (cs.fontFamily)    o.fontFamily = cs.fontFamily;
+  if (cs.fontSize)      o.fontSize = `${cs.fontSize}px`;
+  if (cs.color)         o.color = cs.color;
+  if (cs.bold)          o.fontWeight = 700;
+  if (cs.italic)        o.fontStyle = 'italic';
+  if (cs.underline)     o.textDecoration = 'underline';
+  if (cs.uppercase)     o.textTransform = 'uppercase';
+  if (cs.letterSpacing) o.letterSpacing = `${cs.letterSpacing}em`;
+  if (cs.textShadow?.enabled) o.textShadow = `${cs.textShadow.x ?? 0}px ${cs.textShadow.y ?? 2}px ${cs.textShadow.blur ?? 16}px ${cs.textShadow.color ?? '#000'}`;
+  if (cs.textStroke?.enabled) o.WebkitTextStroke = `${cs.textStroke.width ?? 2}px ${cs.textStroke.color ?? '#000'}`;
+  return o;
+}
+
+export function copyrightCss(cs, defaultAlign = 'center', allowPos = true) {
+  const align = cs?.align || defaultAlign;
+  // Symmetric horizontal inset so left- and right-aligned references sit the same
+  // distance from the screen edge (lower-third callers reset this — the bar pads).
+  const css = { textAlign: align, paddingLeft: '60px', paddingRight: '60px', ...copyrightFontCss(cs) };
+  // Free positioning (fullscreen only): anchor at x%,y% top-left, single line.
+  if (allowPos && cs?.pos) {
+    css.left = `${cs.pos.x}%`;
+    css.top = `${cs.pos.y}%`;
+    css.right = 'auto';
+    css.bottom = 'auto';
+    css.paddingLeft = 0;
+    css.paddingRight = 0;
+    css.whiteSpace = 'nowrap';
+    css.textAlign = cs.align || 'left';
+  }
+  return css;
 }
 
 function buildBarBg(ltBar) {
@@ -207,9 +247,42 @@ function parseSong(rawText) {
 const SLIDE_W = 1920;
 const SLIDE_H = 1080;
 
-function SlidePreview({ text, runs, style, backgroundPath, copyright }) {
+// Fixed "content window" — the safe area inset from the screen edges. The text box
+// can be dragged/resized anywhere on screen, but object-align snaps it within this.
+const CONTENT_BOX = { x: 5, y: 5, w: 90, h: 90 };
+const MIN_BOX = 5; // minimum text-box size (%)
+
+const clampPct = (v, lo, hi) => Math.max(lo, Math.min(v, hi));
+
+// 8 resize handles (PowerPoint-style). hx/hy: which edges move (0=left/top, 1=right/bottom, 0.5=none).
+const TB_HANDLES = [
+  { hx: 0,   hy: 0,   cursor: 'nwse-resize' },
+  { hx: 0.5, hy: 0,   cursor: 'ns-resize' },
+  { hx: 1,   hy: 0,   cursor: 'nesw-resize' },
+  { hx: 1,   hy: 0.5, cursor: 'ew-resize' },
+  { hx: 1,   hy: 1,   cursor: 'nwse-resize' },
+  { hx: 0.5, hy: 1,   cursor: 'ns-resize' },
+  { hx: 0,   hy: 1,   cursor: 'nesw-resize' },
+  { hx: 0,   hy: 0.5, cursor: 'ew-resize' },
+];
+
+// Resize a box (%) by dragging a handle: the opposite edge stays fixed.
+function resizeBox(s, hx, hy, dx, dy) {
+  let { x, y, w, h } = s;
+  if (hx === 1) w += dx; else if (hx === 0) { x += dx; w -= dx; }
+  if (hy === 1) h += dy; else if (hy === 0) { y += dy; h -= dy; }
+  if (w < MIN_BOX) { if (hx === 0) x = s.x + s.w - MIN_BOX; w = MIN_BOX; }
+  if (h < MIN_BOX) { if (hy === 0) y = s.y + s.h - MIN_BOX; h = MIN_BOX; }
+  x = clampPct(x, 0, 100); y = clampPct(y, 0, 100);
+  w = clampPct(w, MIN_BOX, 100 - x); h = clampPct(h, MIN_BOX, 100 - y);
+  return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) };
+}
+
+export function SlidePreview({ text, runs, style, backgroundPath, copyright, copyrightAlign, copyrightStyle, onTextBoxChange, onRefPosChange }) {
   const wrapRef  = useRef(null);
   const [scale, setScale] = useState(0.5);
+  const scaleRef = useRef(scale);
+  scaleRef.current = scale;
 
   useEffect(() => {
     if (!wrapRef.current) return;
@@ -219,6 +292,46 @@ function SlidePreview({ text, runs, style, backgroundPath, copyright }) {
     ro.observe(wrapRef.current);
     return () => ro.disconnect();
   }, []);
+
+  // Drag: pointer delta → native px (÷ scale) → percent. onMove(dx%, dy%, startSnapshot).
+  function startDrag(e, start, onMove) {
+    e.preventDefault(); e.stopPropagation();
+    const sx = e.clientX, sy = e.clientY;
+    const sc = scaleRef.current || 1;
+    const move = (ev) => {
+      const dx = ((ev.clientX - sx) / sc) / SLIDE_W * 100;
+      const dy = ((ev.clientY - sy) / sc) / SLIDE_H * 100;
+      onMove(dx, dy, start);
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }
+
+  const tbDraggable  = !!onTextBoxChange;
+  const refDraggable = !!onRefPosChange;
+
+  // Reference preview style: free-positioned at pos, else content-width anchored to
+  // the bottom band by align (visually matches the output, and is a small drag target).
+  const refAlign = copyrightStyle?.align || (copyrightAlign === 'right' ? 'right' : 'center');
+  const refStyleObj = {
+    position: 'absolute', zIndex: 4, whiteSpace: 'nowrap',
+    color: 'rgba(255,255,255,0.7)', fontSize: '20px', textShadow: '0 1px 6px rgba(0,0,0,0.8)',
+    cursor: refDraggable ? 'move' : 'default', pointerEvents: refDraggable ? 'auto' : 'none',
+    ...copyrightFontCss(copyrightStyle),
+  };
+  if (copyrightStyle?.pos) {
+    refStyleObj.left = `${copyrightStyle.pos.x}%`;
+    refStyleObj.top = `${copyrightStyle.pos.y}%`;
+  } else {
+    refStyleObj.bottom = '40px';
+    if (refAlign === 'right') refStyleObj.right = '60px';
+    else if (refAlign === 'left') refStyleObj.left = '60px';
+    else { refStyleObj.left = '50%'; refStyleObj.transform = 'translateX(-50%)'; }
+  }
 
   const tb  = style?.textBox || { x: 5, y: 5, w: 90, h: 90 };
   const tbL = (tb.x / 100) * SLIDE_W;
@@ -274,18 +387,68 @@ function SlidePreview({ text, runs, style, backgroundPath, copyright }) {
                 : <img src={mediaUrl(backgroundPath)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />}
             </div>
           )}
-          {/* Text box */}
-          <div style={{ ...textBoxCss, zIndex: 1 }}>
+          {/* Content window guide — fixed safe area (not interactive) */}
+          <div style={{
+            position: 'absolute',
+            left: `${(CONTENT_BOX.x / 100) * SLIDE_W}px`, top: `${(CONTENT_BOX.y / 100) * SLIDE_H}px`,
+            width: `${(CONTENT_BOX.w / 100) * SLIDE_W}px`, height: `${(CONTENT_BOX.h / 100) * SLIDE_H}px`,
+            border: '1px dashed rgba(255,255,255,0.18)', boxSizing: 'border-box', zIndex: 1, pointerEvents: 'none',
+          }} />
+
+          {/* Text box content */}
+          <div style={{ ...textBoxCss, zIndex: 2 }}>
             <div style={textCss} dangerouslySetInnerHTML={{ __html: rendered }} />
           </div>
-          {/* TextBox boundary indicator */}
-          <div style={{
-            position: 'absolute', left: `${tbL}px`, top: `${tbT}px`, width: `${tbW}px`, height: `${tbH}px`,
-            border: '2px dashed rgba(173,198,255,0.35)', boxSizing: 'border-box', zIndex: 2, pointerEvents: 'none',
-          }} />
-          {/* Copyright */}
+
+          {/* Text box selection frame (drag body to move) + resize handles */}
+          {tbDraggable && (
+            <div
+              onPointerDown={(e) => startDrag(
+                e,
+                { x: tb.x, y: tb.y, w: tb.w, h: tb.h },
+                (dx, dy, s) => onTextBoxChange({
+                  x: Math.round(clampPct(s.x + dx, 0, 100 - s.w)),
+                  y: Math.round(clampPct(s.y + dy, 0, 100 - s.h)),
+                  w: s.w, h: s.h,
+                }),
+              )}
+              style={{
+                position: 'absolute', left: `${tbL}px`, top: `${tbT}px`, width: `${tbW}px`, height: `${tbH}px`,
+                border: '2px solid rgba(173,198,255,0.8)', boxSizing: 'border-box', zIndex: 3, cursor: 'move',
+              }}
+            >
+              {TB_HANDLES.map((hnd, i) => {
+                const hs = 14 / scale; // counter-scale so handles stay a constant visual size
+                return (
+                  <div
+                    key={i}
+                    onPointerDown={(e) => { e.stopPropagation(); startDrag(e, { x: tb.x, y: tb.y, w: tb.w, h: tb.h }, (dx, dy, s) => onTextBoxChange(resizeBox(s, hnd.hx, hnd.hy, dx, dy))); }}
+                    style={{
+                      position: 'absolute', left: `${hnd.hx * 100}%`, top: `${hnd.hy * 100}%`,
+                      width: hs, height: hs, transform: 'translate(-50%, -50%)',
+                      background: '#adc6ff', border: '1px solid #0c0e12', borderRadius: 2, cursor: hnd.cursor, zIndex: 5,
+                    }}
+                  />
+                );
+              })}
+            </div>
+          )}
+
+          {/* Copyright / reference — draggable; converts bottom-anchor → free position */}
           {copyright && (
-            <div style={{ position: 'absolute', bottom: '40px', left: 0, right: 0, textAlign: 'center', color: 'rgba(255,255,255,0.7)', fontSize: '20px', textShadow: '0 1px 6px rgba(0,0,0,0.8)', zIndex: 3 }}>
+            <div
+              onPointerDown={refDraggable ? (e) => {
+                let start;
+                if (copyrightStyle?.pos) start = { x: copyrightStyle.pos.x, y: copyrightStyle.pos.y };
+                else {
+                  const wr = wrapRef.current.getBoundingClientRect();
+                  const er = e.currentTarget.getBoundingClientRect();
+                  start = { x: (er.left - wr.left) / scale / SLIDE_W * 100, y: (er.top - wr.top) / scale / SLIDE_H * 100 };
+                }
+                startDrag(e, start, (dx, dy, s) => onRefPosChange({ x: Math.round(clampPct(s.x + dx, 0, 100)), y: Math.round(clampPct(s.y + dy, 0, 100)) }));
+              } : undefined}
+              style={refStyleObj}
+            >
               {copyright}
             </div>
           )}
@@ -298,7 +461,7 @@ function SlidePreview({ text, runs, style, backgroundPath, copyright }) {
 // ─── Lower Third Preview ──────────────────────────────────────────────────
 // Matches lowerthird.css: transparent body, gradient bar anchored to bottom.
 
-function LowerThirdPreview({ text, runs, style, copyright }) {
+export function LowerThirdPreview({ text, runs, style, copyright, copyrightAlign, copyrightStyle }) {
   const wrapRef = useRef(null);
   const [scale, setScale] = useState(0.5);
 
@@ -328,10 +491,12 @@ function LowerThirdPreview({ text, runs, style, copyright }) {
     wordBreak:        'break-word',
   };
 
-  const copyrightCss = {
+  const copyrightStyleCss = {
     color: 'rgba(255,255,255,0.7)',
     fontSize: '18px',
     marginTop: '4px',
+    ...copyrightCss(copyrightStyle, copyrightAlign === 'right' ? 'right' : 'left', false),
+    paddingLeft: undefined, paddingRight: undefined, // lower-third bar has its own horizontal padding
   };
 
   return (
@@ -354,7 +519,7 @@ function LowerThirdPreview({ text, runs, style, copyright }) {
             zIndex: 1,
           }}>
             <div style={textCss} dangerouslySetInnerHTML={{ __html: renderWithRuns(text || '', runs || []) }} />
-            {copyright && <div style={copyrightCss}>{copyright}</div>}
+            {copyright && <div style={copyrightStyleCss}>{copyright}</div>}
           </div>
         </div>
       </div>
@@ -402,7 +567,7 @@ function NumInput({ value, onChange, min, max, step = 0.1, width = 'w-12', place
   );
 }
 
-function FormattingToolbar({ style, onChange, fonts, hasSelection, execCmd, previewTemplate }) {
+export function FormattingToolbar({ style, onChange, fonts, hasSelection, execCmd, previewTemplate, simple = false }) {
   const set = (prop, val) => onChange({ ...style, [prop]: val });
 
   const shadow = style.textShadow;
@@ -421,8 +586,24 @@ function FormattingToolbar({ style, onChange, fonts, hasSelection, execCmd, prev
     else onChange({ ...style, textStroke: { ...stroke, enabled: !stroke.enabled } });
   }
   function setTb(prop, val) {
-    const cur = style.textBox || { x: 5, y: 5, w: 90, h: 90 };
+    const cur = style.textBox || { ...CONTENT_BOX };
     onChange({ ...style, textBox: { ...cur, [prop]: Number(val) } });
+  }
+
+  // Object align: snap the text box within the fixed content window (keeps its size).
+  function objAlign(axis, where) {
+    const b = style.textBox || { ...CONTENT_BOX };
+    if (axis === 'h') {
+      const x = where === 'left' ? CONTENT_BOX.x
+        : where === 'right' ? CONTENT_BOX.x + CONTENT_BOX.w - b.w
+        : CONTENT_BOX.x + (CONTENT_BOX.w - b.w) / 2;
+      onChange({ ...style, textBox: { ...b, x: Math.round(Math.max(0, Math.min(x, 100 - b.w))) } });
+    } else {
+      const y = where === 'top' ? CONTENT_BOX.y
+        : where === 'bottom' ? CONTENT_BOX.y + CONTENT_BOX.h - b.h
+        : CONTENT_BOX.y + (CONTENT_BOX.h - b.h) / 2;
+      onChange({ ...style, textBox: { ...b, y: Math.round(Math.max(0, Math.min(y, 100 - b.h))) } });
+    }
   }
 
   const row = 'flex items-center gap-1 px-md py-1.5 flex-wrap';
@@ -499,10 +680,10 @@ function FormattingToolbar({ style, onChange, fonts, hasSelection, execCmd, prev
           </ToolBtn>
         ))}
 
-        <Divider />
+        {!simple && <Divider />}
 
         {/* V-Align */}
-        {[
+        {!simple && [
           { v: 'top',    icon: '⬆', label: 'Align top' },
           { v: 'center', icon: '⊟', label: 'Align middle' },
           { v: 'bottom', icon: '⬇', label: 'Align bottom' },
@@ -567,38 +748,56 @@ function FormattingToolbar({ style, onChange, fonts, hasSelection, execCmd, prev
           </>
         )}
 
-        {/* TextBox position — fullscreen only */}
-        {previewTemplate !== 'lowerthird' && (
+        {/* Reference position — fullscreen reference styling only (drag in preview or set X/Y) */}
+        {simple && previewTemplate !== 'lowerthird' && (
           <>
             <Divider />
-            <span className={label}>Box</span>
-            {TEXTBOX_PRESETS.map(({ label: pl, value: pv }) => {
-              const isActive = pv === null
-                ? !style.textBox
-                : (style.textBox && JSON.stringify(style.textBox) === JSON.stringify(pv));
-              return (
-                <ToolBtn key={pl} active={isActive} title={`Text box: ${pl}`} onMouseDown={() => set('textBox', pv)}>
-                  {pl}
-                </ToolBtn>
-              );
-            })}
-            {style.textBox && (
+            <span className={label}>Pos</span>
+            <ToolBtn active={!style.pos} title="Anchor to bottom" onMouseDown={() => set('pos', null)}>Bottom</ToolBtn>
+            <ToolBtn active={!!style.pos} title="Free position (drag in preview)" onMouseDown={() => set('pos', style.pos || { x: 50, y: 90 })}>Free</ToolBtn>
+            {style.pos && (
               <>
                 <span className={label}>X</span>
-                <NumInput value={tb.x} onChange={(v) => setTb('x', v)} min={0} max={99} step={1} width="w-9" />
+                <NumInput value={style.pos.x} onChange={(v) => set('pos', { ...style.pos, x: Number(v) })} min={0} max={100} step={1} width="w-9" />
                 <span className={label}>Y</span>
-                <NumInput value={tb.y} onChange={(v) => setTb('y', v)} min={0} max={99} step={1} width="w-9" />
-                <span className={label}>W</span>
-                <NumInput value={tb.w} onChange={(v) => setTb('w', v)} min={1} max={100} step={1} width="w-9" />
-                <span className={label}>H</span>
-                <NumInput value={tb.h} onChange={(v) => setTb('h', v)} min={1} max={100} step={1} width="w-9" />
+                <NumInput value={style.pos.y} onChange={(v) => set('pos', { ...style.pos, y: Number(v) })} min={0} max={100} step={1} width="w-9" />
               </>
             )}
           </>
         )}
 
+        {/* Text box — fill / object-align in content window / precise X/Y/W/H. Fullscreen only. */}
+        {!simple && previewTemplate !== 'lowerthird' && (
+          <>
+            <Divider />
+            <span className={label}>Box</span>
+            <ToolBtn title="Fill the content window" onMouseDown={() => set('textBox', { ...CONTENT_BOX })}>Fill</ToolBtn>
+            {/* Object align — position the box within the content window */}
+            {[
+              { axis: 'h', where: 'left',   icon: 'align_horizontal_left',   t: 'Align box left' },
+              { axis: 'h', where: 'center', icon: 'align_horizontal_center', t: 'Centre box horizontally' },
+              { axis: 'h', where: 'right',  icon: 'align_horizontal_right',  t: 'Align box right' },
+              { axis: 'v', where: 'top',    icon: 'align_vertical_top',      t: 'Align box top' },
+              { axis: 'v', where: 'middle', icon: 'align_vertical_center',   t: 'Centre box vertically' },
+              { axis: 'v', where: 'bottom', icon: 'align_vertical_bottom',   t: 'Align box bottom' },
+            ].map(({ axis, where, icon, t }) => (
+              <ToolBtn key={`${axis}-${where}`} title={t} onMouseDown={() => objAlign(axis, where)}>
+                <span className="material-symbols-outlined text-[13px]">{icon}</span>
+              </ToolBtn>
+            ))}
+            <span className={label}>X</span>
+            <NumInput value={tb.x} onChange={(v) => setTb('x', v)} min={0} max={100} step={1} width="w-9" />
+            <span className={label}>Y</span>
+            <NumInput value={tb.y} onChange={(v) => setTb('y', v)} min={0} max={100} step={1} width="w-9" />
+            <span className={label}>W</span>
+            <NumInput value={tb.w} onChange={(v) => setTb('w', v)} min={1} max={100} step={1} width="w-9" />
+            <span className={label}>H</span>
+            <NumInput value={tb.h} onChange={(v) => setTb('h', v)} min={1} max={100} step={1} width="w-9" />
+          </>
+        )}
+
         {/* Gradient bar — lower third only */}
-        {previewTemplate === 'lowerthird' && (
+        {!simple && previewTemplate === 'lowerthird' && (
           <>
             <Divider />
             <span className={label}>Bar</span>
@@ -1118,8 +1317,9 @@ export default function SongEditor({ song, onClose, onSave }) {
                       ))}
                     </div>
                   </div>
-                  <div className="flex-1 flex items-center justify-center min-h-0">
-                    <div className="w-full max-h-full" style={{ maxWidth: 'calc((100vh - 280px) * 16/9)' }}>
+                  <div className="flex-1 flex items-center justify-center min-h-0 overflow-hidden">
+                    {/* Height-bound 16:9 box: fits the available section regardless of toolbar height */}
+                    <div className="h-full max-w-full" style={{ aspectRatio: '16 / 9' }}>
                       {previewTemplate === 'lowerthird' ? (
                         <LowerThirdPreview
                           text={previewContent.text}
@@ -1134,6 +1334,7 @@ export default function SongEditor({ song, onClose, onSave }) {
                           style={style}
                           backgroundPath={songBackground?.path ?? null}
                           copyright={copyright || undefined}
+                          onTextBoxChange={(box) => setStyle((s) => ({ ...s, textBox: box }))}
                         />
                       )}
                     </div>
