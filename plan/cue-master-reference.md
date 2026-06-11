@@ -67,14 +67,17 @@ Every file that matters, with a one-line description:
 src/
 ├── main/
 │   ├── index.js              App entry. Window creation. cue-media:// protocol handler.
-│   │                         Dialog IPC. Startup sequence.
+│   │                         Dialog IPC. Startup sequence: initDb → seedBundledBibles → seedGhsHymnal.
 │   ├── preload.js            contextBridge → window.cue. The complete renderer API surface.
 │   ├── output-preload.js     Minimal contextBridge for output windows → window.cueOutput only.
 │   ├── fonts.js              BUNDLED_FONTS array + DEFAULT_FONT. Imported by preload.js.
 │   │
 │   ├── db/
 │   │   ├── schema.js         SQLite init, migration runner (v1→v9), getDb() singleton.
-│   │   ├── songs.js          Song + section + tag CRUD, FTS5 search.
+│   │   ├── songs.js          Song + section + tag CRUD, FTS5 search. importSongs (bulk insert, tag-aware:
+│   │   │                     song.tags[] get-or-created + assigned). existingTitleSet (duplicate flagging).
+│   │   │                     GHS hymnal: readBundledGhsRows, seedGhsHymnal (once, ghs_seeded flag),
+│   │   │                     tagGhsSongs (idempotent backfill of the GHS tag onto "GHS N …" songs).
 │   │   ├── services.js       Service / rundown CRUD. resolveItem() joins media paths.
 │   │   ├── media.js          Media import (copy to userData/media/), list, delete, folders.
 │   │   ├── settings.js       Key-value settings store. Global logo/background helpers (song/scripture/slide).
@@ -83,8 +86,16 @@ src/
 │   │   ├── bible-import.js   Parsers: book-array / flat / nested-object JSON + Zefania XML. deriveAbbrev (word initials).
 │   │   └── bible-books.js    Canonical 66-book order + abbreviation lookup (lookupBook).
 │   │
+│   ├── import/
+│   │   └── songs-import.js   Song-file parsers (pure, preview-before-commit). parseSongFiles(filePaths)
+│   │                         auto-detects per file: OpenLyrics XML (regex), ChordPro ({directives} +
+│   │                         [chord] stripping), plain text (filename → title), EasyWorship (SQLite
+│   │                         Songs.db + SongWords.db join, RTF→text via rtfToText, one file → many rows).
+│   │                         parseGhsItems(items) → "GHS N - Name" rows tagged GHS. Shared parseSections
+│   │                         (header / blank-block splitter, mirrors SongEditor's Paste Song parser).
+│   │
 │   ├── ipc/
-│   │   ├── songs.ipc.js      Registers songs:*, tags:* handlers.
+│   │   ├── songs.ipc.js      Registers songs:*, tags:* handlers (incl. importParse/importGhs/importCommit).
 │   │   ├── services.ipc.js   Registers services:* handlers.
 │   │   ├── media.ipc.js      Registers media:* handlers.
 │   │   ├── output.ipc.js     Registers output:* handlers. Calls outputManager and getDb directly.
@@ -120,9 +131,11 @@ src/
 │   │   │                     Loads output channels list. Does NOT capture output or subscribe to multiview —
 │   │   │                     the live monitor renders the slide from payload (no per-frame capture loop).
 │   │   │                     liveChannelIdx tracks which channel the live monitor displays.
-│   │   ├── SettingsView.jsx  Settings layout. Section order: OutputChannels → LogoSettings → BackgroundSettings →
-│   │   │                     ShortcutSettings → DangerZone → SettingsFooter (always last two). DangerZone and
-│   │   │                     SettingsFooter are rendered at layout level — not inside any sub-component.
+│   │   ├── SettingsView.jsx  Settings layout. Left column is section navigation (Channels/Logo/Background/Bible/
+│   │   │                     Shortcuts/Danger) + Back-to-Operator: click scrolls to the section; an
+│   │   │                     IntersectionObserver highlights the section in view. Section order: OutputChannels →
+│   │   │                     LogoSettings → BackgroundSettings → BibleSettings → ShortcutSettings → DangerZone →
+│   │   │                     SettingsFooter (always last two, rendered at layout level — not inside any sub-component).
 │   │   └── MultiviewView.jsx Multi-output monitor wall. Subscribes to output:multiview-captures.
 │   │                         NDI channels show NdiTile (checkerboard + frame). Screen channels show ScreenMonitorTile.
 │   │                         NDI channels never show "No screens assigned" — they don't use channel_monitors.
@@ -138,7 +151,10 @@ src/
 │   │   ├── PreviewLivePanel.jsx   Two MonitorFrames (Preview + Live) + two SlideLists.
 │   │   │                          MonitorFrame renders a 1920×1080 virtual canvas scaled via ResizeObserver +
 │   │   │                          CSS transform — pixel-accurate match of the output template at any container size.
-│   │   │                          Supports fullscreen (textBox positioning) and lowerthird (bottom-anchored bar) layouts.
+│   │   │                          Supports fullscreen (textBox positioning), lowerthird (bottom-anchored bar), and
+│   │   │                          stage layouts. When the selected channel template is 'stage', the live monitor renders
+│   │   │                          StageMonitor — the confidence-monitor layout (top status bar with live clock + idle
+│   │   │                          timer/video slots, big current text, COMING NEXT row, message bar) at native 1920×1080.
 │   │   │                          Video backgrounds use SyncedVideo — locked to the shared `transport` via the same
 │   │   │                          wall-clock + playbackRate algorithm as the output players (muted; no screen-capture).
 │   │   │                          Foreground-media transport bar: timeline scrubber (media.seek), current/total time,
@@ -147,10 +163,15 @@ src/
 │   │   │                          Channel selector strip (2+ channels): click to switch live monitor to any channel.
 │   │   │                          Props: allChannels, liveChannelIdx, onSetLiveChannelIdx.
 │   │   ├── LibraryPanel.jsx       Songs tab (react-window virtualised list) + Media tab (grid) + Scripture tab.
-│   │   │                          Song search + tag filter. Media import. Passes scripture callbacks through.
-│   │   │                          Single-click (220ms) → SongPreviewModal. Double-click → add to rundown.
-│   │   │                          Accepts refreshTick + focusSearchRef props. focusSearchRef exposes
-│   │   │                          an imperative focus() function that OperatorView calls on S keypress.
+│   │   │                          Song search + tag filter (left-panel folders = tags). Media import.
+│   │   │                          Import dropdown (Songs tab): "Import from File…" (dialog → songs.importParse →
+│   │   │                          SongImportModal) and "Import GHS Hymnal" (songs.importGhs → same modal).
+│   │   │                          GHS folder = the "GHS" tag; when it's the sole active filter the list orders by
+│   │   │                          hymn number and a numeric "GHS number…" quick-search replaces the text search
+│   │   │                          (Enter previews the exact number). Single-click (220ms) → SongPreviewModal.
+│   │   │                          Double-click → add to rundown. Accepts refreshTick + focusSearchRef props.
+│   │   │                          focusSearchRef focuses whichever search input is mounted (GHS number field in the
+│   │   │                          GHS folder, else the song search) on S keypress.
 │   │   └── ScripturePanel.jsx     Live verse browser (Scripture tab). Translation rail (select/delete/import/appearance),
 │   │                              predictive Book→Chapter→Verse reference bar (autofocus), whole-chapter verse list,
 │   │                              ↑/↓ live nav, right-click menu, OnlineBibleModal + ScriptureEditor hosts.
@@ -167,6 +188,10 @@ src/
 │   │   │                          TEXTBOX_PRESETS: Full / Top / Middle / Bottom / L3.
 │   │   │                          Paste Song parser (parseSong). renderWithRuns (exported). Escape key closes.
 │   │   ├── SongPreviewModal.jsx   Read-only song preview. Add to Rundown / Edit.
+│   │   ├── SongImportModal.jsx    Import preview/confirm (createPortal). One row per parsed song: checkbox,
+│   │   │                          uncontrolled editable title (titlesRef — no re-render for large batches),
+│   │   │                          format badge, section count; failed/duplicate rows flagged. Selection in a Set;
+│   │   │                          duplicates start unselected. Commit → songs.importCommit (forwards tags).
 │   │   ├── ScriptureEditor.jsx    Global scripture appearance modal. Verse/Reference target toggle, drag/resize,
 │   │   │                          object align, background. Reuses SongEditor exports. Saves scripture_*_json + bg.
 │   │   ├── OnlineBibleModal.jsx   getbible.net catalog browser. Multi-select download with licence warning.
@@ -239,12 +264,14 @@ src/
 - `vite.preload.config.js` — builds preloads
 - `vite.renderer.config.js` — builds renderer React app
 - `tailwind.config.js` — custom design tokens (see §10)
-- `forge.config.js` — Electron Forge packaging config (`extraResource: ['./resources/bible']`)
+- `forge.config.js` — Electron Forge packaging config (`extraResource: ['./resources/bible', './resources/ghs']`)
 - `index.html` — Vite renderer entry HTML
 
 **Project-root data/tooling (outside `src/`):**
 - `resources/bible/{kjv,web}.json` — bundled public-domain translations (seeded on first run; shipped via `extraResource`)
-- `scripts/build-bibles.mjs` — regenerates the seed JSON from getbible.net v2 (`node scripts/build-bibles.mjs`)
+- `resources/ghs/ghs-hymnal.json` — bundled GHS hymnal seed `{ items:[{ number, name, lyrics }] }` (260 hymns; shipped via `extraResource`, seeded on first run by seedGhsHymnal)
+- `scripts/build-bibles.mjs` — regenerates the bible seed JSON from getbible.net v2 (`node scripts/build-bibles.mjs`)
+- `scripts/build-ghs.mjs` — regenerates the GHS seed from a number→name CSV (cp1252) + lyric text files (`node scripts/build-ghs.mjs <csv> <lyricsDir>`)
 
 ---
 
@@ -410,6 +437,7 @@ Known keys:
 | `keyboard_clear` | string | Key char for Clear shortcut (default: 'c') |
 | `keyboard_logo` | string | Key char for Logo shortcut (default: 'l') |
 | `keyboard_live` | string | Key char for Live Toggle shortcut (default: 'o') |
+| `ghs_seeded` | boolean | Set true after the bundled GHS hymnal is imported on first run; gates re-seeding so deletions stick |
 
 **localStorage keys** (UI state only — not in DB):
 | Key | Description |
@@ -520,6 +548,9 @@ All renderer↔main communication is via `ipcRenderer.invoke` / `ipcMain.handle`
 | `removeTag(songId, tagId)` | void | — |
 | `setBackground(songId, mediaId\|null)` | void | Sets songs.default_background_id. |
 | `deleteAll()` | void | Deletes all songs, their sections, taggables, and all song-type service_items. Irreversible. |
+| `importParse(filePaths)` | `[{ok, file, format, title, author, copyright, sections, tags?, error?}]` | Parses song files (no DB write). Auto-detects OpenLyrics XML / ChordPro / text / EasyWorship SQLite (one .db → many rows). Per-file failures returned as `{ok:false, error}`. |
+| `importGhs()` | same row shape, all `format:'GHS'`, `tags:['GHS']`, with `existing:bool` | Parses the bundled GHS hymnal; flags rows already in the DB. |
+| `importCommit(parsedSongs)` | `{count, ids}` | Bulk-creates songs in one transaction. Each `song.tags[]` (names) is get-or-created and assigned. |
 
 ### `window.cue.tags`
 
@@ -873,11 +904,12 @@ liveSlideIdx     — which section index is currently on output
 | Double-click in Preview Slides list | Sends that slide to live. |
 | Single-click in Live Slides list | Sends that slide to live immediately. |
 | GO button / G key | Sends `previewItem[previewSlideIdx]` to live. |
-| Space / ↓ arrow | `previewSlideIdx++`. Auto-GOes to live if `previewItemId === liveItemId`. At last slide → loads next rundown item. |
+| Space | Advances **live** forward (`handleNextLiveSlide`): next live slide, rolling into the next rundown item at the boundary (also loads it into preview). If nothing is live, GOes the current preview. |
+| ↓ arrow | `previewSlideIdx++`. Auto-GOes to live if `previewItemId === liveItemId`. At last slide → loads next rundown item. |
 | ↑ arrow | `previewSlideIdx--`. Auto-GOes to live if `previewItemId === liveItemId`. At first slide → loads previous rundown item at its last slide. |
 | Escape | `output:clear`. Sets `liveItemId=null`. |
 | L key | `output:logo`. |
-| S key | Focuses the song search input in LibraryPanel. |
+| S key | Focuses the song search input in LibraryPanel (the GHS number field when the GHS folder is active). |
 | Modifier+G/C/L/O | GO / Clear / Logo / Live Toggle (modifier and keys are configurable in Settings). |
 | Double-click song in Library | Adds to rundown. No preview/live change. |
 
@@ -939,7 +971,9 @@ a VIDEO countdown; `#content` shows the current slide / muted video preview (`#m
 coming-next text; `#bottom-bar` shows the presenter message (`stage:message`). The stage video is
 always muted and locked to the shared `transport` via `CueMediaPlayer`. The VIDEO countdown derives
 remaining time from `transport` + the clip's own duration — it loops with the clip (never shows ∞) and
-freezes while paused.
+freezes while paused. The operator live monitor renders a faithful preview of this layout (`StageMonitor`
+in `PreviewLivePanel.jsx`) when the selected channel's template is `'stage'` — same proportions and styling
+at native 1920×1080, with a live clock and idle timer/video placeholders.
 
 ### Operator live monitor — render from payload, not capture
 The operator live/preview monitors **do not screen-capture the output window**. `PreviewLivePanel.jsx` `MonitorFrame` renders the slide directly from the same payload sent to outputs — a 1920×1080 virtual canvas scaled with a CSS transform — so it stays pixel-accurate without a capture loop. There is **no `startLiveCapture` and no `output:live-capture` event**; reintroducing a per-frame `capturePage()` loop for the operator UI is the v5→v7 perf regression and must not return. The live monitor updates reactively when `liveItem`/`liveSlideIdx`/`displayMode` change. Foreground-media video is synced via `SyncedVideo` (muted), which follows the shared `transport` using the same wall-clock-derived position + `playbackRate` convergence as the output players (`output:media-transport` → `PreviewLivePanel` local state). This is the **same transport engine used by every audience surface** — there is no separate clock-master time-reporting path anymore.
@@ -1029,6 +1063,20 @@ No-header fallback: split by blank lines, all → `verse`. The user then relabel
 
 **Section ordering** — drag-to-reorder via `@dnd-kit`. Each section has a local `_key` for stable React identity.
 
+### Song import (`src/main/import/songs-import.js` + `SongImportModal.jsx`)
+File import is a two-phase preview/commit flow: `songs.importParse(filePaths)` parses (no DB write) → `SongImportModal` lets the operator deselect rows and edit titles → `songs.importCommit(rows)` bulk-inserts. The Songs-tab **Import** dropdown offers "Import from File…" and "Import GHS Hymnal".
+
+`parseSongFiles` auto-detects per file (never throws — a bad file is a `{ok:false, error}` row):
+- **OpenLyrics XML** — regex parse (no XML dep, matching `bible-import.js`); title/authors/copyright + CCLI from `<properties>`; verse `name` codes (`v`/`c`/`b`/`p`/`e`…) → section types; `<br/>`→newline, chords/comments stripped.
+- **ChordPro** — `{title|artist|copyright|ccli}` directives extracted; `{soc}`/`{sov}` markers → section headers; inline `[C]`/`[G7]`/`[D/F#]` chord tokens stripped (real `[Chorus]` headers survive).
+- **Plain text** — filename → title; body run through `parseSections` (the shared header/blank-block splitter, same rules as the editor's Paste Song parser).
+- **EasyWorship** — picked `Songs.db` (or `SongWords.db`, sibling auto-resolved); both are SQLite read via `better-sqlite3`. Lyrics live in `SongWords.word.words` as **RTF**, joined by `word.song_id = song.rowid`; `rtfToText()` converts (cp1252 `\'xx`, `\u`, ignorable `{\*…}` groups, font/colour tables skipped). Plain `SELECT` only + JS sort — the song table's custom `UTF8_U_CI` collation isn't registered. One `.db` → many rows.
+
+`importSongs` (db/songs.js) is tag-aware: each row's `tags[]` (names) is get-or-created (`_IMPORT_TAG_COLOUR` gives GHS a distinct blue) and assigned. `existingTitleSet()` flags duplicates (default-unselected in the modal).
+
+### GHS hymnal (bundled)
+`resources/ghs/ghs-hymnal.json` ships 260 Gospel Hymns & Songs (`scripts/build-ghs.mjs` builds it from a cp1252 number→name CSV + per-number lyric files). On startup `seedGhsHymnal()` imports them once (gated by the `ghs_seeded` setting so deletions stick) and always runs `tagGhsSongs()` — an idempotent backfill that tags every `GHS N …` song with the `GHS` tag. In `LibraryPanel`, the `GHS` tag is the GHS folder; selecting it sorts the list by hymn number and swaps the text search for a numeric quick-search (type a number → that hymn first; Enter previews the exact match).
+
 ---
 
 ## 17. Scripture Module
@@ -1064,6 +1112,7 @@ The reference flows in the payload as `copyright` (text), `copyrightAlign` (`'ri
 | ~~Stage display / confidence monitor~~ | ~~High~~ | Implemented — `stage` template, StagePanel (timer + message), VIDEO countdown. |
 | Tag CRUD UI | Medium | Tags can be assigned, but create/rename/delete UI is not in Settings. |
 | ~~Song background picker in Song Editor~~ | ~~Medium~~ | Implemented. Media picker in `SlidePreview` calls `songs:setBackground`. |
+| ~~Song import~~ | ~~Medium~~ | Implemented — OpenLyrics / ChordPro / text / EasyWorship + bundled GHS hymnal. See §16. |
 | Disk space warning | Low | Warn when < 2GB free on import. Not implemented. |
 | Media unused-asset cleanup | Low | Identify media not referenced by any song or service_item. |
 | Drag asset from Library onto rundown item | Medium | Background override currently only via context menu. |
@@ -1078,10 +1127,11 @@ The reference flows in the payload as `copyright` (text), `copyrightAlign` (`'ri
    a. `protocol.handle('cue-media', ...)` — register media file server
    b. `initDb()` — open SQLite, run pending migrations
    c. `seedBundledBibles()` — import any missing bundled translation (KJV + WEB) from `resources/bible/*.json` (matched by abbrev). Packaged path `process.resourcesPath/bible`; dev path `app.getAppPath()/resources/bible`.
-   d. Register all IPC handlers (songs, services, media, output, settings, bible)
-   e. `createMainWindow()` — show operator UI
-   f. `outputManager.init()` — load active channels, create BrowserWindows
-   g. On `did-finish-load`: send `output:unresolved-channels` and/or `output:ndi-unavailable` if needed. The renderer does not auto-navigate to Settings — the operator opens it manually.
+   d. `seedGhsHymnal()` — first run only (gated by `ghs_seeded`): import the bundled GHS hymnal from `resources/ghs/ghs-hymnal.json`; then always `tagGhsSongs()` to backfill the GHS tag. Same packaged/dev path resolution as bibles.
+   e. Register all IPC handlers (songs, services, media, output, settings, bible)
+   f. `createMainWindow()` — show operator UI
+   g. `outputManager.init()` — load active channels, create BrowserWindows
+   h. On `did-finish-load`: send `output:unresolved-channels` and/or `output:ndi-unavailable` if needed. The renderer does not auto-navigate to Settings — the operator opens it manually.
 
 ---
 

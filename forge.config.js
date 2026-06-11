@@ -3,9 +3,10 @@ module.exports = {
     asar: true,
     name: 'Cue',
     executableName: 'cue',
-    // Bundled public-domain Bible translations (KJV + WEB). Copied into the app's
-    // Resources/ dir (outside the asar) and seeded into the DB on first run.
-    extraResource: ['./resources/bible'],
+    // Bundled public-domain Bible translations (KJV + WEB) and the GHS hymnal
+    // seed. Copied into the app's Resources/ dir (outside the asar); Bibles seed
+    // on first run, GHS imports on demand from Library → Import → GHS Hymnal.
+    extraResource: ['./resources/bible', './resources/ghs'],
   },
   rebuildConfig: {
     extraModules: ['better-sqlite3', 'grandi'],

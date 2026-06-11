@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { FixedSizeList as List } from 'react-window';
 import SongPreviewModal from '../components/SongPreviewModal';
+import SongImportModal from '../components/SongImportModal';
 import SongEditor from '../components/SongEditor';
 import ContextMenu from '../components/ContextMenu';
 import ScripturePanel from './ScripturePanel';
@@ -166,14 +167,21 @@ export default function LibraryPanel({ onAddToRundown, onAddScripture, onScriptu
   const [listHeight, setListHeight] = useState(300);
   const containerRef = useRef(null);
   const searchInputRef = useRef(null);
+  const ghsSearchRef = useRef(null);
   const searchDebounce = useRef(null);
 
-  // Expose a focus function so OperatorView can trigger search focus via keyboard (S key)
+  // Expose a focus function so OperatorView can trigger search focus via keyboard
+  // (S key). Only one of the two inputs is mounted at a time — the GHS number
+  // field in the GHS folder, the normal search elsewhere — so focus whichever is.
   useEffect(() => {
     if (focusSearchRef) {
       focusSearchRef.current = () => {
         setTab('songs');
-        setTimeout(() => { searchInputRef.current?.focus(); searchInputRef.current?.select(); }, 0);
+        setTimeout(() => {
+          const el = ghsSearchRef.current || searchInputRef.current;
+          el?.focus();
+          el?.select?.();
+        }, 0);
       };
     }
   }, [focusSearchRef]);
@@ -181,6 +189,10 @@ export default function LibraryPanel({ onAddToRundown, onAddScripture, onScriptu
   const [folderTree, setFolderTree] = useState([]);
   const [activeFolderId, setActiveFolderId] = useState(null);
   const [importing, setImporting] = useState(false);
+  const [importPreview, setImportPreview] = useState(null); // parsed song files awaiting confirm
+  const [parsingSongs, setParsingSongs] = useState(false);
+  const [importMenuOpen, setImportMenuOpen] = useState(false);
+  const [ghsQuery, setGhsQuery] = useState(''); // GHS number quick-search
 
   useEffect(() => { loadSongs(); window.cue.tags.list().then(setTags); }, [refreshTick]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (tab === 'media') loadMedia(); }, [tab, activeFolderId]);
@@ -214,8 +226,38 @@ export default function LibraryPanel({ onAddToRundown, onAddScripture, onScriptu
     ? songs
     : songs.filter((s) => selectedTagIds.every((tid) => (s.tags || []).some((t) => t.id === tid)));
 
+  // GHS folder is the auto-created "GHS" tag. When it's the sole active filter we
+  // show a number-only quick search and order the list by hymn number — typing a
+  // number surfaces that hymn deterministically (not at the mercy of FTS ranking).
+  const ghsTag = tags.find((t) => t.name === 'GHS');
+  const isGhsView = !!ghsTag && selectedTagIds.length === 1 && selectedTagIds[0] === ghsTag.id;
+  const ghsNumber = (title) => { const m = /^GHS\s+(\d+)/i.exec(title || ''); return m ? parseInt(m[1], 10) : null; };
+
+  const displaySongs = isGhsView
+    ? filteredSongs
+        .map((s) => ({ s, n: ghsNumber(s.title) }))
+        .sort((a, b) => (a.n ?? Infinity) - (b.n ?? Infinity) || a.s.title.localeCompare(b.s.title))
+        .filter(({ n }) => !ghsQuery || (n != null && String(n).startsWith(ghsQuery)))
+        .map(({ s }) => s)
+    : filteredSongs;
+
+  // Swapping in/out of GHS view: clear the other view's query so a stale search
+  // doesn't constrain the list (clearing searchQuery re-runs listAll via its effect).
+  useEffect(() => {
+    if (isGhsView) { if (searchQuery) setSearchQuery(''); }
+    else if (ghsQuery) { setGhsQuery(''); }
+  }, [isGhsView]); // eslint-disable-line react-hooks/exhaustive-deps
+
   function toggleTag(id) {
     setSelectedTagIds((prev) => prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]);
+  }
+
+  // Jump straight to a hymn from the GHS number field (Enter) — preview the exact
+  // number if present, else the first prefix match.
+  function handleGhsEnter() {
+    const exact = displaySongs.find((s) => String(ghsNumber(s.title)) === ghsQuery);
+    const target = exact || displaySongs[0];
+    if (target) setPreviewSong(target);
   }
 
   async function handleDeleteSong(song) {
@@ -232,6 +274,45 @@ export default function LibraryPanel({ onAddToRundown, onAddScripture, onScriptu
     const full = await window.cue.songs.get(song.id);
     await window.cue.songs.create({ title: full.title + ' (copy)', author: full.author, copyright: full.copyright, sections: full.sections.map((s) => ({ type: s.type, content: s.content })) });
     loadSongs();
+  }
+
+  async function handleImportSongs() {
+    const result = await window.cue.dialog.openFile({
+      filters: [
+        { name: 'Song files', extensions: ['db', 'xml', 'txt', 'text', 'chordpro', 'cho', 'crd', 'chopro', 'cpm', 'pro', 'onsong'] },
+        { name: 'EasyWorship (Songs.db)', extensions: ['db'] },
+        { name: 'OpenLyrics (XML)', extensions: ['xml'] },
+        { name: 'ChordPro / Text', extensions: ['txt', 'text', 'chordpro', 'cho', 'crd', 'chopro', 'cpm', 'pro', 'onsong'] },
+      ],
+      properties: ['openFile', 'multiSelections'],
+    });
+    if (result.canceled || !result.filePaths.length) return;
+    setParsingSongs(true);
+    try {
+      const preview = await window.cue.songs.importParse(result.filePaths);
+      setImportPreview(preview);
+    } finally {
+      setParsingSongs(false);
+    }
+  }
+
+  async function handleImportGhs() {
+    setParsingSongs(true);
+    try {
+      const preview = await window.cue.songs.importGhs();
+      setImportPreview(preview);
+    } catch (e) {
+      alert('Could not load the GHS hymnal: ' + e.message);
+    } finally {
+      setParsingSongs(false);
+    }
+  }
+
+  function handleImportedSongs(count) {
+    setImportPreview(null);
+    loadSongs();
+    window.cue.tags.list().then(setTags); // surface the GHS folder if it was just created
+    onSongSave?.();
   }
 
   async function handleImportMedia() {
@@ -258,7 +339,7 @@ export default function LibraryPanel({ onAddToRundown, onAddScripture, onScriptu
         {/* Tabs */}
         <div className="flex h-full items-center">
           <LibTab active={tab === 'songs'} onClick={() => setTab('songs')}>
-            Songs{tab === 'songs' && filteredSongs.length > 0 ? ` · ${filteredSongs.length}` : ''}
+            Songs{tab === 'songs' && displaySongs.length > 0 ? ` · ${displaySongs.length}` : ''}
           </LibTab>
           <LibTab active={tab === 'media'} onClick={() => setTab('media')}>
             Media{tab === 'media' && mediaAssets.length > 0 ? ` · ${mediaAssets.length}` : ''}
@@ -269,8 +350,25 @@ export default function LibraryPanel({ onAddToRundown, onAddScripture, onScriptu
         </div>
 
         <div className="ml-auto flex items-center gap-md">
+          {/* GHS number quick-search — shown when the GHS folder is the active filter */}
+          {tab === 'songs' && isGhsView && (
+            <div className="relative">
+              <span className="material-symbols-outlined absolute left-sm top-1/2 -translate-y-1/2 text-primary text-[16px]">tag</span>
+              <input
+                ref={ghsSearchRef}
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                className="bg-surface-container-lowest border border-primary/40 rounded-full pl-xl pr-md py-1 text-label-sm font-label-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 w-40 text-on-surface"
+                placeholder="GHS number…"
+                value={ghsQuery}
+                onChange={(e) => setGhsQuery(e.target.value.replace(/[^0-9]/g, ''))}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleGhsEnter(); }}
+              />
+            </div>
+          )}
           {/* Search */}
-          {tab === 'songs' && (
+          {tab === 'songs' && !isGhsView && (
             <div className="relative">
               <span className="material-symbols-outlined absolute left-sm top-1/2 -translate-y-1/2 text-on-surface-variant text-[16px]">
                 search
@@ -285,6 +383,47 @@ export default function LibraryPanel({ onAddToRundown, onAddScripture, onScriptu
             </div>
           )}
 
+          {tab === 'songs' && (
+            <div className="relative">
+              <button
+                onClick={() => setImportMenuOpen((o) => !o)}
+                disabled={parsingSongs}
+                title="Import songs"
+                className="bg-surface-container border border-outline-variant/40 text-on-surface px-md py-xs rounded text-label-sm font-label-sm hover:bg-surface-container-high active:scale-95 transition-all cursor-pointer flex items-center gap-xs disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span className="material-symbols-outlined text-[14px]">file_upload</span>
+                {parsingSongs ? 'Reading…' : 'Import'}
+                <span className="material-symbols-outlined text-[14px]">expand_more</span>
+              </button>
+              {importMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setImportMenuOpen(false)} />
+                  <div className="absolute right-0 mt-xs w-60 bg-surface-container-high border border-outline-variant/40 rounded-lg shadow-2xl ring-1 ring-white/5 z-50 py-xs">
+                    <button
+                      onClick={() => { setImportMenuOpen(false); handleImportSongs(); }}
+                      className="w-full flex items-start gap-sm px-md py-sm text-left hover:bg-surface-variant transition-colors cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-[16px] text-on-surface-variant mt-[1px]">description</span>
+                      <span className="flex flex-col">
+                        <span className="text-body-md text-on-surface">Import from File…</span>
+                        <span className="text-label-sm font-label-sm text-on-surface-variant tracking-normal normal-case">EasyWorship, OpenLyrics, ChordPro, text</span>
+                      </span>
+                    </button>
+                    <button
+                      onClick={() => { setImportMenuOpen(false); handleImportGhs(); }}
+                      className="w-full flex items-start gap-sm px-md py-sm text-left hover:bg-surface-variant transition-colors cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-[16px] text-primary mt-[1px]">menu_book</span>
+                      <span className="flex flex-col">
+                        <span className="text-body-md text-on-surface">Import GHS Hymnal</span>
+                        <span className="text-label-sm font-label-sm text-on-surface-variant tracking-normal normal-case">260 bundled Gospel Hymns &amp; Songs</span>
+                      </span>
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
           {tab === 'songs' && (
             <button
               onClick={() => setEditSong({})}
@@ -343,20 +482,20 @@ export default function LibraryPanel({ onAddToRundown, onAddScripture, onScriptu
 
           {/* Song list */}
           <div ref={containerRef} className="flex-1 min-w-0 overflow-hidden">
-            {filteredSongs.length === 0 ? (
+            {displaySongs.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full gap-sm text-outline-variant">
                 <span className="material-symbols-outlined text-4xl">music_note</span>
                 <span className="text-label-sm font-label-sm uppercase tracking-widest">
-                  {searchQuery ? 'No Songs Found' : 'No Songs Yet'}
+                  {searchQuery || ghsQuery ? 'No Songs Found' : 'No Songs Yet'}
                 </span>
               </div>
             ) : (
               <List
                 height={listHeight}
-                itemCount={filteredSongs.length}
+                itemCount={displaySongs.length}
                 itemSize={46}
                 itemData={{
-                  songs: filteredSongs,
+                  songs: displaySongs,
                   selectedId: previewSong?.id,
                   onSelect: setPreviewSong,
                   onDoubleClick: (songId) => onAddToRundown(songId),
@@ -410,6 +549,12 @@ export default function LibraryPanel({ onAddToRundown, onAddScripture, onScriptu
         <SongEditor song={editSong.id ? editSong : null}
           onClose={() => setEditSong(null)}
           onSave={() => { setEditSong(null); loadSongs(); onSongSave?.(); }} />
+      )}
+      {importPreview && (
+        <SongImportModal
+          preview={importPreview}
+          onCancel={() => setImportPreview(null)}
+          onImported={handleImportedSongs} />
       )}
       {songContextMenu && (
         <ContextMenu

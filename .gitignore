@@ -7,3 +7,7 @@ out/
 *.db-wal
 .DS_Store
 .claude/
+
+# Local import source material (EasyWorship DBs, GHS lyric sources). The GHS
+# hymnal is bundled as a generated seed in resources/ghs/ instead.
+temp/

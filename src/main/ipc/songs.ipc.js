@@ -1,8 +1,12 @@
 import { ipcMain } from 'electron';
 import * as songs from '../db/songs.js';
+import { parseSongFiles } from '../import/songs-import.js';
 
 export function registerSongsIpc() {
   ipcMain.handle('songs:search', (_e, query) => songs.search(query));
+  ipcMain.handle('songs:importParse', (_e, filePaths) => parseSongFiles(filePaths));
+  ipcMain.handle('songs:importGhs', () => songs.readBundledGhsRows());
+  ipcMain.handle('songs:importCommit', (_e, parsedSongs) => songs.importSongs(parsedSongs));
   ipcMain.handle('songs:listAll', () => songs.listAll());
   ipcMain.handle('songs:get', (_e, id) => songs.getById(id));
   ipcMain.handle('songs:create', (_e, data) => songs.create(data));

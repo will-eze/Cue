@@ -1,5 +1,9 @@
+import { app } from 'electron';
+import fs from 'fs';
+import path from 'path';
 import { getDb } from './schema.js';
-import { get as getSetting } from './settings.js';
+import { get as getSetting, set as setSetting } from './settings.js';
+import { parseGhsItems } from '../import/songs-import.js';
 
 export function search(query) {
   const db = getDb();
@@ -67,6 +71,102 @@ export function create(data) {
     );
     return Number(lastInsertRowid);
   })();
+}
+
+const _IMPORT_TYPES = new Set(['verse', 'chorus', 'refrain', 'bridge', 'pre-chorus', 'tag', 'intro', 'outro']);
+
+// Distinct colours for auto-created import tags (so e.g. GHS stands out).
+const _IMPORT_TAG_COLOUR = { GHS: '#4d8eff' };
+
+// Bulk-create songs from parsed import previews. One transaction for the whole
+// batch. Each song inherits the global song background like create() does, and
+// any `song.tags` (array of tag names) are get-or-created and assigned.
+export function importSongs(parsedSongs = []) {
+  const db = getDb();
+  const defaultBgId = getSetting('global_bg_song_id') ?? null;
+  const tagCache = new Map();
+  const getOrCreateTag = (name) => {
+    if (tagCache.has(name)) return tagCache.get(name);
+    const existing = db.prepare('SELECT id FROM tags WHERE name = ?').get(name);
+    const id = existing
+      ? existing.id
+      : Number(db.prepare('INSERT INTO tags (name, colour) VALUES (?, ?)').run(name, _IMPORT_TAG_COLOUR[name] ?? null).lastInsertRowid);
+    tagCache.set(name, id);
+    return id;
+  };
+  const ids = db.transaction(() => {
+    const out = [];
+    for (const song of parsedSongs) {
+      const { lastInsertRowid } = db.prepare(
+        'INSERT INTO songs (title, author, copyright, default_background_id) VALUES (?, ?, ?, ?)'
+      ).run(song.title || 'Untitled', song.author || null, song.copyright || null, defaultBgId);
+      (song.sections || []).forEach((s, i) =>
+        db.prepare('INSERT INTO song_sections (song_id, type, order_index, content, style_json) VALUES (?, ?, ?, ?, NULL)')
+          .run(lastInsertRowid, _IMPORT_TYPES.has(s.type) ? s.type : 'verse', i, s.content)
+      );
+      for (const tagName of (song.tags || [])) {
+        db.prepare(`INSERT OR IGNORE INTO taggables (tag_id, entity_type, entity_id) VALUES (?, 'song', ?)`)
+          .run(getOrCreateTag(tagName), Number(lastInsertRowid));
+      }
+      out.push(Number(lastInsertRowid));
+    }
+    return out;
+  })();
+  return { count: ids.length, ids };
+}
+
+// Lowercased set of existing song titles — lets the importer flag duplicates.
+export function existingTitleSet() {
+  return new Set(getDb().prepare('SELECT title FROM songs').all().map((r) => String(r.title || '').trim().toLowerCase()));
+}
+
+// ── Bundled GHS hymnal ────────────────────────────────────────────────────────
+// resources/ghs/ghs-hymnal.json is packaged into the app's Resources/ dir, or
+// read from the repo in dev. Mirrors bundledBibleDir() in db/bible.js.
+function ghsHymnalPath() {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'ghs', 'ghs-hymnal.json')
+    : path.join(app.getAppPath(), 'resources', 'ghs', 'ghs-hymnal.json');
+}
+
+// Parse the bundled hymnal into preview rows, flagging any already in the DB.
+// Used by the manual Library → Import → GHS Hymnal path.
+export function readBundledGhsRows() {
+  const raw = JSON.parse(fs.readFileSync(ghsHymnalPath(), 'utf8'));
+  const rows = parseGhsItems(raw.items || []);
+  const existing = existingTitleSet();
+  return rows.map((r) => ({ ...r, existing: existing.has(r.title.trim().toLowerCase()) }));
+}
+
+// Ensure every "GHS N …" song carries the GHS tag (so the GHS folder shows).
+// Idempotent backfill — covers hymns imported before tag support and any path
+// that didn't assign the tag. Creates the GHS tag if absent.
+export function tagGhsSongs() {
+  const db = getDb();
+  const ghsSongs = db.prepare("SELECT id FROM songs WHERE title GLOB 'GHS [0-9]*'").all();
+  if (!ghsSongs.length) return;
+  const existing = db.prepare("SELECT id FROM tags WHERE name = 'GHS'").get();
+  const tagId = existing
+    ? existing.id
+    : Number(db.prepare("INSERT INTO tags (name, colour) VALUES ('GHS', '#4d8eff')").run().lastInsertRowid);
+  const insert = db.prepare(`INSERT OR IGNORE INTO taggables (tag_id, entity_type, entity_id) VALUES (?, 'song', ?)`);
+  db.transaction(() => { for (const s of ghsSongs) insert.run(tagId, s.id); })();
+}
+
+// Seed the GHS hymnal on startup. The import itself runs once (gated by a
+// `ghs_seeded` flag so deletions stick), but tagGhsSongs() always runs to keep
+// the GHS folder correct even for hymns imported by an earlier/other path.
+export function seedGhsHymnal() {
+  if (!getSetting('ghs_seeded')) {
+    try {
+      const toImport = readBundledGhsRows()
+        .filter((r) => r.ok && !r.existing)
+        .map((r) => ({ title: r.title, author: r.author, copyright: r.copyright, sections: r.sections, tags: r.tags }));
+      if (toImport.length) importSongs(toImport);
+      setSetting('ghs_seeded', true);
+    } catch { /* no bundled hymnal present (e.g. dev checkout without resources) */ }
+  }
+  tagGhsSongs();
 }
 
 export function update(id, data) {

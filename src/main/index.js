@@ -9,6 +9,7 @@ import { registerOutputIpc } from './ipc/output.ipc.js';
 import { registerSettingsIpc } from './ipc/settings.ipc.js';
 import { registerBibleIpc } from './ipc/bible.ipc.js';
 import { seedBundledBibles } from './db/bible.js';
+import { seedGhsHymnal } from './db/songs.js';
 import * as outputManager from './output/manager.js';
 import { isAvailable as ndiAvailable } from './output/ndi.js';
 
@@ -143,6 +144,7 @@ app.whenReady().then(async () => {
 
   initDb();
   seedBundledBibles();
+  seedGhsHymnal();
 
   registerSongsIpc();
   registerServicesIpc();

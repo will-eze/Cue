@@ -13,6 +13,9 @@ contextBridge.exposeInMainWorld('cue', {
     removeTag: (songId, tagId) => ipcRenderer.invoke('songs:removeTag', songId, tagId),
     setBackground: (songId, mediaId) => ipcRenderer.invoke('songs:setBackground', songId, mediaId),
     deleteAll: () => ipcRenderer.invoke('songs:deleteAll'),
+    importParse: (filePaths) => ipcRenderer.invoke('songs:importParse', filePaths),
+    importGhs: () => ipcRenderer.invoke('songs:importGhs'),
+    importCommit: (parsedSongs) => ipcRenderer.invoke('songs:importCommit', parsedSongs),
   },
   tags: {
     list: () => ipcRenderer.invoke('tags:list'),
