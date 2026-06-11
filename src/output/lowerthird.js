@@ -75,34 +75,26 @@ function applyStyle(el, s) {
   ltDiv.style.background = buildBarBg(s.ltBar);
 }
 
-window.cueOutput.onSlideUpdate((payload) => {
-  const { type, text, copyright: copy, logoPath, styleJson } = payload;
+// program=0 → graphics-only channel: ignore the program slide entirely so the song
+// lyric band never renders (only the broadcast-graphics overlay shows). Mutable so
+// the operator can toggle it live via content:mode without recreating the window.
+let showProgram = new URLSearchParams(location.search).get('program') !== '0';
+let lastPayload = null; // cached so re-enabling restores the current slide
 
-  if (type === 'clear') {
-    ltDiv.style.background = 'transparent';
-    textEl.className = '';
-    textEl.innerHTML = '';
-    copyright.textContent = '';
-    return;
-  }
+function clearBand() {
+  ltDiv.style.background = 'transparent';
+  textEl.className = '';
+  textEl.innerHTML = '';
+  copyright.textContent = '';
+}
 
-  if (type === 'logo') {
-    ltDiv.style.background = 'transparent';
-    textEl.className = '';
-    textEl.innerHTML = '';
-    copyright.textContent = '';
-    return;
-  }
+function renderProgram(payload) {
+  if (!showProgram || !payload) { clearBand(); return; }
 
-  // Foreground media belongs on the fullscreen channel — the lower-third overlay
-  // shows nothing for it.
-  if (payload.media) {
-    ltDiv.style.background = 'transparent';
-    textEl.className = '';
-    textEl.innerHTML = '';
-    copyright.textContent = '';
-    return;
-  }
+  const { type, text, copyright: copy, styleJson } = payload;
+
+  // clear / logo / foreground-media all blank the lower-third lyric band.
+  if (type === 'clear' || type === 'logo' || payload.media) { clearBand(); return; }
 
   textEl.className = '';
   applyStyle(textEl, styleJson);
@@ -110,7 +102,24 @@ window.cueOutput.onSlideUpdate((payload) => {
   copyright.textContent = copy || '';
   // Scripture attribution ("John 1:1 (KJV)") right-aligned + stylable; song copyright inherits.
   applyCopyrightStyle(copyright, payload.copyrightStyle, payload.copyrightAlign === 'right' ? 'right' : '');
+}
+
+window.cueOutput.onSlideUpdate((payload) => {
+  lastPayload = payload;
+  renderProgram(payload);
 });
+
+// Live content-mode toggle — switch the lyric band on/off without a window reload.
+if (window.cueOutput.onContentMode) {
+  window.cueOutput.onContentMode((m) => {
+    showProgram = m.program !== 0;
+    renderProgram(lastPayload);
+  });
+}
+
+// The broadcast-graphics overlay (name/title bug, ticker, custom HTML) is rendered
+// by the shared graphics-overlay.js, included after this script — it injects its own
+// DOM/styles and handles graphic:update. The lyric band above is untouched by it.
 
 // Apply an optional reference style (scripture) to the lower-third #copyright.
 function applyCopyrightStyle(el, cs, defaultAlign) {

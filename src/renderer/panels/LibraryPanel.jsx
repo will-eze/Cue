@@ -5,6 +5,7 @@ import SongImportModal from '../components/SongImportModal';
 import SongEditor from '../components/SongEditor';
 import ContextMenu from '../components/ContextMenu';
 import ScripturePanel from './ScripturePanel';
+import GraphicsPanel from './GraphicsPanel';
 import { mediaUrl } from '../utils/mediaUrl';
 
 function SongRow({ index, style, data }) {
@@ -347,6 +348,9 @@ export default function LibraryPanel({ onAddToRundown, onAddScripture, onScriptu
           <LibTab active={tab === 'scripture'} onClick={() => setTab('scripture')}>
             Scripture
           </LibTab>
+          <LibTab active={tab === 'graphics'} onClick={() => setTab('graphics')}>
+            Graphics
+          </LibTab>
         </div>
 
         <div className="ml-auto flex items-center gap-md">
@@ -539,6 +543,8 @@ export default function LibraryPanel({ onAddToRundown, onAddScripture, onScriptu
       {tab === 'scripture' && (
         <ScripturePanel onAdd={onAddScripture} onGoLive={onScriptureLive} onStyleSaved={onScriptureStyleSaved} />
       )}
+
+      {tab === 'graphics' && <GraphicsPanel />}
 
       {previewSong && (
         <SongPreviewModal song={previewSong} onClose={() => setPreviewSong(null)}

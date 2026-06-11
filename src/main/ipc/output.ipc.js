@@ -32,8 +32,8 @@ export function registerOutputIpc() {
     const db = getDb();
     const { lastInsertRowid } = db
       .prepare(
-        `INSERT INTO output_channels (name, type, template, ndi_fps, ndi_width, ndi_height, ndi_audio_muted, active)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO output_channels (name, type, template, ndi_fps, ndi_width, ndi_height, ndi_audio_muted, show_program, show_graphics, active)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         data.name,
@@ -43,6 +43,8 @@ export function registerOutputIpc() {
         data.ndi_width || 1920,
         data.ndi_height || 1080,
         data.ndi_audio_muted !== undefined ? (data.ndi_audio_muted ? 1 : 0) : 1,
+        data.show_program !== undefined ? (data.show_program ? 1 : 0) : 1,
+        data.show_graphics !== undefined ? (data.show_graphics ? 1 : 0) : 1,
         1,
       );
     const channel = db.prepare('SELECT * FROM output_channels WHERE id = ?').get(lastInsertRowid);
@@ -56,14 +58,21 @@ export function registerOutputIpc() {
     const fields = [];
     const vals = [];
     const allowed = ['name', 'type', 'template', 'ndi_fps', 'ndi_width', 'ndi_height',
-      'logo_override_id', 'ndi_audio_muted', 'active'];
+      'logo_override_id', 'ndi_audio_muted', 'show_program', 'show_graphics', 'active'];
     for (const k of allowed) {
       if (k in data) { fields.push(`${k} = ?`); vals.push(data[k]); }
     }
     if (fields.length) {
       db.prepare(`UPDATE output_channels SET ${fields.join(', ')} WHERE id = ?`).run(...vals, id);
     }
-    await outputManager.syncChannel(id);
+    // A content-mode-only change (lyrics/graphics visibility) is applied at runtime
+    // so the window — and any NDI sender — is never recreated. Structural changes
+    // (template, type, monitors, active…) still rebuild the window via syncChannel.
+    const changedKeys = Object.keys(data);
+    const contentModeOnly = changedKeys.length > 0 &&
+      changedKeys.every((k) => k === 'show_program' || k === 'show_graphics');
+    if (contentModeOnly) outputManager.setChannelContentMode(id);
+    else await outputManager.syncChannel(id);
     return db.prepare('SELECT * FROM output_channels WHERE id = ?').get(id);
   });
 
@@ -76,6 +85,15 @@ export function registerOutputIpc() {
   // ── Stage display ──────────────────────────────────────────────────────────
   ipcMain.handle('output:stage:message', (_e, text) => outputManager.setStageMessage(text));
   ipcMain.handle('output:stage:timer',   (_e, action, seconds) => outputManager.stageTimerCmd(action, seconds));
+
+  // ── Broadcast graphics overlay (independent of the program bus) ────────────
+  ipcMain.handle('output:graphic:show', (_e, data) => outputManager.graphicShow(data));
+  ipcMain.handle('output:graphic:hide', () => outputManager.graphicHide());
+  ipcMain.handle('output:ticker:show',  (_e, data) => outputManager.tickerShow(data));
+  ipcMain.handle('output:ticker:hide',  () => outputManager.tickerHide());
+  ipcMain.handle('output:custom:show',  (_e, data) => outputManager.customShow(data));
+  ipcMain.handle('output:custom:hide',  () => outputManager.customHide());
+  ipcMain.handle('output:overlay:get',  () => outputManager.getOverlay());
 
   // ── Multiview capture ──────────────────────────────────────────────────────
   ipcMain.handle('output:multiview:start', () => outputManager.startMultiviewCapture());

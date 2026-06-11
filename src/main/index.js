@@ -8,6 +8,7 @@ import { registerMediaIpc } from './ipc/media.ipc.js';
 import { registerOutputIpc } from './ipc/output.ipc.js';
 import { registerSettingsIpc } from './ipc/settings.ipc.js';
 import { registerBibleIpc } from './ipc/bible.ipc.js';
+import { registerGraphicsIpc } from './ipc/graphics.ipc.js';
 import { seedBundledBibles } from './db/bible.js';
 import { seedGhsHymnal } from './db/songs.js';
 import * as outputManager from './output/manager.js';
@@ -152,6 +153,7 @@ app.whenReady().then(async () => {
   registerSettingsIpc();
   registerOutputIpc();
   registerBibleIpc();
+  registerGraphicsIpc();
 
   createMainWindow();
   outputManager.setMainWindow(mainWindow);

@@ -163,7 +163,8 @@ src/
 │   │   └── songs-import.js   Song-file parsers (pure). parseSongFiles: OpenLyrics XML / ChordPro / text /
 │   │                         EasyWorship (SQLite Songs.db+SongWords.db, RTF→text). parseGhsItems (GHS hymnal).
 │   ├── db/
-│   │   ├── schema.js         SQLite init + migration runner (v1→v9). getDb() singleton.
+│   │   ├── schema.js         SQLite init + migration runner (v1→v14). getDb() singleton.
+│   │   ├── graphics.js       Broadcast-graphics CRUD (style_json + target).
 │   │   ├── songs.js          Song + section + tag CRUD. FTS5 search. deleteAll(). importSongs (tag-aware bulk
 │   │   │                     insert) + existingTitleSet. seedGhsHymnal / tagGhsSongs / readBundledGhsRows.
 │   │   ├── services.js       Service / rundown CRUD. resolveItem() joins media paths. clearItems(). setItemBackground() writes through to songs.
@@ -173,7 +174,9 @@ src/
 │   │   ├── songs.ipc.js      songs:* and tags:* handlers (incl. importParse / importGhs / importCommit).
 │   │   ├── services.ipc.js   services:* handlers.
 │   │   ├── media.ipc.js      media:* handlers.
-│   │   ├── output.ipc.js     output:* handlers.
+│   │   ├── output.ipc.js     output:* handlers (incl. graphic/ticker/overlay; channel show_program/show_graphics —
+│   │   │                     content-mode-only updates route to setChannelContentMode, no window recreate).
+│   │   ├── graphics.ipc.js   graphics:* CRUD handlers (registerGraphicsIpc).
 │   │   └── settings.ipc.js   settings:* handlers.
 │   └── output/
 │       ├── manager.js        Window registry. go/clear/logo dispatch. NO operator capture loop —
@@ -185,6 +188,9 @@ src/
 │       │                     NDI: ndiCaptureLoops Map, startNdiCapture / stopNdiCapture.
 │       │                     ndiLastFrames Map: caches JPEG thumbnails at ~1fps when multiview is active.
 │       │                     multiviewRefCount: refcounted start/stop — interval starts only at 0→1, stops at 0.
+│       │                     Broadcast-graphics overlay bus: overlay {nameTitle,ticker,custom} + show/hide mutators;
+│       │                     broadcastGraphic → per-window target-filtered graphic:update to all non-stage windows
+│       │                     (getGraphicsWindowInfos). setChannelContentMode → runtime content:mode (no recreate).
 │       └── ndi.js            Active NDI implementation. createRequire loads @grandi/<platform>-<arch>.
 │                             createSender / sendFrame (inflight guard) / destroySender / isAvailable.
 ├── renderer/
@@ -218,12 +224,16 @@ src/
 │   │   │                          mute (media.setMuted), play/pause + restart (media.control). Template-aware:
 │   │   │                          fullscreen / lower-third / stage. StageMonitor renders the confidence-monitor
 │   │   │                          layout in the live monitor when the selected channel template is 'stage'.
-│   │   │                          Channel selector strip when 2+ channels active.
-│   │   └── LibraryPanel.jsx       Virtualised song list + media grid. Search + tag filter (folders = tags).
-│   │                              Import dropdown: "Import from File…" (songs.importParse) / "Import GHS Hymnal"
-│   │                              (songs.importGhs) → SongImportModal. GHS folder = "GHS" tag: orders by hymn
-│   │                              number + numeric quick-search. Single-click → preview modal (220ms). Double-click
-│   │                              → add to rundown. Accepts refreshTick + focusSearchRef props.
+│   │   │                          Renders the broadcast-graphics overlay (GraphicsOverlayLayer) on top of any non-stage
+│   │   │                          live monitor, filtered by the selected channel kind + content mode. Channel selector.
+│   │   ├── LibraryPanel.jsx       Virtualised song list + media grid. Search + tag filter (folders = tags).
+│   │   │                          Import dropdown: "Import from File…" (songs.importParse) / "Import GHS Hymnal"
+│   │   │                          (songs.importGhs) → SongImportModal. GHS folder = "GHS" tag: orders by hymn
+│   │   │                          number + numeric quick-search. Single-click → preview modal (220ms). Double-click
+│   │   │                          → add to rundown. Tabs: Songs/Media/Scripture/Graphics. Accepts refreshTick + focusSearchRef.
+│   │   └── GraphicsPanel.jsx      Broadcast Graphics tab. Destination override (Default/All/In-Room/Online),
+│   │                              per-channel 3-way mode switcher (runtime), Quick Ticker, grid of live-thumbnail
+│   │                              cards (Take/Clear), Clear All. Follows output:overlay-changed. Hosts GraphicsEditor.
 │   ├── components/
 │   │   ├── SongEditor.jsx         Full song CRUD modal. 2-row FormattingToolbar (row 2: text box Fill +
 │   │   │                          object-align + X/Y/W/H for fullscreen, bar controls for lower-third). SlidePreview (fullscreen) and
@@ -234,11 +244,16 @@ src/
 │   │   ├── SongImportModal.jsx    Import preview/confirm. Editable title (uncontrolled), format badge, section
 │   │   │                          count; duplicates flagged + unselected. Commit → songs.importCommit (with tags).
 │   │   ├── MediaPickerModal.jsx   Media grid picker. Used for background override in RundownPanel.
+│   │   ├── GraphicsEditor.jsx     Broadcast-graphic editor. Kind tabs (lower_third/ticker/custom). Reuses SongEditor's
+│   │   │                          FormattingToolbar; lower-third Name/Title toggle + draggable/resizable BugPreview +
+│   │   │                          bar; ticker styling + top/bottom; custom HTML. Default-destination selector.
+│   │   │                          Exports fillPlaceholders / flatTextCss / buildBarBg.
 │   │   ├── SlideList.jsx          Scrollable section list. preview and live variants. Content capped max-h-24.
 │   │   └── ContextMenu.jsx        Generic right-click menu positioned by x/y coords. Escape key closes.
 │   ├── settings/
 │   │   ├── OutputChannels.jsx     Channel cards. Create/edit/delete. Monitor assignment per channel.
-│   │   │                          NDI cards: audio mute toggle (ndi_audio_muted).
+│   │   │                          NDI cards: audio mute toggle (ndi_audio_muted). Lower-third cards: 3-way content
+│   │   │                          mode (Lyrics + Graphics / Lyrics Only / Graphics Only) via channelMode util.
 │   │   ├── LogoSettings.jsx       Global logo picker.
 │   │   ├── BackgroundSettings.jsx Global song/slide background pickers. Bulk apply. Accepts only activeServiceId prop.
 │   │   ├── DangerZone.jsx         Destructive actions: clear rundown, delete rundown, clear library.
@@ -246,7 +261,8 @@ src/
 │   │   └── ShortcutSettings.jsx   Configurable transport shortcuts. Modifier selector + key inputs for
 │   │                              GO / Clear / Logo / Live Toggle. Saves to settings DB via settings:set.
 │   └── utils/
-│       └── mediaUrl.js            mediaUrl(absPath) — see Media section above.
+│       ├── mediaUrl.js            mediaUrl(absPath) — see Media section above.
+│       └── channelMode.js         Lower-third content-mode helpers: CHANNEL_MODES, channelMode(ch), modeToFlags(mode).
 ├── output/                   Plain HTML. No build step. Loaded directly by BrowserWindow.
 │   ├── media-player.js       Shared classic script (loaded before fullscreen.js/stage.js).
 │   │                         window.CueMediaPlayer.attach(el, {loop, baseMuted, transport}) — locks one
@@ -256,9 +272,12 @@ src/
 │   │   / .css / .js          applyStyle positions #text-wrap via textBox %; supports all style_json props.
 │   │                         showLogo/hideLogo use #logo-wrap (separate from text, never overwrites it).
 │   │                         Foreground media via CueMediaPlayer. ?alpha=1 NDI transparency; ?mute=1 base mute.
-│   ├── lowerthird.html       #lowerthird (background: transparent by default, JS sets from ltBar).
+│   ├── graphics-overlay.js   Shared broadcast-graphics overlay (fullscreen.html + lowerthird.html, NOT stage).
+│   │                         Injects #cue-gfx DOM/styles. Name/title bug + ticker crawl + custom HTML (shadow root).
+│   │                         ?graphics=0 / content:mode toggle the whole overlay live (caches last overlay).
+│   ├── lowerthird.html       #lowerthird (lyric band only; background transparent, JS sets from ltBar) + graphics-overlay.js.
 │   │   / .css / .js          buildBarBg(ltBar): null→transparent; {color,opacity,solid}→gradient or solid.
-│   │                         Clear/logo events reset bar to transparent.
+│   │                         Clear/logo reset bar to transparent. ?program=0 / content:mode toggle the lyric band live.
 │   └── stage.html            Confidence monitor. #top-bar (clock / REMAINING timer / VIDEO countdown),
 │       / .css / .js          #content (#media-wrap muted video + text), #bottom-bar (message). Video via
 │                             CueMediaPlayer (always muted). VIDEO countdown loops with the clip (never ∞),
@@ -273,11 +292,11 @@ src/
 
 **Engine**: `better-sqlite3` (synchronous — no Promises).
 **Location**: macOS `~/Library/Application Support/Cue/cue.db`, Windows `%APPDATA%\Cue\cue.db`
-**Current schema version**: 9
+**Current schema version**: 14
 
 **Media files** are copied to `userData/media/<uuid>.<ext>` on import. Original paths not retained.
 
-Recent migrations: v6 `'stage'` template, v7 scripture (`bible_versions`/`bible_verses` + `'scripture'` item_type), v8 `service_items.media_loop`, v9 `output_channels.ndi_audio_muted`. Migrations run with FK off (table-rebuild migrations don't cascade-delete).
+Recent migrations: v8 `service_items.media_loop`, v9 `output_channels.ndi_audio_muted`, v10–v11 `graphics` table (broadcast graphics: `lower_third`/`ticker`/`custom`), v12 `graphics.style_json`+`graphics.target`, v13 `output_channels.show_program`, v14 `output_channels.show_graphics`. Migrations run with FK off (table-rebuild migrations don't cascade-delete).
 
 ### Key tables (abbreviated)
 
@@ -293,10 +312,11 @@ Recent migrations: v6 `'stage'` template, v7 scripture (`bible_versions`/`bible_
 | `media_assets` | `id, filename, path, type, folder_id` |
 | `media_folders` | `id, name, parent_id` |
 | `bible_versions` / `bible_verses` | scripture module (v7); `bible_verses_fts` FTS5 |
-| `output_channels` | `id, name, type, template('fullscreen'/'lowerthird'/'stage'), ndi_fps, ndi_width, ndi_height, ndi_audio_muted, active` |
+| `output_channels` | `id, name, type, template('fullscreen'/'lowerthird'/'stage'), ndi_fps, ndi_width, ndi_height, ndi_audio_muted, show_program, show_graphics, active` |
+| `graphics` | `id, kind('lower_third'/'ticker'/'custom'), label, name, title, text, html, speed, style_json, target('all'/'screen'/'ndi'), order_index` |
 | `channel_monitors` | `id, channel_id, display_bounds, label, active` — physical screen per channel (v4) |
 | `settings` | `key, value` (JSON-encoded values) |
-| `db_version` | `version` (integer, currently 9) |
+| `db_version` | `version` (integer, currently 14) |
 
 ### Settings keys in use
 
@@ -388,15 +408,22 @@ Scripture style + background resolution is applied in the **renderer** (`Operato
 ### Output
 - `output:go(payload)` / `output:clear()` / `output:logo()`
 - `output:setLive(enabled)` — opens or closes all output BrowserWindows
-- `output:getState()` → `{isLive, livePayload, activeWindows, outputsEnabled, displayMode, transport}`
+- `output:getState()` → `{isLive, livePayload, activeWindows, outputsEnabled, displayMode, transport, overlay}`
 - `output:media:control(action)` — `'play'|'pause'|'restart'` (mutates transport, broadcast to all surfaces)
 - `output:media:seek(pos)` — scrub foreground media to `pos` seconds (preserves paused state)
 - `output:media:set-muted(muted)` — program (audience) audio mute; stage + operator preview stay silent
+- `output:graphic:show({name,title,style,target})` / `:hide()` — broadcast name/title bug (`target` `'all'|'screen'|'ndi'`)
+- `output:custom:show({html,target})` / `:hide()` (via `graphic.showCustom`/`.hideCustom`) — custom-HTML graphic
+- `output:ticker:show({text,speed,style,target})` / `:hide()` — scrolling ticker
+- `output:overlay:get()` → `{nameTitle, ticker, custom}` — current overlay snapshot
 - `output:stage:message(text)` / `output:stage:timer(action, seconds?)` — confidence-monitor message + presenter countdown (`'set'|'start'|'pause'|'reset'`)
-- `output:channels:list()` / `:create(data)` / `:update(id, data)` / `:delete(id)` — `data.ndi_audio_muted` (default 1)
+- `output:channels:list()` / `:create(data)` / `:update(id, data)` / `:delete(id)` — `data.ndi_audio_muted` / `show_program` / `show_graphics` (all default 1). A change to **only** `show_program`/`show_graphics` toggles at runtime (`content:mode`, no window recreate); other fields rebuild via `syncChannel`.
 - `output:monitors:list(channelId?)` / `:create(channelId, data)` / `:delete(monitorId)` — physical screen assignments
 - `output:multiview:start()` / `:stop()` — starts/stops multiview capture loop
 - `output:screens:list()` → `[{id, bounds, scaleFactor, label}]`
+
+### Graphics (`window.cue.graphics`)
+- `graphics:list()` / `:get(id)` / `:create(data)` / `:update(id, data)` / `:delete(id)` / `:reorder(orderedIds)` — broadcast-graphics CRUD. `data.style_json` (object/string), `data.target` (default `'ndi'` — graphics default to Online).
 
 ### Media
 - `media:import(filePaths)` → `[{id, filename, path, type}]`
@@ -489,6 +516,10 @@ Foreground media (bumpers/clips) is kept in sync across **all** surfaces (screen
 **NDI channels**: hidden `show: false`, `offscreen: true` BrowserWindow. Loaded with `?alpha=1` so the template overrides its CSS background to transparent, and `?mute=<ndi_audio_muted>` for per-channel audio. `ndi.js` uses `grandi` to publish BGRA frames at the configured fps. Frame capture uses the `paint` event driven by `setInterval(invalidate, frameMs)` — do NOT use `capturePage()` on NDI windows (4s+ latency due to async GPU readback and offscreen compositor throttling). An `inflight` per-sender flag drops frames when the NDI SDK is busy to prevent memory exhaustion. `startNdiCapture` **always runs** after `did-finish-load` — `startPainting()` must be called regardless of SDK availability so `ndiLastFrames` populates for multiview. Only `ndi.sendFrame()` is gated on `ndi.isAvailable()`.
 
 **Audio routing**: program (audience) audio is emitted by **one window only** — the primary screen output (`isPrimaryAudioMonitor`, `?mute=0`); all other screen outputs and the stage monitor load with `?mute=1`. NDI audio is independent (per-channel `ndi_audio_muted`). The live program mute (`output:media:set-muted`) layers on top: `el.muted = baseMuted || transport.muted`. Confidence monitor and operator preview are always silent.
+
+**Broadcast-graphics overlay**: an independent bus (name/title bug, ticker, custom HTML) rendered on **every non-stage output window** (fullscreen + lower-third) by the shared `src/output/graphics-overlay.js`. `manager.broadcastGraphic()` sends each window only the slots whose `target` (`'all'|'screen'|'ndi'`) matches its kind (numeric map key = screen/in-room, `ndi-*` = online). Never coupled to the program slide bus.
+
+**Lower-third content modes** (`show_program` × `show_graphics`): Lyrics + Graphics (1/1), Lyrics Only (1/0), Graphics Only (0/1). Reaches the window as `?program=`/`?graphics=` on load. **Toggling these two flags is a runtime change** — `setChannelContentMode` sends `content:mode` to the existing window; `lowerthird.js` (lyric band) and `graphics-overlay.js` (overlay) hold mutable flags + cached last values and toggle in place. Do NOT recreate the window for a mode switch (it would drop the NDI sender). The Graphics panel switcher and Settings → Output Channels both use this.
 
 ---
 

@@ -319,6 +319,86 @@ const migrations = [
       ALTER TABLE output_channels ADD COLUMN ndi_audio_muted INTEGER NOT NULL DEFAULT 1;
     `);
   },
+
+  // v10 — Broadcast graphics: reusable lower-third name/title cards and ticker
+  // presets. These drive the independent overlay bus (graphic:update), separate
+  // from the program slide bus, so a graphic never clobbers the live program.
+  function v10(database) {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS graphics (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        kind        TEXT NOT NULL CHECK(kind IN ('lower_third','ticker')),
+        label       TEXT,
+        name        TEXT,
+        title       TEXT,
+        text        TEXT,
+        speed       INTEGER NOT NULL DEFAULT 100,
+        order_index INTEGER NOT NULL DEFAULT 0,
+        created_at  DATETIME NOT NULL DEFAULT (datetime('now')),
+        updated_at  DATETIME NOT NULL DEFAULT (datetime('now'))
+      );
+    `);
+  },
+
+  // v11 — Custom HTML graphics. Adds the 'custom' kind + an html column (an HTML
+  // snippet with inline <style>, supporting {{name}}/{{title}}/{{text}} placeholders
+  // and CSS enter/exit animations). CHECK can't be altered in place, so rebuild.
+  function v11(database) {
+    database.exec(`
+      CREATE TABLE graphics_v11 (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        kind        TEXT NOT NULL CHECK(kind IN ('lower_third','ticker','custom')),
+        label       TEXT,
+        name        TEXT,
+        title       TEXT,
+        text        TEXT,
+        html        TEXT,
+        speed       INTEGER NOT NULL DEFAULT 100,
+        order_index INTEGER NOT NULL DEFAULT 0,
+        created_at  DATETIME NOT NULL DEFAULT (datetime('now')),
+        updated_at  DATETIME NOT NULL DEFAULT (datetime('now'))
+      );
+
+      INSERT INTO graphics_v11
+        (id, kind, label, name, title, text, speed, order_index, created_at, updated_at)
+      SELECT id, kind, label, name, title, text, speed, order_index, created_at, updated_at
+      FROM graphics;
+
+      DROP TABLE graphics;
+      ALTER TABLE graphics_v11 RENAME TO graphics;
+    `);
+  },
+
+  // v12 — Customisable graphics. style_json holds per-graphic appearance (name/title
+  // text styling, draggable/resizable position box, bar background, ticker styling +
+  // position) authored in GraphicsEditor. target is the saved default destination
+  // ('all' | 'screen' | 'ndi') so an operator can route in-room vs online; it can be
+  // overridden per-fire from the panel.
+  function v12(database) {
+    database.exec(`
+      ALTER TABLE graphics ADD COLUMN style_json TEXT;
+      ALTER TABLE graphics ADD COLUMN target TEXT NOT NULL DEFAULT 'all';
+    `);
+  },
+
+  // v13 — show_program lets a lower-third channel be graphics-only. When 0, the
+  // channel ignores the program slide text (no lyric band), so a dedicated
+  // broadcast-graphics channel (name supers / tickers) doesn't collide with the
+  // song lower-third. Default 1 preserves the existing "lyrics as a lower third".
+  function v13(database) {
+    database.exec(`
+      ALTER TABLE output_channels ADD COLUMN show_program INTEGER NOT NULL DEFAULT 1;
+    `);
+  },
+
+  // v14 — show_graphics pairs with show_program to give a lower-third channel three
+  // content modes: Lyrics + Graphics (1/1), Lyrics Only (1/0), Graphics Only (0/1).
+  // When 0 the broadcast-graphics overlay is suppressed on that channel.
+  function v14(database) {
+    database.exec(`
+      ALTER TABLE output_channels ADD COLUMN show_graphics INTEGER NOT NULL DEFAULT 1;
+    `);
+  },
 ];
 
 function runMigrations() {

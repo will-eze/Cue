@@ -141,6 +141,15 @@ export default function OperatorView({
     window.cue.output.channels.list().then(setChannels);
   }, [bgRefreshTick]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Keep the channel list (and thus the live monitor's content-mode awareness) in
+  // sync when channels change anywhere — e.g. the Graphics panel's mode switcher.
+  useEffect(() => {
+    const off = window.cue.on('output:state-changed', () => {
+      window.cue.output.channels.list().then(setChannels);
+    });
+    return off;
+  }, []);
+
   useEffect(() => {
     if (!activeServiceId) { setServiceData(null); return; }
     window.cue.services.get(activeServiceId).then(setServiceData);

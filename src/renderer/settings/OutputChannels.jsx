@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { CHANNEL_MODES, channelMode, modeToFlags } from '../utils/channelMode';
 
 export default function OutputChannels() {
   const [channels, setChannels] = useState([]);
@@ -332,6 +333,13 @@ function ChannelCard({ channel, monitors, screens, assignedBounds, onUpdate, onD
             <span className="shrink-0 text-[10px] font-label-sm uppercase tracking-[0.04em] px-xs py-[1px] rounded border border-outline-variant/40 text-on-surface-variant">
               {templateLabel}
             </span>
+            {/* Lower-third channels: content mode (lyrics + graphics / lyrics / graphics) */}
+            {channel.template === 'lowerthird' && (
+              <ChannelModeSwitch
+                mode={channelMode(channel)}
+                onChange={(m) => onUpdate(modeToFlags(m))}
+              />
+            )}
             {!isNdi && (
               <span className="text-label-sm font-label-sm text-on-surface-variant shrink-0">
                 {monitorCount === 0 ? 'no screens' : `${monitorCount} screen${monitorCount !== 1 ? 's' : ''}`}
@@ -565,6 +573,28 @@ function EmptyState({ onAdd }) {
         </p>
       </div>
     </button>
+  );
+}
+
+// ─── Lower-third content mode switch (3-way segmented) ────────────────────────
+
+function ChannelModeSwitch({ mode, onChange }) {
+  return (
+    <div className="shrink-0 flex items-center gap-[2px] bg-surface-container rounded p-[2px]" title="What this lower-third channel shows">
+      {CHANNEL_MODES.map((m) => (
+        <button
+          key={m.id}
+          onClick={() => onChange(m.id)}
+          title={m.label}
+          className={`flex items-center gap-xs px-xs py-[1px] rounded text-[10px] font-label-sm uppercase tracking-[0.04em] transition-colors cursor-pointer ${
+            mode === m.id ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'
+          }`}
+        >
+          <span className="material-symbols-outlined text-[12px]">{m.icon}</span>
+          {m.short}
+        </button>
+      ))}
+    </div>
   );
 }
 

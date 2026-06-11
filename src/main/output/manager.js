@@ -21,6 +21,13 @@ let stageState = {
   message: '',
 };
 
+// Broadcast-graphics overlay — an independent bus from the program slide bus.
+// nameTitle = { name, title } | null (built-in lower-third bug); ticker = { text, speed }
+// | null (bottom crawl); custom = { html } | null (user HTML/CSS rendered in a shadow
+// root). Dispatched as graphic:update to lower-third windows only, so a graphic never
+// disturbs the fullscreen program. Persisted for newly opened windows.
+let overlay = { nameTitle: null, ticker: null, custom: null };
+
 // displayMode drives what every output window shows:
 //   'idle'    — nothing was ever GO'd; outputs show black
 //   'content' — slide text + background showing
@@ -85,13 +92,20 @@ function createMonitorWindow(channel, monitor) {
   // the live program mute inside the template (el.muted = baseMuted || transport.muted).
   const baseMuted = channel.template === 'stage' || !isPrimaryAudioMonitor(channel.id, monitor.id);
   win.loadFile(getTemplatePath(channel.template || 'fullscreen'), {
-    query: { mute: baseMuted ? '1' : '0' },
+    // program=0 hides the song lyric band; graphics=0 hides the broadcast-graphics
+    // overlay — together they give a lower-third channel its 3 content modes.
+    query: {
+      mute: baseMuted ? '1' : '0',
+      program: channel.show_program === 0 ? '0' : '1',
+      graphics: channel.show_graphics === 0 ? '0' : '1',
+    },
   });
   // Re-dispatch current display state once the template JS is ready.
   // Without this, IPC sent before onSlideUpdate is registered is silently dropped.
   win.webContents.once('did-finish-load', () => {
     sendStateToWindow(win, channel);
     if (channel.template === 'stage') sendStageState(win);
+    else sendGraphicToWindow(win, 'screen'); // fullscreen + lower-third carry the overlay
   });
   return win;
 }
@@ -142,11 +156,17 @@ function createNdiWindow(channel) {
     },
   });
   win.loadFile(getTemplatePath(channel.template || 'fullscreen'), {
-    query: { alpha: '1', mute: channel.ndi_audio_muted !== 0 ? '1' : '0' },
+    query: {
+      alpha: '1',
+      mute: channel.ndi_audio_muted !== 0 ? '1' : '0',
+      program: channel.show_program === 0 ? '0' : '1',
+      graphics: channel.show_graphics === 0 ? '0' : '1',
+    },
   });
   win.webContents.once('did-finish-load', () => {
     sendStateToWindow(win, channel);
     if (channel.template === 'stage') sendStageState(win);
+    else sendGraphicToWindow(win, 'ndi'); // fullscreen + lower-third carry the overlay
     startNdiCapture(channel.id, win, channel);
   });
   return win;
@@ -298,6 +318,33 @@ export async function syncChannel(channelId) {
       if (win) windows.set(monitor.id, win);
     }
   }
+
+  // Notify the renderer so the operator UI re-reads channel topology/flags
+  // (e.g. the live monitor's content-mode awareness after a mode switch).
+  notifyMainWindow('output:state-changed', getState());
+}
+
+// Toggle a channel's content mode (lyric band / graphics overlay) at RUNTIME by
+// messaging its existing windows — no window recreate, so the NDI sender is never
+// dropped. Used for the live mode switcher; structural changes still use syncChannel.
+export function setChannelContentMode(channelId) {
+  const db = getDb();
+  const channel = db.prepare('SELECT * FROM output_channels WHERE id = ?').get(channelId);
+  if (!channel) return;
+  const msg = { program: channel.show_program === 0 ? 0 : 1, graphics: channel.show_graphics === 0 ? 0 : 1 };
+
+  const wins = [];
+  if (channel.type === 'ndi') {
+    const w = windows.get(`ndi-${channelId}`);
+    if (w) wins.push(w);
+  } else {
+    const monitors = db.prepare('SELECT * FROM channel_monitors WHERE channel_id = ? AND active = 1').all(channelId);
+    for (const m of monitors) { const w = windows.get(m.id); if (w) wins.push(w); }
+  }
+  for (const w of wins) {
+    try { if (!w.isDestroyed()) w.webContents.send('content:mode', msg); } catch {}
+  }
+  notifyMainWindow('output:state-changed', getState());
 }
 
 export function closeChannel(channelId) {
@@ -600,6 +647,7 @@ export function getState() {
     activeChannels: [...windows.keys()],
     outputsEnabled,
     transport: { ...transport },
+    overlay: { ...overlay },
   };
 }
 
@@ -696,6 +744,103 @@ function notifyMainWindow(channel, ...args) {
   if (mainWindowRef && !mainWindowRef.isDestroyed()) {
     mainWindowRef.webContents.send(channel, ...args);
   }
+}
+
+// ── Broadcast graphics overlay ────────────────────────────────────────────────
+// Independent of the program slide bus. Dispatched only to lower-third windows
+// (detected by loaded URL, like getAllStageWindows) so the fullscreen program is
+// untouched. The operator renderer follows output:overlay-changed for live state.
+//
+// Each slot carries a `target` ('all' | 'screen' | 'ndi') so a graphic can be
+// routed to the in-room screens, the online NDI feed, or both. Every lower-third
+// window therefore receives a per-window FILTERED overlay (only the slots whose
+// target matches that window's kind), not the raw overlay object.
+
+// The overlay renders on every program output (fullscreen + lower-third), so an
+// In-Room graphic overlays the main auditorium output and an Online graphic overlays
+// the NDI feed. Stage/confidence monitors are excluded. Kind comes from the
+// windows-map key: numeric keys are monitor windows (screen / in-room); 'ndi-…'
+// keys are NDI windows (online).
+function getGraphicsWindowInfos() {
+  const infos = [];
+  for (const [key, win] of windows) {
+    if (!win || win.isDestroyed()) continue;
+    try {
+      const url = win.webContents.getURL();
+      if (!url.includes('fullscreen.html') && !url.includes('lowerthird.html')) continue;
+    } catch { continue; }
+    const kind = (typeof key === 'string' && key.startsWith('ndi-')) ? 'ndi' : 'screen';
+    infos.push({ win, kind });
+  }
+  return infos;
+}
+
+function slotForKind(slot, kind) {
+  if (!slot) return null;
+  const target = slot.target || 'all';
+  return (target === 'all' || target === kind) ? slot : null;
+}
+
+function overlayForKind(kind) {
+  return {
+    nameTitle: slotForKind(overlay.nameTitle, kind),
+    ticker:    slotForKind(overlay.ticker, kind),
+    custom:    slotForKind(overlay.custom, kind),
+  };
+}
+
+// Sync one newly opened lower-third window. `kind` is known by the caller
+// (createMonitorWindow → 'screen', createNdiWindow → 'ndi').
+function sendGraphicToWindow(win, kind = 'screen') {
+  if (win.isDestroyed()) return;
+  win.webContents.send('graphic:update', overlayForKind(kind));
+}
+
+function broadcastGraphic() {
+  for (const { win, kind } of getGraphicsWindowInfos()) {
+    try { win.webContents.send('graphic:update', overlayForKind(kind)); } catch {}
+  }
+  notifyMainWindow('output:overlay-changed', { ...overlay });
+}
+
+export function graphicShow(data) {
+  overlay.nameTitle = data && (data.name || data.title)
+    ? { name: data.name ?? '', title: data.title ?? '', style: data.style ?? null, target: data.target || 'all' }
+    : null;
+  broadcastGraphic();
+}
+
+export function graphicHide() {
+  overlay.nameTitle = null;
+  broadcastGraphic();
+}
+
+export function tickerShow(data) {
+  overlay.ticker = data && data.text
+    ? { text: data.text, speed: Number.isFinite(data.speed) ? data.speed : 100, style: data.style ?? null, target: data.target || 'all' }
+    : null;
+  broadcastGraphic();
+}
+
+export function tickerHide() {
+  overlay.ticker = null;
+  broadcastGraphic();
+}
+
+export function customShow(data) {
+  overlay.custom = data && data.html
+    ? { html: String(data.html), target: data.target || 'all' }
+    : null;
+  broadcastGraphic();
+}
+
+export function customHide() {
+  overlay.custom = null;
+  broadcastGraphic();
+}
+
+export function getOverlay() {
+  return { ...overlay };
 }
 
 // ── Multiview capture ────────────────────────────────────────────────────────

@@ -69,9 +69,30 @@ contextBridge.exposeInMainWorld('cue', {
       message: (text)           => ipcRenderer.invoke('output:stage:message', text),
       timer:   (action, seconds) => ipcRenderer.invoke('output:stage:timer', action, seconds),
     },
+    graphic: {
+      show: (data) => ipcRenderer.invoke('output:graphic:show', data),
+      hide: () => ipcRenderer.invoke('output:graphic:hide'),
+      showCustom: (data) => ipcRenderer.invoke('output:custom:show', data),
+      hideCustom: () => ipcRenderer.invoke('output:custom:hide'),
+    },
+    ticker: {
+      show: (data) => ipcRenderer.invoke('output:ticker:show', data),
+      hide: () => ipcRenderer.invoke('output:ticker:hide'),
+    },
+    overlay: {
+      get: () => ipcRenderer.invoke('output:overlay:get'),
+    },
     screens: {
       list: () => ipcRenderer.invoke('output:screens:list'),
     },
+  },
+  graphics: {
+    list: () => ipcRenderer.invoke('graphics:list'),
+    get: (id) => ipcRenderer.invoke('graphics:get', id),
+    create: (data) => ipcRenderer.invoke('graphics:create', data),
+    update: (id, data) => ipcRenderer.invoke('graphics:update', id, data),
+    delete: (id) => ipcRenderer.invoke('graphics:delete', id),
+    reorder: (orderedIds) => ipcRenderer.invoke('graphics:reorder', orderedIds),
   },
   media: {
     import: (filePaths) => ipcRenderer.invoke('media:import', filePaths),
@@ -129,6 +150,7 @@ contextBridge.exposeInMainWorld('cue', {
       'output:ndi-unavailable',
       'output:multiview-captures',
       'output:media-transport',
+      'output:overlay-changed',
       'shortcut:next', 'shortcut:prev',
     ];
     if (!allowed.includes(channel)) return () => {};

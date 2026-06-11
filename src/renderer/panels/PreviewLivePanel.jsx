@@ -1,7 +1,66 @@
 import React, { useState, useEffect, useRef } from 'react';
 import SlideList from '../components/SlideList';
 import { renderWithRuns, copyrightCss } from '../components/SongEditor';
+import { flatTextCss, buildBarBg as buildGraphicBarBg } from '../components/GraphicsEditor';
 import { mediaUrl } from '../utils/mediaUrl';
+
+const GFX_BOX_DEFAULT = { x: 4, y: 70, w: 55, h: 22 };
+const GFX_NAME_BASE  = { fontSize: 54, color: '#ffffff', fontWeight: 700 };
+const GFX_TITLE_BASE = { fontSize: 28, color: '#adc6ff', fontWeight: 500 };
+
+// Renders the live broadcast-graphics overlay (name/title bug, ticker, custom HTML)
+// on top of a lower-third live monitor — mirrors output/lowerthird.js exactly.
+function GraphicsOverlayLayer({ overlay }) {
+  if (!overlay) return null;
+  const nt = overlay.nameTitle, tk = overlay.ticker, cu = overlay.custom;
+  if (!nt && !tk && !cu) return null;
+
+  let bug = null;
+  if (nt) {
+    const st = nt.style || {};
+    const box = (st.name && st.name.textBox) || GFX_BOX_DEFAULT;
+    const vAlign = (st.name && st.name.verticalAlign) || 'bottom';
+    bug = (
+      <div style={{
+        position: 'absolute', left: `${box.x}%`, top: `${box.y}%`, width: `${box.w}%`, height: `${box.h}%`,
+        background: buildGraphicBarBg(st.name?.ltBar), padding: '12px 32px', boxSizing: 'border-box',
+        display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        justifyContent: vAlign === 'top' ? 'flex-start' : vAlign === 'center' ? 'center' : 'flex-end',
+      }}>
+        <div style={flatTextCss(st.name, GFX_NAME_BASE)}>{nt.name || ''}</div>
+        {nt.title && <div style={{ ...flatTextCss(st.title, GFX_TITLE_BASE), marginTop: 4 }}>{nt.title}</div>}
+      </div>
+    );
+  }
+
+  let ticker = null;
+  if (tk) {
+    const st = tk.style || {};
+    const top = st.position === 'top';
+    const barBg = st.bar ? buildGraphicBarBg({ color: st.bar.color, opacity: st.bar.opacity, solid: true }) : 'rgba(12,14,18,0.9)';
+    ticker = (
+      <div style={{ position: 'absolute', left: 0, right: 0, [top ? 'top' : 'bottom']: 0, height: 72, background: barBg,
+        borderTop: top ? 'none' : '3px solid #4d8eff', borderBottom: top ? '3px solid #4d8eff' : 'none',
+        display: 'flex', alignItems: 'center', overflow: 'hidden' }}>
+        <div style={{ ...flatTextCss(st, { fontSize: 30, color: '#fff', fontWeight: 500 }), whiteSpace: 'nowrap', paddingLeft: 40, lineHeight: '72px', textAlign: 'left' }}>
+          {tk.text}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {bug}
+      {ticker}
+      {cu && (
+        <iframe title="overlay-custom" sandbox="allow-same-origin"
+          style={{ position: 'absolute', inset: 0, width: NATIVE_W, height: NATIVE_H, border: 0, background: 'transparent' }}
+          srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent;font-family:Inter,system-ui,sans-serif}.cue-root{position:absolute;inset:0}</style></head><body><div class="cue-root cue-in">${cu.html}</div></body></html>`} />
+      )}
+    </>
+  );
+}
 
 function buildBarBg(ltBar) {
   if (!ltBar) return 'transparent';
@@ -203,7 +262,7 @@ function StageMonitor({ slide, item, slides, slideIdx, copyrightText, copyrightR
   );
 }
 
-function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroundPath, displayMode, channelTemplate, transport }) {
+function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroundPath, displayMode, channelTemplate, transport, overlay, hideProgram }) {
   const wrapRef = useRef(null);
   const [scale, setScale] = useState(0.5);
 
@@ -230,8 +289,9 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
 
   // The monitor renders the slide from the payload (no screen-capture). In the
   // live 'cleared' state the audience output keeps the background but hides the
-  // text, so we mirror that by suppressing the text block.
-  const hideText = isLive && displayMode === 'cleared';
+  // text, so we mirror that by suppressing the text block. A graphics-only
+  // lower-third channel (hideProgram) likewise never shows the song lyric band.
+  const hideText = (isLive && displayMode === 'cleared') || hideProgram;
 
   // Match the output templates' default shadow exactly
   const shadow    = style?.textShadow;
@@ -363,6 +423,16 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
         </div>
       )}
 
+      {/* Broadcast-graphics overlay — independent of the program slide; rides on top
+          of any program output (fullscreen + lower-third), mirroring the real windows. */}
+      {overlay && (
+        <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}>
+          <div style={{ width: NATIVE_W, height: NATIVE_H, transform: `scale(${scale})`, transformOrigin: 'top left', position: 'relative' }}>
+            <GraphicsOverlayLayer overlay={overlay} />
+          </div>
+        </div>
+      )}
+
       {/* State badge */}
       <div className="absolute top-2 left-2 z-10">
         <span className={`px-sm py-[2px] text-label-sm font-label-sm rounded font-bold uppercase tracking-widest ${
@@ -410,6 +480,28 @@ export default function PreviewLivePanel({
     const off = window.cue.on('output:media-transport', (t) => setTransport(t));
     return () => { active = false; off(); };
   }, []);
+
+  // Live broadcast-graphics overlay (shown on a lower-third live monitor).
+  const [overlay, setOverlay] = useState(null);
+  useEffect(() => {
+    let active = true;
+    window.cue.output.overlay?.get?.().then((o) => { if (active && o) setOverlay(o); });
+    const off = window.cue.on('output:overlay-changed', (o) => setOverlay(o));
+    return () => { active = false; off(); };
+  }, []);
+
+  // Filter the overlay by the selected channel's kind so the monitor matches what
+  // that specific output shows (a graphic targeted Online won't appear on In-Room).
+  const selKind = selectedChannel?.type === 'ndi' ? 'ndi' : 'screen';
+  const slotMatch = (s) => (s && (!s.target || s.target === 'all' || s.target === selKind)) ? s : null;
+  // The overlay rides on top of any program output (fullscreen + lower-third), not stage.
+  // A channel with graphics turned off (Lyrics Only) shows no overlay on its monitor.
+  const hideGraphics = selectedChannel?.show_graphics === 0;
+  const monitorOverlay = (selectedTemplate !== 'stage' && overlay && !hideGraphics)
+    ? { nameTitle: slotMatch(overlay.nameTitle), ticker: slotMatch(overlay.ticker), custom: slotMatch(overlay.custom) }
+    : null;
+  // Graphics-only lower-third channel → don't render the song lyric band on the monitor.
+  const hideProgram = selectedTemplate === 'lowerthird' && selectedChannel?.show_program === 0;
 
   const isPaused = transport?.pausedAt != null;
   const isMuted  = !!transport?.muted;
@@ -478,6 +570,8 @@ export default function PreviewLivePanel({
             displayMode={displayMode}
             channelTemplate={selectedTemplate}
             transport={transport}
+            overlay={monitorOverlay}
+            hideProgram={hideProgram}
           />
 
           {/* Foreground media transport */}

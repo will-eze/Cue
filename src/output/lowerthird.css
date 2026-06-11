@@ -42,3 +42,6 @@ html, body {
   font-size: 18px;
   margin-top: 4px;
 }
+
+/* The broadcast-graphics overlay (name/title bug, ticker, custom HTML) is injected
+   and styled by the shared graphics-overlay.js (scoped under #cue-gfx). */
