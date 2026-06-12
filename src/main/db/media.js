@@ -1,4 +1,5 @@
 import { getDb } from './schema.js';
+import { collectImageMediaIds } from './presentations.js';
 import { app } from 'electron';
 import path from 'path';
 import fs from 'fs';
@@ -55,6 +56,22 @@ export function importFiles(filePaths) {
   return results;
 }
 
+// Save raw bytes (e.g. a rasterised PowerPoint slide PNG from pdfjs) as a media
+// asset — same destination + row shape as importFiles, but the source is an
+// in-memory buffer rather than a file on disk.
+export function importBuffer(bytes, filename, ext) {
+  const db = getDb();
+  const mediaDir = ensureMediaDir();
+  const e = (ext || '.png').startsWith('.') ? (ext || '.png') : '.' + ext;
+  const destName = crypto.randomUUID() + e;
+  const destPath = path.join(mediaDir, destName);
+  fs.writeFileSync(destPath, Buffer.from(bytes));
+  const type = detectType(e);
+  const { lastInsertRowid } = db.prepare('INSERT INTO media_assets (filename, path, type) VALUES (?,?,?)')
+    .run(filename || ('slide' + e), destPath, type);
+  return { id: Number(lastInsertRowid), filename: filename || ('slide' + e), path: destPath, type };
+}
+
 export function getById(id) {
   return getDb().prepare('SELECT * FROM media_assets WHERE id=?').get(id) || null;
 }
@@ -84,8 +101,9 @@ export function deleteMany(ids) {
 }
 
 // Media not referenced by any song background, rundown item, channel logo,
-// theme, or global setting — i.e. safe to delete. Settings store media ids as
-// JSON-encoded integers, so they're collected separately from the FK columns.
+// theme, presentation, or global setting — i.e. safe to delete. Settings store
+// media ids as JSON-encoded integers, and presentation image elements store ids
+// inside elements_json, so both are collected separately from the FK columns.
 export function findUnused() {
   const db = getDb();
   const referenced = new Set();
@@ -94,6 +112,12 @@ export function findUnused() {
   addAll(db.prepare('SELECT DISTINCT background_override_id AS id FROM service_items   WHERE background_override_id IS NOT NULL').all());
   addAll(db.prepare('SELECT DISTINCT logo_override_id       AS id FROM output_channels WHERE logo_override_id       IS NOT NULL').all());
   addAll(db.prepare('SELECT DISTINCT background_id          AS id FROM themes          WHERE background_id          IS NOT NULL').all());
+  addAll(db.prepare('SELECT DISTINCT background_id          AS id FROM presentation_slides    WHERE background_id IS NOT NULL').all());
+  addAll(db.prepare('SELECT DISTINCT background_id          AS id FROM presentation_templates WHERE background_id IS NOT NULL').all());
+  // Image elements reference media by id inside elements_json (not an FK column).
+  for (const r of db.prepare('SELECT elements_json FROM presentation_slides UNION ALL SELECT elements_json FROM presentation_templates').all()) {
+    for (const id of collectImageMediaIds(r.elements_json)) referenced.add(id);
+  }
   for (const key of ['global_logo_id', 'global_bg_song_id', 'global_bg_scripture_id', 'global_bg_slide_id']) {
     const row = db.prepare('SELECT value FROM settings WHERE key=?').get(key);
     if (!row) continue;

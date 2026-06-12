@@ -104,8 +104,9 @@ function renderProgram(payload) {
 
   const { type, text, copyright: copy, styleJson } = payload;
 
-  // clear / logo / foreground-media all blank the lower-third lyric band.
-  if (type === 'clear' || type === 'logo' || payload.media) { clearBand(); return; }
+  // clear / logo / foreground-media / presentation all blank the lower-third lyric
+  // band (a presentation is a full-canvas item with no lyric band in v1).
+  if (type === 'clear' || type === 'logo' || payload.media || payload.elements) { clearBand(); return; }
 
   textEl.className = '';
   applyStyle(textEl, styleJson);

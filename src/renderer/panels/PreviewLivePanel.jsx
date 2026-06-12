@@ -301,6 +301,85 @@ function StageMonitor({ slide, item, slides, slideIdx, copyrightText, copyrightR
   );
 }
 
+// Presentation slide — a multi-element canvas, rendered at native 1920×1080 inside
+// MonitorFrame's already-scaled box. JSX mirror of fullscreen.js renderElements (the
+// React monitor and plain-DOM output template intentionally keep parallel renderers).
+function PresentationCanvas({ elements, backgroundPath, hideText }) {
+  const sorted = [...(elements || [])].sort((a, b) => (a.z || 0) - (b.z || 0));
+  return (
+    <>
+      {backgroundPath && (
+        <div style={{ position: 'absolute', inset: 0 }}>
+          {/\.(mp4|webm|mov|m4v|avi|mkv)$/i.test(backgroundPath)
+            ? <video src={mediaUrl(backgroundPath)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} autoPlay loop muted />
+            : <img src={mediaUrl(backgroundPath)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />}
+        </div>
+      )}
+      {!hideText && sorted.map((el, i) => {
+        const box = {
+          position: 'absolute',
+          left: `${el.x ?? 0}%`, top: `${el.y ?? 0}%`,
+          width: `${el.w ?? 20}%`, height: `${el.h ?? 20}%`,
+          transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
+          opacity: el.opacity != null ? el.opacity : undefined,
+          zIndex: el.z != null ? el.z : undefined,
+          overflow: 'hidden',
+          boxSizing: 'border-box',
+        };
+        if (el.type === 'text') {
+          const s = el.style || {};
+          const shadow = s.textShadow;
+          const shadowCss = shadow
+            ? (shadow.enabled ? `${shadow.x ?? 0}px ${shadow.y ?? 2}px ${shadow.blur ?? 16}px ${shadow.color ?? '#000'}` : 'none')
+            : '0 2px 16px rgba(0,0,0,0.8), 0 0 40px rgba(0,0,0,0.6)';
+          return (
+            <div key={el.id || i} style={{ ...box, display: 'flex', flexDirection: 'column',
+              justifyContent: s.verticalAlign === 'top' ? 'flex-start' : s.verticalAlign === 'bottom' ? 'flex-end' : 'center' }}>
+              <div style={{ width: '100%', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                fontFamily: s.fontFamily || undefined,
+                fontSize: (s.fontSize ?? 48) + 'px',
+                textAlign: s.align || 'center',
+                fontWeight: s.bold ? 700 : 400,
+                fontStyle: s.italic ? 'italic' : 'normal',
+                textDecoration: s.underline ? 'underline' : 'none',
+                textTransform: s.uppercase ? 'uppercase' : 'none',
+                color: s.color || '#ffffff',
+                lineHeight: s.lineSpacing ? String(s.lineSpacing) : '1.25',
+                letterSpacing: s.letterSpacing ? `${s.letterSpacing}em` : undefined,
+                textShadow: shadowCss,
+                WebkitTextStroke: (s.textStroke?.enabled) ? `${s.textStroke.width ?? 2}px ${s.textStroke.color ?? '#000'}` : undefined,
+              }} dangerouslySetInnerHTML={{ __html: renderWithRuns(el.text || '', s.runs) }} />
+            </div>
+          );
+        }
+        if (el.type === 'image' && el.path) {
+          const fit = el.fit === 'cover' ? 'cover' : 'contain';
+          const isVideo = el.mediaType === 'video' || /\.(mp4|webm|mov|m4v|avi|mkv)$/i.test(el.path);
+          return (
+            <div key={el.id || i} style={box}>
+              {isVideo
+                ? <video src={mediaUrl(el.path)} style={{ width: '100%', height: '100%', objectFit: fit }} autoPlay loop muted />
+                : <img src={mediaUrl(el.path)} style={{ width: '100%', height: '100%', objectFit: fit }} alt="" />}
+            </div>
+          );
+        }
+        if (el.type === 'shape') {
+          const stroke = el.stroke || {};
+          const shapeStyle = el.shape === 'line'
+            ? { background: stroke.color || el.fill || '#fff' }
+            : {
+                background: el.fill || 'transparent',
+                border: (stroke.color && stroke.width) ? `${stroke.width}px solid ${stroke.color}` : undefined,
+                borderRadius: el.shape === 'ellipse' ? '50%' : (el.radius ? `${el.radius}px` : undefined),
+              };
+          return <div key={el.id || i} style={box}><div style={{ width: '100%', height: '100%', ...shapeStyle }} /></div>;
+        }
+        return null;
+      })}
+    </>
+  );
+}
+
 function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroundPath, displayMode, channelTemplate, transport, overlay, hideProgram }) {
   const wrapRef = useRef(null);
   const [scale, setScale] = useState(0.5);
@@ -319,6 +398,7 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
   const style  = slide?.style_json ? JSON.parse(slide.style_json) : null;
   const isLT   = channelTemplate === 'lowerthird';
   const isStage = channelTemplate === 'stage';
+  const isPresentation = item?.item_type === 'presentation';
 
   // Attribution line — scripture slides carry "Book c:v (VERSION)", songs use the
   // song copyright. Scripture sits bottom-right; everything else stays centred.
@@ -369,7 +449,13 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
       {slide ? (
         <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
           <div style={{ width: NATIVE_W, height: NATIVE_H, transform: `scale(${scale})`, transformOrigin: 'top left', position: 'relative' }}>
-                {isStage ? (
+                {isPresentation ? (
+                  <PresentationCanvas
+                    elements={slide.elements}
+                    backgroundPath={slide.background_path || backgroundPath}
+                    hideText={hideText}
+                  />
+                ) : isStage ? (
                   <StageMonitor
                     slide={slide}
                     item={item}

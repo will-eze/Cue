@@ -203,11 +203,90 @@ function applyCopyrightStyle(el, cs, defaultAlign) {
   }
 }
 
+// ── Presentation elements (multi-element slide canvas) ───────────────────────
+// A fixed 1920×1080 design box scaled to fill the viewport, so element % positions
+// and px font sizes stay pixel-accurate on any output resolution. Each element is
+// a positioned .cue-el; text reuses renderWithRuns + buildShadow.
+const slideEls = document.getElementById('slide-elements');
+
+function scaleSlideCanvas() {
+  slideEls.style.transform = `scale(${window.innerWidth / 1920}, ${window.innerHeight / 1080})`;
+}
+window.addEventListener('resize', scaleSlideCanvas);
+
+function hideElements() {
+  slideEls.classList.remove('active');
+  slideEls.innerHTML = '';
+}
+
+function textInnerCss(s) {
+  s = s || {};
+  const css = [
+    'justify-content:' + (s.verticalAlign === 'top' ? 'flex-start' : s.verticalAlign === 'bottom' ? 'flex-end' : 'center'),
+    'text-align:' + (s.align || 'center'),
+    'font-weight:' + (s.bold ? '700' : '400'),
+    'text-shadow:' + buildShadow(s.textShadow),
+  ];
+  if (s.fontFamily)    css.push('font-family:' + String(s.fontFamily).replace(/"/g, "'"));
+  if (s.fontSize)      css.push('font-size:' + Number(s.fontSize) + 'px');
+  if (s.italic)        css.push('font-style:italic');
+  if (s.underline)     css.push('text-decoration:underline');
+  if (s.color)         css.push('color:' + s.color);
+  if (s.lineSpacing)   css.push('line-height:' + s.lineSpacing);
+  if (s.letterSpacing) css.push('letter-spacing:' + s.letterSpacing + 'em');
+  if (s.uppercase)     css.push('text-transform:uppercase');
+  if (s.textStroke && s.textStroke.enabled) css.push(`-webkit-text-stroke:${s.textStroke.width ?? 2}px ${s.textStroke.color ?? '#000'}`);
+  return css.join(';');
+}
+
+function shapeInnerCss(el) {
+  const stroke = el.stroke || {};
+  if (el.shape === 'line') return `background:${stroke.color || el.fill || '#fff'};width:100%;height:100%`;
+  const css = [`background:${el.fill || 'transparent'}`, 'width:100%', 'height:100%'];
+  if (stroke.color && stroke.width) css.push(`border:${stroke.width}px solid ${stroke.color}`);
+  if (el.shape === 'ellipse') css.push('border-radius:50%');
+  else if (el.radius) css.push(`border-radius:${el.radius}px`);
+  return css.join(';');
+}
+
+function elementHtml(el) {
+  if (!el) return '';
+  const box = [
+    `left:${el.x ?? 0}%`, `top:${el.y ?? 0}%`,
+    `width:${el.w ?? 20}%`, `height:${el.h ?? 20}%`,
+  ];
+  if (el.rotation)        box.push(`transform:rotate(${el.rotation}deg)`);
+  if (el.opacity != null) box.push(`opacity:${el.opacity}`);
+  if (el.z != null)       box.push(`z-index:${el.z}`);
+  let inner = '';
+  if (el.type === 'text') {
+    inner = `<div class="cue-el-text" style="${textInnerCss(el.style)}"><div style="width:100%">${renderWithRuns(el.text || '', el.style && el.style.runs)}</div></div>`;
+  } else if (el.type === 'image' && el.path) {
+    const url = pathToUrl(el.path);
+    const fit = el.fit === 'cover' ? 'cover' : 'contain';
+    const isVideo = el.mediaType === 'video' || ['mp4','webm','mov','avi','m4v','mkv'].includes((el.path.split('.').pop() || '').toLowerCase());
+    inner = isVideo
+      ? `<video autoplay loop muted playsinline src="${url}" style="object-fit:${fit}"></video>`
+      : `<img src="${url}" alt="" style="object-fit:${fit}" />`;
+  } else if (el.type === 'shape') {
+    inner = `<div style="${shapeInnerCss(el)}"></div>`;
+  }
+  return `<div class="cue-el" style="${box.join(';')}">${inner}</div>`;
+}
+
+function renderElements(elements) {
+  scaleSlideCanvas();
+  const sorted = [...(elements || [])].sort((a, b) => (a.z || 0) - (b.z || 0));
+  slideEls.innerHTML = sorted.map(elementHtml).join('');
+  slideEls.classList.add('active');
+}
+
 window.cueOutput.onSlideUpdate((payload) => {
   const { type, text, copyright: copy, backgroundPath, logoPath, logoScaleMode, styleJson } = payload;
 
   if (type === 'clear') {
     clearForegroundMedia();
+    hideElements();
     setBackground(backgroundPath);
     hideLogo();
     applyStyle(null);
@@ -218,6 +297,7 @@ window.cueOutput.onSlideUpdate((payload) => {
 
   if (type === 'logo') {
     clearForegroundMedia();
+    hideElements();
     bg.innerHTML = '';
     applyStyle(null);
     textEl.innerHTML = '';
@@ -229,6 +309,7 @@ window.cueOutput.onSlideUpdate((payload) => {
   // Foreground media item (full-frame video/audio/image, no text overlay)
   if (payload.media) {
     hideLogo();
+    hideElements();
     applyStyle(null);
     textEl.innerHTML = '';
     copyright.textContent = '';
@@ -236,8 +317,21 @@ window.cueOutput.onSlideUpdate((payload) => {
     return;
   }
 
+  // Presentation slide — a multi-element canvas (text/image/shape), no lyric text.
+  if (payload.elements) {
+    clearForegroundMedia();
+    hideLogo();
+    applyStyle(null);
+    textEl.innerHTML = '';
+    copyright.textContent = '';
+    setBackground(backgroundPath);
+    renderElements(payload.elements);
+    return;
+  }
+
   // Content slide
   clearForegroundMedia();
+  hideElements();
   hideLogo();
   setBackground(backgroundPath);
   applyStyle(styleJson);

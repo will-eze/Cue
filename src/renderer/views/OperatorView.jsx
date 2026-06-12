@@ -13,6 +13,14 @@ function labelForSlide(item, slides, idx) {
   return slides[idx]?.type || '';
 }
 
+// A short text preview of a presentation slide (its first text element) — used for
+// the stage "coming next" text and the network-remote slide preview. Presentation
+// slides carry no single `content` string (they're a multi-element canvas).
+function presentationSlideText(slide) {
+  const el = (slide?.elements || []).find((e) => e?.type === 'text' && e.text);
+  return el ? el.text : '';
+}
+
 function UndoToast({ message, onUndo, onDismiss }) {
   return (
     <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-md bg-surface-container-high border border-outline-variant/40 rounded-xl shadow-2xl px-lg py-sm ring-1 ring-white/5 pointer-events-auto">
@@ -105,6 +113,7 @@ export default function OperatorView({
   const [scriptureStyle, setScriptureStyle] = useState(null);     // verse style_json | null
   const [scriptureRefStyle, setScriptureRefStyle] = useState(null); // reference style_json | null
   const [scriptureBgPath, setScriptureBgPath] = useState(null);   // resolved media path | null
+  const [slideBgPath, setSlideBgPath] = useState(null);           // global presentation/slide bg | null
 
   const loadScriptureDefaults = useCallback(async () => {
     const styleJson = await window.cue.settings.get('scripture_style_json');
@@ -114,6 +123,9 @@ export default function OperatorView({
     const bgId = await window.cue.settings.get('global_bg_scripture_id');
     const bg = bgId ? await window.cue.media.get(bgId) : null;
     setScriptureBgPath(bg?.path || null);
+    const slideBgId = await window.cue.settings.get('global_bg_slide_id');
+    const slideBg = slideBgId ? await window.cue.media.get(slideBgId) : null;
+    setSlideBgPath(slideBg?.path || null);
   }, []);
   useEffect(() => { loadScriptureDefaults(); }, [loadScriptureDefaults, bgRefreshTick]);
   const [undoStack, setUndoStack] = useState(null);
@@ -284,6 +296,13 @@ export default function OperatorView({
       }));
     }
     if (item.item_type === 'media') return [{ id: item.id, type: 'media', content: '', asset: item.asset }];
+    if (item.item_type === 'presentation') {
+      return (item.slides || []).map((s, idx) => ({
+        ...s,
+        type: s.label || `Slide ${idx + 1}`,
+        content: presentationSlideText(s),
+      }));
+    }
     if (item.item_type === 'slide') return [{ id: item.id, type: 'slide', content: item.content }];
     return [];
   }
@@ -333,7 +352,7 @@ export default function OperatorView({
       sectionLabel: labelForSlide(item, slides, slideIdx),
       nextText: next.text,
       nextSectionLabel: next.label,
-      title: item.song?.title || item.asset?.filename || null,
+      title: item.song?.title || item.presentation?.title || item.asset?.filename || null,
     };
     // Foreground media item — full-frame video/audio/image, no text.
     if (item.item_type === 'media' && item.asset) {
@@ -341,6 +360,16 @@ export default function OperatorView({
         ...base,
         text: '', copyright: null, backgroundPath: null, styleJson: null,
         media: { path: item.asset.path, type: item.asset.type, loop: !!item.media_loop },
+      };
+    }
+    // Presentation slide — a multi-element canvas (text/image/shape). The output
+    // template + operator monitor render the `elements` array; no single text block.
+    if (item.item_type === 'presentation') {
+      return {
+        ...base,
+        text: '', copyright: null, styleJson: null,
+        backgroundPath: resolveBackground(item, slide),
+        elements: slide.elements || [],
       };
     }
     return {
@@ -357,11 +386,13 @@ export default function OperatorView({
     };
   }
 
-  function resolveBackground(item) {
+  function resolveBackground(item, slide) {
     // Foreground media shows the asset itself in the preview/live monitors.
     if (item.item_type === 'media' && item.asset?.path) return item.asset.path;
     if (item.background_override?.path) return item.background_override.path;
     if (item.item_type === 'scripture') return scriptureBgPath;
+    // Presentation: per-slide background → global slide default.
+    if (item.item_type === 'presentation') return slide?.background_path || slideBgPath || null;
     if (item.song?.default_background?.path) return item.song.default_background.path;
     return null;
   }
@@ -745,6 +776,23 @@ export default function OperatorView({
     }
   }
 
+  async function handleAddPresentation(presentationId) {
+    const item = { item_type: 'presentation', ref_id: presentationId };
+    if (!activeServiceId) {
+      const id = await window.cue.services.create({
+        title: new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }),
+        date: new Date().toISOString().split('T')[0],
+      });
+      onServiceChange(id);
+      setServices(await window.cue.services.list());
+      await window.cue.services.addItem(id, item);
+      window.cue.services.get(id).then(setServiceData);
+    } else {
+      await window.cue.services.addItem(activeServiceId, item);
+      refreshService();
+    }
+  }
+
   async function handleAddService(title) {
     const id = await window.cue.services.create({ title, date: new Date().toISOString().split('T')[0] });
     const list = await window.cue.services.list();
@@ -866,6 +914,7 @@ export default function OperatorView({
           onScriptureLive={handleScriptureLive}
           onScriptureStyleSaved={loadScriptureDefaults}
           onAddMedia={handleAddMedia}
+          onAddPresentation={handleAddPresentation}
           onSongSave={refreshService}
           refreshTick={bgRefreshTick + songEditTick}
           focusSearchRef={focusSearchRef}

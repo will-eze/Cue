@@ -490,6 +490,75 @@ const migrations = [
       ALTER TABLE service_items ADD COLUMN advance_wrap INTEGER NOT NULL DEFAULT 1;
     `);
   },
+
+  // v20 — Presentations (native multi-element slides + PowerPoint import). A
+  // presentation is an ordered list of slides; each slide is a free-form canvas of
+  // positioned elements (text boxes, images, shapes) stored as elements_json (see
+  // db/presentations.js for the element shape). presentation_templates are reusable
+  // saved slide layouts. service_items.item_type gains 'presentation' so a deck
+  // drops into the rundown and inherits every existing control — the CHECK can't be
+  // altered in place, so the table is rebuilt (same pattern as v7, carrying every
+  // column added since: media_loop/advance_*). FK off during migrations stops the
+  // services ON DELETE CASCADE from firing on the DROP.
+  function v20(database) {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS presentations (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        title      TEXT NOT NULL,
+        created_at DATETIME NOT NULL DEFAULT (datetime('now')),
+        updated_at DATETIME NOT NULL DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE IF NOT EXISTS presentation_slides (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        presentation_id INTEGER NOT NULL REFERENCES presentations(id) ON DELETE CASCADE,
+        order_index     INTEGER NOT NULL,
+        label           TEXT,
+        background_id   INTEGER REFERENCES media_assets(id) ON DELETE SET NULL,
+        elements_json   TEXT,
+        notes           TEXT
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_presentation_slides_presentation
+        ON presentation_slides(presentation_id);
+
+      CREATE TABLE IF NOT EXISTS presentation_templates (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        name          TEXT NOT NULL,
+        background_id INTEGER REFERENCES media_assets(id) ON DELETE SET NULL,
+        elements_json TEXT,
+        created_at    DATETIME NOT NULL DEFAULT (datetime('now')),
+        updated_at    DATETIME NOT NULL DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE service_items_v20 (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        service_id INTEGER NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+        item_type TEXT NOT NULL CHECK(item_type IN ('song','media','slide','scripture','presentation')),
+        ref_id INTEGER,
+        order_index INTEGER NOT NULL,
+        notes TEXT,
+        content TEXT,
+        background_override_id INTEGER REFERENCES media_assets(id) ON DELETE SET NULL,
+        media_loop INTEGER NOT NULL DEFAULT 0,
+        advance_seconds INTEGER,
+        advance_loop TEXT,
+        advance_wrap INTEGER NOT NULL DEFAULT 1
+      );
+
+      INSERT INTO service_items_v20
+        (id, service_id, item_type, ref_id, order_index, notes, content, background_override_id,
+         media_loop, advance_seconds, advance_loop, advance_wrap)
+      SELECT id, service_id, item_type, ref_id, order_index, notes, content, background_override_id,
+             media_loop, advance_seconds, advance_loop, advance_wrap
+      FROM service_items;
+
+      DROP TABLE service_items;
+      ALTER TABLE service_items_v20 RENAME TO service_items;
+
+      CREATE INDEX IF NOT EXISTS idx_service_items_service_id ON service_items(service_id);
+    `);
+  },
 ];
 
 function runMigrations() {

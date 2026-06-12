@@ -16,7 +16,7 @@ Unified single-process Electron app. Replaces EasyWorship/ProPresenter (worship 
 - **Never use `file://` for media.** Always `cue-media://localhost/path`. Three-slash form (`cue-media:///…`) silently fails — Chromium strips the first segment as hostname.
 - Renderer: use `src/renderer/utils/mediaUrl.js`. Output templates: inline `pathToUrl()` helper.
 - `media_assets.path` is stored **absolute**. Any feature that relocates `userData` (backup/restore, data-folder move, sync) must rewrite each path to the local media dir, or assets silently fail to resolve on the new machine.
-- Adding a new place that references a media asset (FK column or `settings` key)? Also add it to `media.findUnused()` — anything it misses gets reported as unused and is deleted by the Media cleanup tool.
+- Adding a new place that references a media asset (FK column, `settings` key, or an id embedded in a JSON column like `presentation_*.elements_json`)? Also add it to `media.findUnused()` — anything it misses gets reported as unused and is deleted by the Media cleanup tool.
 - **Grid/list thumbnails use `thumbUrl()` / `<MediaThumb>` (`cue-thumb://`), never full-res `mediaUrl()`** — `cue-thumb` serves a small OS-generated JPEG cached in `userData/thumbnails`. It's a regenerable derived cache: NOT a media reference (skip `findUnused`), excluded from backups, cleared on asset delete/wipe. Keep `mediaUrl()` only for live output, full-size previews, and playing video.
 
 ### Output & NDI
@@ -29,6 +29,9 @@ Unified single-process Electron app. Replaces EasyWorship/ProPresenter (worship 
 
 ### Shortcuts
 - **Do not use `globalShortcut`** — captures at OS level, breaks typing. Shortcuts are `keydown` on `document`, suppressed when an `INPUT`/`TEXTAREA`/`contenteditable` has focus.
+
+### Dependencies
+- **Keep `pdfjs-dist` on v4** (PowerPoint import rasteriser). v5/v6 call native `Promise.try`, which Electron 30's Chromium (~124) lacks — the worker throws and the import hangs forever. Load the worker via Vite `?worker` + `GlobalWorkerOptions.workerPort`, never a `?url` `workerSrc` (silent main-thread fake worker = unusably slow). pdfjs stays renderer-only (needs a DOM canvas); the PPTX→PDF step is `soffice` in main.
 
 ---
 

@@ -29,6 +29,8 @@ function SortableItem({ item, index, isPreview, isLive, onClick, onDoubleClick, 
     ? item.asset?.filename || 'Media'
     : item.item_type === 'scripture'
     ? item.scripture?.reference || item.title || 'Scripture'
+    : item.item_type === 'presentation'
+    ? item.presentation?.title || 'Presentation'
     : (item.content?.split('\n')[0]?.trim()) || 'Slide';
 
   const sublabel = item.item_type === 'song'
@@ -36,11 +38,14 @@ function SortableItem({ item, index, isPreview, isLive, onClick, onDoubleClick, 
     : item.item_type === 'media' ? 'Media'
     : item.item_type === 'scripture'
     ? `Scripture${item.scripture?.versionAbbrev ? ' · ' + item.scripture.versionAbbrev : ''}`
+    : item.item_type === 'presentation'
+    ? `Presentation · ${item.slides?.length || 0} slide${item.slides?.length === 1 ? '' : 's'}`
     : 'Slide';
 
   const typeIcon = item.item_type === 'song' ? 'music_note'
     : item.item_type === 'media' ? 'play_circle'
     : item.item_type === 'scripture' ? 'menu_book'
+    : item.item_type === 'presentation' ? 'slideshow'
     : 'article';
 
   return (

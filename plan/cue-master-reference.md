@@ -27,6 +27,8 @@ Both use cases run simultaneously — there are no modes or separate application
 | `@dnd-kit/core` | 6.1.0 | Drag-to-reorder in rundown panel and song editor. |
 | `@dnd-kit/sortable` | 8.0.0 | — |
 | `react-window` | 1.8.10 | Virtualised song list. |
+| `@dnd-kit/utilities` | 3.2.2 | `CSS.Transform` helper for the sortable slide/section lists. |
+| `pdfjs-dist` | **4.10.38** | PowerPoint import: rasterises the LibreOffice-converted PDF to per-slide images in the **renderer** (needs a DOM canvas). **Pinned to v4** — v5/v6 call `Promise.try` natively (Chromium 134+), which Electron 30's Chromium ~124 lacks, so the worker throws `Promise.try is not a function` and hangs forever. v4 ships a polyfill guard. Worker loaded via Vite `?worker` + `GlobalWorkerOptions.workerPort` (a `?url` workerSrc silently falls back to a slow main-thread "fake worker"). Bundled into the renderer (not externalized) → no `forge.config.js` change. |
 | `tailwindcss` | 3.4.4 | Operator UI styling. |
 | `tar` | 6.2.1 | node-tar. Reads/writes the gzipped-tar `.cuebackup` bundle (backup/restore). Externalized in `vite.main.config.js`. |
 | `grandi` | installed | NDI output. ESM-only; loaded at runtime via `createRequire` to bypass Vite's CJS bundler. Platform binaries: `@grandi/darwin-arm64`, `@grandi/darwin-x64`, `@grandi/win32-x64`, etc. Listed in `forge.config.js` `rebuildConfig.extraModules` and `vite.main.config.js` `external`. |
@@ -84,6 +86,9 @@ src/
 │   │   │                     (settings+songs tables) before touching live files, swap cue.db + media/, then
 │   │   │                     rewrite absolute media_assets.path to the local media dir (portable across machines).
 │   │   ├── graphics.js       Broadcast-graphics CRUD (list/get/create/update/del/reorder). style_json + target.
+│   │   ├── presentations.js  Presentations CRUD (native multi-element slides) + presentation_templates. get()
+│   │   │                     resolves each slide's image-element mediaIds → paths. collectImageMediaIds(elements_json)
+│   │   │                     is exported for services.js + media.findUnused (image refs live inside elements_json).
 │   │   ├── themes.js         Theme library CRUD (list/get/create/update/del). applyToSong/applyToRundown/
 │   │   │                     applyToAllSongs merge the theme style_json into song_sections (preserving inline
 │   │   │                     text runs) and, when the theme has a background + setBg, write songs.default_background_id
@@ -105,12 +110,17 @@ src/
 │   │   └── bible-books.js    Canonical 66-book order + abbreviation lookup (lookupBook).
 │   │
 │   ├── import/
-│   │   └── songs-import.js   Song-file parsers (pure, preview-before-commit). parseSongFiles(filePaths)
-│   │                         auto-detects per file: OpenLyrics XML (regex), ChordPro ({directives} +
-│   │                         [chord] stripping), plain text (filename → title), EasyWorship (SQLite
-│   │                         Songs.db + SongWords.db join, RTF→text via rtfToText, one file → many rows).
-│   │                         parseGhsItems(items) → "GHS N - Name" rows tagged GHS. Shared parseSections
-│   │                         (header / blank-block splitter, mirrors SongEditor's Paste Song parser).
+│   │   ├── songs-import.js   Song-file parsers (pure, preview-before-commit). parseSongFiles(filePaths)
+│   │   │                     auto-detects per file: OpenLyrics XML (regex), ChordPro ({directives} +
+│   │   │                     [chord] stripping), plain text (filename → title), EasyWorship (SQLite
+│   │   │                     Songs.db + SongWords.db join, RTF→text via rtfToText, one file → many rows).
+│   │   │                     parseGhsItems(items) → "GHS N - Name" rows tagged GHS. Shared parseSections
+│   │   │                     (header / blank-block splitter, mirrors SongEditor's Paste Song parser).
+│   │   └── pptx-import.js    PowerPoint import (main side). findLibreOffice/detectLibreOffice (known per-OS soffice
+│   │                         paths + `libreoffice_path` setting + PATH; reports version for the UI check button).
+│   │                         convertPptxToPdf(filePath): a .pdf passes straight through (no LibreOffice → pixel-perfect);
+│   │                         a .ppt/.pptx runs `soffice --headless --convert-to pdf` in an isolated -env:UserInstallation
+│   │                         profile (avoids the "instance already open" lock) and returns the PDF bytes.
 │   │
 │   ├── ipc/
 │   │   ├── songs.ipc.js      Registers songs:*, tags:* handlers (incl. importParse/importGhs/importCommit).
@@ -120,6 +130,9 @@ src/
 │   │   │                     show_graphics; content-mode-only channel updates route to setChannelContentMode).
 │   │   ├── graphics.ipc.js   Registers graphics:* CRUD handlers (registerGraphicsIpc).
 │   │   ├── themes.ipc.js     Registers themes:* CRUD + apply handlers (registerThemesIpc).
+│   │   ├── presentations.ipc.js  Registers presentations:* + presentationTemplates:* CRUD, the PowerPoint pipeline
+│   │   │                     (detectLibreOffice/setLibreOfficePath/convertPptx, and createFromImages: persist each
+│   │   │                     rasterised PNG via media.importBuffer → build an image-element presentation), and app:openExternal.
 │   │   ├── settings.ipc.js   Registers settings:* handlers (incl. exportBackup/importBackup + factoryReset:
 │   │   │                     close DB, delete cue.db + media/ + fonts/, relaunch as a fresh install).
 │   │   ├── fonts.ipc.js      Registers fonts:* handlers (listUser/css/import [native multi-file picker]/delete).
@@ -260,11 +273,24 @@ src/
 │   │   │                          placeholders + sandboxed preview. Default-destination selector. Exports
 │   │   │                          fillPlaceholders, flatTextCss, buildBarBg (shared with GraphicsPanel + monitor).
 │   │   ├── OnlineBibleModal.jsx   getbible.net catalog browser. Multi-select download with licence warning.
+│   │   ├── PresentationEditor.jsx Full-screen presentation editor (createPortal). Slide sidebar (DnD reorder, built-in
+│   │   │                          LAYOUTS: Blank/Title/Title+Subtitle/Title+Body/Section). Element canvas — a fixed
+│   │   │                          1920×1080 stage scaled by transform (WYSIWYG with the live output); elements drag/
+│   │   │                          resize (handles + outline counter-scaled by 1/scale). Add Text/Image/Shape; per-element
+│   │   │                          inspector (text reuses SongEditor's FormattingToolbar in `simple` mode + a v-align +
+│   │   │                          textarea; shape fill/stroke/radius; geometry + arrange). Header: draggable titlebar strip
+│   │   │                          (titlebar-drag, clears the macOS traffic lights) with nodrag Cancel/Save; title input below.
+│   │   ├── PptxImportModal.jsx    PowerPoint import flow (createPortal). Gates on a LibreOffice check (checking → missing
+│   │   │                          nudge with Download/Check-again/Locate-manually | ready) so it never spawns a missing
+│   │   │                          binary. Picks .pptx/.ppt/.pdf (split filters + All Files for the macOS UTI greying);
+│   │   │                          convertPptx → rasterizePdf (per-slide progress) → createFromImages. PDF imports skip
+│   │   │                          LibreOffice (pixel-perfect; offered even in the missing state).
 │   │   ├── MediaPickerModal.jsx   Media grid picker. Used by RundownPanel for bg override.
 │   │   ├── MediaThumb.jsx         Cached thumbnail tile (cue-thumb:// + error fallback). Used by every media grid/list.
 │   │   ├── SlideList.jsx          Scrollable slide/section list. Preview and live variants.
 │   │   │                          Slide content capped at max-h-24 to prevent runaway tall cards.
 │   │   │                          Section labels via utils/sectionLabels (numbered: Verse 1 / Verse 2, abbrev forms).
+│   │   │                          Presentation slides label by slide.label/"Slide N"; content preview = first text element.
 │   │   └── ContextMenu.jsx        Generic right-click menu positioned by x/y coords.
 │   │                              Escape key closes menu. Overflow guard accounts for separator height.
 │   │
@@ -309,6 +335,8 @@ src/
 │       │                         @font-face <style> into the operator document (called on app start + after import).
 │       ├── channelMode.js        Lower-third content-mode helpers: CHANNEL_MODES, channelMode(ch),
 │       │                         modeToFlags(mode) ({show_program, show_graphics}). Shared by Settings + Graphics panel.
+│       ├── pdfRaster.js          rasterizePdf(bytes, targetWidth=2560, onProgress) → [PNG Uint8Array] per page (pdfjs,
+│       │                         fresh ?worker per call → workerPort; lossless PNG for crisp text). Used by PptxImportModal.
 │       └── sectionLabels.js      Numbered section labels — single source of truth. sectionOrdinals(slides) (n or null,
 │                                 numbered only when a type repeats); sectionLabels(slides,{abbrev}); sectionLabelAt.
 │                                 Used by SlideList, SongEditor, OperatorView buildPayload (stage label), the remote.
@@ -323,15 +351,16 @@ src/
 │   │                         style.name.textBox, styled per name/title), ticker crawl (top/bottom, speed), and custom
 │   │                         HTML (isolated shadow root, .cue-in/.cue-out). Honours onGraphicUpdate; ?graphics=0 and
 │   │                         content:mode toggle the whole overlay live (caches last overlay to restore on re-enable).
-│   ├── fullscreen.html       #background + #content (#text-wrap > #text, #logo-wrap, #copyright). + graphics-overlay.js.
-│   ├── fullscreen.css        Fullscreen output styles. #text-wrap is absolutely positioned by JS.
-│   │                         #logo-wrap is a separate sibling (never overwrites #text).
+│   ├── fullscreen.html       #background + #content (#text-wrap > #text, #slide-elements, #logo-wrap, #copyright). + graphics-overlay.js.
+│   ├── fullscreen.css        Fullscreen output styles. #text-wrap is absolutely positioned by JS. #slide-elements is a
+│   │                         fixed 1920×1080 presentation-element layer scaled to the viewport. #logo-wrap is a separate sibling.
 │   ├── fullscreen.js         applyStyle(s): positions #text-wrap via textBox %, applies all style props to #text.
 │   │                         showLogo/hideLogo use #logo-wrap. Supports: verticalAlign, letterSpacing,
 │   │                         uppercase, textShadow (buildShadow), textStroke, textBox, underline in runs.
 │   │                         Detects ?alpha=1 (IS_NDI) → transparent background; ?mute=1 (MUTE_AUDIO) → base mute.
 │   │                         Foreground media via CueMediaPlayer.attach (single element, native loop). No clock-master
-│   │                         time reporting, no dual-element loop swap.
+│   │                         time reporting, no dual-element loop swap. renderElements(payload.elements): a presentation
+│   │                         slide — absolutely-positioned text/image/shape elements (% of the scaled 1920×1080 #slide-elements).
 │   ├── lowerthird.html       #lowerthird > #text + #copyright (lyric band) + graphics-overlay.js. Always transparent.
 │   ├── lowerthird.css        #lowerthird: bottom-anchored, background: transparent (controlled by JS via ltBar).
 │   ├── lowerthird.js         The LYRIC BAND only (program slide). applyStyle(el, s) incl. ltBar gradient to #lowerthird.
@@ -388,7 +417,7 @@ src/
 
 ### Migration system
 
-`schema.js` creates `db_version` table (single integer row) on first run and applies pending migrations in order inside a transaction. **Never delete `db_version`** — it is required to exist before any user-facing build. Current version: **15**. Migrations run with foreign keys disabled, so table-rebuild migrations (v6, v7, v11) do not cascade-delete referencing rows.
+`schema.js` creates `db_version` table (single integer row) on first run and applies pending migrations in order inside a transaction. **Never delete `db_version`** — it is required to exist before any user-facing build. Current version: **20**. Migrations run with foreign keys disabled, so table-rebuild migrations (v6, v7, v11, v16, v20) do not cascade-delete referencing rows.
 
 | Version | Change |
 |---|---|
@@ -408,6 +437,10 @@ src/
 | v14 | Added `output_channels.show_graphics` (INTEGER, default 1) — lower-third channel shows the broadcast-graphics overlay |
 | v15 | Created `themes` table (theme / template library: named `style_json` + optional `background_id`) |
 | v16 | Rebuilt `graphics` to add the `countdown` kind (table-rebuild — CHECK can't be altered in place) — self-ticking countdown/count-up/clock |
+| v17 | Added `service_items.advance_seconds` (INTEGER) — per-item auto-advance interval |
+| v18 | Added `service_items.advance_loop` (TEXT) — `'rundown'` (default) vs `'item'` at the item's last slide |
+| v19 | Added `service_items.advance_wrap` (INTEGER, default 1) — rundown mode: wrap to first item at the end vs stop |
+| v20 | Presentations: created `presentations`, `presentation_slides`, `presentation_templates`; rebuilt `service_items` to add `'presentation'` to the `item_type` CHECK (v7-pattern table rebuild) |
 
 ### All tables
 
@@ -480,7 +513,7 @@ notes TEXT
 ```sql
 id INTEGER PRIMARY KEY AUTOINCREMENT
 service_id INTEGER NOT NULL REFERENCES services(id) ON DELETE CASCADE
-item_type TEXT NOT NULL CHECK(item_type IN ('song','media','slide','scripture'))  -- 'scripture' added v7
+item_type TEXT NOT NULL CHECK(item_type IN ('song','media','slide','scripture','presentation'))  -- 'scripture' v7, 'presentation' v20
 ref_id INTEGER               -- song id, media_asset id, or null for custom slides
 order_index INTEGER NOT NULL
 notes TEXT
@@ -552,6 +585,16 @@ created_at DATETIME, updated_at DATETIME
 
 A theme is a saved section `style_json` (§8 shape) plus an optional default background. Applying a theme merges its `style_json` into every target `song_sections.style_json` (per-section inline `runs` are preserved) and, when it has a background and the background is being applied, writes `songs.default_background_id` and NULLs the relevant `service_items.background_override_id` so the theme background wins over any per-slot override. Apply scope: `applyToSong` (all slots referencing one song), `applyToRundown` (all song slots in a rundown), `applyToAllSongs` (every song slot). The output path is unchanged — themes only write the same columns the editors already write.
 
+#### `presentations` / `presentation_slides` / `presentation_templates` (v20)
+```sql
+-- presentations:  id, title, created_at, updated_at
+-- presentation_slides:  id, presentation_id→presentations(ON DELETE CASCADE), order_index,
+--                       label, background_id→media_assets(ON DELETE SET NULL), elements_json, notes
+-- presentation_templates:  id, name, background_id→media_assets(ON DELETE SET NULL), elements_json, created_at, updated_at
+```
+
+A presentation is an ordered list of slides; each slide's `elements_json` is an array of positioned elements on the 1920×1080 canvas (see §21 for the element shape). Templates are reusable saved slide layouts. **Image elements store a `mediaId`, never a path** — paths are resolved on read (`db/presentations.js`), so `elements_json` carries nothing machine-specific (backup/restore-safe). Because those ids live inside `elements_json` (not an FK column), `media.findUnused()` parses every slide/template `elements_json` to collect them, plus `presentation_slides.background_id` and `presentation_templates.background_id`. A presentation deck drops into the rundown as an `item_type='presentation'` service item and inherits every existing control.
+
 #### `channel_monitors` (v4)
 ```sql
 id INTEGER PRIMARY KEY AUTOINCREMENT
@@ -590,6 +633,7 @@ Known keys:
 | `remote_lan` | boolean | Bind all interfaces (LAN) vs 127.0.0.1 only (default false) |
 | `remote_token` | string | Pairing token; minted on first enable, regenerable |
 | `user_fonts` | array | User-installed fonts: `[{id, family, label, filename, path, ext}]`. Files live in `userData/fonts/`; served via cue-media://. Included in backups (paths rewritten on restore), wiped by factory reset |
+| `libreoffice_path` | string\|null | User-set absolute path to the `soffice` binary (Locate manually…), tried first by `findLibreOffice()` for PowerPoint import |
 
 **localStorage keys** (UI state only — not in DB):
 | Key | Description |
@@ -599,7 +643,7 @@ Known keys:
 
 #### `db_version`
 ```sql
-version INTEGER NOT NULL       -- current: 19
+version INTEGER NOT NULL       -- current: 20
 ```
 
 ---
@@ -813,8 +857,11 @@ All renderer↔main communication is via `ipcRenderer.invoke` / `ipcMain.handle`
   styleJson: object | null,         // parsed style_json
   media: { path, type: 'video'|'audio'|'image', loop: bool } | undefined,  // foreground media item
   transport: { active, startAt, pausedAt, loop, muted } | undefined,       // snapshot for media items
+  elements: [ ...presentationElements ] | undefined,  // presentation slide — multi-element canvas (see §21)
 }
 ```
+
+A presentation-slide payload carries `elements` (and a per-slide `backgroundPath`); `text`/`styleJson` are null. `fullscreen.js` `renderElements()` renders it on the scaled 1920×1080 `#slide-elements` layer; `lowerthird.js` blanks its band for `payload.elements` (a full-canvas item has no lower-third in v1). The operator monitor renders the same array via `PreviewLivePanel`'s `PresentationCanvas`. `manager.go()` is payload-opaque — it stamps the transport and forwards the payload unchanged, so the element array needed no transport changes.
 
 **Media transport model** — foreground media (bumpers/clips) is synced across every surface (screen
 outputs, NDI, operator live monitor, confidence monitor) by a single main-process `transport`:
@@ -937,6 +984,24 @@ Network control API (Stream Deck / Companion / phone). The renderer only configu
 | `pushNavState({items, previewItemId, liveItemId, liveSlideIdx})` | void | Renderer pushes the rundown (each item carries `slides:[{index,label,preview}]`) so remote clients can list + jump to a slide. No-op when the server is stopped. |
 
 HTTP surface (token via `X-Cue-Token` header or `?token=`): `GET /` (control page), `GET /api/state`, `GET /api/stream` (SSE), `GET /api/{go,clear,logo,next,prev,live}`, `GET /api/select?itemId=N&slideIdx=M`, `POST /api/command {action, …}`.
+
+### `window.cue.presentations`
+
+| Method | Returns | Notes |
+|---|---|---|
+| `list()` | `[{...presentation, slide_count}]` | Ordered by `updated_at` DESC. |
+| `get(id)` | `{...presentation, slides:[{id,label,background_id,background_path,notes,elements}]}` | Image-element `mediaId`s resolved to `path`/`mediaType`. |
+| `create(data)` | `id` | `data = {title, slides:[{label, background_id, elements}]}`; defaults to one blank slide. |
+| `update(id, data)` | void | Slides rebuild (replaces all — mirrors `songs.update`). |
+| `delete(id)` | void | Also removes any `presentation` service items referencing it. |
+| `reorderSlides(id, orderedIds)` | void | — |
+| `templates.{list,get,create,delete}` | — | Reusable slide layouts (`presentation_templates`). |
+| `detectLibreOffice()` | `{found, path?, version?}` | UI "check before import" — never spawns a missing binary. |
+| `setLibreOfficePath(p)` | `{found, ...}` | Persists `libreoffice_path` and re-detects (Locate manually…). |
+| `convertPptx(filePath)` | `{ok, pdf:Uint8Array, name}` \| `{ok:false, error}` | `.pdf` passes through (no LibreOffice); `.ppt/.pptx` → soffice → PDF bytes. `error:'not_found'` = LibreOffice missing. |
+| `createFromImages(title, buffers)` | `{id, slideCount}` | Persists each rasterised PNG (`media.importBuffer`) → a presentation whose slides each hold one full-bleed image element. |
+
+`window.cue.openExternal(url)` opens an https URL in the default browser (LibreOffice download link).
 
 ### `window.cue.dialog`
 - `openFile(options)` → `{canceled, filePaths}` — wraps `dialog.showOpenDialog`.
@@ -1384,6 +1449,8 @@ The reference flows in the payload as `copyright` (text), `copyrightAlign` (`'ri
 | Disk space warning | Low | Warn when < 2GB free on import. Not implemented. |
 | ~~Media unused-asset cleanup~~ | ~~Low~~ | Implemented — `MediaCleanup.jsx` (Settings → Media) scans via `media.findUnused` (songs/service_items/channels/themes/settings) and bulk-deletes. |
 | ~~Auto-advance / timed loops~~ | ~~Medium~~ | Implemented — `service_items.advance_seconds/advance_loop/advance_wrap`, renderer-side scheduler in `OperatorView.handleAutoAdvance`. See §12. |
+| ~~Presentations (native slides) + PowerPoint import~~ | ~~High~~ | Implemented — multi-element slide editor + LibreOffice/pdfjs PPTX→image import. See §21. |
+| Presentation user-saved templates | Low | `presentation_templates` table + IPC exist; only built-in layouts wired into the editor so far. |
 | Drag asset from Library onto rundown item | Medium | Background override currently only via context menu. |
 | `operator_preview_layout` setting | Low | Side-by-side monitor layout toggle. Setting key exists, no UI toggle. |
 
@@ -1430,3 +1497,26 @@ Native code must run from the real filesystem, not inside the asar: `grandi.node
 Bundled resources (`resources/bible`, `resources/ghs`) are placed in `Contents/Resources/` via `extraResource` and read through `process.resourcesPath` when `app.isPackaged`.
 
 For internal distribution and code-signing guidance (free self-signing, quarantine/Mark-of-the-Web, the Apple Silicon ad-hoc requirement, clearing the download tag), see `plan/deployment-handoff.md`. On macOS unsigned builds: `xattr -dr com.apple.quarantine /Applications/Cue.app`, or right-click → Open.
+
+---
+
+## 21. Presentations & PowerPoint Import
+
+A **Presentations** content type — a PowerPoint-style multi-element slide editor (`PresentationEditor.jsx`) whose decks live in the Library (LibraryPanel "Presentations" tab) and drop into the rundown as `item_type='presentation'` service items, inheriting **every** existing control (GO/NEXT/PREV/SELECT, keyboard, auto-advance, network remote, operator monitors, screen + NDI output). No new transport or remote wiring was needed — `getSlides`/`buildPayload`/`slidesForRemote` in `OperatorView` gained a `'presentation'` branch and everything else flows generically.
+
+### Element model (`elements_json`)
+Each slide is an array of elements positioned in **percent of the 1920×1080 canvas** (same convention as `textBox`):
+```js
+{ id, type:'text'|'image'|'shape',
+  x, y, w, h, rotation, z, opacity,
+  // text:  text, style   (style = §8 song-section style shape, incl. runs)
+  // image: mediaId, fit:'cover'|'contain'   // store the ID, not a path (portable); resolved to path on read
+  // shape: shape:'rect'|'ellipse'|'line', fill, stroke:{color,width}, radius }
+```
+The same array is rendered by three parallel renderers (the established React-vs-plain-DOM duplication pattern): `fullscreen.js` `renderElements` (live output, scaled `#slide-elements`), `PreviewLivePanel` `PresentationCanvas` (operator monitor), and `PresentationEditor`'s own canvas (drag/resize editing). All three render into a fixed 1920×1080 box scaled by a CSS transform, so px font sizes are WYSIWYG across editor → monitor → output. Per-slide background resolution: slot `background_override` → slide `background_id` → `global_bg_slide_id` → black.
+
+### PowerPoint import pipeline
+PPTX fidelity is **render-to-image**: `PptxImportModal` gates on a LibreOffice check (never spawns a missing binary), then `pptx-import.convertPptxToPdf` runs `soffice --headless --convert-to pdf` (isolated `-env:UserInstallation` profile) → `pdfRaster.rasterizePdf` (pdfjs, renderer) rasterises each PDF page to a 2560px PNG → `createFromImages` persists each via `media.importBuffer` and builds a presentation whose slides each hold one full-bleed image element. The result is an ordinary native presentation, so all controls work. Key constraints:
+- **A `.pdf` is imported directly** (no LibreOffice, no font substitution → pixel-perfect). Exporting a deck to PDF from PowerPoint/Keynote is the recommended high-fidelity path; PDF import is offered even when LibreOffice is absent.
+- **Layout/overflow drift on `.pptx` is LibreOffice font substitution** (the deck uses fonts not installed on the conversion machine). pdfjs renders the vector PDF faithfully — fidelity is decided upstream. Fix by installing the deck's fonts or embedding fonts in the .pptx.
+- **pdfjs is pinned to v4** (see §2): v5/v6 use native `Promise.try` which Electron 30's Chromium lacks. The worker must load via Vite `?worker` + `workerPort`, not a `?url` workerSrc (else a slow main-thread "fake worker").

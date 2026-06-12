@@ -10,6 +10,7 @@ import { registerSettingsIpc } from './ipc/settings.ipc.js';
 import { registerBibleIpc } from './ipc/bible.ipc.js';
 import { registerGraphicsIpc } from './ipc/graphics.ipc.js';
 import { registerThemesIpc } from './ipc/themes.ipc.js';
+import { registerPresentationsIpc } from './ipc/presentations.ipc.js';
 import { registerRemoteIpc, applyRemoteConfig } from './ipc/remote.ipc.js';
 import { registerFontsIpc } from './ipc/fonts.ipc.js';
 import * as remoteServer from './remote/server.js';
@@ -229,6 +230,7 @@ app.whenReady().then(async () => {
   registerBibleIpc();
   registerGraphicsIpc();
   registerThemesIpc();
+  registerPresentationsIpc();
   registerRemoteIpc();
   registerFontsIpc();
 

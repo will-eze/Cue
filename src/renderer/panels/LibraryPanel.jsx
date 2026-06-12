@@ -7,6 +7,9 @@ import ContextMenu from '../components/ContextMenu';
 import ScripturePanel from './ScripturePanel';
 import GraphicsPanel from './GraphicsPanel';
 import MediaThumb from '../components/MediaThumb';
+import PresentationEditor from '../components/PresentationEditor';
+import PptxImportModal from '../components/PptxImportModal';
+import { mediaUrl } from '../utils/mediaUrl';
 
 function SongRow({ index, style, data }) {
   const { songs, selectedId, onSelect, onDoubleClick, onContextMenu } = data;
@@ -152,7 +155,7 @@ function MediaGrid({ assets, onDelete, onSetBackground, onAddToRundown }) {
   );
 }
 
-export default function LibraryPanel({ onAddToRundown, onAddScripture, onScriptureLive, onScriptureStyleSaved, onAddMedia, onSongSave, refreshTick = 0, focusSearchRef }) {
+export default function LibraryPanel({ onAddToRundown, onAddScripture, onScriptureLive, onScriptureStyleSaved, onAddMedia, onAddPresentation, onSongSave, refreshTick = 0, focusSearchRef }) {
   const [tab, setTab] = useState('songs');
   const [searchQuery, setSearchQuery] = useState('');
   const [songs, setSongs] = useState([]);
@@ -190,9 +193,16 @@ export default function LibraryPanel({ onAddToRundown, onAddScripture, onScriptu
   const [parsingSongs, setParsingSongs] = useState(false);
   const [importMenuOpen, setImportMenuOpen] = useState(false);
   const [ghsQuery, setGhsQuery] = useState(''); // GHS number quick-search
+  const [presentations, setPresentations] = useState([]);
+  const [editPresentation, setEditPresentation] = useState(null); // null=closed, {}=new, {id}=edit
+  const [presContext, setPresContext] = useState(null);
+  const [pptxImport, setPptxImport] = useState(false);
 
   useEffect(() => { loadSongs(); window.cue.tags.list().then(setTags); }, [refreshTick]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (tab === 'media') loadMedia(); }, [tab, activeFolderId]);
+  useEffect(() => { if (tab === 'presentations') loadPresentations(); }, [tab]);
+
+  function loadPresentations() { window.cue.presentations.list().then(setPresentations); }
 
   useEffect(() => {
     const obs = new ResizeObserver((entries) => {
@@ -349,6 +359,9 @@ export default function LibraryPanel({ onAddToRundown, onAddScripture, onScriptu
           <LibTab active={tab === 'scripture'} onClick={() => setTab('scripture')}>
             Scripture
           </LibTab>
+          <LibTab active={tab === 'presentations'} onClick={() => setTab('presentations')}>
+            Presentations{tab === 'presentations' && presentations.length > 0 ? ` · ${presentations.length}` : ''}
+          </LibTab>
           <LibTab active={tab === 'graphics'} onClick={() => setTab('graphics')}>
             Graphics
           </LibTab>
@@ -448,6 +461,25 @@ export default function LibraryPanel({ onAddToRundown, onAddScripture, onScriptu
               {importing ? 'Importing…' : 'Import'}
             </button>
           )}
+          {tab === 'presentations' && (
+            <>
+              <button
+                onClick={() => setPptxImport(true)}
+                title="Import a PowerPoint (.pptx) file"
+                className="bg-surface-container border border-outline-variant/40 text-on-surface px-md py-xs rounded text-label-sm font-label-sm hover:bg-surface-container-high active:scale-95 transition-all cursor-pointer flex items-center gap-xs"
+              >
+                <span className="material-symbols-outlined text-[14px]">upload_file</span>
+                Import PowerPoint
+              </button>
+              <button
+                onClick={() => setEditPresentation({})}
+                className="bg-primary text-on-primary px-md py-xs rounded text-label-sm font-label-sm font-bold hover:brightness-110 active:scale-95 transition-all cursor-pointer flex items-center gap-xs"
+              >
+                <span className="material-symbols-outlined text-[14px]">add</span>
+                New Presentation
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -546,7 +578,66 @@ export default function LibraryPanel({ onAddToRundown, onAddScripture, onScriptu
         <ScripturePanel onAdd={onAddScripture} onGoLive={onScriptureLive} onStyleSaved={onScriptureStyleSaved} />
       )}
 
+      {/* Presentations tab */}
+      {tab === 'presentations' && (
+        <div className="flex-1 min-h-0 overflow-y-auto p-md">
+          {presentations.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full gap-sm text-outline-variant">
+              <span className="material-symbols-outlined text-4xl">slideshow</span>
+              <span className="text-label-sm font-label-sm uppercase tracking-widest">No Presentations Yet</span>
+            </div>
+          ) : (
+            <div className="grid gap-md" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
+              {presentations.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => onAddPresentation?.(p.id)}
+                  onDoubleClick={() => setEditPresentation({ id: p.id })}
+                  onContextMenu={(e) => { e.preventDefault(); setPresContext({ x: e.clientX, y: e.clientY, pres: p }); }}
+                  title="Click to add to rundown · Double-click to edit"
+                  className="group text-left rounded-lg border border-outline-variant/30 bg-surface-container hover:border-primary/50 overflow-hidden transition-all cursor-pointer"
+                >
+                  <div className="relative bg-black flex items-center justify-center" style={{ aspectRatio: '16 / 9' }}>
+                    <span className="material-symbols-outlined text-outline-variant text-4xl group-hover:text-primary transition-colors">slideshow</span>
+                  </div>
+                  <div className="px-sm py-xs">
+                    <p className="text-body-md text-on-surface truncate">{p.title}</p>
+                    <p className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wide">{p.slide_count} slide{p.slide_count === 1 ? '' : 's'}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {tab === 'graphics' && <GraphicsPanel />}
+
+      {editPresentation !== null && (
+        <PresentationEditor
+          presentationId={editPresentation.id || null}
+          onClose={() => setEditPresentation(null)}
+          onSave={() => { setEditPresentation(null); loadPresentations(); }}
+        />
+      )}
+      {pptxImport && (
+        <PptxImportModal
+          onClose={() => setPptxImport(false)}
+          onDone={(id) => { setPptxImport(false); loadPresentations(); setEditPresentation({ id }); }}
+        />
+      )}
+      {presContext && (
+        <ContextMenu
+          x={presContext.x} y={presContext.y}
+          onClose={() => setPresContext(null)}
+          items={[
+            { label: 'Add to Rundown', onClick: () => { onAddPresentation?.(presContext.pres.id); setPresContext(null); } },
+            { label: 'Edit', onClick: () => { setEditPresentation({ id: presContext.pres.id }); setPresContext(null); } },
+            { separator: true },
+            { label: 'Delete', danger: true, onClick: async () => { await window.cue.presentations.delete(presContext.pres.id); setPresContext(null); loadPresentations(); } },
+          ]}
+        />
+      )}
 
       {previewSong && (
         <SongPreviewModal song={previewSong} onClose={() => setPreviewSong(null)}

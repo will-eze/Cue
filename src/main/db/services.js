@@ -1,4 +1,5 @@
 import { getDb } from './schema.js';
+import { collectImageMediaIds } from './presentations.js';
 
 export function list() {
   return getDb().prepare('SELECT * FROM services ORDER BY date DESC, id DESC').all();
@@ -39,10 +40,29 @@ function resolveItems(db, items) {
   if (!items.length) return [];
 
   const songIds   = [...new Set(items.filter((i) => i.item_type === 'song' && i.ref_id).map((i) => i.ref_id))];
+  const presIds   = [...new Set(items.filter((i) => i.item_type === 'presentation' && i.ref_id).map((i) => i.ref_id))];
   const mediaIds  = new Set();
   for (const i of items) {
     if (i.item_type === 'media' && i.ref_id) mediaIds.add(i.ref_id);
     if (i.background_override_id) mediaIds.add(i.background_override_id);
+  }
+
+  // Presentations + their slides. Each slide's background_id and every image
+  // element's mediaId join the shared media fetch below, so resolveItems stays a
+  // fixed number of round trips regardless of slide count.
+  const presMap = new Map();
+  const slidesByPres = new Map();
+  if (presIds.length) {
+    const ph = presIds.map(() => '?').join(',');
+    for (const p of db.prepare(`SELECT id, title FROM presentations WHERE id IN (${ph})`).all(...presIds)) {
+      presMap.set(p.id, p);
+    }
+    for (const s of db.prepare(`SELECT * FROM presentation_slides WHERE presentation_id IN (${ph}) ORDER BY presentation_id, order_index`).all(...presIds)) {
+      if (!slidesByPres.has(s.presentation_id)) slidesByPres.set(s.presentation_id, []);
+      slidesByPres.get(s.presentation_id).push(s);
+      if (s.background_id) mediaIds.add(s.background_id);
+      for (const id of collectImageMediaIds(s.elements_json)) mediaIds.add(id);
+    }
   }
 
   // Songs
@@ -106,6 +126,27 @@ function resolveItems(db, items) {
     }
     if (item.item_type === 'media' && item.ref_id) {
       resolved.asset = mediaMap.get(item.ref_id);
+    }
+    if (item.item_type === 'presentation' && item.ref_id) {
+      const pres = presMap.get(item.ref_id);
+      if (pres) {
+        resolved.presentation = { ...pres };
+        resolved.slides = (slidesByPres.get(item.ref_id) || []).map((s) => {
+          const bg = s.background_id != null ? mediaMap.get(s.background_id) : null;
+          let elements = [];
+          try { elements = JSON.parse(s.elements_json) || []; } catch { elements = []; }
+          // Resolve image element ids → paths for the renderer (output template
+          // converts the path to cue-media:// itself).
+          elements = elements.map((el) => {
+            if (el && el.type === 'image' && el.mediaId != null) {
+              const a = mediaMap.get(Number(el.mediaId));
+              return { ...el, path: a?.path || null, mediaType: a?.type || 'image' };
+            }
+            return el;
+          });
+          return { id: s.id, label: s.label, background_id: s.background_id, background_path: bg?.path || null, elements };
+        });
+      }
     }
     if (item.item_type === 'scripture' && item.content) {
       const sc = resolveScripture(item);
