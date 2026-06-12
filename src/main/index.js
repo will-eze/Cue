@@ -88,6 +88,15 @@ ipcMain.handle('dialog:openFile', async (_event, options) => {
 });
 
 app.whenReady().then(async () => {
+  // Dev-mode Dock icon. In a packaged build the icon comes from the .app bundle
+  // (packagerConfig.icon in forge.config.js); `npm start` runs the generic
+  // Electron binary, so set it explicitly here. assets/ isn't packaged, so this
+  // only fires in dev (app.getAppPath() is the repo root).
+  if (process.platform === 'darwin' && !app.isPackaged && app.dock) {
+    const dockIcon = nativeImage.createFromPath(path.join(app.getAppPath(), 'assets', 'icon.png'));
+    if (!dockIcon.isEmpty()) app.dock.setIcon(dockIcon);
+  }
+
   // Serve local media files via fs — avoids file:// CORS block from http://localhost
   // and bypasses net.fetch limitations with file:// URIs on some platforms.
   // URL format: cue-media://localhost/absolute/path/to/file

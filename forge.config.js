@@ -55,6 +55,12 @@ module.exports = {
     },
     name: 'Cue',
     executableName: 'cue',
+    // App icon. Forge appends the per-platform extension: assets/icon.icns on
+    // macOS (embedded in the .app bundle, shown in Dock/Finder/DMG) and
+    // assets/icon.ico on Windows (embedded in cue.exe → taskbar/Explorer).
+    // Generated from logo/ via sips + iconutil; assets/icon.png is the renderer
+    // favicon and the dev-mode Dock icon (see src/main/index.js).
+    icon: './assets/icon',
     // Bundled public-domain Bible translations (KJV + WEB) and the GHS hymnal
     // seed. Copied into the app's Resources/ dir (outside the asar); Bibles seed
     // on first run, GHS imports on demand from Library → Import → GHS Hymnal.
@@ -87,11 +93,13 @@ module.exports = {
   makers: [
     {
       name: '@electron-forge/maker-squirrel',
-      config: { name: 'cue' },
+      // setupIcon → the Setup.exe installer icon; loadingGif/iconUrl could be
+      // added later. The packaged app's own icon comes from packagerConfig.icon.
+      config: { name: 'cue', setupIcon: './assets/icon.ico' },
     },
     {
       name: '@electron-forge/maker-dmg',
-      config: { name: 'Cue' },
+      config: { name: 'Cue', icon: './assets/icon.icns' },
     },
   ],
   plugins: [
