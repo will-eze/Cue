@@ -162,8 +162,11 @@ problems a local Mac build can't:
 How it runs:
 
 ```bash
-git tag -a v0.1.0-internal.N -m "Cue internal build"   # any v* tag
-git push origin v0.1.0-internal.N                       # triggers the matrix
+# Tag = the app version (vMAJOR.MINOR.PATCH), kept in sync with package.json and
+# the in-app footer. A prePackage guard in forge.config.js fails the build if
+# package.json drifts from the computed version, so bump them together.
+git tag -a v19.2.3 -m "Cue v19.2.3"   # any v* tag; match the app version
+git push origin v19.2.3                # triggers the matrix
 ```
 
 The tag trigger works even while the workflow lives only on a feature branch
@@ -189,7 +192,7 @@ pull the Release with `gh` (or `curl`) and the files are clean from the first
 byte, no tag to strip:
 
 ```bash
-gh release download v0.1.0-internal.N -R will-eze/Cue -D installers
+gh release download v19.2.3 -R will-eze/Cue -D installers
 ```
 
 (`installers/` is gitignored.) From there, redistribute by USB / network share —

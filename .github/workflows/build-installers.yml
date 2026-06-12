@@ -20,9 +20,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release tag to publish (e.g. v0.1.0)'
+        description: 'Release tag to publish — match the app version, e.g. v19.2.3'
         required: true
-        default: 'v0.1.0-internal'
+        default: 'v19.2.3'
 
 permissions:
   contents: write   # GITHUB_TOKEN needs this to create the Release

@@ -99,6 +99,29 @@ module.exports = {
     //
     // grandi is N-API (ABI-stable across Node/Electron), so it needs no rebuild.
     prePackage: async () => {
+      // Version-sync guard. Two stores hold the version: the in-app footer is
+      // computed (schema MAJOR + VERSION_MINOR/PATCH + git Build N, see
+      // vite.renderer.config.js), while package.json.version drives the installer
+      // filenames and the .app/.exe metadata. They have no shared source, so they
+      // silently drifted before (package.json sat at 0.1.0 while the app showed
+      // 19.x). Assert package.json.version === the computed MAJOR.MINOR.PATCH and
+      // fail the build loudly on mismatch, so a forgotten edit can't ship a
+      // mislabelled installer. (MAJOR stays schema-derived per CLAUDE.md.)
+      const schemaSrc = fs.readFileSync(path.join(__dirname, 'src/main/db/schema.js'), 'utf8');
+      const major = Math.max(...[...schemaSrc.matchAll(/function\s+v(\d+)\s*\(/g)].map((m) => Number(m[1])));
+      const viteSrc = fs.readFileSync(path.join(__dirname, 'vite.renderer.config.js'), 'utf8');
+      const minor = Number(/VERSION_MINOR\s*=\s*(\d+)/.exec(viteSrc)[1]);
+      const patch = Number(/VERSION_PATCH\s*=\s*(\d+)/.exec(viteSrc)[1]);
+      const computed = `${major}.${minor}.${patch}`;
+      const pkgVersion = require('./package.json').version;
+      if (pkgVersion !== computed) {
+        throw new Error(
+          `Version mismatch: package.json is "${pkgVersion}" but the computed app ` +
+          `version is "${computed}" (schema v${major} + VERSION_MINOR.${minor}.${patch}). ` +
+          `Set package.json "version" to "${computed}".`
+        );
+      }
+
       const { rebuild } = require('@electron/rebuild');
       const electronVersion = require('electron/package.json').version;
       await rebuild({
