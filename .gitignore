@@ -1,6 +1,7 @@
 node_modules/
 dist/
 out/
+installers/
 .vite/
 *.db
 *.db-shm

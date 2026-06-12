@@ -147,17 +147,66 @@ installs cleanly internally.
 
 ---
 
-## Build commands & per-OS requirement
+## Recommended: automated builds via GitHub Actions
 
-You must build each installer **on its own OS** — `maker-dmg` only runs on
-macOS, `maker-squirrel` needs Windows (or Wine + .NET). One Mac cannot produce
-the Windows installer and vice-versa. Use two machines or a CI matrix.
+`.github/workflows/build-installers.yml` builds **both** installers natively and
+publishes them as a GitHub Release — the path we actually use. It solves the two
+problems a local Mac build can't:
+
+- **Real Windows `.exe`.** `maker-squirrel` needs genuine Windows; Wine on Apple
+  Silicon is fragile and sudo-gated (it pulls `gstreamer-runtime`, an admin-only
+  `.pkg`). The workflow builds the exe on a real `windows-latest` runner.
+- **The 100 MB git limit.** The dmg/exe are ~108–117 MB, over GitHub's hard
+  per-file push limit, so they can't live in a branch. They go to a Release.
+
+How it runs:
+
+```bash
+git tag -a v0.1.0-internal.N -m "Cue internal build"   # any v* tag
+git push origin v0.1.0-internal.N                       # triggers the matrix
+```
+
+The tag trigger works even while the workflow lives only on a feature branch
+(push events use the workflow file at the pushed ref). Once it's on `main`, the
+Actions "Run workflow" button (`workflow_dispatch`) also works. The matrix builds
+the dmg on `macos-latest` (arm64) and the exe on `windows-latest` (x64), then a
+release job publishes both as a **prerelease** Release for that tag.
+
+Two CI specifics worth knowing:
+
+- **`fetch-depth: 0`** in the checkout — the app build number is
+  `git rev-list --count HEAD` (`vite.renderer.config.js`); a shallow clone would
+  pin every build to 1.
+- **`package.json` `author` must be non-empty** — `electron-winstaller` derives
+  the NuGet `<authors>` field from it, and an empty string fails the Windows
+  build with `Authors is required`.
+
+### Pulling the installers WITHOUT a web mark
+
+The whole point of the gh CLI here: **command-line downloads set no quarantine
+xattr and no Windows mark-of-the-web** — only browsers / Mail / AirDrop do. So
+pull the Release with `gh` (or `curl`) and the files are clean from the first
+byte, no tag to strip:
+
+```bash
+gh release download v0.1.0-internal.N -R will-eze/Cue -D installers
+```
+
+(`installers/` is gitignored.) From there, redistribute by USB / network share —
+also web-mark-free — and the macOS app launches straight away (it's ad-hoc signed
+in CI, see below); the Windows installer needs at most one "Run anyway".
+
+## Local build (single OS)
+
+You can still build the current OS's installer locally:
 
 ```bash
 npm run make        # builds the installer for the CURRENT OS
 ```
 
-Output lands in `out/make/`.
+Output lands in `out/make/`. `maker-dmg` only runs on macOS and `maker-squirrel`
+needs Windows, so one machine can't produce both — which is why CI above is the
+default.
 
 > After any Electron version bump, run `npm run rebuild` first (recompiles
 > `better-sqlite3` and `grandi`).
@@ -170,11 +219,26 @@ without that, NDI silently fails in packaged builds. Don't remove the
 
 ---
 
+## Status of the macOS launch requirements
+
+- **macOS ad-hoc signing — DONE.** A `postPackage` hook in `forge.config.js`
+  runs `codesign --deep --force --sign -` on the packaged `.app` (before the dmg
+  maker, so the dmg ships the signed app). Forge's `osxSign` option silently
+  no-ops here — it left Electron's broken linker signature, which makes Apple
+  Silicon refuse to launch ("Cue is damaged") — so we sign explicitly. Runs in
+  CI too (ad-hoc needs no identity/keychain). Verify a build with
+  `codesign --verify --deep --strict Cue.app`.
+- **App icon — DONE.** `packagerConfig.icon: './assets/icon'`; Forge appends
+  `.icns` (macOS) / `.ico` (Windows).
+
 ## Still outstanding (decide later)
 
-- **macOS ad-hoc signing** — add `osxSign: {}` to `forge.config.js` so Apple
-  Silicon Macs launch the build. *(Free, currently missing.)*
-- **App icon** — `packagerConfig` has no `icon`; builds ship the default
-  Electron icon.
 - **$99 Apple notarization** — only needed if you want clean **browser-download**
-  installs on macOS. Not needed for USB/share distribution.
+  installs on macOS. Not needed for USB/share or `gh`/`curl` distribution (those
+  set no quarantine tag at all). Could be run in CI later if the cert is bought.
+- **Windows code signing** — the exe is unsigned (one "Run anyway" on first
+  launch, or `Unblock-File`). Optional: wire a free self-signed cert into
+  `maker-squirrel` (`certificateFile` / `certificatePassword`) per the section
+  above, and trust it on each PC.
+- **Intel macs / Windows arm64** — CI builds arm64 macOS + x64 Windows only. Add
+  matrix entries if the fleet needs `x64` Macs or `arm64` Windows.
