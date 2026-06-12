@@ -1,24 +1,15 @@
 import React from 'react';
-
-const SECTION_LABELS = {
-  verse: 'Verse',
-  chorus: 'Chorus',
-  bridge: 'Bridge',
-  'pre-chorus': 'Pre-Ch',
-  tag: 'Tag',
-  intro: 'Intro',
-  outro: 'Outro',
-  slide: 'Slide',
-  media: 'Media',
-};
+import { sectionLabels } from '../utils/sectionLabels';
 
 export default function SlideList({ slides, activeIdx, onSelect, onDoubleClick, variant = 'preview' }) {
   const isPreview = variant === 'preview';
+  // Numbered labels (Verse 1 / Verse 2 / Chorus) computed across the whole list.
+  const labels = sectionLabels(slides, { abbrev: true });
 
   return (
     <div className="flex flex-col gap-sm p-sm">
       {slides.map((slide, idx) => {
-        const label = SECTION_LABELS[slide.type] || slide.type || 'Section';
+        const label = labels[idx];
         const isActive = idx === activeIdx;
         return (
           <button

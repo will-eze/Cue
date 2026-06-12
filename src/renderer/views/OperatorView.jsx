@@ -2,8 +2,16 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import RundownPanel from '../panels/RundownPanel';
 import PreviewLivePanel from '../panels/PreviewLivePanel';
 import LibraryPanel from '../panels/LibraryPanel';
+import { sectionLabels, sectionLabelAt } from '../utils/sectionLabels';
 
 const isMac = window.cue.platform === 'darwin';
+
+// Display label for a slide. Songs get numbered section labels (Verse 1/Verse 2);
+// scripture/media slides keep their own label (the reference / type).
+function labelForSlide(item, slides, idx) {
+  if (item?.item_type === 'song') return sectionLabelAt(slides, idx);
+  return slides[idx]?.type || '';
+}
 
 function UndoToast({ message, onUndo, onDismiss }) {
   return (
@@ -156,7 +164,7 @@ export default function OperatorView({
   }, [activeServiceId, bgRefreshTick]);
 
   const shortcutRef = useRef({});
-  shortcutRef.current = { handleNextSlide, handlePrevSlide, handleNextLiveSlide, handleGo, handleClear, handleLogo, handleLiveToggle };
+  shortcutRef.current = { handleNextSlide, handlePrevSlide, handleNextLiveSlide, handlePrevLiveSlide, handleGo, handleClear, handleLogo, handleLiveToggle, handleRemoteSelect };
 
   if (transportRef) {
     transportRef.current = { go: handleGo, clear: handleClear, logo: handleLogo };
@@ -199,6 +207,42 @@ export default function OperatorView({
     return () => document.removeEventListener('keydown', onKeyDown);
   }, []);
 
+  // Network control remote (Stream Deck / Companion / phone). Commands arrive as
+  // IPC and drive the SAME handlers the keyboard uses, so the operator UI stays
+  // in sync — the remote is just a virtual operator. OperatorView is always
+  // mounted (App CSS-hides it), so this listener is live across views.
+  useEffect(() => {
+    const off = window.cue.on('remote:command', (cmd) => {
+      const h = shortcutRef.current;
+      switch (cmd?.action) {
+        case 'go':     h.handleGo(); break;
+        case 'clear':  h.handleClear(); break;
+        case 'logo':   h.handleLogo(); break;
+        case 'next':   h.handleNextLiveSlide(); break;
+        case 'prev':   h.handlePrevLiveSlide(); break;
+        case 'live':   h.handleLiveToggle(); break;
+        case 'select': h.handleRemoteSelect(cmd.itemId, cmd.slideIdx); break;
+        default: break;
+      }
+    });
+    return off;
+  }, []);
+
+  // Push the rundown (with each item's slides) + preview/live selection to the
+  // remote server so remote clients can list items AND jump to a specific slide
+  // (e.g. back to a particular verse) rather than only stepping with prev/next.
+  // No-op when the server is disabled.
+  useEffect(() => {
+    const items = (serviceData?.items || []).map((i) => ({
+      id: i.id,
+      type: i.item_type,
+      label: i.song?.title || i.asset?.filename || i.scripture?.reference
+        || (i.item_type === 'scripture' ? 'Scripture' : i.item_type === 'media' ? 'Media' : 'Item'),
+      slides: slidesForRemote(i),
+    }));
+    window.cue.remote?.pushNavState?.({ items, previewItemId, liveItemId, liveSlideIdx });
+  }, [serviceData, previewItemId, liveItemId, liveSlideIdx, scriptureStyle, scriptureRefStyle, scriptureBgPath]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const refreshService = useCallback(() => {
     if (!activeServiceId) return;
     window.cue.services.get(activeServiceId).then(setServiceData);
@@ -229,19 +273,37 @@ export default function OperatorView({
     return [];
   }
 
+  // A compact slide list for the network remote: a label (e.g. "Verse 2",
+  // "Chorus", or a scripture reference) + a short preview per slide, so a phone
+  // can show a song's verses and jump straight to one. Single-slide items
+  // (media, one-line slides) return [] — nothing to expand.
+  function slidesForRemote(item) {
+    const slides = getSlides(item);
+    if (!slides || slides.length <= 1) return [];
+    const songLabels = item.item_type === 'song' ? sectionLabels(slides) : null;
+    return slides.map((s, idx) => {
+      const label = songLabels
+        ? songLabels[idx]
+        : (s.type || (item.item_type === 'scripture' ? `Verse ${idx + 1}` : `Slide ${idx + 1}`));
+      const preview = (s.content || '').replace(/\s+/g, ' ').trim().slice(0, 70);
+      return { index: idx, label, preview };
+    });
+  }
+
   // Resolve the slide that follows (item, slideIdx) — rolling into the next
   // rundown item's first slide at an item boundary. Used to feed the stage display.
   function nextSlideInfo(item, slideIdx) {
     const slides = getSlides(item);
     if (slideIdx < slides.length - 1) {
       const n = slides[slideIdx + 1];
-      return { text: n.content || '', label: n.type || '' };
+      return { text: n.content || '', label: labelForSlide(item, slides, slideIdx + 1) };
     }
     const items = serviceData?.items || [];
     const curIdx = items.findIndex((i) => i.id === item.id);
     if (curIdx >= 0 && curIdx < items.length - 1) {
-      const nextSlides = getSlides(items[curIdx + 1]);
-      if (nextSlides.length) return { text: nextSlides[0].content || '', label: nextSlides[0].type || '' };
+      const nextItem = items[curIdx + 1];
+      const nextSlides = getSlides(nextItem);
+      if (nextSlides.length) return { text: nextSlides[0].content || '', label: labelForSlide(nextItem, nextSlides, 0) };
     }
     return { text: '', label: '' };
   }
@@ -253,7 +315,7 @@ export default function OperatorView({
     const next = nextSlideInfo(item, slideIdx);
     const base = {
       type: 'content',
-      sectionLabel: slide.type || '',
+      sectionLabel: labelForSlide(item, slides, slideIdx),
       nextText: next.text,
       nextSectionLabel: next.label,
       title: item.song?.title || item.asset?.filename || null,
@@ -467,6 +529,58 @@ export default function OperatorView({
         setPreviewItemId(nextItem.id);
         setPreviewSlideIdx(0);
       }
+    }
+  }
+
+  // Mirror of handleNextLiveSlide for the remote's PREV button — steps the LIVE
+  // item backward, rolling into the previous rundown item's last slide at the
+  // boundary. Scripture-live (not in the rundown) just steps within its slides.
+  function handlePrevLiveSlide() {
+    if (!liveItem) { if (previewItem) handleGo(); return; }
+    const slides = getSlides(liveItem);
+    if (liveSlideIdx > 0) {
+      const idx = liveSlideIdx - 1;
+      const payload = buildPayload(liveItem, idx);
+      if (payload) {
+        window.cue.output.go(payload);
+        setLiveSlideIdx(idx);
+        if (liveItemId === previewItemId) setPreviewSlideIdx(idx);
+      }
+      return;
+    }
+    const items = serviceData?.items || [];
+    const curIdx = items.findIndex((i) => i.id === liveItemId);
+    if (curIdx > 0) {
+      const prevItem = items[curIdx - 1];
+      const prevSlides = getSlides(prevItem);
+      const idx = Math.max(prevSlides.length - 1, 0);
+      const payload = buildPayload(prevItem, idx);
+      if (payload) {
+        window.cue.output.go(payload);
+        setLiveItemId(prevItem.id);
+        setLiveSlideIdx(idx);
+        setLiveScripture(null);
+        setPreviewItemId(prevItem.id);
+        setPreviewSlideIdx(idx);
+      }
+    }
+  }
+
+  // Remote SELECT — jump straight to a rundown item live. With no slideIdx it
+  // starts the item from its first slide (same as double-click); with a slideIdx
+  // it jumps to that exact slide (e.g. a specific verse) and goes live there.
+  function handleRemoteSelect(itemId, slideIdx) {
+    const item = (serviceData?.items || []).find((i) => i.id === itemId);
+    if (!item) return;
+    if (slideIdx == null || !Number.isFinite(slideIdx)) { handleDoubleClickItem(item); return; }
+    const payload = buildPayload(item, slideIdx);
+    if (payload) {
+      window.cue.output.go(payload);
+      setLiveItemId(item.id);
+      setLiveSlideIdx(slideIdx);
+      setLiveScripture(null);
+      setPreviewItemId(item.id);
+      setPreviewSlideIdx(slideIdx);
     }
   }
 

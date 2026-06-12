@@ -68,6 +68,8 @@ src/
 ├── main/
 │   ├── index.js              App entry. Window creation. cue-media:// protocol handler.
 │   │                         Dialog IPC. Startup sequence: initDb → seedBundledBibles → seedGhsHymnal.
+│   │                         Wires the remote control server: remoteServer.configure (getState + forward commands to
+│   │                         the renderer as remote:command), outputManager.setRemoteStateListener, applyRemoteConfig().
 │   ├── preload.js            contextBridge → window.cue. The complete renderer API surface.
 │   ├── output-preload.js     Minimal contextBridge for output windows → window.cueOutput only.
 │   ├── fonts.js              BUNDLED_FONTS array + DEFAULT_FONT. Imported by preload.js.
@@ -108,7 +110,19 @@ src/
 │   │   ├── graphics.ipc.js   Registers graphics:* CRUD handlers (registerGraphicsIpc).
 │   │   ├── themes.ipc.js     Registers themes:* CRUD + apply handlers (registerThemesIpc).
 │   │   ├── settings.ipc.js   Registers settings:* handlers.
-│   │   └── bible.ipc.js      Registers bible:* handlers (versions/books/chapters/verses/adjacent/resolve/search/importFile/delete/online:*).
+│   │   ├── bible.ipc.js      Registers bible:* handlers (versions/books/chapters/verses/adjacent/resolve/search/importFile/delete/online:*).
+│   │   └── remote.ipc.js       Registers remote:* handlers (getConfig/setConfig/regenerateToken/navState). Owns the
+│   │                           settings keys (remote_enabled/port/lan/token) + applyRemoteConfig() (boot + on-change start).
+│   │
+│   ├── remote/
+│   │   ├── server.js           Network control API. Dependency-free Node http server (no ws — SSE for the live STATE
+│   │   │                       push). Binds 127.0.0.1 (LAN opt-in = 0.0.0.0). Token-gated /api/*. configure() injects
+│   │   │                       getState + onCommand (decoupled from manager/window). ACTIONS = go/clear/logo/next/prev/
+│   │   │                       live/select; GET /api/<action> or POST /api/command. STATE via GET /api/state + GET
+│   │   │                       /api/stream (SSE). setNavState() holds the renderer-pushed rundown (items + slides).
+│   │   └── control-page.js     CONTROL_PAGE: self-contained dark HTML control surface served at GET / (phone remote).
+│   │                           Token from ?token= → localStorage. SSE-driven (single source of truth, no stale renders).
+│   │                           Accordion rundown — expand a song to its numbered slides, tap a verse to jump live.
 │   │
 │   └── output/
 │       ├── manager.js        Output window registry. go/clear/logo dispatch. No operator capture loop —
@@ -125,6 +139,8 @@ src/
 │       │                     tickerShow/Hide, customShow/Hide; broadcastGraphic() → per-window target-filtered
 │       │                     graphic:update to all non-stage windows (getGraphicsWindowInfos). setChannelContentMode()
 │       │                     toggles a channel's lyric band / overlay at runtime via content:mode (no window recreate).
+│       │                     setRemoteStateListener(cb): notifyMainWindow('output:state-changed') also fires cb so the
+│       │                     network remote pushes STATE. setOutputsEnabled emits state early (before slow window work).
 │       └── ndi.js            Active NDI implementation. createRequire loads @grandi/<platform>-<arch>
 │                             at runtime. createSender / sendFrame (inflight guard) / destroySender.
 │
@@ -144,9 +160,9 @@ src/
 │   │   │                     the live monitor renders the slide from payload (no per-frame capture loop).
 │   │   │                     liveChannelIdx tracks which channel the live monitor displays.
 │   │   ├── SettingsView.jsx  Settings layout. Left column is section navigation (Channels/Logo/Background/Themes/
-│   │   │                     Bible/Shortcuts/Danger) + Back-to-Operator: click scrolls to the section; an
+│   │   │                     Bible/Shortcuts/Remote/Danger) + Back-to-Operator: click scrolls to the section; an
 │   │   │                     IntersectionObserver highlights the section in view. Section order: OutputChannels →
-│   │   │                     LogoSettings → BackgroundSettings → ThemeSettings → BibleSettings → ShortcutSettings →
+│   │   │                     LogoSettings → BackgroundSettings → ThemeSettings → BibleSettings → ShortcutSettings → RemoteSettings →
 │   │   │                     DangerZone → SettingsFooter (always last two, rendered at layout level — not inside any sub-component).
 │   │   └── MultiviewView.jsx Multi-output monitor wall. Subscribes to output:multiview-captures.
 │   │                         NDI channels show NdiTile (checkerboard + frame). Screen channels show ScreenMonitorTile.
@@ -226,6 +242,7 @@ src/
 │   │   ├── MediaPickerModal.jsx   Media grid picker. Used by RundownPanel for bg override.
 │   │   ├── SlideList.jsx          Scrollable slide/section list. Preview and live variants.
 │   │   │                          Slide content capped at max-h-24 to prevent runaway tall cards.
+│   │   │                          Section labels via utils/sectionLabels (numbered: Verse 1 / Verse 2, abbrev forms).
 │   │   └── ContextMenu.jsx        Generic right-click menu positioned by x/y coords.
 │   │                              Escape key closes menu. Overflow guard accounts for separator height.
 │   │
@@ -244,14 +261,19 @@ src/
 │   │   │                          Accepts only activeServiceId prop. No DangerZone or footer inside.
 │   │   ├── DangerZone.jsx        Destructive actions: clear rundown items, delete rundown, clear library.
 │   │   │                          Two-step confirm on every action. Success toast feedback.
-│   │   └── ShortcutSettings.jsx  Configurable keyboard shortcuts UI. Modifier selector (Cmd/Ctrl/Alt)
+│   │   ├── ShortcutSettings.jsx  Configurable keyboard shortcuts UI. Modifier selector (Cmd/Ctrl/Alt)
 │   │                              + key inputs for GO, Clear, Logo, Live Toggle. Saves to settings DB.
 │   │                              Shortcuts reload in OperatorView on next bgRefreshTick.
+│   │   └── RemoteSettings.jsx    Network control card. Enable toggle, port, Allow-LAN toggle, pairing token
+│   │                              (copy/regenerate), phone URL, and the HTTP API reference. Drives remote:setConfig.
 │   │
 │   └── utils/
 │       ├── mediaUrl.js           mediaUrl(absPath) → cue-media://localhost/encoded/path
-│       └── channelMode.js        Lower-third content-mode helpers: CHANNEL_MODES, channelMode(ch),
-│                                 modeToFlags(mode) ({show_program, show_graphics}). Shared by Settings + Graphics panel.
+│       ├── channelMode.js        Lower-third content-mode helpers: CHANNEL_MODES, channelMode(ch),
+│       │                         modeToFlags(mode) ({show_program, show_graphics}). Shared by Settings + Graphics panel.
+│       └── sectionLabels.js      Numbered section labels — single source of truth. sectionOrdinals(slides) (n or null,
+│                                 numbered only when a type repeats); sectionLabels(slides,{abbrev}); sectionLabelAt.
+│                                 Used by SlideList, SongEditor, OperatorView buildPayload (stage label), the remote.
 │
 ├── output/                   Plain HTML — no build step, no React, served directly.
 │   ├── media-player.js       Shared classic script (loaded before fullscreen.js/stage.js). window.CueMediaPlayer.
@@ -519,6 +541,10 @@ Known keys:
 | `keyboard_logo` | string | Key char for Logo shortcut (default: 'l') |
 | `keyboard_live` | string | Key char for Live Toggle shortcut (default: 'o') |
 | `ghs_seeded` | boolean | Set true after the bundled GHS hymnal is imported on first run; gates re-seeding so deletions stick |
+| `remote_enabled` | boolean | Network control server on/off (default false) |
+| `remote_port` | number | Server TCP port (default 7373) |
+| `remote_lan` | boolean | Bind all interfaces (LAN) vs 127.0.0.1 only (default false) |
+| `remote_token` | string | Pairing token; minted on first enable, regenerable |
 
 **localStorage keys** (UI state only — not in DB):
 | Key | Description |
@@ -815,6 +841,19 @@ overlay, and a graphic never touches the program. Default destination for new gr
 | `online:list` (`onlineList()`) | `{ok, versions:[{abbrev, name, language, license, restricted, installed}]}` | getbible.net v2 catalog (117 versions); installed matched by name. |
 | `online:download` (`onlineDownload(abbrev)`) | `{ok, id, name, count}` \| `{ok, already:true}` \| `{ok:false, error}` | Fetch (main-process) + normalize + import one version. |
 
+### `window.cue.remote`
+
+Network control API (Stream Deck / Companion / phone). The renderer only configures the server and feeds it the rundown; transport itself flows back as a `remote:command` event the operator view handles like keyboard input.
+
+| Method | Returns | Notes |
+|---|---|---|
+| `getConfig()` | `{enabled, port, lan, token, running, urls}` | Current server config + bound URLs. |
+| `setConfig({enabled?, port?, lan?})` | config | Persists settings keys then (re)starts/stops the server. |
+| `regenerateToken()` | config | Mints a new pairing token (old links stop working) and restarts. |
+| `pushNavState({items, previewItemId, liveItemId, liveSlideIdx})` | void | Renderer pushes the rundown (each item carries `slides:[{index,label,preview}]`) so remote clients can list + jump to a slide. No-op when the server is stopped. |
+
+HTTP surface (token via `X-Cue-Token` header or `?token=`): `GET /` (control page), `GET /api/state`, `GET /api/stream` (SSE), `GET /api/{go,clear,logo,next,prev,live}`, `GET /api/select?itemId=N&slideIdx=M`, `POST /api/command {action, …}`.
+
 ### `window.cue.dialog`
 - `openFile(options)` → `{canceled, filePaths}` — wraps `dialog.showOpenDialog`.
 
@@ -831,6 +870,7 @@ Subscribe to main→renderer events. Returns an unsubscribe function — call it
 - `output:multiview-captures` — array of `{channelId, dataUrl, isNdi}` objects (~5fps, only while multiview is running). `isNdi: true` for NDI channels (sourced from `ndiLastFrames` JPEG cache at ~1fps); `isNdi: false` for screen channels (capturePage at ~5fps).
 - `output:ndi-unavailable` — fired if grandiose is not installed
 - `shortcut:next` / `shortcut:prev` — reserved for future hardware remote
+- `remote:command` — a network-control command `{action, itemId?, slideIdx?}` (action: go/clear/logo/next/prev/live/select). OperatorView dispatches it to the same handlers the keyboard uses, so the remote stays in sync with the UI.
 
 ---
 
@@ -1049,6 +1089,12 @@ Two ref patterns used to avoid stale closures:
 
 **Do not use `globalShortcut`** — it captures at OS level and prevents typing G, L, Space in any input field system-wide.
 
+### Section labels (numbered verses)
+`utils/sectionLabels.js` is the single source of truth. A section type is numbered only when it repeats within the song — three verses → "Verse 1 / Verse 2 / Verse 3", a lone chorus stays "Chorus" (numbering is derived from the ordered list, never stored). `buildPayload`/`nextSlideInfo` use `labelForSlide()` so the stage/confidence display gets the numbered `sectionLabel`; `SlideList` (abbrev forms) and the song editor's ordinal badge use it too. Scripture/media slides pass through unchanged (each "type" is unique → no number).
+
+### Network remote integration
+`OperatorView` listens for `remote:command` and routes go/clear/logo/next/prev/live/select to the same handlers as the keyboard (the remote is a "virtual operator", so UI state stays in sync — it is always mounted, CSS-hidden when off-view). `handlePrevLiveSlide` mirrors the space-driven `handleNextLiveSlide` backwards; `handleRemoteSelect(itemId, slideIdx?)` jumps live to an item (or a specific slide). A `useEffect` pushes the rundown (`slidesForRemote` per item) + selection to the server via `window.cue.remote.pushNavState` whenever it changes.
+
 ---
 
 ## 13. Output Windows
@@ -1192,7 +1238,7 @@ Offscreen rendering (`offscreen: true` BrowserWindow) + `paint` event + `setInte
 3. `CHORUS` bare keyword alone on line
 No-header fallback: split by blank lines, all → `verse`. The user then relabels.
 
-**Section ordering** — drag-to-reorder via `@dnd-kit`. Each section has a local `_key` for stable React identity.
+**Section ordering** — drag-to-reorder via `@dnd-kit`. Each section has a local `_key` for stable React identity. Each section row shows an ordinal badge (`sectionOrdinals(sections)` from `utils/sectionLabels`) next to the type dropdown — "Verse 1 / Verse 2" — recomputed live as sections are added, removed, or reordered; a lone type shows no number.
 
 ### Song import (`src/main/import/songs-import.js` + `SongImportModal.jsx`)
 File import is a two-phase preview/commit flow: `songs.importParse(filePaths)` parses (no DB write) → `SongImportModal` lets the operator deselect rows and edit titles → `songs.importCommit(rows)` bulk-inserts. The Songs-tab **Import** dropdown offers "Import from File…" and "Import GHS Hymnal".
@@ -1244,6 +1290,7 @@ The reference flows in the payload as `copyright` (text), `copyrightAlign` (`'ri
 | Tag CRUD UI | Medium | Tags can be assigned, but create/rename/delete UI is not in Settings. |
 | ~~Song background picker in Song Editor~~ | ~~Medium~~ | Implemented. Media picker in `SlidePreview` calls `songs:setBackground`. |
 | ~~Song import~~ | ~~Medium~~ | Implemented — OpenLyrics / ChordPro / text / EasyWorship + bundled GHS hymnal. See §16. |
+| ~~Network control API~~ | ~~Medium~~ | Implemented — localhost/LAN HTTP + SSE server, token-gated. Phone control page + Companion HTTP verbs. See §7 `window.cue.remote`, `src/main/remote/`. |
 | Disk space warning | Low | Warn when < 2GB free on import. Not implemented. |
 | Media unused-asset cleanup | Low | Identify media not referenced by any song or service_item. |
 | Drag asset from Library onto rundown item | Medium | Background override currently only via context menu. |
@@ -1259,10 +1306,11 @@ The reference flows in the payload as `copyright` (text), `copyrightAlign` (`'ri
    b. `initDb()` — open SQLite, run pending migrations
    c. `seedBundledBibles()` — import any missing bundled translation (KJV + WEB) from `resources/bible/*.json` (matched by abbrev). Packaged path `process.resourcesPath/bible`; dev path `app.getAppPath()/resources/bible`.
    d. `seedGhsHymnal()` — first run only (gated by `ghs_seeded`): import the bundled GHS hymnal from `resources/ghs/ghs-hymnal.json`; then always `tagGhsSongs()` to backfill the GHS tag. Same packaged/dev path resolution as bibles.
-   e. Register all IPC handlers (songs, services, media, output, settings, bible)
+   e. Register all IPC handlers (songs, services, media, output, settings, bible, graphics, themes, remote)
    f. `createMainWindow()` — show operator UI
-   g. `outputManager.init()` — load active channels, create BrowserWindows
-   h. On `did-finish-load`: send `output:unresolved-channels` and/or `output:ndi-unavailable` if needed. The renderer does not auto-navigate to Settings — the operator opens it manually.
+   g. `remoteServer.configure(...)` + `outputManager.setRemoteStateListener(...)` + `await applyRemoteConfig()` — start the network control server if `remote_enabled`
+   h. `outputManager.init()` — load active channels, create BrowserWindows
+   i. On `did-finish-load`: send `output:unresolved-channels` and/or `output:ndi-unavailable` if needed. The renderer does not auto-navigate to Settings — the operator opens it manually.
 
 ---
 

@@ -131,6 +131,12 @@ contextBridge.exposeInMainWorld('cue', {
     applyToRundown: (themeId, svcId, setBg)  => ipcRenderer.invoke('themes:applyToRundown', themeId, svcId, setBg),
     applyToAllSongs:(themeId, setBg)         => ipcRenderer.invoke('themes:applyToAllSongs', themeId, setBg),
   },
+  remote: {
+    getConfig:       () => ipcRenderer.invoke('remote:getConfig'),
+    setConfig:       (data) => ipcRenderer.invoke('remote:setConfig', data),
+    regenerateToken: () => ipcRenderer.invoke('remote:regenerateToken'),
+    pushNavState:    (s) => ipcRenderer.invoke('remote:navState', s),
+  },
   settings: {
     get: (key) => ipcRenderer.invoke('settings:get', key),
     set: (key, value) => ipcRenderer.invoke('settings:set', key, value),
@@ -162,6 +168,7 @@ contextBridge.exposeInMainWorld('cue', {
       'output:media-transport',
       'output:overlay-changed',
       'shortcut:next', 'shortcut:prev',
+      'remote:command',
     ];
     if (!allowed.includes(channel)) return () => {};
     const wrapper = (_event, ...args) => callback(...args);

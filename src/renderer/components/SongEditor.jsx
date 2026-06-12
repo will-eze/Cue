@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import MediaPickerModal from './MediaPickerModal';
 import { mediaUrl } from '../utils/mediaUrl';
+import { sectionOrdinals } from '../utils/sectionLabels';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
 } from '@dnd-kit/core';
@@ -832,7 +833,7 @@ const TYPE_COLORS = {
   default: 'text-on-surface-variant bg-surface-variant/30 border-outline-variant/30',
 };
 
-function SortableSectionItem({ section, isActive, onSelect, onDelete, onTypeChange }) {
+function SortableSectionItem({ section, ordinal, isActive, onSelect, onDelete, onTypeChange }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: section._key });
   const preview = (section.content || '').split('\n').slice(0, 2).join(' · ').slice(0, 60) || '(empty)';
   const typeColor = TYPE_COLORS[section.type] || TYPE_COLORS.default;
@@ -867,6 +868,10 @@ function SortableSectionItem({ section, isActive, onSelect, onDelete, onTypeChan
             <option key={t} value={t} className="bg-surface-container text-on-surface normal-case font-normal">{t}</option>
           ))}
         </select>
+
+        {ordinal != null && (
+          <span className={`text-[9px] font-mono font-bold tabular-nums flex-shrink-0 ${typeColor}`}>{ordinal}</span>
+        )}
 
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(section._key); }}
@@ -1282,16 +1287,22 @@ export default function SongEditor({ song, onClose, onSave }) {
               <div className="flex-1 overflow-y-auto custom-scrollbar">
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                   <SortableContext items={sections.map((s) => s._key)} strategy={verticalListSortingStrategy}>
-                    {sections.map((sec) => (
-                      <SortableSectionItem
-                        key={sec._key}
-                        section={sec}
-                        isActive={sec._key === activeSectionKey}
-                        onSelect={switchSection}
-                        onDelete={deleteSection}
-                        onTypeChange={onTypeChange}
-                      />
-                    ))}
+                    {(() => {
+                      // Number repeated section types (Verse 1, Verse 2…); a lone
+                      // type shows no number. Recomputed live as sections change.
+                      const ordinals = sectionOrdinals(sections);
+                      return sections.map((sec, i) => (
+                        <SortableSectionItem
+                          key={sec._key}
+                          section={sec}
+                          ordinal={ordinals[i]}
+                          isActive={sec._key === activeSectionKey}
+                          onSelect={switchSection}
+                          onDelete={deleteSection}
+                          onTypeChange={onTypeChange}
+                        />
+                      ));
+                    })()}
                   </SortableContext>
                 </DndContext>
                 {sections.length === 0 && (

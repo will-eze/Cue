@@ -10,6 +10,8 @@ import { registerSettingsIpc } from './ipc/settings.ipc.js';
 import { registerBibleIpc } from './ipc/bible.ipc.js';
 import { registerGraphicsIpc } from './ipc/graphics.ipc.js';
 import { registerThemesIpc } from './ipc/themes.ipc.js';
+import { registerRemoteIpc, applyRemoteConfig } from './ipc/remote.ipc.js';
+import * as remoteServer from './remote/server.js';
 import { seedBundledBibles } from './db/bible.js';
 import { seedGhsHymnal } from './db/songs.js';
 import * as outputManager from './output/manager.js';
@@ -156,9 +158,22 @@ app.whenReady().then(async () => {
   registerBibleIpc();
   registerGraphicsIpc();
   registerThemesIpc();
+  registerRemoteIpc();
 
   createMainWindow();
   outputManager.setMainWindow(mainWindow);
+
+  // Network control API: read state from the manager, forward transport commands
+  // to the renderer (which owns rundown/preview/live and resolves GO payloads),
+  // and push STATE on every output change. Start it from saved settings.
+  remoteServer.configure({
+    getState: () => outputManager.getState(),
+    onCommand: (cmd) => {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('remote:command', cmd);
+    },
+  });
+  outputManager.setRemoteStateListener(() => remoteServer.pushState());
+  await applyRemoteConfig();
 
   const unresolvedChannels = await outputManager.init();
   mainWindow.webContents.once('did-finish-load', () => {
@@ -181,4 +196,5 @@ app.on('window-all-closed', () => {
 
 app.on('will-quit', () => {
   outputManager.closeAll();
+  remoteServer.stop();
 });

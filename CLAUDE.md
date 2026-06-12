@@ -10,6 +10,7 @@ Unified single-process Electron app. Replaces EasyWorship/ProPresenter (worship 
 
 ### Security
 - `nodeIntegration: false` always. All Node/SQLite access goes through IPC via `window.cue` (contextBridge preload). Never bypass.
+- Network control server (`src/main/remote/`): bind `127.0.0.1` by default (LAN is an explicit opt-in), every `/api/*` request is token-gated, and it only calls manager/IPC functions — never expose Node or the DB over it.
 
 ### Media URLs
 - **Never use `file://` for media.** Always `cue-media://localhost/path`. Three-slash form (`cue-media:///…`) silently fails — Chromium strips the first segment as hostname.
@@ -50,6 +51,7 @@ Typography: Inter for body/headlines. Labels/chips/badges/buttons: `"JetBrains M
 - Program audio comes from ONE screen window only (`isPrimaryAudioMonitor`). Stage and operator preview are always silent.
 - Broadcast-graphics overlay is an independent bus — never coupled to the program slide bus.
 - `window.cue.on()` returns an unsubscribe fn. Always call it in `useEffect` cleanup.
+- The network remote is a virtual operator: nav commands (GO/NEXT/PREV/SELECT) are forwarded to the renderer as `remote:command` and run the SAME handlers as the keyboard. Do NOT resolve slide payloads in the main process — rundown/preview/live state lives in `OperatorView`.
 
 ---
 
@@ -58,4 +60,4 @@ Typography: Inter for body/headlines. Labels/chips/badges/buttons: `"JetBrains M
 - `npm start` — dev server
 - `npm run make` — distributable
 - After any Electron version bump: `npm run rebuild` (recompiles `better-sqlite3` and `grandi`)
-- DB: `~/Library/Application Support/Cue/cue.db` (macOS) · `%APPDATA%\Cue\cue.db` (Windows) · schema v14
+- DB: `~/Library/Application Support/Cue/cue.db` (macOS) · `%APPDATA%\Cue\cue.db` (Windows) · schema v15

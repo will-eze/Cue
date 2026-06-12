@@ -11,6 +11,10 @@ const ndiCaptureLoops = new Map();
 // Latest downscaled JPEG per NDI channel for multiview thumbnails (1fps cache)
 const ndiLastFrames = new Map(); // channelId → Buffer
 let mainWindowRef = null;
+// Network-control remote: notified on every state change so it can push STATE to
+// connected Stream Deck / Companion / phone clients. Set by index.js; decoupled
+// so this module never imports the remote server.
+let remoteStateCb = null;
 let multiviewInterval = null;
 let multiviewRefCount = 0;
 let outputsEnabled = true;
@@ -621,6 +625,11 @@ export async function setOutputsEnabled(enabled) {
   if (outputsEnabled === enabled) return;
   outputsEnabled = enabled;
 
+  // Push the flag change immediately so listeners (operator UI, network remote)
+  // reflect it without waiting for the window open/close work below — opening
+  // BrowserWindows is slow and would otherwise make the indicator feel laggy.
+  notifyMainWindow('output:state-changed', getState());
+
   if (!enabled) {
     for (const [key, win] of windows) {
       if (typeof key === 'string' && key.startsWith('ndi-')) {
@@ -653,6 +662,10 @@ export function getState() {
 
 export function setMainWindow(win) {
   mainWindowRef = win;
+}
+
+export function setRemoteStateListener(cb) {
+  remoteStateCb = cb;
 }
 
 function resolveLogo(channel) {
@@ -743,6 +756,10 @@ export function stageTimerCmd(action, seconds) {
 function notifyMainWindow(channel, ...args) {
   if (mainWindowRef && !mainWindowRef.isDestroyed()) {
     mainWindowRef.webContents.send(channel, ...args);
+  }
+  // Mirror display-state changes to the network-control remote (reads getState itself).
+  if (channel === 'output:state-changed' && remoteStateCb) {
+    try { remoteStateCb(); } catch {}
   }
 }
 
