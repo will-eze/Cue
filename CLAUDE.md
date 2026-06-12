@@ -15,11 +15,14 @@ Unified single-process Electron app. Replaces EasyWorship/ProPresenter (worship 
 ### Media URLs
 - **Never use `file://` for media.** Always `cue-media://localhost/path`. Three-slash form (`cue-media:///…`) silently fails — Chromium strips the first segment as hostname.
 - Renderer: use `src/renderer/utils/mediaUrl.js`. Output templates: inline `pathToUrl()` helper.
+- `media_assets.path` is stored **absolute**. Any feature that relocates `userData` (backup/restore, data-folder move, sync) must rewrite each path to the local media dir, or assets silently fail to resolve on the new machine.
+- Adding a new place that references a media asset (FK column or `settings` key)? Also add it to `media.findUnused()` — anything it misses gets reported as unused and is deleted by the Media cleanup tool.
 
 ### Output & NDI
 - **Never `capturePage()` on NDI windows** — 4s+ latency. NDI uses the `paint` event + `setInterval(invalidate, frameMs)`.
 - **Do not reintroduce a per-frame operator capture loop.** The live monitor renders from the payload, not screen capture.
 - **Do not recreate a channel window for a lower-third content-mode switch** — send `content:mode` IPC to the existing window; recreating drops the NDI sender.
+- **Countdown/clock graphics tick in the output template, not the operator.** Main resolves an absolute anchor (`endsAt`/`startAt`) once; `graphics-overlay.js` recomputes the digits from `Date.now()`. Never stream per-second time updates over the overlay bus.
 - Display matching: always `display_bounds` JSON, never `display_index`.
 
 ### Shortcuts
@@ -60,4 +63,4 @@ Typography: Inter for body/headlines. Labels/chips/badges/buttons: `"JetBrains M
 - `npm start` — dev server
 - `npm run make` — distributable
 - After any Electron version bump: `npm run rebuild` (recompiles `better-sqlite3` and `grandi`)
-- DB: `~/Library/Application Support/Cue/cue.db` (macOS) · `%APPDATA%\Cue\cue.db` (Windows) · schema v15
+- DB: `~/Library/Application Support/Cue/cue.db` (macOS) · `%APPDATA%\Cue\cue.db` (Windows) · schema v16

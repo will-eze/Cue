@@ -249,8 +249,13 @@ export default function LibraryPanel({ onAddToRundown, onAddScripture, onScriptu
     else if (ghsQuery) { setGhsQuery(''); }
   }, [isGhsView]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function toggleTag(id) {
-    setSelectedTagIds((prev) => prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]);
+  // Click switches to a single tag; Shift-click adds/removes (multi-select).
+  // Clicking the only active tag again clears the filter.
+  function selectTag(id, additive) {
+    setSelectedTagIds((prev) => {
+      if (additive) return prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id];
+      return prev.length === 1 && prev[0] === id ? [] : [id];
+    });
   }
 
   // Jump straight to a hymn from the GHS number field (Enter) — preview the exact
@@ -473,7 +478,8 @@ export default function LibraryPanel({ onAddToRundown, onAddScripture, onScriptu
                     className={`flex items-center gap-sm p-sm rounded cursor-pointer transition-colors ${
                       active ? 'text-on-surface' : 'hover:bg-surface-variant'
                     }`}
-                    onClick={() => toggleTag(tag.id)}
+                    onClick={(e) => selectTag(tag.id, e.shiftKey)}
+                    title="Click to filter · Shift-click to select multiple"
                     style={active ? { background: `${tag.colour || '#333539'}25` } : {}}
                   >
                     <span className="w-[8px] h-[8px] rounded-full shrink-0" style={{ background: tag.colour || '#8c909f' }} />
@@ -554,7 +560,7 @@ export default function LibraryPanel({ onAddToRundown, onAddScripture, onScriptu
       {editSong !== null && (
         <SongEditor song={editSong.id ? editSong : null}
           onClose={() => setEditSong(null)}
-          onSave={() => { setEditSong(null); loadSongs(); onSongSave?.(); }} />
+          onSave={() => { setEditSong(null); loadSongs(); window.cue.tags.list().then(setTags); onSongSave?.(); }} />
       )}
       {importPreview && (
         <SongImportModal

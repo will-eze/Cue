@@ -1,19 +1,57 @@
 import React, { useState, useEffect, useRef } from 'react';
 import SlideList from '../components/SlideList';
 import { renderWithRuns, copyrightCss } from '../components/SongEditor';
-import { flatTextCss, buildBarBg as buildGraphicBarBg } from '../components/GraphicsEditor';
+import { flatTextCss, buildBarBg as buildGraphicBarBg, fmtDuration as fmtGfxDuration, fmtClock as fmtGfxClock, CD_DEFAULT_BOX, TIME_BASE as GFX_TIME_BASE, MSG_BASE as GFX_MSG_BASE } from '../components/GraphicsEditor';
 import { mediaUrl } from '../utils/mediaUrl';
 
 const GFX_BOX_DEFAULT = { x: 4, y: 70, w: 55, h: 22 };
 const GFX_NAME_BASE  = { fontSize: 54, color: '#ffffff', fontWeight: 700 };
 const GFX_TITLE_BASE = { fontSize: 28, color: '#adc6ff', fontWeight: 500 };
 
+// Self-ticking countdown/clock for the live monitor — mirrors graphics-overlay.js.
+// The bus carries the resolved anchor (endsAt/startAt); we recompute from Date.now().
+function OverlayCountdown({ cd }) {
+  const [, force] = React.useState(0);
+  React.useEffect(() => {
+    const id = setInterval(() => force((n) => n + 1), 250);
+    return () => clearInterval(id);
+  }, []);
+
+  const st  = (cd.style && cd.style.time)    || {};
+  const mst = (cd.style && cd.style.message) || {};
+  const box = st.textBox || CD_DEFAULT_BOX;
+  const vAlign = st.verticalAlign || 'center';
+  const hAlign = st.align === 'left' ? 'flex-start' : st.align === 'right' ? 'flex-end' : 'center';
+
+  let timeText, msgText = cd.label || '';
+  if (cd.mode === 'clock') timeText = fmtGfxClock(new Date(), cd.format, cd.showSeconds);
+  else if (cd.mode === 'countup') timeText = fmtGfxDuration((Date.now() - cd.startAt) / 1000);
+  else {
+    const rem = (cd.endsAt - Date.now()) / 1000;
+    if (rem <= 0) { timeText = cd.endMessage ? '' : '0:00'; if (cd.endMessage) msgText = cd.endMessage; }
+    else timeText = fmtGfxDuration(rem);
+  }
+
+  return (
+    <div style={{
+      position: 'absolute', left: `${box.x}%`, top: `${box.y}%`, width: `${box.w}%`, height: `${box.h}%`,
+      background: buildGraphicBarBg(st.ltBar), padding: '16px 32px', boxSizing: 'border-box',
+      display: 'flex', flexDirection: 'column', overflow: 'hidden',
+      justifyContent: vAlign === 'top' ? 'flex-start' : vAlign === 'bottom' ? 'flex-end' : 'center',
+      alignItems: hAlign,
+    }}>
+      {msgText && <div style={flatTextCss(mst, GFX_MSG_BASE)}>{msgText}</div>}
+      <div style={{ ...flatTextCss(st, GFX_TIME_BASE), whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{timeText}</div>
+    </div>
+  );
+}
+
 // Renders the live broadcast-graphics overlay (name/title bug, ticker, custom HTML)
 // on top of a lower-third live monitor — mirrors output/lowerthird.js exactly.
 function GraphicsOverlayLayer({ overlay }) {
   if (!overlay) return null;
-  const nt = overlay.nameTitle, tk = overlay.ticker, cu = overlay.custom;
-  if (!nt && !tk && !cu) return null;
+  const nt = overlay.nameTitle, tk = overlay.ticker, cu = overlay.custom, cd = overlay.countdown;
+  if (!nt && !tk && !cu && !cd) return null;
 
   let bug = null;
   if (nt) {
@@ -53,6 +91,7 @@ function GraphicsOverlayLayer({ overlay }) {
     <>
       {bug}
       {ticker}
+      {cd && cd.mode && <OverlayCountdown cd={cd} />}
       {cu && (
         <iframe title="overlay-custom" sandbox="allow-same-origin"
           style={{ position: 'absolute', inset: 0, width: NATIVE_W, height: NATIVE_H, border: 0, background: 'transparent' }}
@@ -498,7 +537,7 @@ export default function PreviewLivePanel({
   // A channel with graphics turned off (Lyrics Only) shows no overlay on its monitor.
   const hideGraphics = selectedChannel?.show_graphics === 0;
   const monitorOverlay = (selectedTemplate !== 'stage' && overlay && !hideGraphics)
-    ? { nameTitle: slotMatch(overlay.nameTitle), ticker: slotMatch(overlay.ticker), custom: slotMatch(overlay.custom) }
+    ? { nameTitle: slotMatch(overlay.nameTitle), ticker: slotMatch(overlay.ticker), custom: slotMatch(overlay.custom), countdown: slotMatch(overlay.countdown) }
     : null;
   // Graphics-only lower-third channel → don't render the song lyric band on the monitor.
   const hideProgram = selectedTemplate === 'lowerthird' && selectedChannel?.show_program === 0;

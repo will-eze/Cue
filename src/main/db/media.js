@@ -62,6 +62,38 @@ export function del(id) {
   try { if (fs.existsSync(asset.path)) fs.unlinkSync(asset.path); } catch {}
 }
 
+export function deleteMany(ids) {
+  if (!Array.isArray(ids)) return 0;
+  let removed = 0;
+  for (const id of ids) { del(id); removed++; }
+  return removed;
+}
+
+// Media not referenced by any song background, rundown item, channel logo,
+// theme, or global setting — i.e. safe to delete. Settings store media ids as
+// JSON-encoded integers, so they're collected separately from the FK columns.
+export function findUnused() {
+  const db = getDb();
+  const referenced = new Set();
+  const addAll = (rows) => { for (const r of rows) if (r.id != null) referenced.add(r.id); };
+  addAll(db.prepare('SELECT DISTINCT default_background_id  AS id FROM songs           WHERE default_background_id  IS NOT NULL').all());
+  addAll(db.prepare('SELECT DISTINCT background_override_id AS id FROM service_items   WHERE background_override_id IS NOT NULL').all());
+  addAll(db.prepare('SELECT DISTINCT logo_override_id       AS id FROM output_channels WHERE logo_override_id       IS NOT NULL').all());
+  addAll(db.prepare('SELECT DISTINCT background_id          AS id FROM themes          WHERE background_id          IS NOT NULL').all());
+  for (const key of ['global_logo_id', 'global_bg_song_id', 'global_bg_scripture_id', 'global_bg_slide_id']) {
+    const row = db.prepare('SELECT value FROM settings WHERE key=?').get(key);
+    if (!row) continue;
+    try { const v = JSON.parse(row.value); if (v != null) referenced.add(Number(v)); } catch {}
+  }
+  return db.prepare('SELECT * FROM media_assets ORDER BY filename COLLATE NOCASE').all()
+    .filter((m) => !referenced.has(m.id))
+    .map((m) => {
+      let size = 0;
+      try { size = fs.statSync(m.path).size; } catch {}
+      return { ...m, size_bytes: size };
+    });
+}
+
 export function createFolder(name, parentId) {
   const { lastInsertRowid } = getDb().prepare('INSERT INTO media_folders (name, parent_id) VALUES (?,?)').run(name, parentId || null);
   return Number(lastInsertRowid);

@@ -71,6 +71,45 @@ function freshTitleStyle() {
 function freshTickerStyle() {
   return { ...DEFAULT_STYLE, fontSize: 30, color: '#ffffff', bar: null, position: 'bottom' };
 }
+export const CD_DEFAULT_BOX = { x: 25, y: 32, w: 50, h: 36 };
+function freshTimeStyle() {
+  return { ...DEFAULT_STYLE, align: 'center', verticalAlign: 'center', fontSize: 120, color: '#ffffff', bold: true,
+    textBox: { ...CD_DEFAULT_BOX }, ltBar: null };
+}
+function freshMsgStyle() {
+  return { ...DEFAULT_STYLE, align: 'center', fontSize: 36, color: '#adc6ff', bold: false };
+}
+const FRESH_CD = { mode: 'countdown', source: 'duration', durationSec: 300, targetClock: '11:00', format: '24h', showSeconds: true, endMessage: '' };
+
+const CD_MODES = [
+  { id: 'countdown', label: 'Countdown', icon: 'timer' },
+  { id: 'countup',   label: 'Count Up',  icon: 'timelapse' },
+  { id: 'clock',     label: 'Clock',     icon: 'schedule' },
+];
+
+export const TIME_BASE = { fontSize: 120, color: '#ffffff', fontWeight: 700 };
+export const MSG_BASE  = { fontSize: 36, color: '#adc6ff', fontWeight: 500 };
+
+// Shared formatters (mirror graphics-overlay.js so the editor preview matches output).
+const pad2 = (n) => String(n).padStart(2, '0');
+export function fmtDuration(totalSec) {
+  if (totalSec < 0) totalSec = 0;
+  const h = Math.floor(totalSec / 3600), m = Math.floor((totalSec % 3600) / 60), s = Math.floor(totalSec % 60);
+  return h > 0 ? `${h}:${pad2(m)}:${pad2(s)}` : `${m}:${pad2(s)}`;
+}
+export function fmtClock(date, format, showSeconds) {
+  let h = date.getHours(); let suffix = '';
+  if (format === '12h') { suffix = h >= 12 ? ' PM' : ' AM'; h = h % 12 || 12; }
+  const hh = format === '12h' ? String(h) : pad2(h);
+  const body = showSeconds ? `${hh}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}` : `${hh}:${pad2(date.getMinutes())}`;
+  return body + suffix;
+}
+// What the digits read in a static preview/thumbnail (no live anchor).
+export function cdSampleText(cd) {
+  if (cd.mode === 'clock') return fmtClock(new Date(), cd.format, cd.showSeconds);
+  if (cd.mode === 'countup') return '0:00';
+  return cd.source === 'target' ? '5:00' : fmtDuration(cd.durationSec || 0);
+}
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -109,6 +148,7 @@ const STARTER_HTML = `<style>
 const KINDS = [
   { id: 'lower_third', label: 'Lower Third', icon: 'badge' },
   { id: 'ticker',      label: 'Ticker',       icon: 'subtitles' },
+  { id: 'countdown',   label: 'Countdown',    icon: 'timer' },
   { id: 'custom',      label: 'Custom HTML',  icon: 'code' },
 ];
 
@@ -227,6 +267,88 @@ function BugPreview({ name, title, nameStyle, titleStyle, onBoxChange }) {
   );
 }
 
+// Draggable/resizable countdown/clock preview that ticks live, so the operator
+// sees the real digits and animation cadence before taking it.
+function CountdownPreview({ cd, timeStyle, msgStyle, label, onBoxChange }) {
+  const wrapRef = useRef(null);
+  const [scale, scaleRef] = useScale(wrapRef);
+  const box = timeStyle?.textBox || { ...CD_DEFAULT_BOX };
+  const [, force] = useState(0);
+
+  // Local preview anchor: countdown counts from durationSec, count-up from mount.
+  const anchorRef = useRef(0);
+  useEffect(() => {
+    anchorRef.current = cd.mode === 'countdown' ? Date.now() + (cd.durationSec || 0) * 1000 : Date.now();
+  }, [cd.mode, cd.durationSec, cd.source]);
+  useEffect(() => {
+    const id = setInterval(() => force((n) => n + 1), 250);
+    return () => clearInterval(id);
+  }, []);
+
+  let timeText;
+  if (cd.mode === 'clock') timeText = fmtClock(new Date(), cd.format, cd.showSeconds);
+  else if (cd.mode === 'countup') timeText = fmtDuration((Date.now() - anchorRef.current) / 1000);
+  else {
+    const rem = (anchorRef.current - Date.now()) / 1000;
+    timeText = rem <= 0 ? (cd.endMessage ? '' : '0:00') : fmtDuration(rem);
+  }
+  const showEndMsg = cd.mode === 'countdown' && (anchorRef.current - Date.now()) / 1000 <= 0 && cd.endMessage;
+
+  function startDrag(e, start, onMove) {
+    e.preventDefault(); e.stopPropagation();
+    const sx = e.clientX, sy = e.clientY;
+    const sc = scaleRef.current || 1;
+    const move = (ev) => onMove(((ev.clientX - sx) / sc) / FRAME_W * 100, ((ev.clientY - sy) / sc) / FRAME_H * 100, start);
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }
+
+  const bL = (box.x / 100) * FRAME_W, bT = (box.y / 100) * FRAME_H;
+  const bW = (box.w / 100) * FRAME_W, bH = (box.h / 100) * FRAME_H;
+  const vAlign = timeStyle?.verticalAlign || 'center';
+  const hAlign = timeStyle?.align === 'left' ? 'flex-start' : timeStyle?.align === 'right' ? 'flex-end' : 'center';
+
+  return (
+    <ScaledFrame wrapRef={wrapRef} scale={scale}>
+      <div style={{
+        position: 'absolute', left: `${bL}px`, top: `${bT}px`, width: `${bW}px`, height: `${bH}px`,
+        background: buildBarBg(timeStyle?.ltBar), padding: '16px 32px', boxSizing: 'border-box',
+        display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        justifyContent: vAlign === 'top' ? 'flex-start' : vAlign === 'bottom' ? 'flex-end' : 'center',
+        alignItems: hAlign,
+      }}>
+        {(label || showEndMsg) && (
+          <div style={flatTextCss(msgStyle, MSG_BASE)}>{showEndMsg ? cd.endMessage : label}</div>
+        )}
+        <div style={{ ...flatTextCss(timeStyle, TIME_BASE), whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{timeText}</div>
+      </div>
+
+      {onBoxChange && (
+        <div
+          onPointerDown={(e) => startDrag(e, { ...box }, (dx, dy, s) => onBoxChange({
+            x: Math.round(clampPct(s.x + dx, 0, 100 - s.w)),
+            y: Math.round(clampPct(s.y + dy, 0, 100 - s.h)),
+            w: s.w, h: s.h,
+          }))}
+          style={{ position: 'absolute', left: `${bL}px`, top: `${bT}px`, width: `${bW}px`, height: `${bH}px`,
+            border: '2px solid rgba(173,198,255,0.8)', boxSizing: 'border-box', cursor: 'move' }}
+        >
+          {TB_HANDLES.map((hnd, i) => {
+            const hs = 14 / scale;
+            return (
+              <div key={i}
+                onPointerDown={(e) => { e.stopPropagation(); startDrag(e, { ...box }, (dx, dy, s) => onBoxChange(resizeBox(s, hnd.hx, hnd.hy, dx, dy))); }}
+                style={{ position: 'absolute', left: `${hnd.hx * 100}%`, top: `${hnd.hy * 100}%`, width: hs, height: hs,
+                  transform: 'translate(-50%, -50%)', background: '#adc6ff', border: '1px solid #0c0e12', borderRadius: 2, cursor: hnd.cursor }} />
+            );
+          })}
+        </div>
+      )}
+    </ScaledFrame>
+  );
+}
+
 function TickerPreview({ text, tickerStyle }) {
   const wrapRef = useRef(null);
   const [scale] = useScale(wrapRef);
@@ -292,9 +414,14 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
       nameStyle:   { ...freshNameStyle(),   ...(parsed.name  || {}) },
       titleStyle:  { ...freshTitleStyle(),  ...(parsed.title || {}) },
       tickerStyle: { ...freshTickerStyle(), ...(graphic?.kind === 'ticker' ? parsed : {}) },
+      cd: { ...FRESH_CD, mode: parsed.mode || FRESH_CD.mode, source: parsed.source || FRESH_CD.source,
+        durationSec: parsed.durationSec ?? FRESH_CD.durationSec, targetClock: parsed.targetClock || FRESH_CD.targetClock,
+        format: parsed.format || FRESH_CD.format, showSeconds: parsed.showSeconds !== false, endMessage: parsed.endMessage || '' },
+      timeStyle: { ...freshTimeStyle(), ...(parsed.time    || {}) },
+      msgStyle:  { ...freshMsgStyle(),  ...(parsed.message || {}) },
     };
   });
-  const [target, setTarget] = useState('name'); // lower-third editing target: 'name' | 'title'
+  const [target, setTarget] = useState('name'); // editing target — LT: 'name'|'title'; countdown: 'time'|'message'
   const [replayKey, setReplayKey] = useState(0);
   const htmlRef = useRef(null);
 
@@ -305,16 +432,19 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
   }, [onClose]);
 
   const set = (patch) => setDraft((d) => ({ ...d, ...patch }));
+  const setCd = (patch) => setDraft((d) => ({ ...d, cd: { ...d.cd, ...patch } }));
   const isLT = draft.kind === 'lower_third';
   const isTK = draft.kind === 'ticker';
+  const isCD = draft.kind === 'countdown';
   const isCustom = draft.kind === 'custom';
 
-  const canSave = isLT ? draft.name.trim() : isTK ? draft.text.trim() : draft.html.trim();
+  const canSave = isLT ? draft.name.trim() : isTK ? draft.text.trim() : isCD ? true : draft.html.trim();
 
   async function save() {
     let style_json = null;
     if (isLT) style_json = { name: draft.nameStyle, title: draft.titleStyle };
     else if (isTK) style_json = draft.tickerStyle;
+    else if (isCD) style_json = { ...draft.cd, time: draft.timeStyle, message: draft.msgStyle };
 
     const payload = {
       kind: draft.kind, label: draft.label, name: draft.name, title: draft.title,
@@ -335,10 +465,13 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
     requestAnimationFrame(() => { el.focus(); el.selectionStart = el.selectionEnd = s + token.length; });
   }
 
-  // Which style the toolbar edits (lower third: name or title; ticker: tickerStyle).
-  const activeStyle = isLT ? (target === 'name' ? draft.nameStyle : draft.titleStyle) : draft.tickerStyle;
+  // Which style the toolbar edits (LT: name/title; ticker: tickerStyle; countdown: time/message).
+  const activeStyle = isLT ? (target === 'name' ? draft.nameStyle : draft.titleStyle)
+    : isCD ? (target === 'message' ? draft.msgStyle : draft.timeStyle)
+    : draft.tickerStyle;
   const setActiveStyle = (next) => {
     if (isLT) set(target === 'name' ? { nameStyle: next } : { titleStyle: next });
+    else if (isCD) set(target === 'message' ? { msgStyle: next } : { timeStyle: next });
     else set({ tickerStyle: next });
   };
 
@@ -373,24 +506,31 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
           </button>
         </div>
 
-        {/* Styling toolbar (lower third + ticker) */}
-        {(isLT || isTK) && (
+        {/* Styling toolbar (lower third + ticker + countdown) */}
+        {(isLT || isTK || isCD) && (
           <>
-            {isLT && (
+            {(isLT || isCD) && (
               <div className="flex items-center gap-sm px-lg py-xs border-b border-outline-variant/20 bg-surface-container/40 shrink-0">
                 <span className="text-[9px] font-mono text-on-surface-variant/50 uppercase tracking-[0.06em]">Editing</span>
                 <div className="flex items-center gap-[2px] bg-surface-container rounded p-[2px]">
-                  {[{ id: 'name', label: 'Name' }, { id: 'title', label: 'Title' }].map(({ id, label }) => (
+                  {(isLT ? [{ id: 'name', label: 'Name' }, { id: 'title', label: 'Title' }]
+                         : [{ id: 'time', label: 'Time' }, { id: 'message', label: 'Label' }]).map(({ id, label }) => {
+                    // Countdown shares `target`; treat anything but 'message' as the Time target.
+                    const active = isCD ? (id === 'time' ? target !== 'message' : target === 'message') : target === id;
+                    return (
                     <button key={id}
                       onMouseDown={(e) => { e.preventDefault(); setTarget(id); }}
                       className={`px-md h-6 text-[10px] font-mono rounded transition-colors cursor-pointer uppercase tracking-[0.05em] ${
-                        target === id ? 'bg-primary text-on-primary' : 'text-on-surface-variant/60 hover:text-on-surface-variant'
+                        active ? 'bg-primary text-on-primary' : 'text-on-surface-variant/60 hover:text-on-surface-variant'
                       }`}
                     >{label}</button>
-                  ))}
+                    );
+                  })}
                 </div>
                 <span className="text-[9px] font-mono text-on-surface-variant/40">
-                  {target === 'name' ? 'Drag/resize the box in the preview · controls the bar + position' : 'Styling the title line'}
+                  {isLT
+                    ? (target === 'name' ? 'Drag/resize the box in the preview · controls the bar + position' : 'Styling the title line')
+                    : (target === 'message' ? 'Styling the label line' : 'Drag/resize the box in the preview · controls the bar + position')}
                 </span>
               </div>
             )}
@@ -400,11 +540,11 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
               fonts={fonts}
               hasSelection={() => false}
               execCmd={() => {}}
-              // 'fullscreen' for the name target → box X/Y/W/H + object-align controls.
-              // 'lowerthird' for the simple (title/ticker) targets → hides the stray
-              // reference Pos control (the bar control is gated off by simple).
-              previewTemplate={isLT && target === 'name' ? 'fullscreen' : 'lowerthird'}
-              simple={isTK || (isLT && target === 'title')}
+              // 'fullscreen' for the box-owning target (LT name / countdown time) → box
+              // X/Y/W/H + object-align controls. 'lowerthird' for the simple (title /
+              // label / ticker) targets → hides the stray reference Pos control.
+              previewTemplate={(isLT && target === 'name') || (isCD && target !== 'message') ? 'fullscreen' : 'lowerthird'}
+              simple={isTK || (isLT && target === 'title') || (isCD && target === 'message')}
             />
           </>
         )}
@@ -467,6 +607,84 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
                 <Field label="Bar background">
                   <BarControl bar={draft.tickerStyle.bar}
                     onChange={(bar) => set({ tickerStyle: { ...draft.tickerStyle, bar } })} solidOnly />
+                </Field>
+              </>
+            )}
+
+            {isCD && (
+              <>
+                <Field label="Type">
+                  <div className="flex items-center gap-xs">
+                    {CD_MODES.map((m) => (
+                      <button key={m.id} onClick={() => setCd({ mode: m.id })}
+                        className={`flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] border transition-colors cursor-pointer ${
+                          draft.cd.mode === m.id ? 'bg-primary/15 border-primary/50 text-primary' : 'bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
+                        }`}>
+                        <span className="material-symbols-outlined text-[14px]">{m.icon}</span>{m.label}
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+
+                {draft.cd.mode === 'countdown' && (
+                  <>
+                    <Field label="Count down">
+                      <div className="flex items-center gap-xs">
+                        {[{ id: 'duration', label: 'For a duration' }, { id: 'target', label: 'To a time' }].map((o) => (
+                          <button key={o.id} onClick={() => setCd({ source: o.id })}
+                            className={`px-md py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] border transition-colors cursor-pointer ${
+                              draft.cd.source === o.id ? 'bg-primary/15 border-primary/50 text-primary' : 'bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
+                            }`}>{o.label}</button>
+                        ))}
+                      </div>
+                    </Field>
+                    {draft.cd.source === 'duration' ? (
+                      <Field label="Duration (mm : ss)">
+                        <DurationInput seconds={draft.cd.durationSec} onChange={(s) => setCd({ durationSec: s })} />
+                      </Field>
+                    ) : (
+                      <Field label="Target time (today / next)">
+                        <input type="time" value={draft.cd.targetClock} onChange={(e) => setCd({ targetClock: e.target.value })}
+                          className="bg-surface-container-lowest border border-outline-variant/40 rounded-lg px-sm py-1.5 text-body-md text-on-surface focus:outline-none focus:border-primary" />
+                      </Field>
+                    )}
+                    <Field label="End message (at zero)">
+                      <input value={draft.cd.endMessage} onChange={(e) => setCd({ endMessage: e.target.value })} placeholder="e.g. Starting now"
+                        className="w-full bg-surface-container-lowest border border-outline-variant/40 rounded-lg px-sm py-1.5 text-body-md text-on-surface focus:outline-none focus:border-primary" />
+                    </Field>
+                  </>
+                )}
+
+                {draft.cd.mode === 'clock' && (
+                  <>
+                    <Field label="Format">
+                      <div className="flex items-center gap-xs">
+                        {[{ id: '24h', label: '24-Hour' }, { id: '12h', label: '12-Hour' }].map((o) => (
+                          <button key={o.id} onClick={() => setCd({ format: o.id })}
+                            className={`px-md py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] border transition-colors cursor-pointer ${
+                              draft.cd.format === o.id ? 'bg-primary/15 border-primary/50 text-primary' : 'bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
+                            }`}>{o.label}</button>
+                        ))}
+                      </div>
+                    </Field>
+                    <Field label="Seconds">
+                      <button onClick={() => setCd({ showSeconds: !draft.cd.showSeconds })}
+                        className={`px-md py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] border transition-colors cursor-pointer ${
+                          draft.cd.showSeconds ? 'bg-primary/15 border-primary/50 text-primary' : 'bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
+                        }`}>{draft.cd.showSeconds ? 'Showing seconds' : 'Hidden'}</button>
+                    </Field>
+                  </>
+                )}
+
+                <Field label={draft.cd.mode === 'clock' ? 'Label (above the clock)' : 'Label (above the timer)'}>
+                  <input value={draft.text} onChange={(e) => set({ text: e.target.value })}
+                    placeholder={draft.cd.mode === 'clock' ? 'e.g. Current Time' : 'e.g. Service starts in'}
+                    className="w-full bg-surface-container-lowest border border-outline-variant/40 rounded-lg px-sm py-1.5 text-body-md text-on-surface focus:outline-none focus:border-primary" />
+                </Field>
+
+                <Field label="Box background">
+                  <BarControl bar={draft.timeStyle.ltBar}
+                    onChange={(bar) => set({ timeStyle: { ...draft.timeStyle, ltBar: bar } })} />
                 </Field>
               </>
             )}
@@ -539,6 +757,9 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
                 <CustomPreview draft={draft} replayKey={replayKey} />
               ) : isTK ? (
                 <TickerPreview text={draft.text} tickerStyle={draft.tickerStyle} />
+              ) : isCD ? (
+                <CountdownPreview cd={draft.cd} timeStyle={draft.timeStyle} msgStyle={draft.msgStyle} label={draft.text}
+                  onBoxChange={(box) => set({ timeStyle: { ...draft.timeStyle, textBox: box } })} />
               ) : (
                 <BugPreview
                   name={draft.name} title={draft.title}
@@ -561,6 +782,22 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
       </div>
     </div>,
     document.body
+  );
+}
+
+// mm : ss spinner pair backed by a single seconds value.
+function DurationInput({ seconds, onChange }) {
+  const mm = Math.floor((seconds || 0) / 60);
+  const ss = (seconds || 0) % 60;
+  const cls = 'w-16 bg-surface-container-lowest border border-outline-variant/40 text-on-surface text-body-md rounded-lg px-2 h-9 outline-none focus:border-primary text-center';
+  return (
+    <div className="flex items-center gap-xs">
+      <input type="number" min={0} max={599} value={mm}
+        onChange={(e) => onChange(Math.max(0, (parseInt(e.target.value, 10) || 0)) * 60 + ss)} className={cls} />
+      <span className="text-on-surface-variant font-mono">:</span>
+      <input type="number" min={0} max={59} value={pad2(ss)}
+        onChange={(e) => onChange(mm * 60 + Math.min(59, Math.max(0, parseInt(e.target.value, 10) || 0)))} className={cls} />
+    </div>
   );
 }
 

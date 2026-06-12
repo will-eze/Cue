@@ -928,6 +928,8 @@ export default function SongEditor({ song, onClose, onSave }) {
   const [sections, setSections]   = useState([]);
   const [allTags, setAllTags]     = useState([]);
   const [selectedTagIds, setSelectedTagIds] = useState([]);
+  const [addingTag, setAddingTag] = useState(false);
+  const [newTagName, setNewTagName] = useState('');
   const [style, setStyle]         = useState({ ...DEFAULT_STYLE });
   const [activeSectionKey, setActiveSectionKey] = useState(null);
   const [previewContent, setPreviewContent] = useState({ text: '', runs: [] });
@@ -1114,6 +1116,26 @@ export default function SongEditor({ song, onClose, onSave }) {
     setSelectedTagIds((prev) => prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]);
   }
 
+  // Auto-assigned palette for tags created inline (no AI purple/indigo).
+  const TAG_PALETTE = ['#4d8eff', '#ff5470', '#34d399', '#f59e0b', '#22d3ee', '#e879a6', '#94a3a8', '#a3e635'];
+
+  async function handleCreateTag() {
+    const name = newTagName.trim();
+    if (!name) { setAddingTag(false); return; }
+    // Reuse an existing tag of the same name rather than creating a duplicate.
+    const existing = allTags.find((t) => t.name.toLowerCase() === name.toLowerCase());
+    if (existing) {
+      if (!selectedTagIds.includes(existing.id)) toggleTag(existing.id);
+    } else {
+      const colour = TAG_PALETTE[allTags.length % TAG_PALETTE.length];
+      const id = await window.cue.tags.create({ name, colour });
+      setAllTags(await window.cue.tags.list());
+      setSelectedTagIds((prev) => [...prev, id]);
+    }
+    setNewTagName('');
+    setAddingTag(false);
+  }
+
   // ── Save ────────────────────────────────────────────────────────────────
   async function handleSave() {
     if (!title.trim()) return;
@@ -1242,19 +1264,38 @@ export default function SongEditor({ song, onClose, onSave }) {
             </div>
 
             {/* Tags */}
-            {allTags.length > 0 && (
-              <div className="flex items-center gap-xs mt-sm flex-wrap">
-                <span className={`${labelCls} mb-0`}>Tags:</span>
-                {allTags.map((tag) => (
-                  <button key={tag.id} onClick={() => toggleTag(tag.id)}
-                    className={`text-[9px] font-mono px-sm py-[2px] rounded-full border transition-colors cursor-pointer
-                      ${selectedTagIds.includes(tag.id) ? 'text-white border-transparent' : 'bg-surface-container border-outline-variant/30 text-on-surface-variant hover:border-outline-variant'}`}
-                    style={selectedTagIds.includes(tag.id) ? { backgroundColor: tag.colour || '#4d8eff' } : {}}>
-                    {tag.name}
-                  </button>
-                ))}
-              </div>
-            )}
+            <div className="flex items-center gap-xs mt-sm flex-wrap">
+              <span className={`${labelCls} mb-0`}>Tags:</span>
+              {allTags.map((tag) => (
+                <button key={tag.id} onClick={() => toggleTag(tag.id)}
+                  className={`text-[9px] font-mono px-sm py-[2px] rounded-full border transition-colors cursor-pointer
+                    ${selectedTagIds.includes(tag.id) ? 'text-white border-transparent' : 'bg-surface-container border-outline-variant/30 text-on-surface-variant hover:border-outline-variant'}`}
+                  style={selectedTagIds.includes(tag.id) ? { backgroundColor: tag.colour || '#4d8eff' } : {}}>
+                  {tag.name}
+                </button>
+              ))}
+              {addingTag ? (
+                <input
+                  autoFocus
+                  value={newTagName}
+                  onChange={(e) => setNewTagName(e.target.value)}
+                  onBlur={handleCreateTag}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); handleCreateTag(); }
+                    if (e.key === 'Escape') { setNewTagName(''); setAddingTag(false); }
+                  }}
+                  placeholder="tag name…"
+                  className="text-[9px] font-mono px-sm py-[2px] rounded-full bg-surface-container border border-primary/50 text-on-surface w-24 focus:outline-none"
+                />
+              ) : (
+                <button
+                  onClick={() => setAddingTag(true)}
+                  className="text-[9px] font-mono px-sm py-[2px] rounded-full border border-dashed border-outline-variant/40 text-on-surface-variant hover:border-primary hover:text-primary transition-colors cursor-pointer flex items-center gap-[2px]"
+                >
+                  <span className="material-symbols-outlined text-[11px]">add</span>New
+                </button>
+              )}
+            </div>
           </div>
         )}
 

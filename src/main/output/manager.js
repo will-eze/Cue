@@ -28,9 +28,11 @@ let stageState = {
 // Broadcast-graphics overlay — an independent bus from the program slide bus.
 // nameTitle = { name, title } | null (built-in lower-third bug); ticker = { text, speed }
 // | null (bottom crawl); custom = { html } | null (user HTML/CSS rendered in a shadow
-// root). Dispatched as graphic:update to lower-third windows only, so a graphic never
+// root); countdown = { mode, endsAt|startAt, … } | null (a self-ticking timer/clock —
+// the output template runs the per-second tick, this bus only carries the target time).
+// Dispatched as graphic:update to lower-third windows only, so a graphic never
 // disturbs the fullscreen program. Persisted for newly opened windows.
-let overlay = { nameTitle: null, ticker: null, custom: null };
+let overlay = { nameTitle: null, ticker: null, custom: null, countdown: null };
 
 // displayMode drives what every output window shows:
 //   'idle'    — nothing was ever GO'd; outputs show black
@@ -803,6 +805,7 @@ function overlayForKind(kind) {
     nameTitle: slotForKind(overlay.nameTitle, kind),
     ticker:    slotForKind(overlay.ticker, kind),
     custom:    slotForKind(overlay.custom, kind),
+    countdown: slotForKind(overlay.countdown, kind),
   };
 }
 
@@ -853,6 +856,48 @@ export function customShow(data) {
 
 export function customHide() {
   overlay.custom = null;
+  broadcastGraphic();
+}
+
+// Next epoch-ms for a wall-clock "HH:MM" today; if already past, roll to tomorrow.
+function nextClockTime(hhmm) {
+  const [h, m] = String(hhmm || '').split(':').map((n) => parseInt(n, 10));
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return Date.now();
+  const t = new Date();
+  t.setHours(h, m, 0, 0);
+  if (t.getTime() <= Date.now()) t.setDate(t.getDate() + 1);
+  return t.getTime();
+}
+
+// Countdown / count-up / clock graphic. The output template owns the per-second
+// tick (see graphics-overlay.js); the bus only resolves and carries the anchor
+// time so a window opened mid-countdown still lands on the right value. mode:
+// 'countdown' (endsAt) | 'countup' (startAt) | 'clock' (no anchor).
+export function countdownShow(data) {
+  if (!data || !data.mode) { overlay.countdown = null; broadcastGraphic(); return; }
+  const slot = {
+    id:      data.id ?? null,
+    mode:    data.mode,
+    label:   data.label ?? '',
+    endMessage: data.endMessage ?? '',
+    format:  data.format || '24h',
+    showSeconds: data.showSeconds !== false,
+    style:   data.style ?? null,
+    target:  data.target || 'all',
+  };
+  if (data.mode === 'countdown') {
+    slot.endsAt = data.source === 'target'
+      ? nextClockTime(data.targetClock)
+      : Date.now() + Math.max(0, Number(data.durationSec) || 0) * 1000;
+  } else if (data.mode === 'countup') {
+    slot.startAt = Date.now();
+  }
+  overlay.countdown = slot;
+  broadcastGraphic();
+}
+
+export function countdownHide() {
+  overlay.countdown = null;
   broadcastGraphic();
 }
 

@@ -28,6 +28,7 @@ Both use cases run simultaneously — there are no modes or separate application
 | `@dnd-kit/sortable` | 8.0.0 | — |
 | `react-window` | 1.8.10 | Virtualised song list. |
 | `tailwindcss` | 3.4.4 | Operator UI styling. |
+| `tar` | 6.2.1 | node-tar. Reads/writes the gzipped-tar `.cuebackup` bundle (backup/restore). Externalized in `vite.main.config.js`. |
 | `grandi` | installed | NDI output. ESM-only; loaded at runtime via `createRequire` to bypass Vite's CJS bundler. Platform binaries: `@grandi/darwin-arm64`, `@grandi/darwin-x64`, `@grandi/win32-x64`, etc. Listed in `forge.config.js` `rebuildConfig.extraModules` and `vite.main.config.js` `external`. |
 
 ---
@@ -75,7 +76,12 @@ src/
 │   ├── fonts.js              BUNDLED_FONTS array + DEFAULT_FONT. Imported by preload.js.
 │   │
 │   ├── db/
-│   │   ├── schema.js         SQLite init, migration runner (v1→v15), getDb() singleton.
+│   │   ├── schema.js         SQLite init, migration runner (v1→v15), getDb() singleton, closeDb() (releases
+│   │   │                     the cue.db handle, checkpointing WAL — used by backup/restore before file swap).
+│   │   ├── backup.js         .cuebackup export/import. exportBackup(dest): wal_checkpoint(TRUNCATE) then
+│   │   │                     gzip-tar cue.db + media/. importBackup(src): extract to temp, validate staged DB
+│   │   │                     (settings+songs tables) before touching live files, swap cue.db + media/, then
+│   │   │                     rewrite absolute media_assets.path to the local media dir (portable across machines).
 │   │   ├── graphics.js       Broadcast-graphics CRUD (list/get/create/update/del/reorder). style_json + target.
 │   │   ├── themes.js         Theme library CRUD (list/get/create/update/del). applyToSong/applyToRundown/
 │   │   │                     applyToAllSongs merge the theme style_json into song_sections (preserving inline
@@ -160,10 +166,11 @@ src/
 │   │   │                     the live monitor renders the slide from payload (no per-frame capture loop).
 │   │   │                     liveChannelIdx tracks which channel the live monitor displays.
 │   │   ├── SettingsView.jsx  Settings layout. Left column is section navigation (Channels/Logo/Background/Themes/
-│   │   │                     Bible/Shortcuts/Remote/Danger) + Back-to-Operator: click scrolls to the section; an
+│   │   │                     Bible/Tags/Media/Shortcuts/Remote/Data/Danger) + Back-to-Operator: click scrolls to the section; an
 │   │   │                     IntersectionObserver highlights the section in view. Section order: OutputChannels →
-│   │   │                     LogoSettings → BackgroundSettings → ThemeSettings → BibleSettings → ShortcutSettings → RemoteSettings →
-│   │   │                     DangerZone → SettingsFooter (always last two, rendered at layout level — not inside any sub-component).
+│   │   │                     LogoSettings → BackgroundSettings → ThemeSettings → BibleSettings → TagSettings → MediaCleanup →
+│   │   │                     ShortcutSettings → RemoteSettings → DataSettings → DangerZone → SettingsFooter (always last two,
+│   │   │                     rendered at layout level — not inside any sub-component).
 │   │   └── MultiviewView.jsx Multi-output monitor wall. Subscribes to output:multiview-captures.
 │   │                         NDI channels show NdiTile (checkerboard + frame). Screen channels show ScreenMonitorTile.
 │   │                         NDI channels never show "No screens assigned" — they don't use channel_monitors.
@@ -171,6 +178,8 @@ src/
 │   ├── panels/
 │   │   ├── RundownPanel.jsx       Service selector with inline rename/delete UI (no native confirm dialogs).
 │   │   │                          DnD-sortable item list. Context menu.
+│   │   │                          Song items show their tags as coloured chips on the sublabel line (next to "Song", max 3).
+│   │   │                          Editing a song fires onSongEdited (in addition to onRefresh) so the library reloads.
 │   │   │                          MediaPickerModal for background override.
 │   │   │                          Right-click song items → Preview / Edit / Set Background Override / Apply Theme: <name>
 │   │   │                          (one entry per saved theme → themes.applyToSong, setBg = theme has a background).
@@ -195,7 +204,9 @@ src/
 │   │   │                          show_graphics → hideProgram/hideGraphics). Subscribes to output:overlay-changed.
 │   │   │                          Props: allChannels, liveChannelIdx, onSetLiveChannelIdx.
 │   │   ├── LibraryPanel.jsx       Songs tab (react-window virtualised list) + Media tab (grid) + Scripture tab.
-│   │   │                          Song search + tag filter (left-panel folders = tags). Media import.
+│   │   │                          Song search + tag filter (left-panel folders = tags). Clicking a tag SWITCHES to it
+│   │   │                          (single-select; clicking the lone active tag clears); Shift-click adds/removes for
+│   │   │                          multi-select (AND semantics). Media import.
 │   │   │                          Import dropdown (Songs tab): "Import from File…" (dialog → songs.importParse →
 │   │   │                          SongImportModal) and "Import GHS Hymnal" (songs.importGhs → same modal).
 │   │   │                          GHS folder = the "GHS" tag; when it's the sole active filter the list orders by
@@ -225,6 +236,8 @@ src/
 │   │   │                          Header "Load Theme…" dropdown (shown when ≥1 theme): applies the theme's style_json
 │   │   │                          to the section style state and always swaps in the theme's background.
 │   │   │                          Exports FormattingToolbar, SlidePreview, LowerThirdPreview, DEFAULT_STYLE (reused by ThemeSettings).
+│   │   │                          Tags row is always shown: toggles existing tags + a "+ New" inline input that creates a tag
+│   │   │                          (tags.create, auto palette colour) and auto-selects it — no need to visit Settings.
 │   │   │                          Paste Song parser (parseSong). renderWithRuns (exported). Escape key closes.
 │   │   ├── SongPreviewModal.jsx   Read-only song preview. Add to Rundown / Edit.
 │   │   ├── SongImportModal.jsx    Import preview/confirm (createPortal). One row per parsed song: checkbox,
@@ -259,13 +272,21 @@ src/
 │   │   │                          over a fixed sample text; width-bound preview (modal is content-sized). Background picker.
 │   │   ├── BibleSettings.jsx     Installed translations list (delete) + Import (file/online) menu.
 │   │   │                          Accepts only activeServiceId prop. No DangerZone or footer inside.
+│   │   ├── TagSettings.jsx       Tag CRUD: create (name + preset colour palette), inline rename, recolour, delete
+│   │   │                          (two-step confirm — removes the tag from every song). Shows per-tag song_count.
+│   │   ├── MediaCleanup.jsx      Unused-media report. "Scan" (media.findUnused) → thumbnail grid (all pre-selected),
+│   │   │                          per-item checkboxes, select/deselect-all, "N selected · X reclaimable" tally,
+│   │   │                          two-step destructive Delete Selected (media.deleteMany). Re-scans after deleting.
 │   │   ├── DangerZone.jsx        Destructive actions: clear rundown items, delete rundown, clear library.
 │   │   │                          Two-step confirm on every action. Success toast feedback.
 │   │   ├── ShortcutSettings.jsx  Configurable keyboard shortcuts UI. Modifier selector (Cmd/Ctrl/Alt)
 │   │                              + key inputs for GO, Clear, Logo, Live Toggle. Saves to settings DB.
 │   │                              Shortcuts reload in OperatorView on next bgRefreshTick.
-│   │   └── RemoteSettings.jsx    Network control card. Enable toggle, port, Allow-LAN toggle, pairing token
-│   │                              (copy/regenerate), phone URL, and the HTTP API reference. Drives remote:setConfig.
+│   │   ├── RemoteSettings.jsx    Network control card. Enable toggle, port, Allow-LAN toggle, pairing token
+│   │   │                          (copy/regenerate), phone URL, and the HTTP API reference. Drives remote:setConfig.
+│   │   └── DataSettings.jsx      Backup/restore card. Export button (settings.exportBackup) + confirm-gated
+│   │                              Restore (settings.importBackup, "Overwrite all?" → "Choose file"; app relaunches
+│   │                              on success). Shows current media disk usage. Toast feedback.
 │   │
 │   └── utils/
 │       ├── mediaUrl.js           mediaUrl(absPath) → cue-media://localhost/encoded/path
@@ -369,6 +390,7 @@ src/
 | v13 | Added `output_channels.show_program` (INTEGER, default 1) — lower-third channel shows the song lyric band |
 | v14 | Added `output_channels.show_graphics` (INTEGER, default 1) — lower-third channel shows the broadcast-graphics overlay |
 | v15 | Created `themes` table (theme / template library: named `style_json` + optional `background_id`) |
+| v16 | Rebuilt `graphics` to add the `countdown` kind (table-rebuild — CHECK can't be altered in place) — self-ticking countdown/count-up/clock |
 
 ### All tables
 
@@ -479,10 +501,10 @@ active INTEGER NOT NULL DEFAULT 1
 
 **Lower-third content modes** (`show_program` × `show_graphics`): both=1/1 (Lyrics + Graphics), 1/0 (Lyrics Only), 0/1 (Graphics Only). Flipping these two flags is a **runtime** change — `setChannelContentMode` messages the existing window via `content:mode` rather than recreating it, so the NDI sender is never dropped. Structural changes (template/type/monitors/active) still rebuild the window via `syncChannel`. The flags reach the window as `?program=` / `?graphics=` query params on first load and as `content:mode` events thereafter.
 
-#### `graphics` (v10–v12 — broadcast graphics)
+#### `graphics` (v10–v12, v16 — broadcast graphics)
 ```sql
 id INTEGER PRIMARY KEY AUTOINCREMENT
-kind TEXT NOT NULL CHECK(kind IN ('lower_third','ticker','custom'))
+kind TEXT NOT NULL CHECK(kind IN ('lower_third','ticker','custom','countdown'))
 label TEXT
 name TEXT                      -- lower_third / custom substitution
 title TEXT                     -- lower_third / custom substitution
@@ -495,7 +517,7 @@ order_index INTEGER NOT NULL DEFAULT 0
 created_at DATETIME, updated_at DATETIME
 ```
 
-`style_json` shape — **lower_third**: `{ name: <style incl. textBox + ltBar>, title: <style> }` (the `name` style's `textBox` is the draggable/resizable position box, `ltBar` is the bar background). **ticker**: a flat style + `{ bar:{color,opacity}|null, position:'bottom'|'top' }`. **custom**: `null` (raw HTML).
+`style_json` shape — **lower_third**: `{ name: <style incl. textBox + ltBar>, title: <style> }` (the `name` style's `textBox` is the draggable/resizable position box, `ltBar` is the bar background). **ticker**: a flat style + `{ bar:{color,opacity}|null, position:'bottom'|'top' }`. **custom**: `null` (raw HTML). **countdown** (v16): `{ mode:'countdown'|'countup'|'clock', source:'duration'|'target', durationSec, targetClock:'HH:MM', format:'24h'|'12h', showSeconds, endMessage, time:<style incl. textBox + ltBar>, message:<style> }` — the `text` column holds the optional label ("Service starts in").
 
 #### `themes` (v15 — theme / template library)
 ```sql
@@ -663,10 +685,10 @@ All renderer↔main communication is via `ipcRenderer.invoke` / `ipcMain.handle`
 
 | Method | Returns |
 |---|---|
-| `list()` | `[{id, name, colour}]` |
+| `list()` | `[{id, name, colour, song_count}]` — `song_count` is the number of songs carrying the tag (subquery over `taggables`). |
 | `create({name, colour})` | `id` |
 | `update(id, {name, colour})` | void |
-| `delete(id)` | void |
+| `delete(id)` | void — cascades to `taggables` (removes the tag from every song). |
 
 ### `window.cue.services`
 
@@ -692,6 +714,7 @@ All renderer↔main communication is via `ipcRenderer.invoke` / `ipcMain.handle`
 {
   // All service_items columns (id, service_id, item_type, ref_id, order_index, notes, content, background_override_id)
   song: { id, title, author, copyright, default_background_id,
+          tags: [{ id, name, colour }],   // rendered as chips on the rundown sublabel line
           default_background: { id, path, filename, type } | null },
   sections: [{ id, song_id, type, order_index, content, style_json }],
   asset: { ...media_asset },            // if item_type === 'media'
@@ -707,7 +730,7 @@ All renderer↔main communication is via `ipcRenderer.invoke` / `ipcMain.handle`
 | `clear()` | void | Clears all outputs, stops live capture. |
 | `logo()` | void | Shows logo on all outputs. |
 | `setLive(enabled)` | void | Opens or closes all output BrowserWindows. Toggle in transport bar. |
-| `getState()` | `{isLive, livePayload, activeChannels:[ids], activeWindows, outputsEnabled, displayMode, transport, overlay}` | `transport` = media snapshot; `overlay` = `{nameTitle, ticker, custom}`. |
+| `getState()` | `{isLive, livePayload, activeChannels:[ids], activeWindows, outputsEnabled, displayMode, transport, overlay}` | `transport` = media snapshot; `overlay` = `{nameTitle, ticker, custom, countdown}`. |
 | `media.control(action)` | void | `action` ∈ `'play' \| 'pause' \| 'restart'` — mutates the transport, broadcast to all surfaces. |
 | `media.seek(pos)` | void | Scrub foreground media to `pos` seconds (preserves paused state). |
 | `media.setMuted(muted)` | void | Toggle program (audience) audio. Stage + operator preview stay silent regardless. |
@@ -717,7 +740,9 @@ All renderer↔main communication is via `ipcRenderer.invoke` / `ipcMain.handle`
 | `graphic.hideCustom()` | void | Hide the custom graphic. |
 | `ticker.show({text,speed,style,target})` | void | Show the scrolling ticker. |
 | `ticker.hide()` | void | Hide the ticker. |
-| `overlay.get()` | `{nameTitle, ticker, custom}` | Current overlay snapshot. |
+| `countdown.show({id,mode,source,durationSec,targetClock,format,showSeconds,label,endMessage,style,target})` | void | Show a self-ticking countdown/count-up/clock. Main resolves the anchor (`endsAt` for `mode:'countdown'`, `startAt` for `'countup'`); the output template owns the per-second tick. `style` = `{time, message}`. |
+| `countdown.hide()` | void | Hide the countdown/clock. |
+| `overlay.get()` | `{nameTitle, ticker, custom, countdown}` | Current overlay snapshot. |
 | `stage.message(text)` | void | Set/clear the confidence-monitor presenter message (`''` clears). |
 | `stage.timer(action, seconds?)` | void | Presenter countdown: `action` ∈ `'set'(seconds) \| 'start' \| 'pause' \| 'reset'`. |
 | `channels.list()` | `[output_channel rows]` | — |
@@ -764,14 +789,24 @@ element) for clean gapless audio. **Program audio comes from one window only** (
 `el.muted = baseMuted || transport.muted`.
 
 **Broadcast-graphics overlay bus** — an independent layer (name/title bug, scrolling ticker, custom
-HTML) separate from the program slide bus. Held in `manager.js` as `overlay = { nameTitle, ticker,
-custom }`; each slot carries a `target` (`'all'|'screen'|'ndi'`). `broadcastGraphic()` sends a
-per-window FILTERED `graphic:update` to **every non-stage output window** (fullscreen + lower-third,
-matched by URL in `getGraphicsWindowInfos`) — a window only receives the slots whose target matches
-its kind (numeric map key = screen/in-room, `ndi-*` = online) — and notifies the renderer via
-`output:overlay-changed`. Rendered by the shared `src/output/graphics-overlay.js` (injects its own DOM
-+ styles, honours `?graphics=0` and `content:mode`). A program `go`/`clear`/`logo` never touches the
-overlay, and a graphic never touches the program. Default destination for new graphics is **Online (NDI)**.
+HTML, countdown/clock) separate from the program slide bus. Held in `manager.js` as `overlay = {
+nameTitle, ticker, custom, countdown }`; each slot carries a `target` (`'all'|'screen'|'ndi'`).
+`broadcastGraphic()` sends a per-window FILTERED `graphic:update` to **every non-stage output window**
+(fullscreen + lower-third, matched by URL in `getGraphicsWindowInfos`) — a window only receives the
+slots whose target matches its kind (numeric map key = screen/in-room, `ndi-*` = online) — and notifies
+the renderer via `output:overlay-changed`. Rendered by the shared `src/output/graphics-overlay.js`
+(injects its own DOM + styles, honours `?graphics=0` and `content:mode`). A program `go`/`clear`/`logo`
+never touches the overlay, and a graphic never touches the program. Default destination for new graphics
+is **Online (NDI)**.
+
+**Countdown / clock graphic** (v16) — a `countdown` slot is a self-ticking timer the **output template
+owns**: `countdownShow` resolves the anchor in the main process (duration → `endsAt = now + durationSec`;
+target-time → next occurrence of `HH:MM`; count-up → `startAt = now`; clock → no anchor) and the bus
+carries only that absolute timestamp + config. `graphics-overlay.js` runs a single `setInterval(…, 250ms)`
+that recomputes the digits from the anchor and `Date.now()`, so a window opened mid-countdown lands on the
+right value, the operator never streams per-second updates, and the countdown self-stops its interval at
+zero (showing `endMessage`). The clock editor (GraphicsEditor `countdown` kind) authors mode, duration/
+target/format, label + end message, the draggable time box (`time.textBox`/`ltBar`) and label styling.
 
 ### `window.cue.graphics`
 
@@ -805,6 +840,8 @@ overlay, and a graphic never touches the program. Default destination for new gr
 | `get(id)` | `media_asset \| null` | Single asset by ID. |
 | `list(folderId?)` | `[media_asset]` | `null`/`undefined` → root (folder_id IS NULL). Pass folder id for subfolder. |
 | `delete(id)` | void | Removes DB row and deletes file. |
+| `deleteMany(ids)` | `number` | Bulk-delete (rows + files); returns count removed. Used by the unused-media cleanup. |
+| `findUnused()` | `[media_asset & {size_bytes}]` | Media referenced by nothing — not a song `default_background_id`, `service_items.background_override_id`, `output_channels.logo_override_id`, `themes.background_id`, nor a media-bearing `settings` key (`global_logo_id`, `global_bg_*_id`). Settings store ids as JSON-encoded ints, collected separately from the FK columns. Each row is stat'd for `size_bytes`. |
 | `getDiskUsage()` | `number` | Total bytes in userData/media/. |
 | `getMediaDir()` | `string` | Absolute path to userData/media/. |
 | `folders.create(name, parentId?)` | `id` | — |
@@ -824,6 +861,8 @@ overlay, and a graphic never touches the program. Default destination for new gr
 | `getDiskUsage()` | Delegates to media.getDiskUsage(). |
 | `getDataPath()` | Returns app.getPath('userData'). |
 | `openDataFolder()` | Opens userData in Finder/Explorer. |
+| `exportBackup()` | No args — shows a native save dialog (`Cue <date>.cuebackup`), then writes a gzipped tar of `cue.db` + `media/`. Returns `{ok, path, size}` or `{ok:false, canceled}`. |
+| `importBackup()` | No args — shows an open dialog, validates the archive, swaps `cue.db` + `media/` on disk, then relaunches the app (~400ms after the IPC reply). Returns `{ok}`, `{ok:false, canceled}`, or `{ok:false, error}` (validation/extract failure leaves the install untouched). |
 
 ### `window.cue.bible`
 
@@ -1287,12 +1326,12 @@ The reference flows in the payload as `copyright` (text), `copyrightAlign` (`'ri
 | ~~NDI publish~~ | ~~High~~ | Implemented. See §14. |
 | `linked_channel_id` logic | Medium | Field exists, settable, never read. Sync lower-third to fullscreen channel. |
 | ~~Stage display / confidence monitor~~ | ~~High~~ | Implemented — `stage` template, StagePanel (timer + message), VIDEO countdown. |
-| Tag CRUD UI | Medium | Tags can be assigned, but create/rename/delete UI is not in Settings. |
+| ~~Tag CRUD UI~~ | ~~Medium~~ | Implemented — `TagSettings.jsx` (Settings → Tags) for create/rename/recolour/delete; plus inline tag creation in `SongEditor`. |
 | ~~Song background picker in Song Editor~~ | ~~Medium~~ | Implemented. Media picker in `SlidePreview` calls `songs:setBackground`. |
 | ~~Song import~~ | ~~Medium~~ | Implemented — OpenLyrics / ChordPro / text / EasyWorship + bundled GHS hymnal. See §16. |
 | ~~Network control API~~ | ~~Medium~~ | Implemented — localhost/LAN HTTP + SSE server, token-gated. Phone control page + Companion HTTP verbs. See §7 `window.cue.remote`, `src/main/remote/`. |
 | Disk space warning | Low | Warn when < 2GB free on import. Not implemented. |
-| Media unused-asset cleanup | Low | Identify media not referenced by any song or service_item. |
+| ~~Media unused-asset cleanup~~ | ~~Low~~ | Implemented — `MediaCleanup.jsx` (Settings → Media) scans via `media.findUnused` (songs/service_items/channels/themes/settings) and bulk-deletes. |
 | Drag asset from Library onto rundown item | Medium | Background override currently only via context menu. |
 | `operator_preview_layout` setting | Low | Side-by-side monitor layout toggle. Setting key exists, no UI toggle. |
 

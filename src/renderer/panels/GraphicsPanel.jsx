@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import GraphicsEditor, { fillPlaceholders, flatTextCss, buildBarBg } from '../components/GraphicsEditor';
+import GraphicsEditor, { fillPlaceholders, flatTextCss, buildBarBg, cdSampleText, CD_DEFAULT_BOX, TIME_BASE, MSG_BASE } from '../components/GraphicsEditor';
 import { CHANNEL_MODES, channelMode, modeToFlags } from '../utils/channelMode';
 
 const FRAME_W = 1920, FRAME_H = 1080;
@@ -28,7 +28,7 @@ const TARGET_LABEL = { all: 'All', screen: 'In-Room', ndi: 'Online' };
 
 export default function GraphicsPanel() {
   const [graphics, setGraphics] = useState([]);
-  const [overlay, setOverlay] = useState({ nameTitle: null, ticker: null, custom: null });
+  const [overlay, setOverlay] = useState({ nameTitle: null, ticker: null, custom: null, countdown: null });
   const [editor, setEditor] = useState(null); // {} = new, graphic obj = edit, null = closed
   const [quickTicker, setQuickTicker] = useState('');
   const [dest, setDest] = useState('default'); // live destination override
@@ -54,7 +54,7 @@ export default function GraphicsPanel() {
   }, []);
 
   const tickerLive = !!overlay.ticker;
-  const anyLive = !!(overlay.nameTitle || overlay.ticker || overlay.custom);
+  const anyLive = !!(overlay.nameTitle || overlay.ticker || overlay.custom || overlay.countdown);
 
   // Resolve the destination for a fire: live override wins, else the graphic default
   // (graphics default to Online/NDI).
@@ -69,6 +69,7 @@ export default function GraphicsPanel() {
   function clearAll() {
     window.cue.output.graphic.hide();
     window.cue.output.ticker.hide();
+    window.cue.output.countdown.hide();
     window.cue.output.graphic.hideCustom();
   }
 
@@ -77,16 +78,24 @@ export default function GraphicsPanel() {
     const style = parseStyle(g);
     if (g.kind === 'lower_third') window.cue.output.graphic.show({ name: g.name, title: g.title, style, target });
     else if (g.kind === 'ticker') window.cue.output.ticker.show({ text: g.text, speed: g.speed, style, target });
+    else if (g.kind === 'countdown') window.cue.output.countdown.show({
+      id: g.id, mode: style.mode, source: style.source, durationSec: style.durationSec,
+      targetClock: style.targetClock, format: style.format, showSeconds: style.showSeconds,
+      label: g.text || '', endMessage: style.endMessage || '',
+      style: { time: style.time, message: style.message }, target,
+    });
     else if (g.kind === 'custom') window.cue.output.graphic.showCustom({ html: fillPlaceholders(g.html, g), target });
   }
   function clear(g) {
     if (g.kind === 'lower_third') window.cue.output.graphic.hide();
     else if (g.kind === 'ticker') window.cue.output.ticker.hide();
+    else if (g.kind === 'countdown') window.cue.output.countdown.hide();
     else if (g.kind === 'custom') window.cue.output.graphic.hideCustom();
   }
   function isLive(g) {
     if (g.kind === 'lower_third') return ntEqual(overlay.nameTitle, g);
     if (g.kind === 'ticker') return tickerLive && overlay.ticker?.text === g.text;
+    if (g.kind === 'countdown') return !!overlay.countdown && overlay.countdown.id === g.id;
     if (g.kind === 'custom') return !!overlay.custom && overlay.custom.html === fillPlaceholders(g.html, g);
     return false;
   }
@@ -98,6 +107,7 @@ export default function GraphicsPanel() {
 
   const groups = [
     { key: 'lower_third', title: 'Name / Title Cards' },
+    { key: 'countdown',   title: 'Countdowns & Clocks' },
     { key: 'custom',      title: 'Custom HTML' },
     { key: 'ticker',      title: 'Tickers' },
   ];
@@ -239,10 +249,17 @@ export default function GraphicsPanel() {
 // ── Card with live thumbnail ─────────────────────────────────────────────────
 
 function GraphicCard({ g, live, destLabel, onTake, onClear, onEdit, onDelete }) {
-  const primaryText = g.kind === 'ticker' ? g.text : (g.name || g.label || '—');
-  const subText = g.kind === 'lower_third' ? g.title : g.kind === 'custom' ? (g.label || 'Custom HTML') : null;
-  const takeLabel = g.kind === 'ticker' ? 'Start' : 'Take';
-  const clearLabel = g.kind === 'ticker' ? 'Stop' : 'Clear';
+  const cdSt = g.kind === 'countdown' ? parseStyle(g) : null;
+  const cdModeLabel = cdSt ? (cdSt.mode === 'clock' ? 'Clock' : cdSt.mode === 'countup' ? 'Count Up' : 'Countdown') : '';
+  const primaryText = g.kind === 'ticker' ? g.text
+    : g.kind === 'countdown' ? (g.label || g.text || cdModeLabel)
+    : (g.name || g.label || '—');
+  const subText = g.kind === 'lower_third' ? g.title
+    : g.kind === 'countdown' ? cdModeLabel
+    : g.kind === 'custom' ? (g.label || 'Custom HTML') : null;
+  const isTimer = g.kind === 'ticker' || g.kind === 'countdown';
+  const takeLabel = isTimer ? 'Start' : 'Take';
+  const clearLabel = isTimer ? 'Stop' : 'Clear';
 
   return (
     <div className={`group flex flex-col rounded-lg border overflow-hidden transition-colors ${
@@ -324,6 +341,22 @@ function GraphicThumb({ g }) {
         <div style={{ ...flatTextCss(st, { fontSize: 30, color: '#fff', fontWeight: 500 }), whiteSpace: 'nowrap', paddingLeft: 40, lineHeight: '72px', textAlign: 'left' }}>
           {g.text}
         </div>
+      </div>
+    );
+  } else if (g.kind === 'countdown') {
+    const box = st.time?.textBox || CD_DEFAULT_BOX;
+    const vAlign = st.time?.verticalAlign || 'center';
+    const hAlign = st.time?.align === 'left' ? 'flex-start' : st.time?.align === 'right' ? 'flex-end' : 'center';
+    inner = (
+      <div style={{
+        position: 'absolute', left: `${box.x}%`, top: `${box.y}%`, width: `${box.w}%`, height: `${box.h}%`,
+        background: buildBarBg(st.time?.ltBar), padding: '16px 32px', boxSizing: 'border-box',
+        display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        justifyContent: vAlign === 'top' ? 'flex-start' : vAlign === 'bottom' ? 'flex-end' : 'center',
+        alignItems: hAlign,
+      }}>
+        {g.text && <div style={flatTextCss(st.message, MSG_BASE)}>{g.text}</div>}
+        <div style={{ ...flatTextCss(st.time, TIME_BASE), whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{cdSampleText(st)}</div>
       </div>
     );
   } else {

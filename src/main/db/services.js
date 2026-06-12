@@ -65,6 +65,21 @@ function resolveItems(db, items) {
     }
   }
 
+  // Tags grouped by song — surfaced on the rundown next to the item name.
+  const tagsMap = new Map();
+  if (songIds.length) {
+    const ph = songIds.map(() => '?').join(',');
+    for (const t of db.prepare(`
+      SELECT tb.entity_id AS song_id, tg.id, tg.name, tg.colour
+      FROM taggables tb JOIN tags tg ON tg.id = tb.tag_id
+      WHERE tb.entity_type='song' AND tb.entity_id IN (${ph})
+      ORDER BY tg.name COLLATE NOCASE
+    `).all(...songIds)) {
+      if (!tagsMap.has(t.song_id)) tagsMap.set(t.song_id, []);
+      tagsMap.get(t.song_id).push({ id: t.id, name: t.name, colour: t.colour });
+    }
+  }
+
   // Media assets (media items + background overrides + song default backgrounds)
   const mediaMap = new Map();
   if (mediaIds.size) {
@@ -81,6 +96,7 @@ function resolveItems(db, items) {
       const song = songMap.get(item.ref_id);
       if (song) {
         resolved.song = { ...song };
+        resolved.song.tags = tagsMap.get(item.ref_id) || [];
         resolved.sections = sectionsMap.get(item.ref_id) || [];
         if (song.default_background_id) {
           const bg = mediaMap.get(song.default_background_id);

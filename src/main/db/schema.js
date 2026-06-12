@@ -424,6 +424,40 @@ const migrations = [
       );
     `);
   },
+
+  // v16 — Countdown / clock graphics. Adds the 'countdown' kind: a self-ticking
+  // timer rendered in the output template (pre-roll "Service starts in 5:00"
+  // countdown, count-up stopwatch, or a live time-of-day clock). The mode +
+  // duration/target/format config lives in style_json (see GraphicsEditor); the
+  // `text` column holds the optional label ("Service starts in"). CHECK can't be
+  // altered in place, so rebuild the table (same pattern as v11).
+  function v16(database) {
+    database.exec(`
+      CREATE TABLE graphics_v16 (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        kind        TEXT NOT NULL CHECK(kind IN ('lower_third','ticker','custom','countdown')),
+        label       TEXT,
+        name        TEXT,
+        title       TEXT,
+        text        TEXT,
+        html        TEXT,
+        speed       INTEGER NOT NULL DEFAULT 100,
+        style_json  TEXT,
+        target      TEXT NOT NULL DEFAULT 'all',
+        order_index INTEGER NOT NULL DEFAULT 0,
+        created_at  DATETIME NOT NULL DEFAULT (datetime('now')),
+        updated_at  DATETIME NOT NULL DEFAULT (datetime('now'))
+      );
+
+      INSERT INTO graphics_v16
+        (id, kind, label, name, title, text, html, speed, style_json, target, order_index, created_at, updated_at)
+      SELECT id, kind, label, name, title, text, html, speed, style_json, target, order_index, created_at, updated_at
+      FROM graphics;
+
+      DROP TABLE graphics;
+      ALTER TABLE graphics_v16 RENAME TO graphics;
+    `);
+  },
 ];
 
 function runMigrations() {

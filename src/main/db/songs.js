@@ -233,7 +233,12 @@ export function setBackground(songId, mediaId) {
 }
 
 export function listTags() {
-  return getDb().prepare('SELECT * FROM tags ORDER BY name COLLATE NOCASE').all();
+  return getDb().prepare(`
+    SELECT t.*,
+      (SELECT COUNT(*) FROM taggables tb WHERE tb.tag_id = t.id AND tb.entity_type = 'song') AS song_count
+    FROM tags t
+    ORDER BY t.name COLLATE NOCASE
+  `).all();
 }
 
 export function createTag(data) {

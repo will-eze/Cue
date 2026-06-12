@@ -88,6 +88,7 @@ export default function OperatorView({
 }) {
   const [services, setServices] = useState([]);
   const [serviceData, setServiceData] = useState(null);
+  const [songEditTick, setSongEditTick] = useState(0); // bumped when a song is edited from the rundown, to refresh the library
   const [channels, setChannels] = useState([]);
   const [liveChannelIdx, setLiveChannelIdx] = useState(0);
 
@@ -756,6 +757,7 @@ export default function OperatorView({
             onRenameService={handleRenameService}
             onDeleteService={handleDeleteService}
             onRefresh={refreshService}
+            onSongEdited={() => setSongEditTick((t) => t + 1)}
           />
         </div>
 
@@ -809,7 +811,7 @@ export default function OperatorView({
           onScriptureStyleSaved={loadScriptureDefaults}
           onAddMedia={handleAddMedia}
           onSongSave={refreshService}
-          refreshTick={bgRefreshTick}
+          refreshTick={bgRefreshTick + songEditTick}
           focusSearchRef={focusSearchRef}
         />
       </div>

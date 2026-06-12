@@ -42,6 +42,14 @@
     @keyframes cue-ticker-crawl { from { transform: translateX(0); } to { transform: translateX(-100%); } }
     #cue-gfx #lt-custom { display: none; position: absolute; inset: 0; }
     #cue-gfx #lt-custom.active { display: block; }
+    #cue-gfx #lt-countdown {
+      display: none; position: absolute; box-sizing: border-box;
+      flex-direction: column; overflow: hidden; padding: 16px 32px;
+    }
+    #cue-gfx #lt-countdown.active { display: flex; }
+    #cue-gfx #cd-msg  { color: #adc6ff; font-size: 36px; font-weight: 500; line-height: 1.2; white-space: pre-wrap; }
+    #cue-gfx #cd-msg:empty { display: none; }
+    #cue-gfx #cd-time { color: #fff; font-size: 120px; font-weight: 700; line-height: 1.05; font-variant-numeric: tabular-nums; white-space: nowrap; }
   `;
   document.head.appendChild(style);
 
@@ -50,6 +58,7 @@
   root.innerHTML =
     '<div id="lt-namebar"><div id="nt-name"></div><div id="nt-title"></div></div>' +
     '<div id="lt-ticker"><div id="ticker-inner"></div></div>' +
+    '<div id="lt-countdown"><div id="cd-msg"></div><div id="cd-time"></div></div>' +
     '<div id="lt-custom"></div>';
   document.body.appendChild(root);
 
@@ -58,6 +67,9 @@
   const ntTitle     = root.querySelector('#nt-title');
   const tickerEl    = root.querySelector('#lt-ticker');
   const tickerInner = root.querySelector('#ticker-inner');
+  const countdownEl = root.querySelector('#lt-countdown');
+  const cdMsg       = root.querySelector('#cd-msg');
+  const cdTime      = root.querySelector('#cd-time');
   const customEl    = root.querySelector('#lt-custom');
 
   // ── Style helpers ───────────────────────────────────────────────────────────
@@ -160,6 +172,92 @@
     }
   }
 
+  // ── Countdown / count-up / clock ────────────────────────────────────────────
+  // The bus carries only the anchor time (endsAt / startAt) + config; this template
+  // owns the per-second tick, so the operator never streams currentTime to outputs.
+  const CD_TIME_DEFAULTS = { fontSize: 120, color: '#ffffff', textShadow: '0 2px 12px rgba(0,0,0,0.6)' };
+  const CD_MSG_DEFAULTS  = { fontSize: 36, color: '#adc6ff', textShadow: '0 2px 8px rgba(0,0,0,0.6)' };
+  const CD_DEFAULT_BOX   = { x: 25, y: 32, w: 50, h: 36 };
+
+  function pad2(n) { return String(n).padStart(2, '0'); }
+
+  // Seconds → "M:SS" / "MM:SS" / "H:MM:SS" (hours segment only when non-zero).
+  function fmtDuration(totalSec) {
+    if (totalSec < 0) totalSec = 0;
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = Math.floor(totalSec % 60);
+    return h > 0 ? `${h}:${pad2(m)}:${pad2(s)}` : `${m}:${pad2(s)}`;
+  }
+
+  function fmtClock(date, format, showSeconds) {
+    let h = date.getHours();
+    let suffix = '';
+    if (format === '12h') { suffix = h >= 12 ? ' PM' : ' AM'; h = h % 12 || 12; }
+    const hh = format === '12h' ? String(h) : pad2(h);
+    const body = showSeconds ? `${hh}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}` : `${hh}:${pad2(date.getMinutes())}`;
+    return body + suffix;
+  }
+
+  let cdTimer = null;
+  let cdState = null; // the active slot, normalised
+
+  function renderCountdown() {
+    const c = cdState;
+    if (!c) return;
+    if (c.mode === 'clock') {
+      cdTime.textContent = fmtClock(new Date(), c.format, c.showSeconds);
+      return;
+    }
+    if (c.mode === 'countup') {
+      cdTime.textContent = fmtDuration((Date.now() - c.startAt) / 1000);
+      return;
+    }
+    // countdown
+    const remainingSec = (c.endsAt - Date.now()) / 1000;
+    if (remainingSec <= 0) {
+      cdTime.textContent = c.endMessage ? '' : '0:00';
+      cdMsg.textContent  = c.endMessage || c.label || '';
+      if (cdTimer) { clearInterval(cdTimer); cdTimer = null; } // reached zero — stop ticking
+      return;
+    }
+    cdTime.textContent = fmtDuration(remainingSec);
+  }
+
+  function setCountdown(c) {
+    if (cdTimer) { clearInterval(cdTimer); cdTimer = null; }
+    if (c && c.mode) {
+      const st  = (c.style && c.style.time)    || {};
+      const mst = (c.style && c.style.message) || {};
+      const box = st.textBox || { ...CD_DEFAULT_BOX };
+      const bar = st.ltBar;
+      const vAlign = st.verticalAlign || 'center';
+
+      countdownEl.style.left   = box.x + '%';
+      countdownEl.style.top    = box.y + '%';
+      countdownEl.style.width  = box.w + '%';
+      countdownEl.style.height = box.h + '%';
+      countdownEl.style.justifyContent = vAlign === 'top' ? 'flex-start' : vAlign === 'bottom' ? 'flex-end' : 'center';
+      countdownEl.style.alignItems = (st.align === 'left') ? 'flex-start' : (st.align === 'right') ? 'flex-end' : 'center';
+      countdownEl.style.background = bar ? buildBarBg(bar) : 'transparent';
+
+      applyTextStyle(cdTime, st,  CD_TIME_DEFAULTS);
+      applyTextStyle(cdMsg,  mst, CD_MSG_DEFAULTS);
+
+      cdMsg.textContent  = c.label || '';
+      cdState = c;
+      renderCountdown();
+      countdownEl.classList.add('active');
+      // Clock / count-up never end; countdown self-clears its timer at zero.
+      cdTimer = setInterval(renderCountdown, 250);
+    } else {
+      cdState = null;
+      countdownEl.classList.remove('active');
+      cdTime.textContent = '';
+      cdMsg.textContent = '';
+    }
+  }
+
   // ── Custom HTML (isolated shadow root) ──────────────────────────────────────
   const customShadow = customEl.attachShadow ? customEl.attachShadow({ mode: 'open' }) : null;
   const HOST_CSS = ':host{position:absolute;inset:0;display:block;overflow:hidden}.cue-root{position:absolute;inset:0}';
@@ -187,6 +285,7 @@
   function apply(o) {
     setNameTitle(o && o.nameTitle);
     setTicker(o && o.ticker);
+    setCountdown(o && o.countdown);
     setCustom(o && o.custom);
   }
 

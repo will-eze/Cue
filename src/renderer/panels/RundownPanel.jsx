@@ -103,7 +103,23 @@ function SortableItem({ item, index, isPreview, isLive, onClick, onDoubleClick, 
         }`}>
           {label}
         </p>
-        <p className="text-[10px] text-on-surface-variant truncate mt-0.5">{sublabel}</p>
+        <div className="flex items-center gap-xs min-w-0 mt-0.5">
+          <p className="text-[10px] text-on-surface-variant truncate shrink-0">{sublabel}</p>
+          {(item.song?.tags || []).length > 0 && (
+            <div className="flex items-center gap-xs min-w-0 overflow-hidden">
+              {item.song.tags.slice(0, 3).map((tag) => (
+                <span
+                  key={tag.id}
+                  className="text-[8px] font-mono font-bold leading-none px-xs py-[2px] rounded-full text-white/95 whitespace-nowrap"
+                  style={{ background: tag.colour || '#4d8eff' }}
+                  title={tag.name}
+                >
+                  {tag.name}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* State badges */}
@@ -136,7 +152,7 @@ function SortableItem({ item, index, isPreview, isLive, onClick, onDoubleClick, 
 export default function RundownPanel({
   services, activeServiceId, serviceData, previewItemId, liveItemId,
   onSelectService, onClickItem, onDoubleClickItem, onReorder, onRemoveItem, onDuplicate,
-  onAddService, onRenameService, onDeleteService, onRefresh,
+  onAddService, onRenameService, onDeleteService, onRefresh, onSongEdited,
 }) {
   const [contextMenu, setContextMenu] = useState(null);
   const [showNewService, setShowNewService] = useState(false);
@@ -467,7 +483,7 @@ export default function RundownPanel({
         <SongEditor
           song={editSong}
           onClose={() => setEditSong(null)}
-          onSave={() => { setEditSong(null); onRefresh?.(); }}
+          onSave={() => { setEditSong(null); onRefresh?.(); onSongEdited?.(); }}
         />
       )}
     </div>

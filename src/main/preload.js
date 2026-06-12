@@ -79,6 +79,10 @@ contextBridge.exposeInMainWorld('cue', {
       show: (data) => ipcRenderer.invoke('output:ticker:show', data),
       hide: () => ipcRenderer.invoke('output:ticker:hide'),
     },
+    countdown: {
+      show: (data) => ipcRenderer.invoke('output:countdown:show', data),
+      hide: () => ipcRenderer.invoke('output:countdown:hide'),
+    },
     overlay: {
       get: () => ipcRenderer.invoke('output:overlay:get'),
     },
@@ -99,6 +103,8 @@ contextBridge.exposeInMainWorld('cue', {
     get: (id) => ipcRenderer.invoke('media:get', id),
     list: (folderId) => ipcRenderer.invoke('media:list', folderId),
     delete: (id) => ipcRenderer.invoke('media:delete', id),
+    deleteMany: (ids) => ipcRenderer.invoke('media:deleteMany', ids),
+    findUnused: () => ipcRenderer.invoke('media:findUnused'),
     getDiskUsage: () => ipcRenderer.invoke('media:getDiskUsage'),
     getMediaDir: () => ipcRenderer.invoke('media:getMediaDir'),
     folders: {
