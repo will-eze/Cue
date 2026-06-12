@@ -64,4 +64,4 @@ Typography: Inter for body/headlines. Labels/chips/badges/buttons: `"JetBrains M
 - `npm run make` — distributable
 - After any Electron version bump: `npm run rebuild` (recompiles `better-sqlite3` and `grandi`)
 - DB: `~/Library/Application Support/Cue/cue.db` (macOS) · `%APPDATA%\Cue\cue.db` (Windows) · schema v19
-- Version (Settings footer): `vMAJOR.MINOR.PATCH (Build N)`. **MAJOR = DB schema version** — bump on every migration and reset MINOR/PATCH to 0. MINOR = features/changes with no migration; PATCH = fixes/docs/chores. Bump `APP_VERSION` by hand in `vite.renderer.config.js`; `Build N` is injected automatically from the git commit count (`__BUILD_NUMBER__`) — do not hardcode it.
+- Version (Settings footer): `vMAJOR.MINOR.PATCH (Build N)`, all injected at build time from `vite.renderer.config.js`. **MAJOR is auto-derived** from the highest `vN` migration in `schema.js` (do not hardcode it) and **Build N** from the git commit count. Only `VERSION_MINOR`/`VERSION_PATCH` are manual: bump MINOR for features with no migration, PATCH for fixes/docs/chores, and **reset both to 0 in the same commit as a new migration** (MAJOR moves on its own).
