@@ -55,6 +55,15 @@ module.exports = {
     },
     name: 'Cue',
     executableName: 'cue',
+    // Windows version-resource strings → the exe's display name in Explorer /
+    // taskbar and the Squirrel shortcut label. Pin them to "Cue" so the lowercase
+    // executableName (cue.exe) never surfaces to users there either.
+    win32metadata: {
+      CompanyName: 'William Eze',
+      ProductName: 'Cue',
+      FileDescription: 'Cue',
+      InternalName: 'Cue',
+    },
     // App icon. Forge appends the per-platform extension: assets/icon.icns on
     // macOS (embedded in the .app bundle, shown in Dock/Finder/DMG) and
     // assets/icon.ico on Windows (embedded in cue.exe → taskbar/Explorer).
@@ -70,6 +79,35 @@ module.exports = {
     extraModules: ['better-sqlite3', 'grandi'],
   },
   hooks: {
+    // Rebuild native addons against Electron's ABI before they get packaged.
+    //
+    // better-sqlite3 is a V8-ABI (NAN) addon: its .node is tied to a specific
+    // NODE_MODULE_VERSION. `npm ci` installs the prebuilt for the host *Node*
+    // (e.g. Node 20 → ABI 115), but the app runs under *Electron 30* (ABI 123),
+    // so the unmatched binary throws "compiled against a different Node.js
+    // version" the moment initDb() calls require('better-sqlite3') — which is
+    // BEFORE createMainWindow() in app.whenReady(), so the app dies with only a
+    // Dock icon and no window.
+    //
+    // Forge's own native-rebuild step can't save us here: the Vite plugin strips
+    // node_modules from the package, so Forge rebuilds an empty tree (no-op), and
+    // the real module is copied from the project root in packageAfterPrune below.
+    // That copy is only correct if the project-root build is already Electron-ABI
+    // — true on a dev machine that ran `npm run rebuild`, false on a clean CI
+    // checkout. So we rebuild the project root explicitly here, before the copy,
+    // making every build path (CI + local, macOS + Windows) correct.
+    //
+    // grandi is N-API (ABI-stable across Node/Electron), so it needs no rebuild.
+    prePackage: async () => {
+      const { rebuild } = require('@electron/rebuild');
+      const electronVersion = require('electron/package.json').version;
+      await rebuild({
+        buildPath: __dirname,
+        electronVersion,
+        force: true,
+        onlyModules: ['better-sqlite3'],
+      });
+    },
     // macOS ad-hoc code signature (free, no Apple Developer ID). Apple Silicon
     // refuses to launch a repackaged Electron app whose original signature was
     // invalidated by packaging — without this it shows "Cue is damaged and can't
@@ -86,6 +124,15 @@ module.exports = {
       for (const outDir of options.outputPaths) {
         const app = path.join(outDir, 'Cue.app');
         if (!fs.existsSync(app)) continue;
+        // Fix the user-facing label. @electron/packager hardwires
+        // CFBundleDisplayName to executableName ('cue', lowercase) and applies it
+        // AFTER extendInfo, so it can't be set through packagerConfig — Finder /
+        // Dock / Launchpad would show "cue". Patch the plist to "Cue" here, before
+        // codesign reseals the bundle so the signature covers the edit. (The
+        // lowercase 'cue' remains only as the internal binary, Contents/MacOS/cue.)
+        execFileSync('/usr/libexec/PlistBuddy',
+          ['-c', 'Set :CFBundleDisplayName Cue', path.join(app, 'Contents', 'Info.plist')],
+          { stdio: 'inherit' });
         execFileSync('codesign', ['--deep', '--force', '--sign', '-', app], { stdio: 'inherit' });
         execFileSync('codesign', ['--verify', '--deep', '--strict', app], { stdio: 'inherit' });
       }
