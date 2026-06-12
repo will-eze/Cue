@@ -16,3 +16,21 @@ contextBridge.exposeInMainWorld('cueOutput', {
     return () => ipcRenderer.removeListener('media:transport', wrapper);
   },
 });
+
+// Inject any user-installed @font-face rules so custom families render on the
+// output (NDI/screen) exactly as configured in the operator's editors. Font
+// files are served through the cue-media:// protocol.
+function injectUserFonts() {
+  ipcRenderer.invoke('fonts:css').then((css) => {
+    if (!css) return;
+    const el = document.createElement('style');
+    el.id = 'cue-user-fonts';
+    el.textContent = css;
+    document.head.appendChild(el);
+  }).catch(() => {});
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', injectUserFonts);
+} else {
+  injectUserFonts();
+}

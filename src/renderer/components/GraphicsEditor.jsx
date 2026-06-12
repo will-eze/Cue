@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { FormattingToolbar, DEFAULT_STYLE, styleIsDefault } from './SongEditor';
+import { useFonts } from '../utils/fonts';
 
 function esc(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -154,6 +155,10 @@ const KINDS = [
 
 const FRAME_W = 1920, FRAME_H = 1080;
 
+// Fixed "content window" — the safe area object-align snaps boxes within (matches
+// SongEditor.CONTENT_BOX). Boxes can still be dragged anywhere on the frame.
+const CONTENT_BOX = { x: 5, y: 5, w: 90, h: 90 };
+
 // ── Drag/resize (PowerPoint-style box) — same maths as SongEditor.SlidePreview ─
 
 const MIN_BOX = 5;
@@ -183,11 +188,20 @@ function resizeBox(s, hx, hy, dx, dy) {
 
 // ── Previews ───────────────────────────────────────────────────────────────────
 
-function ScaledFrame({ children, wrapRef, scale }) {
+function ScaledFrame({ children, wrapRef, scale, contentGuide = false }) {
   return (
     <div ref={wrapRef} className="w-full aspect-video relative overflow-hidden rounded-lg"
       style={{ backgroundImage: 'repeating-conic-gradient(#1a1a1a 0% 25%, #222 0% 50%)', backgroundSize: '28px 28px' }}>
       <div style={{ width: FRAME_W, height: FRAME_H, transform: `scale(${scale})`, transformOrigin: 'top left', position: 'absolute', inset: 0 }}>
+        {/* Content-window safe-area guide — boxes align within it (drag goes anywhere). */}
+        {contentGuide && (
+          <div style={{
+            position: 'absolute',
+            left: `${(CONTENT_BOX.x / 100) * FRAME_W}px`, top: `${(CONTENT_BOX.y / 100) * FRAME_H}px`,
+            width: `${(CONTENT_BOX.w / 100) * FRAME_W}px`, height: `${(CONTENT_BOX.h / 100) * FRAME_H}px`,
+            border: '1px dashed rgba(255,255,255,0.18)', boxSizing: 'border-box', pointerEvents: 'none', zIndex: 0,
+          }} />
+        )}
         {children}
       </div>
     </div>
@@ -229,7 +243,7 @@ function BugPreview({ name, title, nameStyle, titleStyle, onBoxChange }) {
   const vAlign = nameStyle?.verticalAlign || 'bottom';
 
   return (
-    <ScaledFrame wrapRef={wrapRef} scale={scale}>
+    <ScaledFrame wrapRef={wrapRef} scale={scale} contentGuide>
       {/* The bug box */}
       <div style={{
         position: 'absolute', left: `${bL}px`, top: `${bT}px`, width: `${bW}px`, height: `${bH}px`,
@@ -310,7 +324,7 @@ function CountdownPreview({ cd, timeStyle, msgStyle, label, onBoxChange }) {
   const hAlign = timeStyle?.align === 'left' ? 'flex-start' : timeStyle?.align === 'right' ? 'flex-end' : 'center';
 
   return (
-    <ScaledFrame wrapRef={wrapRef} scale={scale}>
+    <ScaledFrame wrapRef={wrapRef} scale={scale} contentGuide>
       <div style={{
         position: 'absolute', left: `${bL}px`, top: `${bT}px`, width: `${bW}px`, height: `${bH}px`,
         background: buildBarBg(timeStyle?.ltBar), padding: '16px 32px', boxSizing: 'border-box',
@@ -397,7 +411,7 @@ function CustomPreview({ draft, replayKey }) {
 
 export default function GraphicsEditor({ graphic, onClose, onSaved }) {
   const isEdit = !!graphic?.id;
-  const fonts = window.cue.fonts.list;
+  const fonts = useFonts();
 
   const [draft, setDraft] = useState(() => {
     let parsed = {};

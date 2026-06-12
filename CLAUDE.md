@@ -24,6 +24,7 @@ Unified single-process Electron app. Replaces EasyWorship/ProPresenter (worship 
 - **Do not recreate a channel window for a lower-third content-mode switch** — send `content:mode` IPC to the existing window; recreating drops the NDI sender.
 - **Countdown/clock graphics tick in the output template, not the operator.** Main resolves an absolute anchor (`endsAt`/`startAt`) once; `graphics-overlay.js` recomputes the digits from `Date.now()`. Never stream per-second time updates over the overlay bus.
 - Display matching: always `display_bounds` JSON, never `display_index`.
+- **A song with an all-default style saves `style_json = null`** (centre align is the default). Output/monitor `applyStyle` must treat null as `{}` and default `text-align` to **centre** — never early-return on null, or default-styled lower-third lyrics render left. Applies to `lowerthird.js`, `graphics-overlay.js`, `PreviewLivePanel`.
 
 ### Shortcuts
 - **Do not use `globalShortcut`** — captures at OS level, breaks typing. Shortcuts are `keydown` on `document`, suppressed when an `INPUT`/`TEXTAREA`/`contenteditable` has focus.

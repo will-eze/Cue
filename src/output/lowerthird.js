@@ -56,9 +56,18 @@ function buildBarBg(ltBar) {
 }
 
 function applyStyle(el, s) {
-  if (!s) { ltDiv.style.background = 'transparent'; return; }
+  // Treat a missing style_json as the app default rather than bailing out: a song
+  // whose style is all-default saves style_json = null, and the default alignment
+  // is CENTRE. The old early-return left #text on the CSS default (left), so
+  // centred lyrics rendered left-aligned in the output (fullscreen.css defaults
+  // #text to centre, which is why only the lower-third was affected).
+  s = s || {};
+  // Full width so text-align has the whole band to work within (matches the editor
+  // preview, which renders the text in a full-width bar) — without it a flex edge
+  // case could shrink the element and make centre/right alignment look like no-op.
+  el.style.width           = '100%';
   el.style.fontFamily      = s.fontFamily   || '';
-  el.style.textAlign       = s.align        || '';
+  el.style.textAlign       = s.align        || 'center';
   el.style.fontWeight      = s.bold         ? '700' : '400';
   el.style.fontStyle       = s.italic       ? 'italic' : 'normal';
   el.style.textDecoration  = s.underline    ? 'underline' : 'none';
@@ -67,8 +76,10 @@ function applyStyle(el, s) {
   el.style.lineHeight      = s.lineSpacing  ? String(s.lineSpacing) : '';
   el.style.letterSpacing   = s.letterSpacing ? s.letterSpacing + 'em' : '';
   el.style.textTransform   = s.uppercase    ? 'uppercase' : 'none';
+  // Mirror the editor exactly: an explicitly-disabled shadow → none; an enabled one
+  // → its values; no shadow config → fall back to the stylesheet default.
   const sh = buildShadow(s.textShadow);
-  if (sh) el.style.textShadow = sh;
+  el.style.textShadow = sh || '';
   el.style.webkitTextStroke = (s.textStroke && s.textStroke.enabled)
     ? `${s.textStroke.width ?? 2}px ${s.textStroke.color ?? '#000'}`
     : '';

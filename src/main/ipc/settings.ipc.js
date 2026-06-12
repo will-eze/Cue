@@ -1,6 +1,9 @@
 import { ipcMain, app, dialog, BrowserWindow } from 'electron';
+import path from 'path';
+import fs from 'fs';
 import * as settings from '../db/settings.js';
 import * as backup from '../db/backup.js';
+import { closeDb } from '../db/schema.js';
 
 export function registerSettingsIpc() {
   ipcMain.handle('settings:get', (_e, key) => settings.get(key));
@@ -40,5 +43,21 @@ export function registerSettingsIpc() {
     // and its toast paints before the window is torn down.
     if (res.ok) setTimeout(() => { app.relaunch(); app.exit(0); }, 400);
     return res;
+  });
+
+  // Factory reset — wipe every trace of user state (cue.db + media/) and relaunch.
+  // On the next boot initDb() recreates a fresh schema and re-seeds the bundled
+  // bibles + GHS hymnal, so the app comes back exactly as a first install.
+  ipcMain.handle('settings:factoryReset', () => {
+    const userData = app.getPath('userData');
+    closeDb(); // release the cue.db handle (checkpoints WAL) before deleting files
+    const dbPath = path.join(userData, 'cue.db');
+    for (const suffix of ['', '-wal', '-shm']) {
+      try { fs.rmSync(dbPath + suffix, { force: true }); } catch {}
+    }
+    try { fs.rmSync(path.join(userData, 'media'), { recursive: true, force: true }); } catch {}
+    try { fs.rmSync(path.join(userData, 'fonts'), { recursive: true, force: true }); } catch {}
+    setTimeout(() => { app.relaunch(); app.exit(0); }, 300);
+    return { ok: true };
   });
 }

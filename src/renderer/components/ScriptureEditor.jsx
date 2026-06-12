@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import MediaPickerModal from './MediaPickerModal';
 import { mediaUrl } from '../utils/mediaUrl';
+import { useFonts } from '../utils/fonts';
 import {
   FormattingToolbar, SlidePreview, LowerThirdPreview, DEFAULT_STYLE, styleIsDefault,
 } from './SongEditor';
@@ -29,7 +30,7 @@ export default function ScriptureEditor({ onClose, onSave }) {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
 
-  const fonts = window.cue.fonts.list;
+  const fonts = useFonts();
 
   // Load saved scripture verse style, reference style + background.
   useEffect(() => {

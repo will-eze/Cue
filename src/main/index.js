@@ -11,6 +11,7 @@ import { registerBibleIpc } from './ipc/bible.ipc.js';
 import { registerGraphicsIpc } from './ipc/graphics.ipc.js';
 import { registerThemesIpc } from './ipc/themes.ipc.js';
 import { registerRemoteIpc, applyRemoteConfig } from './ipc/remote.ipc.js';
+import { registerFontsIpc } from './ipc/fonts.ipc.js';
 import * as remoteServer from './remote/server.js';
 import { seedBundledBibles } from './db/bible.js';
 import { seedGhsHymnal } from './db/songs.js';
@@ -32,6 +33,8 @@ const MEDIA_MIME = {
   // Audio
   mp3: 'audio/mpeg', wav: 'audio/wav', aac: 'audio/aac',
   flac: 'audio/flac', ogg: 'audio/ogg', m4a: 'audio/mp4',
+  // Fonts (user-installed custom families)
+  woff2: 'font/woff2', woff: 'font/woff', ttf: 'font/ttf', otf: 'font/otf',
 };
 
 let mainWindow;
@@ -159,6 +162,7 @@ app.whenReady().then(async () => {
   registerGraphicsIpc();
   registerThemesIpc();
   registerRemoteIpc();
+  registerFontsIpc();
 
   createMainWindow();
   outputManager.setMainWindow(mainWindow);

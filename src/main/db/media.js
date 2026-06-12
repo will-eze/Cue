@@ -94,6 +94,30 @@ export function findUnused() {
     });
 }
 
+// Wipe the entire media library: every asset file + DB row + folders. FK columns
+// referencing media_assets are ON DELETE SET NULL, so song/theme/channel/item
+// backgrounds clear automatically; the global media settings keys aren't FKs, so
+// reset them explicitly. Returns how many assets were removed.
+export function deleteAllMedia() {
+  const db = getDb();
+  const assets = db.prepare('SELECT id, path FROM media_assets').all();
+  db.transaction(() => {
+    db.prepare('DELETE FROM media_assets').run();
+    db.prepare('DELETE FROM media_folders').run();
+    for (const key of ['global_logo_id', 'global_bg_song_id', 'global_bg_scripture_id', 'global_bg_slide_id']) {
+      db.prepare("UPDATE settings SET value='null' WHERE key=?").run(key);
+    }
+  })();
+  // Remove the files after the rows are gone. Clear the whole media dir so any
+  // orphans left by past crashes go too.
+  for (const a of assets) { try { if (fs.existsSync(a.path)) fs.unlinkSync(a.path); } catch {} }
+  try {
+    const dir = getMediaDir();
+    if (fs.existsSync(dir)) for (const f of fs.readdirSync(dir)) { try { fs.unlinkSync(path.join(dir, f)); } catch {} }
+  } catch {}
+  return assets.length;
+}
+
 export function createFolder(name, parentId) {
   const { lastInsertRowid } = getDb().prepare('INSERT INTO media_folders (name, parent_id) VALUES (?,?)').run(name, parentId || null);
   return Number(lastInsertRowid);

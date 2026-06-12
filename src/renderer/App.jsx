@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import OperatorView from './views/OperatorView';
 import MultiviewView from './views/MultiviewView';
 import SettingsView from './views/SettingsView';
+import { injectUserFontFaces } from './utils/fonts';
 
 const platform = window.cue.platform; // 'darwin' | 'win32' | 'linux'
 const isMac    = platform === 'darwin';
@@ -25,6 +26,10 @@ export default function App() {
   // Stage controls panel
   const [stageOpen, setStageOpen] = useState(false);
   const stagePanelRef = useRef(null);
+
+  // Register user-installed @font-face rules once so editor previews and the
+  // live/preview monitors render custom families (refreshed after a font import).
+  useEffect(() => { injectUserFontFaces(); }, [bgRefreshTick]);
 
   // Close stage panel on outside click
   useEffect(() => {

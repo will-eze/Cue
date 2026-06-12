@@ -105,6 +105,7 @@ contextBridge.exposeInMainWorld('cue', {
     list: (folderId) => ipcRenderer.invoke('media:list', folderId),
     delete: (id) => ipcRenderer.invoke('media:delete', id),
     deleteMany: (ids) => ipcRenderer.invoke('media:deleteMany', ids),
+    deleteAll: () => ipcRenderer.invoke('media:deleteAll'),
     findUnused: () => ipcRenderer.invoke('media:findUnused'),
     getDiskUsage: () => ipcRenderer.invoke('media:getDiskUsage'),
     getMediaDir: () => ipcRenderer.invoke('media:getMediaDir'),
@@ -155,6 +156,7 @@ contextBridge.exposeInMainWorld('cue', {
     openDataFolder: () => ipcRenderer.invoke('settings:openDataFolder'),
     exportBackup: () => ipcRenderer.invoke('settings:exportBackup'),
     importBackup: () => ipcRenderer.invoke('settings:importBackup'),
+    factoryReset: () => ipcRenderer.invoke('settings:factoryReset'),
   },
   dialog: {
     openFile: (options) => ipcRenderer.invoke('dialog:openFile', options),
@@ -162,6 +164,10 @@ contextBridge.exposeInMainWorld('cue', {
   fonts: {
     list: BUNDLED_FONTS,
     default: DEFAULT_FONT,
+    listUser: () => ipcRenderer.invoke('fonts:listUser'),
+    css: () => ipcRenderer.invoke('fonts:css'),
+    import: () => ipcRenderer.invoke('fonts:import'),
+    delete: (id) => ipcRenderer.invoke('fonts:delete', id),
   },
   platform: process.platform,
   window: {

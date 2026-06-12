@@ -42,7 +42,7 @@ function ConfirmButton({ label, confirmLabel = 'Yes, delete', disabled = false, 
   );
 }
 
-export default function DangerZone({ activeServiceId, onRundownCleared, onRundownDeleted, onLibraryCleared }) {
+export default function DangerZone({ activeServiceId, onRundownCleared, onRundownDeleted, onLibraryCleared, onMediaCleared }) {
   const [services, setServices] = useState([]);
   const [clearServiceId, setClearServiceId] = useState(null);
   const [deleteServiceId, setDeleteServiceId] = useState(null);
@@ -97,6 +97,17 @@ export default function DangerZone({ activeServiceId, onRundownCleared, onRundow
     await window.cue.songs.deleteAll();
     onLibraryCleared?.();
     showFeedback('Song library cleared');
+  }
+
+  async function handleClearMedia() {
+    const removed = await window.cue.media.deleteAll();
+    onMediaCleared?.();
+    showFeedback(removed ? `${removed} media file${removed === 1 ? '' : 's'} deleted` : 'Media library already empty');
+  }
+
+  async function handleFactoryReset() {
+    // Wipes the DB + media and relaunches; no feedback needed — the window tears down.
+    await window.cue.settings.factoryReset();
   }
 
   const noRundowns = services.length === 0;
@@ -164,7 +175,7 @@ export default function DangerZone({ activeServiceId, onRundownCleared, onRundow
         </div>
 
         {/* Clear library */}
-        <div className="flex items-center gap-md px-lg py-md">
+        <div className="flex items-center gap-md px-lg py-md border-b border-outline-variant/20">
           <div className="flex-1 min-w-0">
             <p className="text-body-sm font-semibold text-on-surface">Clear song library</p>
             <p className="text-body-sm text-on-surface-variant/70 mt-[2px]">
@@ -178,6 +189,39 @@ export default function DangerZone({ activeServiceId, onRundownCleared, onRundow
           />
         </div>
 
+        {/* Clear media library */}
+        <div className="flex items-center gap-md px-lg py-md">
+          <div className="flex-1 min-w-0">
+            <p className="text-body-sm font-semibold text-on-surface">Clear media library</p>
+            <p className="text-body-sm text-on-surface-variant/70 mt-[2px]">
+              Permanently delete every imported image, video and audio file. Backgrounds and logos that used them are reset to none. Cannot be undone.
+            </p>
+          </div>
+          <ConfirmButton
+            label="Clear media"
+            confirmLabel="Yes, delete all"
+            onConfirm={handleClearMedia}
+          />
+        </div>
+
+      </div>
+
+      {/* Reset to defaults — most destructive, in its own emphasised card. */}
+      <div className="bg-error-container/20 rounded-xl border border-error/50">
+        <div className="flex items-center gap-md px-lg py-md">
+          <div className="flex-1 min-w-0">
+            <p className="text-body-sm font-bold text-error">Reset app to defaults</p>
+            <p className="text-body-sm text-on-surface-variant/70 mt-[2px]">
+              Erase <span className="font-semibold text-on-surface">everything</span> — songs, rundowns, media, themes, graphics,
+              channels, bibles and all settings — and restart Cue as a fresh install. This cannot be undone.
+            </p>
+          </div>
+          <ConfirmButton
+            label="Reset app"
+            confirmLabel="Yes, erase everything"
+            onConfirm={handleFactoryReset}
+          />
+        </div>
       </div>
 
       {feedback && (

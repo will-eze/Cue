@@ -343,7 +343,7 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
   const textStyle = {
     fontFamily:       style?.fontFamily || undefined,
     fontSize:         (style?.fontSize ?? (isLT ? 48 : 72)) + 'px',
-    textAlign:        style?.align || (isLT ? 'left' : 'center'),
+    textAlign:        style?.align || 'center',
     fontWeight:       style?.bold ? 700 : 400,
     fontStyle:        style?.italic ? 'italic' : 'normal',
     textDecoration:   style?.underline ? 'underline' : 'none',

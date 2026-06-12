@@ -8,6 +8,7 @@ import {
 } from '../components/SongEditor';
 import MediaPickerModal from '../components/MediaPickerModal';
 import { mediaUrl } from '../utils/mediaUrl';
+import { useFonts } from '../utils/fonts';
 
 const SAMPLE_TEXT = 'Amazing Grace\nHow Sweet the Sound';
 
@@ -24,7 +25,7 @@ function ThemeEditorModal({ theme, onClose, onSaved }) {
   const [showBgPicker, setShowBgPicker] = useState(false);
   const [previewTemplate, setPreviewTemplate] = useState('fullscreen');
   const [saving, setSaving] = useState(false);
-  const fonts = window.cue.fonts.list;
+  const fonts = useFonts();
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape' && !showBgPicker) onClose(); };

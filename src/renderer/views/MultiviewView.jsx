@@ -36,13 +36,24 @@ export default function MultiviewView() {
     return () => { offState(); offCapts(); window.cue.output.multiview.stop(); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const groups = channels.map((ch) => ({
-    ...ch,
-    monitors: monitors
-      .filter((m) => m.channel_id === ch.id)
-      .map((m) => ({ ...m, dataUrl: monCaptureMap[m.id] ?? null })),
-    ndiDataUrl: ch.type === 'ndi' ? (ndiCaptureMap[ch.id] ?? null) : null,
-  }));
+  // Flatten every output into a single uniform tile list for the grid wall:
+  // one tile per assigned screen, one per NDI channel, and a placeholder for
+  // any screen channel with no monitors yet.
+  const tiles = [];
+  for (const ch of channels) {
+    if (ch.type === 'ndi') {
+      tiles.push({ key: `ndi-${ch.id}`, kind: 'ndi', channel: { ...ch, ndiDataUrl: ndiCaptureMap[ch.id] ?? null } });
+    } else {
+      const mons = monitors.filter((m) => m.channel_id === ch.id);
+      if (mons.length === 0) {
+        tiles.push({ key: `empty-${ch.id}`, kind: 'empty', channel: ch });
+      } else {
+        for (const m of mons) {
+          tiles.push({ key: `mon-${m.id}`, kind: 'screen', channel: ch, monitor: { ...m, dataUrl: monCaptureMap[m.id] ?? null } });
+        }
+      }
+    }
+  }
 
   const totalMonitors = monitors.length;
   const totalNdi      = channels.filter((c) => c.type === 'ndi').length;
@@ -87,66 +98,46 @@ export default function MultiviewView() {
         </button>
       </div>
 
-      {/* Content */}
+      {/* Content — uniform grid wall of every output tile */}
       {channels.length === 0 ? (
         <EmptyState />
       ) : (
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-lg space-y-xl">
-          {groups.map((ch) => (
-            <ChannelGroup key={ch.id} channel={ch} isLive={isLive} />
-          ))}
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-lg">
+          <div className="grid gap-gutter" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
+            {tiles.map((t) => {
+              const live = isLive && !!t.channel.active;
+              if (t.kind === 'ndi')    return <NdiTile key={t.key} channel={t.channel} isLive={live} />;
+              if (t.kind === 'screen') return <ScreenMonitorTile key={t.key} channel={t.channel} monitor={t.monitor} isLive={live} />;
+              return <EmptyChannelTile key={t.key} channel={t.channel} />;
+            })}
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-// ─── Channel Group ─────────────────────────────────────────────────────────
+// ─── Channel chip — shared header strip on every tile ──────────────────────
 
-function ChannelGroup({ channel, isLive }) {
-  const isActive       = !!channel.active;
-  const isNdi          = channel.type === 'ndi';
-  const templateLabel  = channel.template === 'lowerthird' ? 'Lower Third' : 'Fullscreen';
-  const hasMonitors    = channel.monitors.length > 0;
-
+function ChannelChip({ channel }) {
+  const isActive = !!channel.active;
+  const isNdi    = channel.type === 'ndi';
+  const templateLabel = channel.template === 'lowerthird' ? 'Lower Third' : channel.template === 'stage' ? 'Stage' : 'Fullscreen';
   return (
-    <div>
-      {/* Channel label row */}
-      <div className="flex items-center gap-sm mb-sm">
-        <span className={`w-[7px] h-[7px] rounded-full shrink-0 ${isActive ? 'bg-tertiary' : 'bg-outline-variant'}`} />
-        <span className={`text-label-sm font-label-sm uppercase tracking-[0.07em] font-bold ${isActive ? 'text-on-surface' : 'text-on-surface-variant/50'}`}>
-          {channel.name}
-        </span>
-        {isNdi && (
-          <span className="text-[10px] font-label-sm uppercase tracking-[0.04em] border border-tertiary/50 rounded px-xs py-[1px] text-tertiary">
-            NDI
-          </span>
-        )}
-        <span className="text-[10px] font-label-sm uppercase tracking-[0.05em] border border-outline-variant/30 rounded px-xs py-[1px] text-on-surface-variant">
-          {templateLabel}
-        </span>
-        {!isActive && (
-          <span className="text-[10px] font-label-sm uppercase tracking-[0.05em] text-outline">Inactive</span>
-        )}
-        {isNdi && (
-          <span className="text-[10px] font-label-sm text-on-surface-variant/50">
-            {channel.ndi_width || 1920}×{channel.ndi_height || 1080} · {channel.ndi_fps || 30}fps
-          </span>
-        )}
-      </div>
-
-      {/* Tiles */}
-      <div className="grid gap-gutter" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))' }}>
-        {isNdi ? (
-          <NdiTile channel={channel} isLive={isLive && isActive} />
-        ) : hasMonitors ? (
-          channel.monitors.map((m) => (
-            <ScreenMonitorTile key={m.id} monitor={m} isLive={isLive && isActive} />
-          ))
-        ) : (
-          <NoScreensPlaceholder />
-        )}
-      </div>
+    <div className="flex items-center gap-xs min-w-0">
+      <span className={`w-[6px] h-[6px] rounded-full shrink-0 ${isActive ? 'bg-tertiary' : 'bg-outline-variant'}`} />
+      <span className={`text-label-sm font-label-sm uppercase tracking-[0.06em] font-bold truncate ${isActive ? 'text-on-surface' : 'text-on-surface-variant/50'}`}>
+        {channel.name}
+      </span>
+      {isNdi && (
+        <span className="text-[9px] font-label-sm uppercase tracking-[0.04em] border border-tertiary/50 rounded px-[3px] py-[1px] text-tertiary shrink-0">NDI</span>
+      )}
+      <span className="text-[9px] font-label-sm uppercase tracking-[0.05em] border border-outline-variant/30 rounded px-[3px] py-[1px] text-on-surface-variant shrink-0">
+        {templateLabel}
+      </span>
+      {!isActive && (
+        <span className="text-[9px] font-label-sm uppercase tracking-[0.05em] text-outline shrink-0">Off</span>
+      )}
     </div>
   );
 }
@@ -165,6 +156,13 @@ function NdiTile({ channel, isLive }) {
         ? 'ring-2 ring-tertiary shadow-[0_0_20px_rgba(74,225,118,0.1)]'
         : 'ring-1 ring-outline-variant/30'
     }`}>
+      {/* Channel chip header */}
+      <div className="flex items-center justify-between gap-xs px-sm py-[5px] bg-surface-container-high border-b border-outline-variant/20">
+        <ChannelChip channel={channel} />
+        <span className="text-[9px] font-label-sm text-on-surface-variant/50 shrink-0 tabular-nums">
+          {channel.ndi_width || 1920}×{channel.ndi_height || 1080}·{channel.ndi_fps || 30}
+        </span>
+      </div>
       {/* 16:9 capture area */}
       <div className="relative w-full bg-black" style={{ paddingBottom: '56.25%' }}>
         <div className="absolute inset-0">
@@ -240,7 +238,7 @@ function NdiNoSignal({ isLive }) {
 
 // ─── Screen Monitor Tile ───────────────────────────────────────────────────
 
-function ScreenMonitorTile({ monitor, isLive }) {
+function ScreenMonitorTile({ channel, monitor, isLive }) {
   const hasCapture = !!monitor.dataUrl;
   const bounds     = monitor.display_bounds ? JSON.parse(monitor.display_bounds) : null;
   const label      = monitor.label || (bounds ? `${bounds.width}×${bounds.height} at (${bounds.x},${bounds.y})` : 'Unknown');
@@ -252,6 +250,10 @@ function ScreenMonitorTile({ monitor, isLive }) {
         ? 'ring-2 ring-secondary shadow-[0_0_20px_rgba(255,179,173,0.12)]'
         : 'ring-1 ring-outline-variant/30'
     }`}>
+      {/* Channel chip header */}
+      <div className="flex items-center px-sm py-[5px] bg-surface-container-high border-b border-outline-variant/20">
+        <ChannelChip channel={channel} />
+      </div>
       <div className="relative w-full bg-black" style={{ paddingBottom: '56.25%' }}>
         <div className="absolute inset-0">
           {hasCapture
@@ -294,13 +296,20 @@ function NoSignal() {
   );
 }
 
-function NoScreensPlaceholder() {
+function EmptyChannelTile({ channel }) {
   return (
-    <div className="flex items-center gap-sm py-md px-md border border-dashed border-outline-variant/20 rounded-lg">
-      <span className="material-symbols-outlined text-[16px] text-outline-variant/40">add_to_queue</span>
-      <span className="text-label-sm font-label-sm text-outline-variant/50 uppercase tracking-[0.05em]">
-        No screens assigned — configure in Settings
-      </span>
+    <div className="relative rounded-lg overflow-hidden ring-1 ring-outline-variant/30">
+      <div className="flex items-center px-sm py-[5px] bg-surface-container-high border-b border-outline-variant/20">
+        <ChannelChip channel={channel} />
+      </div>
+      <div className="relative w-full bg-black" style={{ paddingBottom: '56.25%' }}>
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-xs border border-dashed border-outline-variant/15">
+          <span className="material-symbols-outlined text-[24px] text-outline-variant/40">add_to_queue</span>
+          <span className="text-[10px] font-label-sm text-outline-variant/50 uppercase tracking-[0.06em] text-center px-md">
+            No screens assigned
+          </span>
+        </div>
+      </div>
     </div>
   );
 }

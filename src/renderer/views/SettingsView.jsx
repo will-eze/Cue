@@ -5,6 +5,7 @@ import BackgroundSettings from '../settings/BackgroundSettings';
 import ThemeSettings from '../settings/ThemeSettings';
 import BibleSettings from '../settings/BibleSettings';
 import TagSettings from '../settings/TagSettings';
+import FontSettings from '../settings/FontSettings';
 import MediaCleanup from '../settings/MediaCleanup';
 import ShortcutSettings from '../settings/ShortcutSettings';
 import RemoteSettings from '../settings/RemoteSettings';
@@ -20,6 +21,7 @@ const SECTIONS = [
   { id: 'themes',     icon: 'style',           label: 'Themes' },
   { id: 'bible',      icon: 'menu_book',       label: 'Bible' },
   { id: 'tags',       icon: 'sell',            label: 'Tags' },
+  { id: 'fonts',      icon: 'font_download',   label: 'Fonts' },
   { id: 'media',      icon: 'cleaning_services', label: 'Media' },
   { id: 'shortcuts',  icon: 'keyboard',        label: 'Shortcuts' },
   { id: 'remote',     icon: 'cell_tower',      label: 'Remote' },
@@ -156,6 +158,7 @@ export default function SettingsView({ onClose, activeServiceId, onRundownCleare
         <section ref={setRef('themes')} data-section="themes" className="scroll-mt-lg"><ThemeSettings /></section>
         <section ref={setRef('bible')} data-section="bible" className="scroll-mt-lg"><BibleSettings /></section>
         <section ref={setRef('tags')} data-section="tags" className="scroll-mt-lg"><TagSettings /></section>
+        <section ref={setRef('fonts')} data-section="fonts" className="scroll-mt-lg"><FontSettings /></section>
         <section ref={setRef('media')} data-section="media" className="scroll-mt-lg"><MediaCleanup /></section>
         <section ref={setRef('shortcuts')} data-section="shortcuts" className="scroll-mt-lg"><ShortcutSettings /></section>
         <section ref={setRef('remote')} data-section="remote" className="scroll-mt-lg"><RemoteSettings /></section>

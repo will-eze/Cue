@@ -21,6 +21,7 @@ export async function exportBackup(destPath) {
 
   const entries = ['cue.db'];
   if (fs.existsSync(path.join(userData, 'media'))) entries.push('media');
+  if (fs.existsSync(path.join(userData, 'fonts'))) entries.push('fonts');
 
   await tar.create({ gzip: true, file: destPath, cwd: userData }, entries);
   return { ok: true, path: destPath, size: fs.statSync(destPath).size };
@@ -69,6 +70,12 @@ export async function importBackup(srcPath) {
     if (fs.existsSync(stagedMedia)) fs.renameSync(stagedMedia, mediaDir);
     else fs.mkdirSync(mediaDir, { recursive: true });
 
+    // User-installed fonts (userData/fonts) travel with the backup too.
+    const fontsDir = path.join(userData, 'fonts');
+    fs.rmSync(fontsDir, { recursive: true, force: true });
+    const stagedFonts = path.join(tmpDir, 'fonts');
+    if (fs.existsSync(stagedFonts)) fs.renameSync(stagedFonts, fontsDir);
+
     // media_assets.path is stored absolute, so a backup restored on a different
     // machine/account would point at the old userData dir. Rewrite each path to
     // this install's media dir (keeping the file's basename) so assets resolve.
@@ -79,6 +86,20 @@ export async function importBackup(srcPath) {
       fixDb.transaction(() => {
         for (const r of rows) upd.run(path.join(mediaDir, path.basename(r.path)), r.id);
       })();
+
+      // user_fonts is a JSON array in settings with absolute file paths — rewrite
+      // each to this install's fonts dir so custom fonts resolve after a restore.
+      const fontsDir = path.join(userData, 'fonts');
+      const frow = fixDb.prepare("SELECT value FROM settings WHERE key='user_fonts'").get();
+      if (frow) {
+        try {
+          const list = JSON.parse(frow.value);
+          if (Array.isArray(list)) {
+            for (const f of list) if (f && f.path) f.path = path.join(fontsDir, path.basename(f.path));
+            fixDb.prepare("UPDATE settings SET value=? WHERE key='user_fonts'").run(JSON.stringify(list));
+          }
+        } catch {}
+      }
     } finally {
       fixDb.close();
     }

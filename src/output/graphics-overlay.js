@@ -135,6 +135,10 @@
       }
       applyTextStyle(ntName,  st.name,  NAME_DEFAULTS);
       applyTextStyle(ntTitle, st.title, TITLE_DEFAULTS);
+      // Full width within the bug box so text-align (centre/right) is honoured,
+      // matching the editor's BugPreview (which stretches the lines full width).
+      ntName.style.width  = '100%';
+      ntTitle.style.width = '100%';
 
       ntName.textContent  = nt.name  || '';
       ntTitle.textContent = nt.title || '';

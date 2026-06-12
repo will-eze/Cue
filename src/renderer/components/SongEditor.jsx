@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import MediaPickerModal from './MediaPickerModal';
 import { mediaUrl } from '../utils/mediaUrl';
 import { sectionOrdinals } from '../utils/sectionLabels';
+import { useFonts } from '../utils/fonts';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
 } from '@dnd-kit/core';
@@ -482,7 +483,7 @@ export function LowerThirdPreview({ text, runs, style, copyright, copyrightAlign
     fontStyle:        style?.italic ? 'italic' : 'normal',
     textDecoration:   style?.underline ? 'underline' : 'none',
     color:            style?.color || '#ffffff',
-    textAlign:        style?.align || 'left',
+    textAlign:        style?.align || 'center',
     lineHeight:       style?.lineSpacing ? String(style.lineSpacing) : '1.2',
     letterSpacing:    style?.letterSpacing ? `${style.letterSpacing}em` : undefined,
     textTransform:    style?.uppercase ? 'uppercase' : 'none',
@@ -621,7 +622,30 @@ export function FormattingToolbar({ style, onChange, fonts, hasSelection, execCm
           className="bg-surface-container-high text-on-surface text-[11px] rounded px-1.5 h-6 border border-outline-variant/50 w-32 outline-none focus:border-primary cursor-pointer flex-shrink-0"
         >
           <option value="">Default Font</option>
-          {fonts.map((f) => <option key={f.family} value={f.family}>{f.label}</option>)}
+          {(() => {
+            // Group by category; bundled fonts first within each so the shipped,
+            // pixel-identical faces sit at the top of the list.
+            const GROUPS = [
+              { key: 'custom',     label: 'My Fonts' },
+              { key: 'sans-serif', label: 'Sans-serif' },
+              { key: 'serif',      label: 'Serif' },
+              { key: 'display',    label: 'Display' },
+              { key: 'monospace',  label: 'Monospace' },
+            ];
+            return GROUPS.map(({ key, label }) => {
+              const items = fonts
+                .filter((f) => (f.category || 'sans-serif') === key)
+                .sort((a, b) => (b.bundled ? 1 : 0) - (a.bundled ? 1 : 0));
+              if (!items.length) return null;
+              return (
+                <optgroup key={key} label={label}>
+                  {items.map((f) => (
+                    <option key={f.family} value={f.family}>{f.label}{f.bundled ? '' : ' ·'}</option>
+                  ))}
+                </optgroup>
+              );
+            });
+          })()}
         </select>
 
         {/* Font size */}
@@ -945,7 +969,7 @@ export default function SongEditor({ song, onClose, onSave }) {
   const editorRef    = useRef(null);
   const sectionsRef  = useRef([]);
   const activeKeyRef = useRef(null);
-  const fonts        = window.cue.fonts.list;
+  const fonts        = useFonts();
   const sensors      = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   // Keep sectionsRef in sync

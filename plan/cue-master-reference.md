@@ -72,7 +72,8 @@ src/
 │   │                         Wires the remote control server: remoteServer.configure (getState + forward commands to
 │   │                         the renderer as remote:command), outputManager.setRemoteStateListener, applyRemoteConfig().
 │   ├── preload.js            contextBridge → window.cue. The complete renderer API surface.
-│   ├── output-preload.js     Minimal contextBridge for output windows → window.cueOutput only.
+│   ├── output-preload.js     Minimal contextBridge for output windows → window.cueOutput only. Also injects
+│   │                         user-installed @font-face rules (fonts:css) into every output window on load.
 │   ├── fonts.js              BUNDLED_FONTS array + DEFAULT_FONT. Imported by preload.js.
 │   │
 │   ├── db/
@@ -92,8 +93,12 @@ src/
 │   │   │                     GHS hymnal: readBundledGhsRows, seedGhsHymnal (once, ghs_seeded flag),
 │   │   │                     tagGhsSongs (idempotent backfill of the GHS tag onto "GHS N …" songs).
 │   │   ├── services.js       Service / rundown CRUD. resolveItem() joins media paths.
-│   │   ├── media.js          Media import (copy to userData/media/), list, delete, folders.
+│   │   ├── media.js          Media import (copy to userData/media/), list, delete, folders. deleteAllMedia()
+│   │   │                     wipes every asset + folder + file and resets the global media settings keys (Danger Zone).
 │   │   ├── settings.js       Key-value settings store. Global logo/background helpers (song/scripture/slide).
+│   │   ├── fonts.js          User-installed fonts: copy file → userData/fonts/<uuid>.<ext>, metadata in the
+│   │   │                     `user_fonts` settings key. importFont/deleteFont/listUserFonts; buildUserFontCss()
+│   │   │                     emits @font-face rules (served via cue-media://) for the operator + output windows.
 │   │   ├── bible.js          Version + verse queries (books/chapters/verses/adjacent/search/resolve). importVersion,
 │   │   │                     deleteVersion, seedBundledBibles, getbible online catalog (listOnlineVersions/downloadOnlineVersion).
 │   │   ├── bible-import.js   Parsers: book-array / flat / nested-object JSON + Zefania XML. deriveAbbrev (word initials).
@@ -115,7 +120,9 @@ src/
 │   │   │                     show_graphics; content-mode-only channel updates route to setChannelContentMode).
 │   │   ├── graphics.ipc.js   Registers graphics:* CRUD handlers (registerGraphicsIpc).
 │   │   ├── themes.ipc.js     Registers themes:* CRUD + apply handlers (registerThemesIpc).
-│   │   ├── settings.ipc.js   Registers settings:* handlers.
+│   │   ├── settings.ipc.js   Registers settings:* handlers (incl. exportBackup/importBackup + factoryReset:
+│   │   │                     close DB, delete cue.db + media/ + fonts/, relaunch as a fresh install).
+│   │   ├── fonts.ipc.js      Registers fonts:* handlers (listUser/css/import [native multi-file picker]/delete).
 │   │   ├── bible.ipc.js      Registers bible:* handlers (versions/books/chapters/verses/adjacent/resolve/search/importFile/delete/online:*).
 │   │   └── remote.ipc.js       Registers remote:* handlers (getConfig/setConfig/regenerateToken/navState). Owns the
 │   │                           settings keys (remote_enabled/port/lan/token) + applyRemoteConfig() (boot + on-change start).
@@ -171,9 +178,10 @@ src/
 │   │   │                     LogoSettings → BackgroundSettings → ThemeSettings → BibleSettings → TagSettings → MediaCleanup →
 │   │   │                     ShortcutSettings → RemoteSettings → DataSettings → DangerZone → SettingsFooter (always last two,
 │   │   │                     rendered at layout level — not inside any sub-component).
-│   │   └── MultiviewView.jsx Multi-output monitor wall. Subscribes to output:multiview-captures.
-│   │                         NDI channels show NdiTile (checkerboard + frame). Screen channels show ScreenMonitorTile.
-│   │                         NDI channels never show "No screens assigned" — they don't use channel_monitors.
+│   │   └── MultiviewView.jsx Multi-output monitor wall — one uniform responsive grid of equal tiles (every
+│   │                         screen monitor, every NDI channel, and a placeholder tile per screen channel with no
+│   │                         monitors). Each tile carries a ChannelChip header (name + NDI/template/active badges).
+│   │                         Subscribes to output:multiview-captures. NDI channels show NdiTile (checkerboard + frame).
 │   │
 │   ├── panels/
 │   │   ├── RundownPanel.jsx       Service selector with inline rename/delete UI (no native confirm dialogs).
@@ -277,8 +285,13 @@ src/
 │   │   ├── MediaCleanup.jsx      Unused-media report. "Scan" (media.findUnused) → thumbnail grid (all pre-selected),
 │   │   │                          per-item checkboxes, select/deselect-all, "N selected · X reclaimable" tally,
 │   │   │                          two-step destructive Delete Selected (media.deleteMany). Re-scans after deleting.
-│   │   ├── DangerZone.jsx        Destructive actions: clear rundown items, delete rundown, clear library.
-│   │   │                          Two-step confirm on every action. Success toast feedback.
+│   │   ├── DangerZone.jsx        Destructive actions: clear rundown items, delete rundown, clear library,
+│   │   │                          clear media library (media.deleteAll), and a separate emphasised "Reset app
+│   │   │                          to defaults" card (settings.factoryReset → wipe + relaunch). Two-step confirm
+│   │   │                          on every action. Success toast feedback.
+│   │   ├── FontSettings.jsx      Settings → Fonts. Install custom fonts (fonts.import, native picker; .woff2/
+│   │   │                          .woff/.ttf/.otf), per-font live preview + remove (fonts.delete), and a read-only
+│   │   │                          list of the built-in families. Refreshes the @font-face injection after changes.
 │   │   ├── ShortcutSettings.jsx  Configurable keyboard shortcuts UI. Modifier selector (Cmd/Ctrl/Alt)
 │   │                              + key inputs for GO, Clear, Logo, Live Toggle. Saves to settings DB.
 │   │                              Shortcuts reload in OperatorView on next bgRefreshTick.
@@ -290,6 +303,9 @@ src/
 │   │
 │   └── utils/
 │       ├── mediaUrl.js           mediaUrl(absPath) → cue-media://localhost/encoded/path
+│       ├── fonts.js              useFonts() hook → merged [bundled…, user…] font list for the editors (user fonts
+│       │                         load async, grouped as category 'custom'). injectUserFontFaces() injects the user
+│       │                         @font-face <style> into the operator document (called on app start + after import).
 │       ├── channelMode.js        Lower-third content-mode helpers: CHANNEL_MODES, channelMode(ch),
 │       │                         modeToFlags(mode) ({show_program, show_graphics}). Shared by Settings + Graphics panel.
 │       └── sectionLabels.js      Numbered section labels — single source of truth. sectionOrdinals(slides) (n or null,
@@ -572,6 +588,7 @@ Known keys:
 | `remote_port` | number | Server TCP port (default 7373) |
 | `remote_lan` | boolean | Bind all interfaces (LAN) vs 127.0.0.1 only (default false) |
 | `remote_token` | string | Pairing token; minted on first enable, regenerable |
+| `user_fonts` | array | User-installed fonts: `[{id, family, label, filename, path, ext}]`. Files live in `userData/fonts/`; served via cue-media://. Included in backups (paths rewritten on restore), wiped by factory reset |
 
 **localStorage keys** (UI state only — not in DB):
 | Key | Description |
@@ -847,6 +864,7 @@ target/format, label + end message, the draggable time box (`time.textBox`/`ltBa
 | `list(folderId?)` | `[media_asset]` | `null`/`undefined` → root (folder_id IS NULL). Pass folder id for subfolder. |
 | `delete(id)` | void | Removes DB row and deletes file. |
 | `deleteMany(ids)` | `number` | Bulk-delete (rows + files); returns count removed. Used by the unused-media cleanup. |
+| `deleteAll()` | `number` | Wipes the whole media library (rows + folders + files) and resets the global media settings keys. Returns assets removed. Danger Zone "Clear media library". |
 | `findUnused()` | `[media_asset & {size_bytes}]` | Media referenced by nothing — not a song `default_background_id`, `service_items.background_override_id`, `output_channels.logo_override_id`, `themes.background_id`, nor a media-bearing `settings` key (`global_logo_id`, `global_bg_*_id`). Settings store ids as JSON-encoded ints, collected separately from the FK columns. Each row is stat'd for `size_bytes`. |
 | `getDiskUsage()` | `number` | Total bytes in userData/media/. |
 | `getMediaDir()` | `string` | Absolute path to userData/media/. |
@@ -868,7 +886,8 @@ target/format, label + end message, the draggable time box (`time.textBox`/`ltBa
 | `getDataPath()` | Returns app.getPath('userData'). |
 | `openDataFolder()` | Opens userData in Finder/Explorer. |
 | `exportBackup()` | No args — shows a native save dialog (`Cue <date>.cuebackup`), then writes a gzipped tar of `cue.db` + `media/`. Returns `{ok, path, size}` or `{ok:false, canceled}`. |
-| `importBackup()` | No args — shows an open dialog, validates the archive, swaps `cue.db` + `media/` on disk, then relaunches the app (~400ms after the IPC reply). Returns `{ok}`, `{ok:false, canceled}`, or `{ok:false, error}` (validation/extract failure leaves the install untouched). |
+| `importBackup()` | No args — shows an open dialog, validates the archive, swaps `cue.db` + `media/` + `fonts/` on disk (media + user-font paths rewritten to this install), then relaunches the app (~400ms after the IPC reply). Returns `{ok}`, `{ok:false, canceled}`, or `{ok:false, error}` (validation/extract failure leaves the install untouched). |
+| `factoryReset()` | No args — closes the DB, deletes `cue.db` (+wal/shm), `media/` and `fonts/`, then relaunches as a fresh install (DB + bibles + GHS re-seed on boot). Returns `{ok:true}`. Danger Zone "Reset app to defaults". |
 
 ### `window.cue.bible`
 
@@ -903,8 +922,14 @@ HTTP surface (token via `X-Cue-Token` header or `?token=`): `GET /` (control pag
 - `openFile(options)` → `{canceled, filePaths}` — wraps `dialog.showOpenDialog`.
 
 ### `window.cue.fonts`
-- `fonts.list` — synchronous: `[{family, label, category}]` from `BUNDLED_FONTS`
+- `fonts.list` — synchronous: `[{family, label, category, bundled?}]` from `BUNDLED_FONTS` (6 shipped faces + ~22 cross-platform system fonts as fallback stacks)
 - `fonts.default` — synchronous: `'Inter'`
+- `fonts.listUser()` — async: user-installed fonts `[{id, family, label, filename, path, ext}]`
+- `fonts.css()` — async: `@font-face` CSS for all user fonts (cue-media:// URLs); injected into the operator UI + every output window
+- `fonts.import()` — async: native multi-file picker → copies + registers each; returns `{ok, added, errors, list}` or `{ok:false, canceled}`
+- `fonts.delete(id)` — async: removes a user font (row + file)
+
+Editors load the merged list via the `useFonts()` hook (`renderer/utils/fonts.js`); the picker groups by category, with user fonts under "My Fonts".
 
 ### `window.cue.on(channel, callback)` → unsubscribe function
 Subscribe to main→renderer events. Returns an unsubscribe function — call it to remove the listener (e.g. in `useEffect` cleanup). Allowed channels:
@@ -1184,6 +1209,8 @@ Works in both dev (ASAR not used) and production (path is inside ASAR).
 ### Lower-third template structure
 `lowerthird.html` uses `#lowerthird` (bottom-anchored, full-width) containing `#text` and `#copyright` — the **lyric band** (program slide) only, handled by `lowerthird.js`. Background is always `transparent` by default — JS sets it from `ltBar` via `buildBarBg()`. The `applyStyle(el, s)` function applies all style properties including the bar background. Clear and logo events explicitly reset `ltDiv.style.background = 'transparent'`. The broadcast-graphics overlay is a separate, shared layer (`graphics-overlay.js`).
 
+**Default alignment is CENTRE.** A song whose style is all-default saves `style_json = null` (because `align:'center'` is itself the default — see `styleIsDefault`), so the output receives `styleJson: null`. `applyStyle` therefore treats a missing style as `{}` and defaults `text-align` to `center` (and `#text` is `width:100%`, `lowerthird.css` also defaults centre) — it must **not** early-return on null, or centred lyrics render left (fullscreen never hit this because `fullscreen.css #text` already defaults centre). The same `style?.align || 'center'` default lives in the operator monitor (`PreviewLivePanel.MonitorFrame`) and the broadcast name/title bug (`graphics-overlay.js`, width:100%). Explicit left/right makes the style non-default → saved → applied normally.
+
 ### Broadcast-graphics overlay + lower-third content modes
 The broadcast-graphics overlay (name/title bug, ticker, custom HTML) renders on **every non-stage output window** (fullscreen + lower-third) via the shared `src/output/graphics-overlay.js`, so an In-Room graphic overlays the auditorium program and an Online graphic overlays the NDI feed. It injects its own `#cue-gfx` DOM (high z-index, `pointer-events:none`) and listens for `graphic:update`. `manager.broadcastGraphic()` sends each window only the overlay slots whose `target` matches its kind (`getGraphicsWindowInfos` classifies by windows-map key: numeric = screen/in-room, `ndi-*` = online).
 
@@ -1240,24 +1267,19 @@ Offscreen rendering (`offscreen: true` BrowserWindow) + `paint` event + `setInte
 
 ## 15. Fonts
 
-6 font families bundled in `src/fonts/` (12 `.woff2` files). No system font installation required.
+Three tiers, all surfaced in one picker (grouped by category):
 
-| Family | Category |
-|---|---|
-| Inter | sans-serif (default UI font) |
-| Montserrat | sans-serif |
-| Lato | sans-serif |
-| Oswald | sans-serif condensed (output templates only) |
-| Playfair Display | serif |
-| EB Garamond | serif |
+**1. Bundled** — 6 families in `src/fonts/` (12 `.woff2`), pixel-identical on every machine: Inter (default UI), Montserrat, Lato, Oswald (output templates only), Playfair Display, EB Garamond. `fonts.css` has the `@font-face` rules (`font-display: block`), loaded by output templates (`<link href="../fonts/fonts.css">`) and the renderer (`@import` in `index.css`).
 
-`fonts.css` has all `@font-face` rules with `font-display: block`. Loaded by:
-- Output templates: `<link href="../fonts/fonts.css">` (relative path, works in ASAR)
-- Renderer: `@import '../fonts/fonts.css'` in `index.css` (Vite bundles the .woff2 files)
+**2. System** — ~22 common cross-platform families (Arial, Helvetica, Georgia, Times New Roman, Verdana, Calibri, Segoe UI, Palatino, Garamond, Impact, Courier New, …) listed in `BUNDLED_FONTS` with `family` as a **fallback stack** (e.g. `'"Helvetica Neue", Helvetica, Arial, sans-serif'`) and `bundled: false`. They resolve from the OS — no files shipped.
 
-`src/main/fonts.js` exports `BUNDLED_FONTS` (array) and `DEFAULT_FONT = 'Inter'`. Exposed as `window.cue.fonts.list` / `window.cue.fonts.default` (synchronous, no IPC).
+`src/main/fonts.js` exports `BUNDLED_FONTS` (`[{family, label, category, bundled?}]`, category ∈ sans-serif/serif/display/monospace) and `DEFAULT_FONT = 'Inter'`. Exposed synchronously as `window.cue.fonts.list` / `.default`.
 
-**To add a font:** drop `.woff2` into `src/fonts/`, add `@font-face` to `fonts.css`, add entry to `BUNDLED_FONTS` in `fonts.js`.
+**3. User-installed** — operators add their own `.woff2/.woff/.ttf/.otf` via **Settings → Fonts** (`FontSettings.jsx`). Files copy into `userData/fonts/<uuid>.<ext>`, metadata into the `user_fonts` settings key; `db/fonts.js` derives the family name from the filename. They are **served through the `cue-media://` protocol** (font MIME types added to `MEDIA_MIME`) and registered as `@font-face` rules (`buildUserFontCss()`) injected into **both** the operator document (`injectUserFontFaces()` in `renderer/utils/fonts.js`, on app start + after import) **and every output window** (`output-preload.js` on load) — so a custom family looks identical in the editor preview and on screen/NDI. Included in backups (paths rewritten on restore); wiped by factory reset. Appear under "My Fonts" (category `custom`) in the picker.
+
+The editors consume the merged bundled+user list via the `useFonts()` hook.
+
+**To add a built-in font:** drop `.woff2` into `src/fonts/`, add `@font-face` to `fonts.css`, add an entry to `BUNDLED_FONTS`.
 
 ---
 
@@ -1276,7 +1298,7 @@ Offscreen rendering (`offscreen: true` BrowserWindow) + `paint` event + `setInte
 
 **Live preview pane** — always-visible `SlidePreview` (fullscreen) or `LowerThirdPreview` (lower-third), rendered at 1920×1080 then CSS-scaled (height-bound 16:9 box so it never overflows the footer). Background picker wired to `songs:setBackground`.
 
-**PowerPoint-style positioning (editor previews)** — a fixed `CONTENT_BOX = {x:5,y:5,w:90,h:90}` "content window" (safe-area guide) is drawn over the background. `style.textBox{x,y,w,h}` is the text box: **drag** the body to move, **8 resize handles** (`TB_HANDLES`, counter-scaled to constant visual size; `resizeBox()` keeps the opposite edge fixed) to resize, anywhere on screen. *Text align* aligns text within the box; *object align* snaps the box within the content window. The reference is draggable too (`onRefPosChange`; converts bottom-anchor → `pos{x,y}` via bounding-rect measurement, no jump). `SlidePreview` props: `onTextBoxChange`, `onRefPosChange`. Output already honours `textBox.h` + `verticalAlign`, so positioning is editor-only — no template changes.
+**PowerPoint-style positioning (editor previews)** — a fixed `CONTENT_BOX = {x:5,y:5,w:90,h:90}` "content window" (safe-area guide) is drawn over the background. `style.textBox{x,y,w,h}` is the text box: **drag** the body to move, **8 resize handles** (`TB_HANDLES`, counter-scaled to constant visual size; `resizeBox()` keeps the opposite edge fixed) to resize, anywhere on screen. *Text align* aligns text within the box; *object align* snaps the box within the content window. The reference is draggable too (`onRefPosChange`; converts bottom-anchor → `pos{x,y}` via bounding-rect measurement, no jump). `SlidePreview` props: `onTextBoxChange`, `onRefPosChange`. Output already honours `textBox.h` + `verticalAlign`, so positioning is editor-only — no template changes. The `GraphicsEditor` box previews (`BugPreview`, `CountdownPreview`) draw the same content-window guide (`ScaledFrame contentGuide`) and their object-align snaps to the same `CONTENT_BOX`; boxes still drag anywhere on the frame.
 
 **`ltBar`** — `null` by default (transparent lower-third bar). When set: `{ color, opacity, solid }`. `buildBarBg(ltBar)` computes a `linear-gradient` (default) or `rgba()` solid. Same function duplicated in `SongEditor.jsx`, `PreviewLivePanel.jsx`, and `lowerthird.js`.
 
@@ -1355,7 +1377,7 @@ The reference flows in the payload as `copyright` (text), `copyrightAlign` (`'ri
    b. `initDb()` — open SQLite, run pending migrations
    c. `seedBundledBibles()` — import any missing bundled translation (KJV + WEB) from `resources/bible/*.json` (matched by abbrev). Packaged path `process.resourcesPath/bible`; dev path `app.getAppPath()/resources/bible`.
    d. `seedGhsHymnal()` — first run only (gated by `ghs_seeded`): import the bundled GHS hymnal from `resources/ghs/ghs-hymnal.json`; then always `tagGhsSongs()` to backfill the GHS tag. Same packaged/dev path resolution as bibles.
-   e. Register all IPC handlers (songs, services, media, output, settings, bible, graphics, themes, remote)
+   e. Register all IPC handlers (songs, services, media, output, settings, bible, graphics, themes, remote, fonts)
    f. `createMainWindow()` — show operator UI
    g. `remoteServer.configure(...)` + `outputManager.setRemoteStateListener(...)` + `await applyRemoteConfig()` — start the network control server if `remote_enabled`
    h. `outputManager.init()` — load active channels, create BrowserWindows
