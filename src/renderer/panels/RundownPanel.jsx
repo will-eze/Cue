@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
 } from '@dnd-kit/core';
@@ -139,6 +140,17 @@ function SortableItem({ item, index, isPreview, isLive, onClick, onDoubleClick, 
             LOOP
           </span>
         )}
+        {item.advance_seconds > 0 && (
+          <span
+            className="flex items-center gap-[2px] font-label-sm text-[9px] tracking-wider bg-surface-variant text-on-surface-variant px-xs py-[2px] rounded uppercase"
+            title={item.advance_loop === 'item' ? 'Auto-advance · loops this item' : 'Auto-advance · continues rundown'}
+          >
+            <span className="material-symbols-outlined text-[11px] leading-none">
+              {item.advance_loop === 'item' ? 'repeat_one' : 'timer'}
+            </span>
+            {item.advance_seconds}s
+          </span>
+        )}
         {item.notes && (
           <span className="font-label-sm text-[9px] tracking-wider bg-surface-variant text-on-surface-variant px-xs py-[2px] rounded uppercase">
             NOTE
@@ -146,6 +158,122 @@ function SortableItem({ item, index, isPreview, isLive, onClick, onDoubleClick, 
         )}
       </div>
     </div>
+  );
+}
+
+// Set / clear an item's auto-advance interval. Presets cover the common pre-roll
+// rotations; the field accepts any whole-second value. "Off" clears it (manual).
+const ADVANCE_PRESETS = [5, 10, 15, 20, 30, 45, 60];
+
+const LOOP_MODES = [
+  { id: 'rundown', label: 'Continue rundown', hint: 'Roll into the next item; wrap to the top at the end.' },
+  { id: 'item',    label: 'Loop this item',   hint: 'Rotate this item’s slides forever.' },
+];
+
+function AutoAdvanceModal({ item, onApply, onClose }) {
+  const [secs, setSecs] = useState(item.advance_seconds > 0 ? String(item.advance_seconds) : '');
+  const [loop, setLoop] = useState(item.advance_loop === 'item' ? 'item' : 'rundown');
+  // Default on (matches the column default) so a brand-new auto-advance wraps.
+  const [wrap, setWrap] = useState(item.advance_wrap !== 0);
+
+  function apply(value) {
+    const n = Math.round(Number(value));
+    onApply(Number.isFinite(n) && n > 0 ? n : null, loop, wrap);
+  }
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/60"
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="w-[340px] bg-surface-container-high border border-outline-variant/40 rounded-xl shadow-2xl ring-1 ring-white/5 p-lg">
+        <h3 className="text-label-sm font-label-sm uppercase tracking-widest text-on-surface-variant mb-1">Auto-Advance</h3>
+        <p className="text-[11px] text-on-surface-variant/70 mb-md leading-snug">
+          When this item is live, move forward automatically after the set interval.
+        </p>
+
+        <div className="grid grid-cols-4 gap-xs mb-md">
+          {ADVANCE_PRESETS.map((p) => (
+            <button
+              key={p}
+              onClick={() => setSecs(String(p))}
+              className={`py-xs text-[11px] font-mono rounded border cursor-pointer transition-colors ${
+                Number(secs) === p
+                  ? 'border-primary/60 bg-primary-container/20 text-primary'
+                  : 'border-outline-variant/30 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
+              }`}
+            >
+              {p}s
+            </button>
+          ))}
+          <button
+            onClick={() => apply(null)}
+            className="py-xs text-[11px] font-mono rounded border border-outline-variant/30 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface cursor-pointer transition-colors uppercase"
+          >
+            Off
+          </button>
+        </div>
+
+        {/* Loop mode — what happens when the timer reaches the item's last slide. */}
+        <p className="text-[10px] font-label-sm uppercase tracking-widest text-on-surface-variant/60 mb-xs">At end of item</p>
+        <div className="flex flex-col gap-xs mb-md">
+          {LOOP_MODES.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => setLoop(m.id)}
+              className={`text-left px-sm py-xs rounded border cursor-pointer transition-colors ${
+                loop === m.id
+                  ? 'border-primary/60 bg-primary-container/20'
+                  : 'border-outline-variant/30 hover:bg-surface-variant'
+              }`}
+            >
+              <span className={`block text-[11px] font-bold ${loop === m.id ? 'text-primary' : 'text-on-surface'}`}>{m.label}</span>
+              <span className="block text-[10px] text-on-surface-variant/70 leading-snug">{m.hint}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Wrap toggle — only meaningful in 'rundown' mode (item-loop always cycles). */}
+        {loop === 'rundown' && (
+          <button
+            onClick={() => setWrap((w) => !w)}
+            className="flex items-center gap-sm w-full text-left mb-md px-xs py-xs rounded hover:bg-surface-variant cursor-pointer transition-colors"
+          >
+            <span
+              className={`shrink-0 w-8 h-[18px] rounded-full relative transition-colors ${wrap ? 'bg-primary' : 'bg-outline-variant/40'}`}
+            >
+              <span className={`absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white transition-all ${wrap ? 'left-[16px]' : 'left-[2px]'}`} />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-[11px] font-bold text-on-surface">Wrap at the end</span>
+              <span className="block text-[10px] text-on-surface-variant/70 leading-snug">
+                {wrap ? 'Loop back to the first item.' : 'Stop after the last slide (one pass).'}
+              </span>
+            </span>
+          </button>
+        )}
+
+        <div className="flex items-center gap-sm">
+          <input
+            autoFocus
+            type="number"
+            min="1"
+            value={secs}
+            onChange={(e) => setSecs(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') apply(secs); if (e.key === 'Escape') onClose(); }}
+            placeholder="Custom seconds…"
+            className="flex-1 min-w-0 bg-surface-container-lowest border border-outline-variant/30 rounded px-sm py-xs text-[12px] font-mono text-on-surface outline-none focus:border-primary"
+          />
+          <button
+            onClick={() => apply(secs)}
+            className="shrink-0 px-md py-xs bg-primary text-on-primary text-label-sm font-label-sm rounded cursor-pointer hover:brightness-110 active:scale-95"
+          >
+            Set
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 }
 
@@ -161,6 +289,7 @@ export default function RundownPanel({
   const [renameTitle, setRenameTitle] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [bgPickerForItem, setBgPickerForItem] = useState(null);
+  const [advanceForItem, setAdvanceForItem] = useState(null);
   const [previewSong, setPreviewSong] = useState(null);
   const [editSong, setEditSong] = useState(null);
   const [themes, setThemes] = useState([]);
@@ -442,6 +571,13 @@ export default function RundownPanel({
             ] : []),
             { separator: true },
             {
+              label: contextMenu.item.advance_seconds > 0
+                ? `Auto-Advance: ${contextMenu.item.advance_seconds}s`
+                : 'Auto-Advance…',
+              onClick: () => { setAdvanceForItem(contextMenu.item); setContextMenu(null); },
+            },
+            { separator: true },
+            {
               label: 'Remove from Rundown',
               danger: true,
               onClick: () => { onRemoveItem(contextMenu.item.id); setContextMenu(null); },
@@ -463,6 +599,18 @@ export default function RundownPanel({
             setBgPickerForItem(null);
           }}
           onClose={() => setBgPickerForItem(null)}
+        />
+      )}
+
+      {advanceForItem && (
+        <AutoAdvanceModal
+          item={advanceForItem}
+          onApply={async (seconds, loop, wrap) => {
+            await window.cue.services.setItemAdvance(advanceForItem.id, seconds, loop, wrap);
+            onRefresh?.();
+            setAdvanceForItem(null);
+          }}
+          onClose={() => setAdvanceForItem(null)}
         />
       )}
 

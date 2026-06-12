@@ -458,6 +458,38 @@ const migrations = [
       ALTER TABLE graphics_v16 RENAME TO graphics;
     `);
   },
+
+  // v17 — Auto-advance / timed loops. advance_seconds on a service_item: when that
+  // item is live and the value is set (> 0), OperatorView schedules the next slide/
+  // item after that many seconds, rolling into the next rundown item at a boundary
+  // and wrapping back to the first item at the end (unattended pre-roll loop). NULL
+  // (the default) means manual advance only. Scheduling lives in the renderer — live
+  // state is owned by OperatorView, never the main process.
+  function v17(database) {
+    database.exec(`
+      ALTER TABLE service_items ADD COLUMN advance_seconds INTEGER;
+    `);
+  },
+
+  // v18 — Auto-advance loop mode. advance_loop controls what happens when the timer
+  // reaches the item's last slide: 'rundown' (default / NULL) rolls into the next
+  // rundown item and wraps to the top at the end; 'item' bounces back to this item's
+  // first slide and rotates within it forever (a single self-contained announcement
+  // loop). Read by OperatorView.handleAutoAdvance.
+  function v18(database) {
+    database.exec(`
+      ALTER TABLE service_items ADD COLUMN advance_loop TEXT;
+    `);
+  },
+
+  // v19 — Wrap toggle for the 'rundown' auto-advance mode. advance_wrap=1 (default)
+  // wraps back to the first rundown item after the last item's final slide; 0 stops
+  // there (one unattended pass). Only consulted when advance_loop is 'rundown'.
+  function v19(database) {
+    database.exec(`
+      ALTER TABLE service_items ADD COLUMN advance_wrap INTEGER NOT NULL DEFAULT 1;
+    `);
+  },
 ];
 
 function runMigrations() {

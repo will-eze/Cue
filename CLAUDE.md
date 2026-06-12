@@ -63,4 +63,4 @@ Typography: Inter for body/headlines. Labels/chips/badges/buttons: `"JetBrains M
 - `npm start` — dev server
 - `npm run make` — distributable
 - After any Electron version bump: `npm run rebuild` (recompiles `better-sqlite3` and `grandi`)
-- DB: `~/Library/Application Support/Cue/cue.db` (macOS) · `%APPDATA%\Cue\cue.db` (Windows) · schema v16
+- DB: `~/Library/Application Support/Cue/cue.db` (macOS) · `%APPDATA%\Cue\cue.db` (Windows) · schema v19

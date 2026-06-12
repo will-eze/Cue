@@ -13,6 +13,7 @@ export function registerServicesIpc() {
   ipcMain.handle('services:setItemBackground', (_e, itemId, mediaId) => services.setItemBackground(itemId, mediaId));
   ipcMain.handle('services:setItemNotes', (_e, itemId, notes) => services.setItemNotes(itemId, notes));
   ipcMain.handle('services:setItemLoop',  (_e, itemId, loop)  => services.setItemLoop(itemId, loop));
+  ipcMain.handle('services:setItemAdvance', (_e, itemId, seconds, loop, wrap) => services.setItemAdvance(itemId, seconds, loop, wrap));
   ipcMain.handle('services:duplicateItem', (_e, itemId) => services.duplicateItem(itemId));
   ipcMain.handle('services:applyBackgroundToRundown', (_e, serviceId, mediaId) =>
     services.applyBackgroundToRundown(serviceId, mediaId));

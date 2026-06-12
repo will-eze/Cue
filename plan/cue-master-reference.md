@@ -470,7 +470,12 @@ notes TEXT
 content TEXT                 -- for item_type='slide': JSON {text, ...} or plain text
 background_override_id INTEGER REFERENCES media_assets(id) ON DELETE SET NULL
 media_loop INTEGER NOT NULL DEFAULT 0   -- v8: loop this media item's video/audio
+advance_seconds INTEGER                 -- v17: auto-advance interval; NULL = manual
+advance_loop TEXT                        -- v18: 'rundown' (default) | 'item' — what to do at the item's last slide
+advance_wrap INTEGER NOT NULL DEFAULT 1  -- v19: rundown mode — wrap to first item at the end (1) vs stop (0)
 ```
+
+**Auto-advance / timed loops** (v17–v19): when an item is live and `advance_seconds` is set, `OperatorView` schedules a single timer per live slide that fires `handleAutoAdvance`. `advance_loop='item'` rotates the item's own slides forever (bouncing back to slide 0; single-slide items just re-fire to restart media/countdown timers). `advance_loop='rundown'` (default) steps into the next rundown item, and at the very end either wraps to the first item (`advance_wrap=1`) or stops on the last slide (`advance_wrap=0`). Scheduling lives entirely in the renderer — the main process never resolves the next slide.
 
 #### `bible_versions` / `bible_verses` (v7 — scripture module)
 ```sql
@@ -576,7 +581,7 @@ Known keys:
 
 #### `db_version`
 ```sql
-version INTEGER NOT NULL       -- current: 14
+version INTEGER NOT NULL       -- current: 19
 ```
 
 ---
@@ -705,7 +710,8 @@ All renderer↔main communication is via `ipcRenderer.invoke` / `ipcMain.handle`
 | `setItemBackground(itemId, mediaId\|null)` | void | Sets background_override_id. |
 | `setItemNotes(itemId, notes)` | void | — |
 | `setItemLoop(itemId, loop)` | void | Sets service_items.media_loop (0/1) — looping for a media item. |
-| `duplicateItem(itemId)` | `id` | Appends copy at end of rundown. |
+| `setItemAdvance(itemId, seconds, loop, wrap)` | void | Auto-advance config. `seconds>0` sets the interval (falsy clears it → manual, and NULLs `advance_loop`); `loop` = `'item'`\|`'rundown'`; `wrap` (bool, rundown mode) wraps to the first item at the end vs stops. |
+| `duplicateItem(itemId)` | `id` | Appends copy at end of rundown (carries advance config). |
 | `clearItems(serviceId)` | void | Removes all items from a rundown; keeps the service row. Used by Danger Zone. |
 | `applyBackgroundToRundown(serviceId, mediaId)` | `count` | Sets background_override_id on every song slot AND updates each song's default_background_id. |
 
@@ -1128,6 +1134,9 @@ Two ref patterns used to avoid stale closures:
 
 **Do not use `globalShortcut`** — it captures at OS level and prevents typing G, L, Space in any input field system-wide.
 
+### Auto-advance / timed loops
+A rundown item can carry a per-slide auto-advance interval (`service_items.advance_seconds`, set from the RundownPanel context menu → Auto-Advance modal). When that item is live, a `useEffect` keyed on `(liveItemId, liveSlideIdx, liveScripture, serviceData)` arms one `setTimeout`; on fire it calls `handleAutoAdvance` via `shortcutRef.current`. The effect re-runs on every live slide/item change, so each advance restarts the countdown; scripture-live (synthetic, not in the rundown) and items without an interval are skipped. `handleAutoAdvance` reads the live item's `advance_loop`/`advance_wrap`: `'item'` bounces back to slide 0 of the same item (forever); `'rundown'` steps forward like Space and, at the end of the rundown, wraps to the first item or stops based on `advance_wrap` (stopping = no state change = no new timer). The whole feature is renderer-side — it reuses the same handlers as the keyboard/remote, never resolving slides in main.
+
 ### Section labels (numbered verses)
 `utils/sectionLabels.js` is the single source of truth. A section type is numbered only when it repeats within the song — three verses → "Verse 1 / Verse 2 / Verse 3", a lone chorus stays "Chorus" (numbering is derived from the ordered list, never stored). `buildPayload`/`nextSlideInfo` use `labelForSlide()` so the stage/confidence display gets the numbered `sectionLabel`; `SlideList` (abbrev forms) and the song editor's ordinal badge use it too. Scripture/media slides pass through unchanged (each "type" is unique → no number).
 
@@ -1332,6 +1341,7 @@ The reference flows in the payload as `copyright` (text), `copyrightAlign` (`'ri
 | ~~Network control API~~ | ~~Medium~~ | Implemented — localhost/LAN HTTP + SSE server, token-gated. Phone control page + Companion HTTP verbs. See §7 `window.cue.remote`, `src/main/remote/`. |
 | Disk space warning | Low | Warn when < 2GB free on import. Not implemented. |
 | ~~Media unused-asset cleanup~~ | ~~Low~~ | Implemented — `MediaCleanup.jsx` (Settings → Media) scans via `media.findUnused` (songs/service_items/channels/themes/settings) and bulk-deletes. |
+| ~~Auto-advance / timed loops~~ | ~~Medium~~ | Implemented — `service_items.advance_seconds/advance_loop/advance_wrap`, renderer-side scheduler in `OperatorView.handleAutoAdvance`. See §12. |
 | Drag asset from Library onto rundown item | Medium | Background override currently only via context menu. |
 | `operator_preview_layout` setting | Low | Side-by-side monitor layout toggle. Setting key exists, no UI toggle. |
 

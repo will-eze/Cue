@@ -165,7 +165,7 @@ export default function OperatorView({
   }, [activeServiceId, bgRefreshTick]);
 
   const shortcutRef = useRef({});
-  shortcutRef.current = { handleNextSlide, handlePrevSlide, handleNextLiveSlide, handlePrevLiveSlide, handleGo, handleClear, handleLogo, handleLiveToggle, handleRemoteSelect };
+  shortcutRef.current = { handleNextSlide, handlePrevSlide, handleNextLiveSlide, handlePrevLiveSlide, handleGo, handleClear, handleLogo, handleLiveToggle, handleRemoteSelect, handleAutoAdvance };
 
   if (transportRef) {
     transportRef.current = { go: handleGo, clear: handleClear, logo: handleLogo };
@@ -243,6 +243,20 @@ export default function OperatorView({
     }));
     window.cue.remote?.pushNavState?.({ items, previewItemId, liveItemId, liveSlideIdx });
   }, [serviceData, previewItemId, liveItemId, liveSlideIdx, scriptureStyle, scriptureRefStyle, scriptureBgPath]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-advance / timed loops. When a rundown item is live and carries an
+  // advance_seconds interval, schedule a single timer to step forward; the effect
+  // re-runs on every live slide/item change, so each advance restarts the countdown.
+  // Scripture-live (synthetic) and items without an interval are skipped. The timer
+  // calls the latest handler via shortcutRef so it always sees current live state.
+  useEffect(() => {
+    if (liveScripture || !liveItemId) return;
+    const item = serviceData?.items?.find((i) => i.id === liveItemId);
+    const secs = item?.advance_seconds;
+    if (!secs || secs <= 0) return;
+    const t = setTimeout(() => shortcutRef.current.handleAutoAdvance(), secs * 1000);
+    return () => clearTimeout(t);
+  }, [liveItemId, liveSlideIdx, liveScripture, serviceData]);
 
   const refreshService = useCallback(() => {
     if (!activeServiceId) return;
@@ -564,6 +578,48 @@ export default function OperatorView({
         setPreviewItemId(prevItem.id);
         setPreviewSlideIdx(idx);
       }
+    }
+  }
+
+  // Auto-advance tick — fired by the per-slide timer when the live item has an
+  // advance_seconds interval. Steps the live bus forward exactly like Space, but at
+  // the very end of the rundown it wraps back to the first item so an unattended
+  // pre-roll announcement loop cycles indefinitely. Scripture-live (synthetic, not
+  // in the rundown) is excluded by the scheduler, so liveItem is always a rundown item.
+  function handleAutoAdvance() {
+    if (!liveItem) return;
+    const slides = getSlides(liveItem);
+    const atItemEnd = liveSlideIdx >= slides.length - 1;
+
+    // Loop within the item: at the last slide, bounce back to its first slide and
+    // keep rotating (a self-contained announcement loop). A single-slide item just
+    // re-fires to restart any media/countdown timers.
+    if (atItemEnd && liveItem.advance_loop === 'item') {
+      const payload = buildPayload(liveItem, 0);
+      if (payload) {
+        window.cue.output.go(payload);
+        setLiveSlideIdx(0);
+        if (liveItemId === previewItemId) setPreviewSlideIdx(0);
+      }
+      return;
+    }
+
+    // Continue through the rundown (default).
+    const items = serviceData?.items || [];
+    const curIdx = items.findIndex((i) => i.id === liveItemId);
+    if (!(atItemEnd && curIdx >= items.length - 1)) { handleNextLiveSlide(); return; }
+    // At the very end of the rundown — wrap to the first item only if opted in;
+    // otherwise stop (no state change means no new timer is scheduled).
+    if (!liveItem.advance_wrap || !items.length) return;
+    const first = items[0];
+    const payload = buildPayload(first, 0);
+    if (payload) {
+      window.cue.output.go(payload);
+      setLiveItemId(first.id);
+      setLiveSlideIdx(0);
+      setLiveScripture(null);
+      setPreviewItemId(first.id);
+      setPreviewSlideIdx(0);
     }
   }
 

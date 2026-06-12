@@ -186,6 +186,16 @@ export function setItemLoop(itemId, loop) {
   getDb().prepare('UPDATE service_items SET media_loop=? WHERE id=?').run(loop ? 1 : 0, itemId);
 }
 
+// Auto-advance interval in seconds + loop mode. Falsy / <= 0 seconds clears the
+// interval (stored NULL = manual). loop is 'item' or 'rundown' (default); wrap (only
+// meaningful for 'rundown') wraps to the first item at the end vs stopping there.
+export function setItemAdvance(itemId, seconds, loop, wrap = true) {
+  const v = Number(seconds) > 0 ? Math.round(Number(seconds)) : null;
+  const mode = loop === 'item' ? 'item' : 'rundown';
+  getDb().prepare('UPDATE service_items SET advance_seconds=?, advance_loop=?, advance_wrap=? WHERE id=?')
+    .run(v, v ? mode : null, wrap ? 1 : 0, itemId);
+}
+
 export function applyBackgroundToRundown(serviceId, mediaId) {
   const db = getDb();
   const songItems = db
@@ -211,8 +221,8 @@ export function duplicateItem(itemId) {
   if (!item) return null;
   const { m } = db.prepare('SELECT COALESCE(MAX(order_index),-1) AS m FROM service_items WHERE service_id=?').get(item.service_id);
   const { lastInsertRowid } = db.prepare(`
-    INSERT INTO service_items (service_id, item_type, ref_id, order_index, notes, content, background_override_id)
-    VALUES (?,?,?,?,?,?,?)
-  `).run(item.service_id, item.item_type, item.ref_id, m + 1, item.notes, item.content, item.background_override_id);
+    INSERT INTO service_items (service_id, item_type, ref_id, order_index, notes, content, background_override_id, advance_seconds, advance_loop, advance_wrap)
+    VALUES (?,?,?,?,?,?,?,?,?,?)
+  `).run(item.service_id, item.item_type, item.ref_id, m + 1, item.notes, item.content, item.background_override_id, item.advance_seconds ?? null, item.advance_loop ?? null, item.advance_wrap ?? 1);
   return Number(lastInsertRowid);
 }

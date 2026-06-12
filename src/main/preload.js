@@ -35,6 +35,7 @@ contextBridge.exposeInMainWorld('cue', {
     setItemBackground: (itemId, mediaId) => ipcRenderer.invoke('services:setItemBackground', itemId, mediaId),
     setItemNotes: (itemId, notes) => ipcRenderer.invoke('services:setItemNotes', itemId, notes),
     setItemLoop:  (itemId, loop)  => ipcRenderer.invoke('services:setItemLoop',  itemId, loop),
+    setItemAdvance: (itemId, seconds, loop, wrap) => ipcRenderer.invoke('services:setItemAdvance', itemId, seconds, loop, wrap),
     duplicateItem: (itemId) => ipcRenderer.invoke('services:duplicateItem', itemId),
     applyBackgroundToRundown: (serviceId, mediaId) => ipcRenderer.invoke('services:applyBackgroundToRundown', serviceId, mediaId),
     clearItems: (serviceId) => ipcRenderer.invoke('services:clearItems', serviceId),
