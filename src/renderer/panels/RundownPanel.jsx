@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
 } from '@dnd-kit/core';
@@ -147,6 +147,12 @@ export default function RundownPanel({
   const [bgPickerForItem, setBgPickerForItem] = useState(null);
   const [previewSong, setPreviewSong] = useState(null);
   const [editSong, setEditSong] = useState(null);
+  const [themes, setThemes] = useState([]);
+
+  // Load themes for the song context menu's "Apply Theme" entries.
+  useEffect(() => {
+    window.cue.themes.list().then(setThemes).catch(() => {});
+  }, [serviceData?.id]);
 
   const items = serviceData?.items || [];
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -380,6 +386,17 @@ export default function RundownPanel({
                   setContextMenu(null);
                 },
               }] : []),
+              ...(themes.length ? [
+                { separator: true },
+                ...themes.map((t) => ({
+                  label: `Apply Theme: ${t.name}`,
+                  onClick: async () => {
+                    await window.cue.themes.applyToSong(t.id, contextMenu.item.song.id, !!t.background_id);
+                    onRefresh?.();
+                    setContextMenu(null);
+                  },
+                })),
+              ] : []),
             ] : []),
             ...(contextMenu.item.item_type === 'scripture' ? [
               { separator: true },

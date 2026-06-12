@@ -121,6 +121,16 @@ contextBridge.exposeInMainWorld('cue', {
     resolve: (versionId, ref, versesPerSlide) => ipcRenderer.invoke('bible:resolve', versionId, ref, versesPerSlide),
     search: (versionId, query) => ipcRenderer.invoke('bible:search', versionId, query),
   },
+  themes: {
+    list:           ()                       => ipcRenderer.invoke('themes:list'),
+    get:            (id)                     => ipcRenderer.invoke('themes:get', id),
+    create:         (data)                   => ipcRenderer.invoke('themes:create', data),
+    update:         (id, data)               => ipcRenderer.invoke('themes:update', id, data),
+    delete:         (id)                     => ipcRenderer.invoke('themes:delete', id),
+    applyToSong:    (themeId, songId, setBg) => ipcRenderer.invoke('themes:applyToSong', themeId, songId, setBg),
+    applyToRundown: (themeId, svcId, setBg)  => ipcRenderer.invoke('themes:applyToRundown', themeId, svcId, setBg),
+    applyToAllSongs:(themeId, setBg)         => ipcRenderer.invoke('themes:applyToAllSongs', themeId, setBg),
+  },
   settings: {
     get: (key) => ipcRenderer.invoke('settings:get', key),
     set: (key, value) => ipcRenderer.invoke('settings:set', key, value),

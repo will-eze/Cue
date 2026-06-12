@@ -73,8 +73,12 @@ src/
 │   ├── fonts.js              BUNDLED_FONTS array + DEFAULT_FONT. Imported by preload.js.
 │   │
 │   ├── db/
-│   │   ├── schema.js         SQLite init, migration runner (v1→v14), getDb() singleton.
+│   │   ├── schema.js         SQLite init, migration runner (v1→v15), getDb() singleton.
 │   │   ├── graphics.js       Broadcast-graphics CRUD (list/get/create/update/del/reorder). style_json + target.
+│   │   ├── themes.js         Theme library CRUD (list/get/create/update/del). applyToSong/applyToRundown/
+│   │   │                     applyToAllSongs merge the theme style_json into song_sections (preserving inline
+│   │   │                     text runs) and, when the theme has a background + setBg, write songs.default_background_id
+│   │   │                     and NULL out per-slot service_items.background_override_id so the theme bg wins.
 │   │   ├── songs.js          Song + section + tag CRUD, FTS5 search. importSongs (bulk insert, tag-aware:
 │   │   │                     song.tags[] get-or-created + assigned). existingTitleSet (duplicate flagging).
 │   │   │                     GHS hymnal: readBundledGhsRows, seedGhsHymnal (once, ghs_seeded flag),
@@ -102,6 +106,7 @@ src/
 │   │   ├── output.ipc.js     Registers output:* handlers (incl. graphic/ticker/overlay + channel show_program/
 │   │   │                     show_graphics; content-mode-only channel updates route to setChannelContentMode).
 │   │   ├── graphics.ipc.js   Registers graphics:* CRUD handlers (registerGraphicsIpc).
+│   │   ├── themes.ipc.js     Registers themes:* CRUD + apply handlers (registerThemesIpc).
 │   │   ├── settings.ipc.js   Registers settings:* handlers.
 │   │   └── bible.ipc.js      Registers bible:* handlers (versions/books/chapters/verses/adjacent/resolve/search/importFile/delete/online:*).
 │   │
@@ -138,11 +143,11 @@ src/
 │   │   │                     Loads output channels list. Does NOT capture output or subscribe to multiview —
 │   │   │                     the live monitor renders the slide from payload (no per-frame capture loop).
 │   │   │                     liveChannelIdx tracks which channel the live monitor displays.
-│   │   ├── SettingsView.jsx  Settings layout. Left column is section navigation (Channels/Logo/Background/Bible/
-│   │   │                     Shortcuts/Danger) + Back-to-Operator: click scrolls to the section; an
+│   │   ├── SettingsView.jsx  Settings layout. Left column is section navigation (Channels/Logo/Background/Themes/
+│   │   │                     Bible/Shortcuts/Danger) + Back-to-Operator: click scrolls to the section; an
 │   │   │                     IntersectionObserver highlights the section in view. Section order: OutputChannels →
-│   │   │                     LogoSettings → BackgroundSettings → BibleSettings → ShortcutSettings → DangerZone →
-│   │   │                     SettingsFooter (always last two, rendered at layout level — not inside any sub-component).
+│   │   │                     LogoSettings → BackgroundSettings → ThemeSettings → BibleSettings → ShortcutSettings →
+│   │   │                     DangerZone → SettingsFooter (always last two, rendered at layout level — not inside any sub-component).
 │   │   └── MultiviewView.jsx Multi-output monitor wall. Subscribes to output:multiview-captures.
 │   │                         NDI channels show NdiTile (checkerboard + frame). Screen channels show ScreenMonitorTile.
 │   │                         NDI channels never show "No screens assigned" — they don't use channel_monitors.
@@ -151,7 +156,8 @@ src/
 │   │   ├── RundownPanel.jsx       Service selector with inline rename/delete UI (no native confirm dialogs).
 │   │   │                          DnD-sortable item list. Context menu.
 │   │   │                          MediaPickerModal for background override.
-│   │   │                          Right-click song items → Preview / Edit / Set Background Override.
+│   │   │                          Right-click song items → Preview / Edit / Set Background Override / Apply Theme: <name>
+│   │   │                          (one entry per saved theme → themes.applyToSong, setBg = theme has a background).
 │   │   │                          Media items show a LOOP badge when media_loop; context menu Enable/Disable Loop
 │   │   │                          → window.cue.services.setItemLoop.
 │   │   │                          Props: onRenameService, onDeleteService.
@@ -200,6 +206,9 @@ src/
 │   │   │                          SlidePreview: ResizeObserver scales 1920×1080 canvas. LowerThirdPreview: checkerboard.
 │   │   │                          DEFAULT_STYLE includes ltBar (lower-third gradient bar control).
 │   │   │                          TEXTBOX_PRESETS: Full / Top / Middle / Bottom / L3.
+│   │   │                          Header "Load Theme…" dropdown (shown when ≥1 theme): applies the theme's style_json
+│   │   │                          to the section style state and always swaps in the theme's background.
+│   │   │                          Exports FormattingToolbar, SlidePreview, LowerThirdPreview, DEFAULT_STYLE (reused by ThemeSettings).
 │   │   │                          Paste Song parser (parseSong). renderWithRuns (exported). Escape key closes.
 │   │   ├── SongPreviewModal.jsx   Read-only song preview. Add to Rundown / Edit.
 │   │   ├── SongImportModal.jsx    Import preview/confirm (createPortal). One row per parsed song: checkbox,
@@ -227,6 +236,10 @@ src/
 │   │   │                          Lyrics Only / Graphics Only (show_program × show_graphics, via channelMode util).
 │   │   ├── LogoSettings.jsx      Global logo picker.
 │   │   ├── BackgroundSettings.jsx Global song/scripture/slide background pickers. Bulk apply actions.
+│   │   ├── ThemeSettings.jsx     Theme library. Grid of theme cards (SlidePreview thumbnail; Edit/Delete; per-card
+│   │   │                          "Apply background" toggle + Apply-to-rundown selector + Apply-to-all-songs).
+│   │   │                          ThemeEditorModal reuses SongEditor's FormattingToolbar + SlidePreview/LowerThirdPreview
+│   │   │                          over a fixed sample text; width-bound preview (modal is content-sized). Background picker.
 │   │   ├── BibleSettings.jsx     Installed translations list (delete) + Import (file/online) menu.
 │   │   │                          Accepts only activeServiceId prop. No DangerZone or footer inside.
 │   │   ├── DangerZone.jsx        Destructive actions: clear rundown items, delete rundown, clear library.
@@ -315,7 +328,7 @@ src/
 
 ### Migration system
 
-`schema.js` creates `db_version` table (single integer row) on first run and applies pending migrations in order inside a transaction. **Never delete `db_version`** — it is required to exist before any user-facing build. Current version: **14**. Migrations run with foreign keys disabled, so table-rebuild migrations (v6, v7, v11) do not cascade-delete referencing rows.
+`schema.js` creates `db_version` table (single integer row) on first run and applies pending migrations in order inside a transaction. **Never delete `db_version`** — it is required to exist before any user-facing build. Current version: **15**. Migrations run with foreign keys disabled, so table-rebuild migrations (v6, v7, v11) do not cascade-delete referencing rows.
 
 | Version | Change |
 |---|---|
@@ -333,6 +346,7 @@ src/
 | v12 | Added `graphics.style_json` (TEXT) + `graphics.target` (TEXT, default `'all'`) — per-graphic appearance + saved destination |
 | v13 | Added `output_channels.show_program` (INTEGER, default 1) — lower-third channel shows the song lyric band |
 | v14 | Added `output_channels.show_graphics` (INTEGER, default 1) — lower-third channel shows the broadcast-graphics overlay |
+| v15 | Created `themes` table (theme / template library: named `style_json` + optional `background_id`) |
 
 ### All tables
 
@@ -460,6 +474,17 @@ created_at DATETIME, updated_at DATETIME
 ```
 
 `style_json` shape — **lower_third**: `{ name: <style incl. textBox + ltBar>, title: <style> }` (the `name` style's `textBox` is the draggable/resizable position box, `ltBar` is the bar background). **ticker**: a flat style + `{ bar:{color,opacity}|null, position:'bottom'|'top' }`. **custom**: `null` (raw HTML).
+
+#### `themes` (v15 — theme / template library)
+```sql
+id INTEGER PRIMARY KEY AUTOINCREMENT
+name TEXT NOT NULL
+style_json TEXT                -- a section style snapshot (same shape as §8; no runs)
+background_id INTEGER REFERENCES media_assets(id) ON DELETE SET NULL
+created_at DATETIME, updated_at DATETIME
+```
+
+A theme is a saved section `style_json` (§8 shape) plus an optional default background. Applying a theme merges its `style_json` into every target `song_sections.style_json` (per-section inline `runs` are preserved) and, when it has a background and the background is being applied, writes `songs.default_background_id` and NULLs the relevant `service_items.background_override_id` so the theme background wins over any per-slot override. Apply scope: `applyToSong` (all slots referencing one song), `applyToRundown` (all song slots in a rundown), `applyToAllSongs` (every song slot). The output path is unchanged — themes only write the same columns the editors already write.
 
 #### `channel_monitors` (v4)
 ```sql
@@ -733,6 +758,19 @@ overlay, and a graphic never touches the program. Default destination for new gr
 | `delete(id)` | void | — |
 | `reorder(orderedIds)` | void | Single transaction. |
 
+### `window.cue.themes`
+
+| Method | Returns | Notes |
+|---|---|---|
+| `list()` | `[theme rows]` | Each row joins `background_path`/`background_filename`/`background_type`. Ordered by name. |
+| `get(id)` | `theme row` | — |
+| `create(data)` | `id` | `data` = `{ name, style_json, background_id }`. |
+| `update(id, data)` | void | Same shape as create. |
+| `delete(id)` | void | — |
+| `applyToSong(themeId, songId, setBg)` | `sectionCount` | Merges style into the song's sections. When `setBg` and the theme has a background, writes the song default bg and clears per-slot overrides on all slots referencing the song. |
+| `applyToRundown(themeId, serviceId, setBg)` | `songCount` | Applies to every distinct song in the rundown; with `setBg`, clears that rundown's song-slot overrides. |
+| `applyToAllSongs(themeId, setBg)` | `songCount` | Applies to every song in the library; with `setBg`, clears all song-slot overrides. |
+
 ### `window.cue.media`
 
 | Method | Returns | Notes |
@@ -858,6 +896,8 @@ Setting a background on a rundown slot via "Set Background Override" **also writ
 - `services.applyBackgroundToRundown(serviceId, mediaId)` — DB function; sets override on all song slots AND updates each distinct song's `default_background_id`.
 
 The renderer's `RundownPanel` also calls `window.cue.songs.setBackground` after the picker resolves, as a belt-and-suspenders measure.
+
+**Applying a theme is the inverse write-through**: when a theme with a background is applied (`themes.applyTo*` with `setBg`), it writes `songs.default_background_id` *and* NULLs the per-slot `service_items.background_override_id` on the affected song slots — so the theme background wins over an override that was previously written into a slot (resolution order puts override above the song default). A text-only theme (no `background_id`) never touches backgrounds or overrides.
 
 ---
 

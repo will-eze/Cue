@@ -399,6 +399,22 @@ const migrations = [
       ALTER TABLE output_channels ADD COLUMN show_graphics INTEGER NOT NULL DEFAULT 1;
     `);
   },
+
+  // v15 — Theme / template library. A theme is a named style_json snapshot
+  // (font, colour, shadow, textBox, ltBar) plus an optional default background.
+  // Applied to song sections via the settings panel or the song editor.
+  function v15(database) {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS themes (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        name          TEXT NOT NULL,
+        style_json    TEXT,
+        background_id INTEGER REFERENCES media_assets(id) ON DELETE SET NULL,
+        created_at    DATETIME NOT NULL DEFAULT (datetime('now')),
+        updated_at    DATETIME NOT NULL DEFAULT (datetime('now'))
+      );
+    `);
+  },
 ];
 
 function runMigrations() {

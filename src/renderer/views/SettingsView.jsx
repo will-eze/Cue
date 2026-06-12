@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import OutputChannels from '../settings/OutputChannels';
 import LogoSettings from '../settings/LogoSettings';
 import BackgroundSettings from '../settings/BackgroundSettings';
+import ThemeSettings from '../settings/ThemeSettings';
 import BibleSettings from '../settings/BibleSettings';
 import ShortcutSettings from '../settings/ShortcutSettings';
 import DangerZone from '../settings/DangerZone';
@@ -11,7 +12,8 @@ import DangerZone from '../settings/DangerZone';
 const SECTIONS = [
   { id: 'channels',   icon: 'cast',            label: 'Channels' },
   { id: 'logo',       icon: 'image',           label: 'Logo' },
-  { id: 'background',  icon: 'wallpaper',       label: 'Background' },
+  { id: 'background', icon: 'wallpaper',       label: 'Background' },
+  { id: 'themes',     icon: 'style',           label: 'Themes' },
   { id: 'bible',      icon: 'menu_book',       label: 'Bible' },
   { id: 'shortcuts',  icon: 'keyboard',        label: 'Shortcuts' },
   { id: 'danger',     icon: 'warning',         label: 'Danger' },
@@ -143,6 +145,7 @@ export default function SettingsView({ onClose, activeServiceId, onRundownCleare
         <section ref={setRef('channels')} data-section="channels" className="scroll-mt-lg"><OutputChannels /></section>
         <section ref={setRef('logo')} data-section="logo" className="scroll-mt-lg"><LogoSettings /></section>
         <section ref={setRef('background')} data-section="background" className="scroll-mt-lg"><BackgroundSettings activeServiceId={activeServiceId} /></section>
+        <section ref={setRef('themes')} data-section="themes" className="scroll-mt-lg"><ThemeSettings /></section>
         <section ref={setRef('bible')} data-section="bible" className="scroll-mt-lg"><BibleSettings /></section>
         <section ref={setRef('shortcuts')} data-section="shortcuts" className="scroll-mt-lg"><ShortcutSettings /></section>
         <section ref={setRef('danger')} data-section="danger" className="scroll-mt-lg">

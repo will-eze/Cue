@@ -933,6 +933,7 @@ export default function SongEditor({ song, onClose, onSave }) {
   const [previewTemplate, setPreviewTemplate] = useState('fullscreen'); // 'fullscreen' | 'lowerthird'
   const [saving, setSaving]               = useState(false);
   const [saveError, setSaveError]         = useState('');
+  const [themeList, setThemeList]         = useState([]);
 
   const editorRef    = useRef(null);
   const sectionsRef  = useRef([]);
@@ -943,6 +944,23 @@ export default function SongEditor({ song, onClose, onSave }) {
   // Keep sectionsRef in sync
   useEffect(() => { sectionsRef.current = sections; }, [sections]);
   useEffect(() => { activeKeyRef.current = activeSectionKey; }, [activeSectionKey]);
+
+  // Load themes list for the "Load Theme…" dropdown
+  useEffect(() => {
+    window.cue.themes.list().then(setThemeList).catch(() => {});
+  }, []);
+
+  function handleLoadTheme(themeId) {
+    const theme = themeList.find((t) => t.id === Number(themeId));
+    if (!theme) return;
+    try {
+      if (theme.style_json) setStyle({ ...DEFAULT_STYLE, ...JSON.parse(theme.style_json) });
+      // Loading a theme is explicit — its background replaces the current one.
+      if (theme.background_id && theme.background_path) {
+        setSongBackground({ id: theme.background_id, path: theme.background_path, filename: theme.background_filename });
+      }
+    } catch {}
+  }
 
   // Load song data
   useEffect(() => {
@@ -1149,6 +1167,16 @@ export default function SongEditor({ song, onClose, onSave }) {
 
           <div className="flex-1" />
 
+          {themeList.length > 0 && (
+            <select
+              value=""
+              onChange={(e) => { if (e.target.value) handleLoadTheme(e.target.value); }}
+              className="bg-surface-container text-on-surface-variant text-[10px] font-mono rounded-lg px-sm h-7 border border-outline-variant/30 hover:border-outline-variant outline-none focus:border-primary cursor-pointer uppercase tracking-[0.05em]"
+            >
+              <option value="">Load Theme…</option>
+              {themeList.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          )}
           <button onClick={() => setShowPaste(true)}
             className="px-sm h-7 text-label-sm font-mono text-on-surface-variant hover:text-on-surface border border-outline-variant/30 hover:border-outline-variant rounded-lg cursor-pointer transition-colors uppercase tracking-[0.05em] text-[10px]">
             ↙ Paste Song
