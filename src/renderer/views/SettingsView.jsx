@@ -48,7 +48,7 @@ function SettingsFooter() {
       <div className="flex items-center gap-md">
         <div className="flex flex-col">
           <span className="text-label-sm font-label-sm text-on-surface">System Version</span>
-          <span className="text-label-sm font-label-sm text-outline">v1.0.0 (Build 1)</span>
+          <span className="text-label-sm font-label-sm text-outline">v19.0.0 (Build 25)</span>
         </div>
         <div className="h-8 w-[1px] bg-outline-variant/30" />
         <div className="flex flex-col">
