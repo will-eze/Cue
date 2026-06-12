@@ -8,6 +8,19 @@ export function getMediaDir() {
   return path.join(app.getPath('userData'), 'media');
 }
 
+// Cached, downscaled JPEG posters generated on demand by the cue-thumb protocol
+// handler. This is a pure derived cache (regenerated if missing), so it is NOT a
+// media reference for findUnused() and is not included in backups — it is keyed
+// by a hash of the source path and cleared alongside the assets it mirrors.
+export function getThumbnailDir() {
+  return path.join(app.getPath('userData'), 'thumbnails');
+}
+
+export function thumbCachePath(srcPath) {
+  const hash = crypto.createHash('sha1').update(srcPath).digest('hex');
+  return path.join(getThumbnailDir(), hash + '.jpg');
+}
+
 function ensureMediaDir() {
   const dir = getMediaDir();
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -60,6 +73,7 @@ export function del(id) {
   if (!asset) return;
   db.prepare('DELETE FROM media_assets WHERE id=?').run(id);
   try { if (fs.existsSync(asset.path)) fs.unlinkSync(asset.path); } catch {}
+  try { fs.unlinkSync(thumbCachePath(asset.path)); } catch {}
 }
 
 export function deleteMany(ids) {
@@ -114,6 +128,11 @@ export function deleteAllMedia() {
   try {
     const dir = getMediaDir();
     if (fs.existsSync(dir)) for (const f of fs.readdirSync(dir)) { try { fs.unlinkSync(path.join(dir, f)); } catch {} }
+  } catch {}
+  // The thumbnail cache mirrors the assets we just wiped — clear it too.
+  try {
+    const tdir = getThumbnailDir();
+    if (fs.existsSync(tdir)) for (const f of fs.readdirSync(tdir)) { try { fs.unlinkSync(path.join(tdir, f)); } catch {} }
   } catch {}
   return assets.length;
 }

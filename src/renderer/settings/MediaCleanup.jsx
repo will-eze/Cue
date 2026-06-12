@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { mediaUrl } from '../utils/mediaUrl';
+import MediaThumb from '../components/MediaThumb';
 
 function formatBytes(bytes) {
   if (!bytes) return '0 B';
@@ -107,14 +107,12 @@ export default function MediaCleanup() {
                   className={`text-left rounded-lg overflow-hidden border-2 transition-all cursor-pointer ${sel ? 'border-error' : 'border-outline-variant/30 hover:border-outline-variant/60'}`}
                 >
                   <div className="aspect-video w-full relative bg-surface-container-high">
-                    {m.type === 'video' ? (
-                      <video src={mediaUrl(m.path)} className="w-full h-full object-cover" muted />
-                    ) : m.type === 'audio' ? (
+                    {m.type === 'audio' ? (
                       <div className="w-full h-full flex items-center justify-center">
                         <span className="material-symbols-outlined text-outline-variant text-3xl">music_note</span>
                       </div>
                     ) : (
-                      <img src={mediaUrl(m.path)} className="w-full h-full object-cover" alt="" />
+                      <MediaThumb path={m.path} className="w-full h-full object-cover" />
                     )}
                     <span
                       className={`absolute top-1 right-1 material-symbols-outlined text-[18px] rounded-full ${sel ? 'text-error bg-background' : 'text-outline-variant/60'}`}

@@ -11,7 +11,7 @@ import ContextMenu from '../components/ContextMenu';
 import MediaPickerModal from '../components/MediaPickerModal';
 import SongPreviewModal from '../components/SongPreviewModal';
 import SongEditor from '../components/SongEditor';
-import { mediaUrl } from '../utils/mediaUrl';
+import MediaThumb from '../components/MediaThumb';
 
 function SortableItem({ item, index, isPreview, isLive, onClick, onDoubleClick, onContextMenu }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
@@ -79,11 +79,7 @@ function SortableItem({ item, index, isPreview, isLive, onClick, onDoubleClick, 
             isLive ? 'border border-secondary/30' : isPreview ? 'border border-primary/30' : ''
           }`}>
             {bgAsset && (
-              bgAsset.type === 'video' || /\.(mp4|webm|mov)$/i.test(bgAsset.path) ? (
-                <video src={mediaUrl(bgAsset.path)} className="absolute inset-0 w-full h-full object-cover opacity-70" muted />
-              ) : (
-                <img src={mediaUrl(bgAsset.path)} className="absolute inset-0 w-full h-full object-cover opacity-70" alt="" />
-              )
+              <MediaThumb path={bgAsset.path} className="absolute inset-0 w-full h-full object-cover opacity-70" />
             )}
             <span
               className={`relative material-symbols-outlined text-[18px] ${bgAsset ? 'opacity-0' : ''} ${

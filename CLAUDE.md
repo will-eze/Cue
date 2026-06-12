@@ -17,6 +17,7 @@ Unified single-process Electron app. Replaces EasyWorship/ProPresenter (worship 
 - Renderer: use `src/renderer/utils/mediaUrl.js`. Output templates: inline `pathToUrl()` helper.
 - `media_assets.path` is stored **absolute**. Any feature that relocates `userData` (backup/restore, data-folder move, sync) must rewrite each path to the local media dir, or assets silently fail to resolve on the new machine.
 - Adding a new place that references a media asset (FK column or `settings` key)? Also add it to `media.findUnused()` — anything it misses gets reported as unused and is deleted by the Media cleanup tool.
+- **Grid/list thumbnails use `thumbUrl()` / `<MediaThumb>` (`cue-thumb://`), never full-res `mediaUrl()`** — `cue-thumb` serves a small OS-generated JPEG cached in `userData/thumbnails`. It's a regenerable derived cache: NOT a media reference (skip `findUnused`), excluded from backups, cleared on asset delete/wipe. Keep `mediaUrl()` only for live output, full-size previews, and playing video.
 
 ### Output & NDI
 - **Never `capturePage()` on NDI windows** — 4s+ latency. NDI uses the `paint` event + `setInterval(invalidate, frameMs)`.
@@ -62,7 +63,8 @@ Typography: Inter for body/headlines. Labels/chips/badges/buttons: `"JetBrains M
 ## Dev Commands
 
 - `npm start` — dev server
-- `npm run make` — distributable
+- `npm run make` — distributable · `npm run package` — bundle only (fast packaging check)
 - After any Electron version bump: `npm run rebuild` (recompiles `better-sqlite3` and `grandi`)
+- **Packaging copies what Vite doesn't bundle.** The Forge Vite plugin packages only `.vite/`; the `packageAfterPrune` hook in `forge.config.js` copies the native externals' full dependency closure (`better-sqlite3`, `grandi`/`@grandi`, `tar`) into the packaged `node_modules` and copies the plain-DOM `src/output` + `src/fonts` into the asar (`asar.unpack: '**/node_modules/**'` keeps native `.node` + sibling libs like grandi's `libndi.*` on the real filesystem). These exist in `npm start` but are absent from a build, so omissions break **only in packaged apps**. Add a runtime dep Vite externalizes, or a new output-window/font file? Update that hook and verify with `npm run package`. Distribution/signing notes: `plan/deployment-handoff.md`.
 - DB: `~/Library/Application Support/Cue/cue.db` (macOS) · `%APPDATA%\Cue\cue.db` (Windows) · schema v19
 - Version (Settings footer): `vMAJOR.MINOR.PATCH (Build N)`, all injected at build time from `vite.renderer.config.js`. **MAJOR is auto-derived** from the highest `vN` migration in `schema.js` (do not hardcode it) and **Build N** from the git commit count. Only `VERSION_MINOR`/`VERSION_PATCH` are manual: bump MINOR for features with no migration, PATCH for fixes/docs/chores, and **reset both to 0 in the same commit as a new migration** (MAJOR moves on its own).

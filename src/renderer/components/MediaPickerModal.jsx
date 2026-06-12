@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { mediaUrl } from '../utils/mediaUrl';
+import MediaThumb from './MediaThumb';
 
 export default function MediaPickerModal({ onSelect, onClose, initialId = null }) {
   const [assets, setAssets] = useState([]);
@@ -68,11 +68,7 @@ export default function MediaPickerModal({ onSelect, onClose, initialId = null }
                 onClick={() => setSelectedId(asset.id)}
               >
                 <div className="aspect-video bg-black relative">
-                  {asset.type === 'image' ? (
-                    <img src={mediaUrl(asset.path)} className="w-full h-full object-cover" alt={asset.filename} />
-                  ) : (
-                    <video src={mediaUrl(asset.path)} className="w-full h-full object-cover" muted />
-                  )}
+                  <MediaThumb path={asset.path} alt={asset.filename} className="w-full h-full object-cover" />
                   {selectedId === asset.id && (
                     <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
                       <span

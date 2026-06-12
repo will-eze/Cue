@@ -14,3 +14,19 @@ export function mediaUrl(absPath) {
   const encoded = pathPart.split('/').map((seg) => encodeURIComponent(seg)).join('/');
   return 'cue-media://localhost' + encoded;
 }
+
+/**
+ * Convert an absolute media path to a cue-thumb:// URL — a small, cached,
+ * OS-generated JPEG poster of the asset (see the cue-thumb protocol handler in
+ * main). Use this for grid/list thumbnails instead of mediaUrl(); the latter
+ * serves the full-resolution original, which is what made media grids slow to
+ * load. Only use mediaUrl() where the full asset is genuinely needed (live
+ * output, full-size previews, playing video).
+ */
+export function thumbUrl(absPath) {
+  if (!absPath) return null;
+  const normalized = absPath.replace(/\\/g, '/');
+  const pathPart = normalized.startsWith('/') ? normalized : '/' + normalized;
+  const encoded = pathPart.split('/').map((seg) => encodeURIComponent(seg)).join('/');
+  return 'cue-thumb://localhost' + encoded;
+}

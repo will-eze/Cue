@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, screen, protocol } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, screen, protocol, nativeImage } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { initDb } from './db/schema.js';
@@ -17,10 +17,12 @@ import { seedBundledBibles } from './db/bible.js';
 import { seedGhsHymnal } from './db/songs.js';
 import * as outputManager from './output/manager.js';
 import { isAvailable as ndiAvailable } from './output/ndi.js';
+import { thumbCachePath, getThumbnailDir } from './db/media.js';
 
 // Must be called synchronously before app is ready
 protocol.registerSchemesAsPrivileged([
   { scheme: 'cue-media', privileges: { secure: true, standard: true, supportFetchAPI: true, stream: true, bypassCSP: true, corsEnabled: true } },
+  { scheme: 'cue-thumb', privileges: { secure: true, standard: true, supportFetchAPI: true, bypassCSP: true, corsEnabled: true } },
 ]);
 
 const MEDIA_MIME = {
@@ -147,6 +149,63 @@ app.whenReady().then(async () => {
       console.error('[cue-media] Failed to serve:', filePath, err.code);
       return new Response('Not found', { status: 404 });
     }
+  });
+
+  // Thumbnail protocol: serves a small, cached JPEG poster for a media asset so
+  // grids/lists don't decode the full-resolution original for every tile. The
+  // poster is generated lazily by the OS thumbnail service (QuickLook on macOS,
+  // the shell thumbnail handler on Windows) — cross-platform, async, and able to
+  // poster videos as well as images — then cached to userData/thumbnails keyed by
+  // a hash of the source path. URL format: cue-thumb://localhost/absolute/path.
+  const THUMB_MAX = 480;
+  const THUMB_IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tiff', 'svg']);
+  protocol.handle('cue-thumb', async (request) => {
+    const { pathname } = new URL(request.url);
+    let srcPath = decodeURIComponent(pathname);
+    if (process.platform === 'win32' && /^\/[A-Za-z]:\//.test(srcPath)) srcPath = srcPath.slice(1);
+    // Thumbnails are derived from immutable UUID-named files — cache forever.
+    const cacheHeaders = { 'Cache-Control': 'public, max-age=31536000, immutable' };
+    const cachePath = thumbCachePath(srcPath);
+
+    // Already generated? Serve the cached JPEG.
+    try {
+      const cached = await fs.promises.readFile(cachePath);
+      return new Response(cached, {
+        headers: { 'Content-Type': 'image/jpeg', 'Content-Length': String(cached.length), ...cacheHeaders },
+      });
+    } catch {}
+
+    // Generate via the OS thumbnail service, downscaled to THUMB_MAX.
+    let buf = null;
+    try {
+      const img = await nativeImage.createThumbnailFromPath(srcPath, { width: THUMB_MAX, height: THUMB_MAX });
+      if (img && !img.isEmpty()) buf = img.toJPEG(72);
+    } catch {}
+
+    if (buf && buf.length) {
+      // Cache write is fire-and-forget so the first request isn't blocked on disk.
+      fs.promises.mkdir(getThumbnailDir(), { recursive: true })
+        .then(() => fs.promises.writeFile(cachePath, buf))
+        .catch(() => {});
+      return new Response(buf, {
+        headers: { 'Content-Type': 'image/jpeg', 'Content-Length': String(buf.length), ...cacheHeaders },
+      });
+    }
+
+    // Couldn't make a thumbnail. For an image, fall back to the original bytes so
+    // the tile still renders; for anything else (e.g. a video the OS can't
+    // thumbnail) return 404 so the renderer shows its own placeholder rather than
+    // feeding video bytes into an <img>.
+    const ext = path.extname(srcPath).slice(1).toLowerCase();
+    if (THUMB_IMAGE_EXTS.has(ext)) {
+      try {
+        const data = await fs.promises.readFile(srcPath);
+        return new Response(data, {
+          headers: { 'Content-Type': MEDIA_MIME[ext] || 'image/jpeg', 'Content-Length': String(data.length), ...cacheHeaders },
+        });
+      } catch {}
+    }
+    return new Response('No thumbnail', { status: 404 });
   });
 
   initDb();

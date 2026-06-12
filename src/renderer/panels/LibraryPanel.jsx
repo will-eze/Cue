@@ -6,7 +6,7 @@ import SongEditor from '../components/SongEditor';
 import ContextMenu from '../components/ContextMenu';
 import ScripturePanel from './ScripturePanel';
 import GraphicsPanel from './GraphicsPanel';
-import { mediaUrl } from '../utils/mediaUrl';
+import MediaThumb from '../components/MediaThumb';
 
 function SongRow({ index, style, data }) {
   const { songs, selectedId, onSelect, onDoubleClick, onContextMenu } = data;
@@ -115,22 +115,18 @@ function MediaGrid({ assets, onDelete, onSetBackground, onAddToRundown }) {
               onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, asset }); }}
             >
               <div className="aspect-video rounded bg-black border border-outline-variant overflow-hidden mb-xs relative">
-                {asset.type === 'image' ? (
-                  <img src={mediaUrl(asset.path)}
-                    className="w-full h-full object-cover group-hover:scale-110 transition-transform"
-                    alt={asset.filename}
-                    loading="lazy" />
-                ) : asset.type === 'video' ? (
-                  <>
-                    <video src={mediaUrl(asset.path)}
-                      className="w-full h-full object-cover"
-                      muted />
-                    <div className="absolute bottom-1 right-1 bg-black/50 px-1 rounded text-[8px] text-white font-label-sm">VID</div>
-                  </>
-                ) : (
+                {asset.type === 'audio' ? (
                   <div className="w-full h-full bg-surface-container-high flex items-center justify-center">
                     <span className="text-label-sm font-label-sm text-outline-variant">AUD</span>
                   </div>
+                ) : (
+                  <>
+                    <MediaThumb path={asset.path} alt={asset.filename}
+                      className="w-full h-full object-cover group-hover:scale-110 transition-transform" />
+                    {asset.type === 'video' && (
+                      <div className="absolute bottom-1 right-1 bg-black/50 px-1 rounded text-[8px] text-white font-label-sm">VID</div>
+                    )}
+                  </>
                 )}
               </div>
               <p className="text-[10px] text-on-surface truncate">{asset.filename}</p>

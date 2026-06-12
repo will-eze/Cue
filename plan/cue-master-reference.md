@@ -261,6 +261,7 @@ src/
 │   │   │                          fillPlaceholders, flatTextCss, buildBarBg (shared with GraphicsPanel + monitor).
 │   │   ├── OnlineBibleModal.jsx   getbible.net catalog browser. Multi-select download with licence warning.
 │   │   ├── MediaPickerModal.jsx   Media grid picker. Used by RundownPanel for bg override.
+│   │   ├── MediaThumb.jsx         Cached thumbnail tile (cue-thumb:// + error fallback). Used by every media grid/list.
 │   │   ├── SlideList.jsx          Scrollable slide/section list. Preview and live variants.
 │   │   │                          Slide content capped at max-h-24 to prevent runaway tall cards.
 │   │   │                          Section labels via utils/sectionLabels (numbered: Verse 1 / Verse 2, abbrev forms).
@@ -365,7 +366,7 @@ src/
 - `vite.preload.config.js` — builds preloads
 - `vite.renderer.config.js` — builds renderer React app
 - `tailwind.config.js` — custom design tokens (see §10)
-- `forge.config.js` — Electron Forge packaging config (`extraResource: ['./resources/bible', './resources/ghs']`)
+- `forge.config.js` — Electron Forge packaging config. `extraResource` for bundled bibles/hymnal; a `packageAfterPrune` hook copies native externals (+ closure) and the plain-DOM `src/output`/`src/fonts` into the package (see §20); `asar.unpack` keeps native modules on the real filesystem.
 - `index.html` — Vite renderer entry HTML
 
 **Project-root data/tooling (outside `src/`):**
@@ -678,6 +679,25 @@ function pathToUrl(p) {
   return 'cue-media://localhost' + pathPart.split('/').map(encodeURIComponent).join('/');
 }
 ```
+
+### Thumbnails — the `cue-thumb://` protocol
+
+Media grids/lists never load the full-resolution original (an 8 MB photo decoded into a 100px tile is what made the Media tab slow). They use a second privileged protocol, registered alongside `cue-media` before `app.whenReady()`:
+
+```js
+{ scheme: 'cue-thumb', privileges: { secure: true, standard: true,
+  supportFetchAPI: true, bypassCSP: true, corsEnabled: true } }
+```
+
+The handler (`main/index.js`):
+- Resolves the absolute source path (same Windows drive-letter stripping as `cue-media`).
+- Cache path = `userData/thumbnails/<sha1(srcPath)>.jpg` (`media.thumbCachePath`). Serves the cached JPEG if present.
+- Otherwise generates one with `nativeImage.createThumbnailFromPath(src, { width: 480, height: 480 })` — the OS thumbnail service (QuickLook on macOS, the shell thumbnail handler on Windows), so it posters **videos as well as images**, is async, and needs no extra dependency — then `.toJPEG(72)`, writes the cache fire-and-forget, and serves it.
+- Fallback: if generation fails and the source is an image extension, serve the original bytes (so the tile still renders); for a non-image (e.g. a video codec the OS can't thumbnail) return 404 so the renderer shows its placeholder instead of feeding video bytes to an `<img>`.
+
+The thumbnail cache is **pure derived data**: keyed by source path, regenerated on demand. It is therefore *not* a media reference (excluded from `media.findUnused`), *not* in backups, and is cleared alongside the assets it mirrors — `media.del()` removes the asset's thumb, `media.deleteAllMedia()` empties `userData/thumbnails`.
+
+**Renderer usage:** `thumbUrl(absPath)` in `mediaUrl.js` builds the URL; the `<MediaThumb path={…} />` component (`components/MediaThumb.jsx`) renders it as an `<img>` with an error-fallback icon and is used by every grid/list tile (LibraryPanel media grid, MediaPickerModal, MediaCleanup, RundownPanel item thumb). Keep `mediaUrl()` for live output, full-size previews, and playing video.
 
 ---
 
@@ -1389,8 +1409,24 @@ The reference flows in the payload as `copyright` (text), `copyrightAlign` (`'ri
 
 ```bash
 npm start          # dev mode — Vite dev server + Electron, DevTools auto-open
+npm run package    # package the .app/.exe bundle (no installer) — fast packaging check
 npm run make       # build distributable (.dmg macOS, .exe Windows)
 npm run rebuild    # recompile better-sqlite3 after Electron version bump
 ```
 
-On macOS unsigned builds: `xattr -cr /Applications/Cue.app` to remove quarantine, or right-click → Open.
+### Packaging — what Vite does not bundle
+
+The Forge Vite plugin sets `packagerConfig.ignore` to drop everything except the `/.vite` build output, so anything not bundled by Vite is **absent from a packaged build even though it works in `npm start`** (where the full project tree, including `node_modules`, is on disk). Two classes of files are restored by the `packageAfterPrune` hook in `forge.config.js`:
+
+1. **Native externals + their dependency closure.** `better-sqlite3`, `grandi` (+ the platform `@grandi/<os>-<arch>` binary), and `tar` are kept `external` in `vite.main.config.js` (native `.node` addons can't be bundled; `tar` does dynamic requires). The hook walks each module's production dependency tree (`collectClosure`) and copies the full closure into the packaged `node_modules`. It runs *after* Forge's prune so the copies survive into the asar. `grandi`'s binary lives in an `optionalDependency`, so only the one installed for the current build OS resolves — the closure naturally copies the correct per-platform binary.
+2. **Plain-DOM output assets.** `src/output/*` (the projection / lower-third / stage HTML + their js/css) and `src/fonts/*` are not bundled by Vite, but `output/manager.js` loads them from `app.getAppPath()/src/output` at runtime. The hook copies both directories to the same relative path inside the asar. Without this every output window is a blank `ERR_FILE_NOT_FOUND`.
+
+Native code must run from the real filesystem, not inside the asar: `grandi.node` links its sibling `libndi.dylib`/`.dll` via an `@loader_path` rpath, and `better-sqlite3` resolves its `.node` relative to its own location. `packagerConfig.asar.unpack: '**/node_modules/**'` keeps the whole copied tree in `app.asar.unpacked` with its internal layout intact.
+
+**Implication:** adding a new runtime npm dependency that Vite externalizes, or a new output-window/font file, means updating the `packageAfterPrune` hook — otherwise the breakage appears only in packaged builds, never in dev. Verify a build with `npm run package` then launch `out/<name>/…app`.
+
+### Distribution
+
+Bundled resources (`resources/bible`, `resources/ghs`) are placed in `Contents/Resources/` via `extraResource` and read through `process.resourcesPath` when `app.isPackaged`.
+
+For internal distribution and code-signing guidance (free self-signing, quarantine/Mark-of-the-Web, the Apple Silicon ad-hoc requirement, clearing the download tag), see `plan/deployment-handoff.md`. On macOS unsigned builds: `xattr -dr com.apple.quarantine /Applications/Cue.app`, or right-click → Open.
