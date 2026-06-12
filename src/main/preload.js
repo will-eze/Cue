@@ -146,6 +146,8 @@ contextBridge.exposeInMainWorld('cue', {
     getDiskUsage: () => ipcRenderer.invoke('settings:getDiskUsage'),
     getDataPath: () => ipcRenderer.invoke('settings:getDataPath'),
     openDataFolder: () => ipcRenderer.invoke('settings:openDataFolder'),
+    exportBackup: () => ipcRenderer.invoke('settings:exportBackup'),
+    importBackup: () => ipcRenderer.invoke('settings:importBackup'),
   },
   dialog: {
     openFile: (options) => ipcRenderer.invoke('dialog:openFile', options),

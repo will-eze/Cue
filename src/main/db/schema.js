@@ -8,6 +8,15 @@ export function getDb() {
   return db;
 }
 
+// Closes the live connection (checkpoints WAL on close). Used by backup/restore
+// to release the cue.db file handle before the file is swapped on disk.
+export function closeDb() {
+  if (db) {
+    try { db.close(); } catch {}
+    db = null;
+  }
+}
+
 const migrations = [
   function v1(database) {
     database.exec(`

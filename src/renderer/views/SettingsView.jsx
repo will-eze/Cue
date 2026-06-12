@@ -6,6 +6,7 @@ import ThemeSettings from '../settings/ThemeSettings';
 import BibleSettings from '../settings/BibleSettings';
 import ShortcutSettings from '../settings/ShortcutSettings';
 import RemoteSettings from '../settings/RemoteSettings';
+import DataSettings from '../settings/DataSettings';
 import DangerZone from '../settings/DangerZone';
 
 // Each section is an anchor in the scrollable settings column. Clicking a nav
@@ -18,6 +19,7 @@ const SECTIONS = [
   { id: 'bible',      icon: 'menu_book',       label: 'Bible' },
   { id: 'shortcuts',  icon: 'keyboard',        label: 'Shortcuts' },
   { id: 'remote',     icon: 'cell_tower',      label: 'Remote' },
+  { id: 'data',       icon: 'database',        label: 'Data' },
   { id: 'danger',     icon: 'warning',         label: 'Danger' },
 ];
 
@@ -151,6 +153,7 @@ export default function SettingsView({ onClose, activeServiceId, onRundownCleare
         <section ref={setRef('bible')} data-section="bible" className="scroll-mt-lg"><BibleSettings /></section>
         <section ref={setRef('shortcuts')} data-section="shortcuts" className="scroll-mt-lg"><ShortcutSettings /></section>
         <section ref={setRef('remote')} data-section="remote" className="scroll-mt-lg"><RemoteSettings /></section>
+        <section ref={setRef('data')} data-section="data" className="scroll-mt-lg"><DataSettings /></section>
         <section ref={setRef('danger')} data-section="danger" className="scroll-mt-lg">
           <DangerZone
             activeServiceId={activeServiceId}

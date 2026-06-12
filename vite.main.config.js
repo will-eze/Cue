@@ -9,6 +9,7 @@ export default defineConfig({
         'better-sqlite3',
         'grandi',
         /^@grandi\//,
+        'tar',
         ...builtinModules,
         ...builtinModules.map((m) => `node:${m}`),
       ],
