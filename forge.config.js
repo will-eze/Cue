@@ -70,6 +70,26 @@ module.exports = {
     extraModules: ['better-sqlite3', 'grandi'],
   },
   hooks: {
+    // macOS ad-hoc code signature (free, no Apple Developer ID). Apple Silicon
+    // refuses to launch a repackaged Electron app whose original signature was
+    // invalidated by packaging — without this it shows "Cue is damaged and can't
+    // be opened" even from a clean USB copy. Forge's `osxSign` packagerConfig
+    // option silently no-ops here (leaves Electron's broken linker signature), so
+    // we sign explicitly: `codesign --deep --force --sign -` reseals the whole
+    // bundle (identifier com.electron.cue, sealed resources). This runs in
+    // postPackage — AFTER the .app is built but BEFORE the dmg maker — so the dmg
+    // ships the signed app. It does NOT clear the download quarantine tag (that
+    // needs $99 notarization, irrelevant for USB/network-share distribution).
+    postPackage: async (_forgeConfig, options) => {
+      if (options.platform !== 'darwin') return;
+      const { execFileSync } = require('child_process');
+      for (const outDir of options.outputPaths) {
+        const app = path.join(outDir, 'Cue.app');
+        if (!fs.existsSync(app)) continue;
+        execFileSync('codesign', ['--deep', '--force', '--sign', '-', app], { stdio: 'inherit' });
+        execFileSync('codesign', ['--verify', '--deep', '--strict', app], { stdio: 'inherit' });
+      }
+    },
     packageAfterPrune: async (_forgeConfig, buildPath) => {
       // 1. Native externals (+ their dependency closure) into the packaged
       //    node_modules. Runs after Forge's prune so the modules survive into the asar.

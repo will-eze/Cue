@@ -1,0 +1,89 @@
+name: Build installers
+
+# Builds Cue's distributable installers natively on each target OS — the only
+# reliable way to get a Windows .exe (maker-squirrel needs real Windows; Wine on
+# Apple Silicon is too flaky). Produces a GitHub Release you pull with the gh CLI
+# (`gh release download <tag>`) — a CLI download sets no macOS quarantine xattr /
+# no Windows mark-of-the-web, so the installers arrive clean (unlike a browser
+# download). The macOS dmg is ad-hoc signed by forge.config.js's postPackage hook
+# so it launches on Apple Silicon; the Windows exe is unsigned (Unblock-File on
+# first run, or wire a self-signed cert into maker-squirrel later).
+
+on:
+  # Tag push is the primary trigger: it works even while this workflow lives only
+  # on a feature branch (push events use the workflow file at the pushed ref), and
+  # a tag is required for a Release anyway.
+  push:
+    tags:
+      - 'v*'
+  # Manual trigger — available once this file reaches the default branch.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to publish (e.g. v0.1.0)'
+        required: true
+        default: 'v0.1.0-internal'
+
+permissions:
+  contents: write   # GITHUB_TOKEN needs this to create the Release
+
+jobs:
+  build:
+    name: Build ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest      # arm64 runner → Apple Silicon dmg
+            label: macOS (dmg)
+            artifact: cue-macos-dmg
+            files: out/make/**/*.dmg
+          - os: windows-latest     # x64 runner → Windows exe
+            label: Windows (exe)
+            artifact: cue-windows-exe
+            files: out/make/**/*.exe
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history: the app build number is `git rev-list --count HEAD`
+          # (vite.renderer.config.js). A shallow clone would pin every build to 1.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # npm ci installs the platform-matched grandi binary (@grandi/<os>-<arch>
+      # with its libndi.*) as an optionalDependency; forge.config.js copies that
+      # closure into the package. better-sqlite3 + grandi are rebuilt against
+      # Electron's headers by forge's own rebuild step during `make` (the runners
+      # ship the needed toolchain: MSVC+Python on Windows, Xcode CLT on macOS).
+      - run: npm ci
+
+      - run: npm run make
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error
+
+  release:
+    name: Publish Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist          # dist/<artifact-name>/<files>
+
+      - name: Publish installers to a GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          name: Cue ${{ github.event.inputs.tag || github.ref_name }}
+          prerelease: true
+          fail_on_unmatched_files: true
+          files: dist/**/*
