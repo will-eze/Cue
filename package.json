@@ -1,14 +1,15 @@
 {
   "name": "cue",
   "productName": "Cue",
-  "version": "21.2.0",
+  "version": "21.3.0",
   "description": "Unified graphics engine for worship presentation and broadcast overlays",
   "main": ".vite/build/index.js",
   "scripts": {
     "start": "electron-forge start",
     "package": "electron-forge package",
     "make": "electron-forge make",
-    "rebuild": "electron-rebuild -f -w better-sqlite3"
+    "rebuild": "electron-rebuild -f -w better-sqlite3",
+    "test": "node src/main/scripture-detect/reference-parser.test.mjs && node src/main/scripture-detect/match-score.test.mjs"
   },
   "keywords": [],
   "author": "William Eze",
@@ -32,6 +33,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "better-sqlite3": "^11.1.2",
     "grandi": "^1.3.0",
+    "onnxruntime-node": "^1.26.0",
     "pdfjs-dist": "^4.10.38",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

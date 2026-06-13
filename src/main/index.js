@@ -15,6 +15,8 @@ import { registerPresentationsIpc } from './ipc/presentations.ipc.js';
 import { registerRemoteIpc, applyRemoteConfig } from './ipc/remote.ipc.js';
 import { registerFontsIpc } from './ipc/fonts.ipc.js';
 import { registerYoutubeIpc } from './ipc/youtube.ipc.js';
+import { registerScriptureDetectIpc } from './ipc/scripture-detect.ipc.js';
+import * as scriptureDetect from './scripture-detect/manager.js';
 import * as youtube from './youtube/downloader.js';
 import { purgeYoutubeItems } from './db/services.js';
 import * as remoteServer from './remote/server.js';
@@ -250,9 +252,12 @@ app.whenReady().then(async () => {
   registerRemoteIpc();
   registerFontsIpc();
   registerYoutubeIpc();
+  registerScriptureDetectIpc();
 
   createMainWindow();
   outputManager.setMainWindow(mainWindow);
+  scriptureDetect.setMainWindow(mainWindow);
+  await scriptureDetect.init();
 
   // Network control API: read state from the manager, forward transport commands
   // to the renderer (which owns rundown/preview/live and resolves GO payloads),
@@ -288,6 +293,7 @@ app.on('window-all-closed', () => {
 app.on('will-quit', () => {
   outputManager.closeAll();
   remoteServer.stop();
+  scriptureDetect.dispose();
   // Single-use clips: delete every downloaded YouTube file on quit.
   youtube.wipeCache();
 });

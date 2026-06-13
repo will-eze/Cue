@@ -164,6 +164,16 @@ contextBridge.exposeInMainWorld('cue', {
     cancel:   (url) => ipcRenderer.invoke('youtube:cancel', url),
     detect:   ()    => ipcRenderer.invoke('youtube:detect'),
   },
+  scriptureDetect: {
+    getConfig:       () => ipcRenderer.invoke('scriptureDetect:getConfig'),
+    setConfig:       (patch) => ipcRenderer.invoke('scriptureDetect:setConfig', patch),
+    start:           () => ipcRenderer.invoke('scriptureDetect:start'),
+    stop:            () => ipcRenderer.invoke('scriptureDetect:stop'),
+    ensureAsrModel:  () => ipcRenderer.invoke('scriptureDetect:ensureAsrModel'),
+    buildVectors:    (versionId) => ipcRenderer.invoke('scriptureDetect:buildVectors', versionId),
+    // High-rate PCM frames — fire-and-forget send (no reply); transfer the buffer.
+    pushAudio:       (int16) => ipcRenderer.send('scriptureDetect:pushAudio', int16.buffer),
+  },
   openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
   remote: {
     getConfig:       () => ipcRenderer.invoke('remote:getConfig'),
@@ -211,6 +221,7 @@ contextBridge.exposeInMainWorld('cue', {
       'shortcut:next', 'shortcut:prev',
       'remote:command',
       'youtube:status',
+      'scripture:detected', 'scripture:transcript', 'scripture:status',
     ];
     if (!allowed.includes(channel)) return () => {};
     const wrapper = (_event, ...args) => callback(...args);

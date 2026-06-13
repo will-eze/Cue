@@ -13,7 +13,12 @@ const path = require('path');
 // can't strip them again). grandi's platform binary lives in an optionalDependency
 // @grandi/<os>-<arch>; only the one installed for the current build OS resolves,
 // so the closure naturally copies the right binary per platform.
-const NATIVE_EXTERNALS = ['better-sqlite3', 'grandi', 'tar'];
+// onnxruntime-node is the scripture-detection embedding runtime. It is N-API
+// (ABI-stable across Node/Electron) so — unlike better-sqlite3 — it needs NO
+// @electron/rebuild step; it only needs its prebuilt .node + libs copied into the
+// packaged node_modules (handled by the closure copy below), kept out of the asar
+// by the asar.unpack rule.
+const NATIVE_EXTERNALS = ['better-sqlite3', 'grandi', 'tar', 'onnxruntime-node'];
 
 function resolvePkgDir(name, fromDir) {
   let dir = fromDir;
@@ -181,6 +186,15 @@ module.exports = {
       for (const dir of ['src/output', 'src/fonts']) {
         fs.cpSync(path.join(__dirname, dir), path.join(buildPath, dir), { recursive: true });
       }
+
+      // 3. The embedding worker (embed-worker.js). It is NOT bundled by Vite — it
+      //    runs as a worker_thread loaded by path from app.getAppPath() (see
+      //    content-match.js), exactly like the output windows above. CommonJS, so
+      //    it loads in the type:commonjs project. Without this the verse-vector
+      //    build/match path dies with a missing-worker error in packaged builds.
+      const workerRel = path.join('src', 'main', 'scripture-detect', 'embed-worker.js');
+      fs.mkdirSync(path.dirname(path.join(buildPath, workerRel)), { recursive: true });
+      fs.copyFileSync(path.join(__dirname, workerRel), path.join(buildPath, workerRel));
     },
   },
   makers: [

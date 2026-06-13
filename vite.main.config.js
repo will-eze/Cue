@@ -10,6 +10,7 @@ export default defineConfig({
         'grandi',
         /^@grandi\//,
         'tar',
+        'onnxruntime-node',
         ...builtinModules,
         ...builtinModules.map((m) => `node:${m}`),
       ],

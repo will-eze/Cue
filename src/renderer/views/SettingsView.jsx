@@ -9,6 +9,7 @@ import FontSettings from '../settings/FontSettings';
 import MediaCleanup from '../settings/MediaCleanup';
 import ShortcutSettings from '../settings/ShortcutSettings';
 import RemoteSettings from '../settings/RemoteSettings';
+import ScriptureDetectionSettings from '../settings/ScriptureDetectionSettings';
 import DataSettings from '../settings/DataSettings';
 import DangerZone from '../settings/DangerZone';
 
@@ -25,6 +26,7 @@ const SECTIONS = [
   { id: 'media',      icon: 'cleaning_services', label: 'Media' },
   { id: 'shortcuts',  icon: 'keyboard',        label: 'Shortcuts' },
   { id: 'remote',     icon: 'cell_tower',      label: 'Remote' },
+  { id: 'detect',     icon: 'hearing',         label: 'Detect' },
   { id: 'data',       icon: 'database',        label: 'Data' },
   { id: 'danger',     icon: 'warning',         label: 'Danger' },
 ];
@@ -162,6 +164,7 @@ export default function SettingsView({ onClose, activeServiceId, onRundownCleare
         <section ref={setRef('media')} data-section="media" className="scroll-mt-lg"><MediaCleanup /></section>
         <section ref={setRef('shortcuts')} data-section="shortcuts" className="scroll-mt-lg"><ShortcutSettings /></section>
         <section ref={setRef('remote')} data-section="remote" className="scroll-mt-lg"><RemoteSettings /></section>
+        <section ref={setRef('detect')} data-section="detect" className="scroll-mt-lg"><ScriptureDetectionSettings /></section>
         <section ref={setRef('data')} data-section="data" className="scroll-mt-lg"><DataSettings /></section>
         <section ref={setRef('danger')} data-section="danger" className="scroll-mt-lg">
           <DangerZone

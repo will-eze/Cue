@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import RundownPanel from '../panels/RundownPanel';
 import PreviewLivePanel from '../panels/PreviewLivePanel';
 import LibraryPanel from '../panels/LibraryPanel';
+import ScriptureDetectionPanel from '../panels/ScriptureDetectionPanel';
+import { useScriptureCapture } from '../audio/useScriptureCapture';
 import { sectionLabels, sectionLabelAt } from '../utils/sectionLabels';
 
 const isMac = window.cue.platform === 'darwin';
@@ -128,6 +130,55 @@ export default function OperatorView({
     setSlideBgPath(slideBg?.path || null);
   }, []);
   useEffect(() => { loadScriptureDefaults(); }, [loadScriptureDefaults, bgRefreshTick]);
+
+  // ── Scripture detection (listen → suggest verse) ──────────────────────────
+  // Detection is a virtual operator, like the network remote: main resolves a
+  // candidate and sends 'scripture:detected'; OperatorView resolves the passage
+  // via the EXISTING bible.resolve IPC and reuses handleScriptureLive — no new
+  // payload building, no scripture preview machinery.
+  const [detectCfg, setDetectCfg] = useState(null);
+  const [detectArmed, setDetectArmed] = useState(false);
+  const [detectTail, setDetectTail] = useState('');
+  const [detectSuggestions, setDetectSuggestions] = useState([]);
+  const { active: captureActive, error: captureError } = useScriptureCapture(detectArmed, detectCfg?.deviceId);
+
+  useEffect(() => {
+    window.cue.scriptureDetect.getConfig().then(setDetectCfg);
+  }, [bgRefreshTick]);
+
+  // Arm/disarm drives the main-process ASR loop (capture is driven by the hook).
+  useEffect(() => {
+    if (!detectCfg?.enabled) return;
+    if (detectArmed) window.cue.scriptureDetect.start();
+    else window.cue.scriptureDetect.stop();
+  }, [detectArmed, detectCfg?.enabled]);
+
+  // Disarm if the feature is turned off in Settings.
+  useEffect(() => { if (detectCfg && !detectCfg.enabled) setDetectArmed(false); }, [detectCfg?.enabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const goLiveFromPassage = useCallback((passage) => {
+    const v0 = passage?.verses?.[0];
+    if (!v0) return;
+    handleScriptureLive({
+      versionId: passage.versionId, versionAbbrev: passage.versionAbbrev, versionName: passage.versionName,
+      bookNum: passage.bookNum, bookName: passage.bookName, chapter: v0.chapter, verse: v0.verse, text: v0.text,
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const offTail = window.cue.on('scripture:transcript', (t) => {
+      setDetectTail(`${t.committed || ''} ${t.tail || ''}`.trim().split(/\s+/).slice(-18).join(' '));
+    });
+    const offDet = window.cue.on('scripture:detected', async (d) => {
+      const passage = await window.cue.bible.resolve(d.versionId, d.ref, 1);
+      if (!passage) return;
+      const sugg = { id: `${d.mode}-${passage.reference}-${Date.now()}`, mode: d.mode, ref: passage.reference, confidence: d.confidence, passage };
+      setDetectSuggestions((prev) => [sugg, ...prev.filter((s) => s.ref !== passage.reference)].slice(0, 4));
+      if (d.autoAction === 'live') goLiveFromPassage(passage);
+    });
+    return () => { offTail(); offDet(); };
+  }, [goLiveFromPassage]);
+
   const [undoStack, setUndoStack] = useState(null);
   const undoTimerRef = useRef(null);
 
@@ -965,6 +1016,20 @@ export default function OperatorView({
           />
         </div>
       </div>
+
+      {/* Scripture detection strip (only when enabled in Settings) */}
+      {detectCfg?.enabled && (
+        <ScriptureDetectionPanel
+          armed={detectArmed}
+          onToggleArm={() => setDetectArmed((a) => !a)}
+          transcript={detectTail}
+          suggestions={detectSuggestions}
+          captureActive={captureActive}
+          captureError={captureError}
+          onGoLive={(s) => { goLiveFromPassage(s.passage); setDetectSuggestions((prev) => prev.filter((x) => x.id !== s.id)); }}
+          onDismiss={(s) => setDetectSuggestions((prev) => prev.filter((x) => x.id !== s.id))}
+        />
+      )}
 
       {/* Vertical resize handle */}
       <div
