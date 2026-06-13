@@ -47,13 +47,14 @@ let state = {
 
 // Foreground-media transport. Machine-clock based so every output window and the
 // operator renderer derive the SAME playhead (no skew, no clock-master election).
-//   position(now) = ((pausedAt ?? now) - startAt) / 1000   (mod duration if loop)
+//   position(now) = ((pausedAt ?? now) - startAt) / 1000 * rate   (mod duration if loop)
 let transport = {
   active: false,   // a foreground media item is loaded
   startAt: 0,      // Date.now() baseline for position 0
   pausedAt: null,  // Date.now() when paused, else null
   loop: false,
   muted: false,    // program (audience) audio mute — layered on top of per-window base mute
+  rate: 1,         // operator playback speed; baseline rate the convergence nudges around
 };
 
 function getOutputPreloadPath() {
@@ -504,10 +505,11 @@ export function go(payload) {
       pausedAt: null,
       loop: !!payload.media.loop,
       muted: false,          // new clip starts audible; operator can mute live
+      rate: 1,               // every new clip starts at normal speed
     };
     payload.mediaStartAt = transport.startAt; // kept for backward-compat consumers
   } else {
-    transport = { active: false, startAt: 0, pausedAt: null, loop: false, muted: false };
+    transport = { active: false, startAt: 0, pausedAt: null, loop: false, muted: false, rate: 1 };
   }
   state.livePayload = payload;
   state.displayMode = 'content';
@@ -586,7 +588,8 @@ export function mediaControl(action) {
 export function mediaSeek(pos) {
   if (!transport.active || !Number.isFinite(pos)) return;
   const now = Date.now();
-  transport.startAt = now - pos * 1000;
+  const rate = transport.rate || 1;
+  transport.startAt = now - (pos / rate) * 1000;
   if (transport.pausedAt != null) transport.pausedAt = now;
   broadcastTransport();
 }
@@ -594,6 +597,20 @@ export function mediaSeek(pos) {
 // Toggle program (audience) audio. Stage + operator preview stay silent always.
 export function mediaSetMuted(muted) {
   transport.muted = !!muted;
+  broadcastTransport();
+}
+
+// Operator playback speed. Rebase startAt so the CURRENT position is continuous
+// across the rate change (no jump), then every player adopts the new baseline rate.
+export function mediaSetRate(rate) {
+  if (!transport.active) return;
+  const r = Number(rate);
+  if (!Number.isFinite(r) || r <= 0) return;
+  const now = Date.now();
+  const ref = transport.pausedAt != null ? transport.pausedAt : now;
+  const oldRate = transport.rate || 1;
+  transport.startAt = ref - (ref - transport.startAt) * (oldRate / r);
+  transport.rate = r;
   broadcastTransport();
 }
 

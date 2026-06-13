@@ -137,6 +137,8 @@ src/
 │   │   │                     close DB, delete cue.db + media/ + fonts/, relaunch as a fresh install).
 │   │   ├── fonts.ipc.js      Registers fonts:* handlers (listUser/css/import [native multi-file picker]/delete).
 │   │   ├── bible.ipc.js      Registers bible:* handlers (versions/books/chapters/verses/adjacent/resolve/search/importFile/delete/online:*).
+│   │   ├── youtube.ipc.js    Registers youtube:* handlers (prefetch/status/cancel/detect). Wires the downloader's
+│   │   │                     status listener → broadcasts youtube:status to every window.
 │   │   └── remote.ipc.js       Registers remote:* handlers (getConfig/setConfig/regenerateToken/navState). Owns the
 │   │                           settings keys (remote_enabled/port/lan/token) + applyRemoteConfig() (boot + on-change start).
 │   │
@@ -150,11 +152,19 @@ src/
 │   │                           Token from ?token= → localStorage. SSE-driven (single source of truth, no stale renders).
 │   │                           Accordion rundown — expand a song to its numbered slides, tap a verse to jump live.
 │   │
+│   ├── youtube/
+│   │   ├── bin.js             Per-platform binary resolver (yt-dlp + ffmpeg) under resources/bin/<platform>-<arch>/.
+│   │   │                     userData/bin yt-dlp wins over the bundled seed; detect() health-checks both.
+│   │   └── downloader.js      Ephemeral YouTube resolver. parseVideoId; prefetch(url) (resolve metadata → download
+│   │                         with faststart + concurrent-fragments → ready); in-memory entries Map keyed by video id;
+│   │                         getStatus/getReadyPath/cancel; wipeCache() (quit + startup). Emits youtube:status.
+│   │
 │   └── output/
 │       ├── manager.js        Output window registry. go/clear/logo dispatch. No operator capture loop —
 │       │                     the operator live monitor renders from payload, not capturePage.
-│       │                     Owns the foreground-media `transport` { active, startAt, pausedAt, loop, muted }
-│       │                     (machine-clock based). go() stamps it; mediaControl/mediaSeek/mediaSetMuted mutate it;
+│       │                     Owns the foreground-media `transport` { active, startAt, pausedAt, loop, muted, rate }
+│       │                     (machine-clock based). go() stamps it; mediaControl/mediaSeek/mediaSetMuted/mediaSetRate
+│       │                     mutate it (setRate rebases startAt so position is continuous);
 │       │                     broadcastTransport() pushes `media:transport` to every window + `output:media-transport`
 │       │                     to the renderer. isPrimaryAudioMonitor() picks the single program-audio window (?mute=).
 │       │                     Stage timer/message state (stageTimerCmd, setStageMessage) → stage:timer / stage:message.
@@ -285,6 +295,8 @@ src/
 │   │   │                          binary. Picks .pptx/.ppt/.pdf (split filters + All Files for the macOS UTI greying);
 │   │   │                          convertPptx → rasterizePdf (per-slide progress) → createFromImages. PDF imports skip
 │   │   │                          LibreOffice (pixel-perfect; offered even in the missing state).
+│   │   ├── AddYouTubeModal.jsx    Paste-a-URL modal (Media tab). Speculative prefetch on paste; Confirm adds the cue
+│   │   │                          (if the URL was edited, abandons the speculative download); shows live youtube:status.
 │   │   ├── MediaPickerModal.jsx   Media grid picker. Used by RundownPanel for bg override.
 │   │   ├── MediaThumb.jsx         Cached thumbnail tile (cue-thumb:// + error fallback). Used by every media grid/list.
 │   │   ├── SlideList.jsx          Scrollable slide/section list. Preview and live variants.
@@ -401,6 +413,7 @@ src/
 **Project-root data/tooling (outside `src/`):**
 - `resources/bible/{kjv,web}.json` — bundled public-domain translations (seeded on first run; shipped via `extraResource`)
 - `resources/ghs/ghs-hymnal.json` — bundled GHS hymnal seed `{ items:[{ number, name, lyrics }] }` (260 hymns; shipped via `extraResource`, seeded on first run by seedGhsHymnal)
+- `resources/bin/<platform>-<arch>/` — bundled `yt-dlp` + `ffmpeg` for the native YouTube player (`darwin-arm64`, `darwin-x64`, `win32-x64`; macOS `yt-dlp` is universal). Shipped via `extraResource`, resolved by `src/main/youtube/bin.js`. ~290 MB across all platforms
 - `scripts/build-bibles.mjs` — regenerates the bible seed JSON from getbible.net v2 (`node scripts/build-bibles.mjs`)
 - `scripts/build-ghs.mjs` — regenerates the GHS seed from a number→name CSV (cp1252) + lyric text files (`node scripts/build-ghs.mjs <csv> <lyricsDir>`)
 
@@ -417,7 +430,7 @@ src/
 
 ### Migration system
 
-`schema.js` creates `db_version` table (single integer row) on first run and applies pending migrations in order inside a transaction. **Never delete `db_version`** — it is required to exist before any user-facing build. Current version: **20**. Migrations run with foreign keys disabled, so table-rebuild migrations (v6, v7, v11, v16, v20) do not cascade-delete referencing rows.
+`schema.js` creates `db_version` table (single integer row) on first run and applies pending migrations in order inside a transaction. **Never delete `db_version`** — it is required to exist before any user-facing build. Current version: **21**. Migrations run with foreign keys disabled, so table-rebuild migrations (v6, v7, v11, v16, v20, v21) do not cascade-delete referencing rows.
 
 | Version | Change |
 |---|---|
@@ -441,6 +454,7 @@ src/
 | v18 | Added `service_items.advance_loop` (TEXT) — `'rundown'` (default) vs `'item'` at the item's last slide |
 | v19 | Added `service_items.advance_wrap` (INTEGER, default 1) — rundown mode: wrap to first item at the end vs stop |
 | v20 | Presentations: created `presentations`, `presentation_slides`, `presentation_templates`; rebuilt `service_items` to add `'presentation'` to the `item_type` CHECK (v7-pattern table rebuild) |
+| v21 | Native YouTube player: rebuilt `service_items` to add `'youtube'` to the `item_type` CHECK (v7-pattern table rebuild). A YouTube cue stores its URL in `content`, `ref_id` NULL — the downloaded file is ephemeral (never `media_assets`); see §6 *Native YouTube player* |
 
 ### All tables
 
@@ -513,11 +527,11 @@ notes TEXT
 ```sql
 id INTEGER PRIMARY KEY AUTOINCREMENT
 service_id INTEGER NOT NULL REFERENCES services(id) ON DELETE CASCADE
-item_type TEXT NOT NULL CHECK(item_type IN ('song','media','slide','scripture','presentation'))  -- 'scripture' v7, 'presentation' v20
-ref_id INTEGER               -- song id, media_asset id, or null for custom slides
+item_type TEXT NOT NULL CHECK(item_type IN ('song','media','slide','scripture','presentation','youtube'))  -- 'scripture' v7, 'presentation' v20, 'youtube' v21
+ref_id INTEGER               -- song id, media_asset id, or null for custom slides / youtube
 order_index INTEGER NOT NULL
 notes TEXT
-content TEXT                 -- for item_type='slide': JSON {text, ...} or plain text
+content TEXT                 -- for item_type='slide': JSON {text, ...} or plain text; for 'youtube': the URL (file is ephemeral, see §6)
 background_override_id INTEGER REFERENCES media_assets(id) ON DELETE SET NULL
 media_loop INTEGER NOT NULL DEFAULT 0   -- v8: loop this media item's video/audio
 advance_seconds INTEGER                 -- v17: auto-advance interval; NULL = manual
@@ -669,7 +683,8 @@ protocol.registerSchemesAsPrivileged([
 - Receives `cue-media://localhost/absolute/path/to/file`
 - Extracts `pathname` via `new URL(request.url).pathname`
 - Decodes it: `decodeURIComponent(pathname)` → absolute filesystem path
-- Supports HTTP range requests (for video seeking)
+- Supports HTTP range requests (for video seeking), serving a `206` with `Content-Range`
+- **Bodies are streamed, never buffered.** Both the ranged (`206`) and full responses are `fs.createReadStream(...)` piped through `Readable.toWeb(stream)`. A `<video>` opens playback with an open-ended `bytes=0-`; reading that into a single `Buffer` froze the main process and spiked memory on multi-GB clips (a one-hour YouTube download), and a fixed-size chunk cap starved the player of the multi-MB `moov` index so the clip only looped its first few seconds. A lazy stream serves any range with bounded memory and lets Chromium read/seek/cancel freely — it cancels the open-ended request and re-asks for specific windows, so the whole file is never read.
 - Returns `Response` with correct MIME type and `Cache-Control: public, max-age=31536000, immutable` — Chromium serves from disk cache after first load so repeated media displays do not re-read from disk
 
 ### CRITICAL URL GOTCHA
@@ -723,6 +738,18 @@ function pathToUrl(p) {
   return 'cue-media://localhost' + pathPart.split('/').map(encodeURIComponent).join('/');
 }
 ```
+
+### Native YouTube player (ephemeral video)
+
+A pasted YouTube URL is resolved by **yt-dlp** into a local video file, which then flows through the *identical* path as any media asset — the single machine-clock transport, `cue-media://`, NDI paint capture, and every operator control — giving a clean, full-screen, frame-synced feed with full controls. An iframe could not (branding/end-screens, independent per-window players drift, no NDI capture path).
+
+**Single-use / ephemeral.** A YouTube cue is a `service_items` row with `item_type='youtube'` and the URL in `content` (`ref_id` is NULL — it is **never** a `media_assets` row). The downloaded file lives in `userData/yt-cache/<videoId>.mp4`, tracked only in-memory by `src/main/youtube/downloader.js`. Nothing survives a session: the cache is wiped on quit and on startup (crash recovery, `youtube.wipeCache()`), the cues are purged on startup (`services.purgeYoutubeItems()`), and per-clip files are removed on cue removal (`youtube.cancel`). Because it is not a `media_assets` row, it is automatically excluded from backups and `media.findUnused()`.
+
+**Bundled binaries.** `yt-dlp` + `ffmpeg` ship per-platform under `resources/bin/<platform>-<arch>/` (`darwin-arm64`, `darwin-x64`, `win32-x64`; the macOS `yt-dlp` is a universal binary). They are shipped via `extraResource` and resolved at runtime by `src/main/youtube/bin.js` (`process.resourcesPath/bin/...` packaged, `app.getAppPath()/resources/bin/...` in dev) — same pattern as `bundledBibleDir()`. A newer `yt-dlp` in `userData/bin` takes precedence over the bundled seed (the bundled copy can't be rewritten without breaking the macOS signature).
+
+**Download command** (`downloader.js`): format `bv*[height<=1080][vcodec^=avc1]+ba[ext=m4a]/...` (prefer h264 ≤1080p for hardware decode, avoid 4K-AV1 software-decode stutter in the offscreen NDI window), `--merge-output-format mp4 --remux-video mp4`, `--concurrent-fragments 5` (parallel DASH fragments — faster, no quality loss), and `--postprocessor-args "ffmpeg:-movflags +faststart"` (moov atom at front; without it a long clip black-screens on go-live while the player fetches the tail index).
+
+**Pre-fetch / status flow.** Latency is hidden by pre-fetching: the download starts the moment a valid URL is pasted (speculatively, before Confirm — `AddYouTubeModal.jsx`). If the URL is edited before Confirm, the speculative download is abandoned and the submitted URL fetched. Status is `resolving → downloading (percent) → processing → ready | error`, pushed live to all windows over the `youtube:status` event and surfaced as a rundown badge (`RundownPanel`). `services.resolveItems` attaches the current status as `item.youtube`; `OperatorView` patches it live from the event and re-prefetches any `idle` cue on load. GO is soft-blocked until `ready` (`buildPayload` returns null otherwise), then resolves the ready path into a normal full-screen media payload (`{ media: { path, type:'video', loop } }`).
 
 ### Thumbnails — the `cue-thumb://` protocol
 
@@ -821,6 +848,7 @@ All renderer↔main communication is via `ipcRenderer.invoke` / `ipcMain.handle`
 | `media.control(action)` | void | `action` ∈ `'play' \| 'pause' \| 'restart'` — mutates the transport, broadcast to all surfaces. |
 | `media.seek(pos)` | void | Scrub foreground media to `pos` seconds (preserves paused state). |
 | `media.setMuted(muted)` | void | Toggle program (audience) audio. Stage + operator preview stay silent regardless. |
+| `media.setRate(rate)` | void | Operator playback speed (e.g. 0.25–2). Rebases `startAt` so position is continuous; becomes the baseline the ±6% convergence nudge multiplies around. |
 | `graphic.show({name,title,style,target})` | void | Show the name/title lower-third bug. `target` ∈ `'all'\|'screen'\|'ndi'`. |
 | `graphic.hide()` | void | Hide the name/title bug. |
 | `graphic.showCustom({html,target})` | void | Show a custom-HTML graphic (placeholders already substituted). |
@@ -940,6 +968,17 @@ target/format, label + end message, the draggable time box (`time.textBox`/`ltBa
 | `folders.delete(id)` | void | Moves folder contents to root. |
 | `folders.tree()` | `[{id, name, parent_id, children:[...]}]` | Recursive tree. |
 
+### `window.cue.youtube`
+
+| Method | Returns | Notes |
+|---|---|---|
+| `prefetch(url)` | `status snapshot` | Start (or reuse) an ephemeral download. Idempotent per video id, so the speculative paste-time call and the Confirm-time call never double-download. Resolves on completion but callers usually fire-and-forget and watch the `youtube:status` stream. |
+| `status(url)` | `status snapshot \| null` | `{ id, url, status, percent, title, durationMs, path, error }`; `status` ∈ `resolving \| downloading \| processing \| ready \| error`. |
+| `cancel(url)` | void | Abandon the download (kill the child) and delete its bytes. Fired on an edited paste and on cue removal. |
+| `detect()` | `{ ytDlp, ffmpeg }` | Health check — absolute path of each bundled binary, or null if missing. |
+
+The downloaded file is **ephemeral** — never a `media_assets` row (see §6 *Native YouTube player*).
+
 ### `window.cue.settings`
 
 | Method | Notes |
@@ -1021,7 +1060,8 @@ Subscribe to main→renderer events. Returns an unsubscribe function — call it
 - `output:unresolved-channels` — array of unresolved channel objects on startup
 - `output:state-changed` — fired after go/clear/logo/setLive AND after any channel topology/flag change (`syncChannel` / `setChannelContentMode`); payload: `{activeWindows, outputsEnabled, displayMode, livePayload, transport, overlay}`. OperatorView reloads its channel list on this so the live monitor tracks content-mode changes.
 - `output:overlay-changed` — fired after any broadcast-graphics change; payload is the full `overlay` object `{nameTitle, ticker, custom}`. The Graphics panel + live monitor follow it.
-- `output:media-transport` — fired whenever the media transport changes (go / play / pause / restart / seek / setMuted); payload: `{ active, startAt, pausedAt, loop, muted }`. The operator UI follows this to drive `SyncedVideo` and the transport bar. (There is NO `output:media-time` event — the old clock-master time-reporting chain was removed.)
+- `output:media-transport` — fired whenever the media transport changes (go / play / pause / restart / seek / setMuted / setRate); payload: `{ active, startAt, pausedAt, loop, muted, rate }`. The operator UI follows this to drive `SyncedVideo` and the transport bar. (There is NO `output:media-time` event — the old clock-master time-reporting chain was removed.)
+- `youtube:status` — fired as an ephemeral YouTube download progresses; payload: `{ id, url, status, percent, title, durationMs, path, error }`. The Media-tab modal, the rundown status badge, and `OperatorView` (which patches the matching cue by URL) all follow it. See §6 *Native YouTube player*.
 - `output:multiview-captures` — array of `{channelId, dataUrl, isNdi}` objects (~5fps, only while multiview is running). `isNdi: true` for NDI channels (sourced from `ndiLastFrames` JPEG cache at ~1fps); `isNdi: false` for screen channels (capturePage at ~5fps).
 - `output:ndi-unavailable` — fired if grandiose is not installed
 - `shortcut:next` / `shortcut:prev` — reserved for future hardware remote

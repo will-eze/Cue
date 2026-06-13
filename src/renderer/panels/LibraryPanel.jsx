@@ -9,6 +9,7 @@ import GraphicsPanel from './GraphicsPanel';
 import MediaThumb from '../components/MediaThumb';
 import PresentationEditor from '../components/PresentationEditor';
 import PptxImportModal from '../components/PptxImportModal';
+import AddYouTubeModal from '../components/AddYouTubeModal';
 import { mediaUrl } from '../utils/mediaUrl';
 
 function SongRow({ index, style, data }) {
@@ -155,7 +156,7 @@ function MediaGrid({ assets, onDelete, onSetBackground, onAddToRundown }) {
   );
 }
 
-export default function LibraryPanel({ onAddToRundown, onAddScripture, onScriptureLive, onScriptureStyleSaved, onAddMedia, onAddPresentation, onSongSave, refreshTick = 0, focusSearchRef }) {
+export default function LibraryPanel({ onAddToRundown, onAddScripture, onScriptureLive, onScriptureStyleSaved, onAddMedia, onAddYouTube, onAddPresentation, onSongSave, refreshTick = 0, focusSearchRef }) {
   const [tab, setTab] = useState('songs');
   const [searchQuery, setSearchQuery] = useState('');
   const [songs, setSongs] = useState([]);
@@ -197,6 +198,7 @@ export default function LibraryPanel({ onAddToRundown, onAddScripture, onScriptu
   const [editPresentation, setEditPresentation] = useState(null); // null=closed, {}=new, {id}=edit
   const [presContext, setPresContext] = useState(null);
   const [pptxImport, setPptxImport] = useState(false);
+  const [ytModal, setYtModal] = useState(false);
 
   useEffect(() => { loadSongs(); window.cue.tags.list().then(setTags); }, [refreshTick]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (tab === 'media') loadMedia(); }, [tab, activeFolderId]);
@@ -453,6 +455,16 @@ export default function LibraryPanel({ onAddToRundown, onAddScripture, onScriptu
           )}
           {tab === 'media' && (
             <button
+              onClick={() => setYtModal(true)}
+              title="Add a YouTube video (downloaded for this session only)"
+              className="bg-surface-container border border-outline-variant/40 text-on-surface px-md py-xs rounded text-label-sm font-label-sm hover:bg-surface-container-high active:scale-95 transition-all cursor-pointer flex items-center gap-xs"
+            >
+              <span className="material-symbols-outlined text-[14px]">smart_display</span>
+              YouTube
+            </button>
+          )}
+          {tab === 'media' && (
+            <button
               onClick={handleImportMedia}
               disabled={importing}
               className="bg-primary text-on-primary px-md py-xs rounded text-label-sm font-label-sm font-bold hover:brightness-110 active:scale-95 transition-all cursor-pointer flex items-center gap-xs disabled:opacity-50 disabled:cursor-not-allowed"
@@ -624,6 +636,12 @@ export default function LibraryPanel({ onAddToRundown, onAddScripture, onScriptu
         <PptxImportModal
           onClose={() => setPptxImport(false)}
           onDone={(id) => { setPptxImport(false); loadPresentations(); setEditPresentation({ id }); }}
+        />
+      )}
+      {ytModal && (
+        <AddYouTubeModal
+          onClose={() => setYtModal(false)}
+          onConfirm={(url) => onAddYouTube?.(url)}
         />
       )}
       {presContext && (

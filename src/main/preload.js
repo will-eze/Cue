@@ -50,6 +50,7 @@ contextBridge.exposeInMainWorld('cue', {
       control: (action) => ipcRenderer.invoke('output:media:control', action),
       seek: (pos) => ipcRenderer.invoke('output:media:seek', pos),
       setMuted: (muted) => ipcRenderer.invoke('output:media:set-muted', muted),
+      setRate: (rate) => ipcRenderer.invoke('output:media:set-rate', rate),
     },
     channels: {
       list: () => ipcRenderer.invoke('output:channels:list'),
@@ -157,6 +158,12 @@ contextBridge.exposeInMainWorld('cue', {
     convertPptx:        (filePath)  => ipcRenderer.invoke('presentations:convertPptx', filePath),
     createFromImages:   (title, buffers) => ipcRenderer.invoke('presentations:createFromImages', title, buffers),
   },
+  youtube: {
+    prefetch: (url) => ipcRenderer.invoke('youtube:prefetch', url),
+    status:   (url) => ipcRenderer.invoke('youtube:status', url),
+    cancel:   (url) => ipcRenderer.invoke('youtube:cancel', url),
+    detect:   ()    => ipcRenderer.invoke('youtube:detect'),
+  },
   openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
   remote: {
     getConfig:       () => ipcRenderer.invoke('remote:getConfig'),
@@ -203,6 +210,7 @@ contextBridge.exposeInMainWorld('cue', {
       'output:overlay-changed',
       'shortcut:next', 'shortcut:prev',
       'remote:command',
+      'youtube:status',
     ];
     if (!allowed.includes(channel)) return () => {};
     const wrapper = (_event, ...args) => callback(...args);

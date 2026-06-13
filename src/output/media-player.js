@@ -58,7 +58,8 @@
       const dur = el.duration;
       const now = Date.now();
       const ref = (transport.pausedAt != null) ? transport.pausedAt : now;
-      let pos = (ref - transport.startAt) / 1000;
+      const rate = transport.rate || 1;
+      let pos = (ref - transport.startAt) / 1000 * rate;
       if (pos < 0) pos = 0;
       if (Number.isFinite(dur) && dur > 0) {
         pos = loop ? pos % dur : Math.min(pos, dur);
@@ -88,16 +89,19 @@
         return;
       }
 
-      // Playing: converge via playbackRate; hard-seek only on large drift.
+      // Playing: converge via playbackRate; hard-seek only on large drift. The
+      // operator speed (transport.rate) is the baseline the ±6% nudge multiplies
+      // around, so a 2× clip stays 2× while still converging to the shared clock.
       if (el.paused) el.play().catch(() => {});
+      const base = transport.rate || 1;
       const drift = wrappedDelta(el.currentTime || 0, expected, dur, loop);
       if (Math.abs(drift) > HARD_SEEK) {
         try { el.currentTime = expected; } catch {}
-        el.playbackRate = 1;
+        el.playbackRate = base;
       } else {
-        let rate = 1 - drift * NUDGE_K;
-        if (rate > MAX_RATE) rate = MAX_RATE;
-        if (rate < MIN_RATE) rate = MIN_RATE;
+        let rate = base * (1 - drift * NUDGE_K);
+        if (rate > base * MAX_RATE) rate = base * MAX_RATE;
+        if (rate < base * MIN_RATE) rate = base * MIN_RATE;
         el.playbackRate = rate;
       }
     };

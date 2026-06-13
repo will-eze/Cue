@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, dialog, screen, protocol, nativeImage } from 'electron';
 import path from 'path';
 import fs from 'fs';
+import { Readable } from 'node:stream';
 import { initDb } from './db/schema.js';
 import { registerSongsIpc } from './ipc/songs.ipc.js';
 import { registerServicesIpc } from './ipc/services.ipc.js';
@@ -13,6 +14,9 @@ import { registerThemesIpc } from './ipc/themes.ipc.js';
 import { registerPresentationsIpc } from './ipc/presentations.ipc.js';
 import { registerRemoteIpc, applyRemoteConfig } from './ipc/remote.ipc.js';
 import { registerFontsIpc } from './ipc/fonts.ipc.js';
+import { registerYoutubeIpc } from './ipc/youtube.ipc.js';
+import * as youtube from './youtube/downloader.js';
+import { purgeYoutubeItems } from './db/services.js';
 import * as remoteServer from './remote/server.js';
 import { seedBundledBibles } from './db/bible.js';
 import { seedGhsHymnal } from './db/songs.js';
@@ -127,14 +131,17 @@ app.whenReady().then(async () => {
         const start = match[1] ? parseInt(match[1], 10) : 0;
         const end   = match[2] ? parseInt(match[2], 10) : stat.size - 1;
         const chunkSize = end - start + 1;
-        const buf = Buffer.allocUnsafe(chunkSize);
-        const fh = await fs.promises.open(filePath, 'r');
-        try {
-          await fh.read(buf, 0, chunkSize, start);
-        } finally {
-          await fh.close();
-        }
-        return new Response(buf, {
+        // STREAM the requested range — never buffer it. A media element opens
+        // playback with `bytes=0-` (the whole remaining file); reading that into one
+        // allocation froze the main process and spiked memory on multi-GB videos,
+        // while capping it to a fixed window starved the player of the (multi-MB)
+        // moov index on hour-long clips, so it could only loop the first few seconds.
+        // A lazy read stream serves ANY range with bounded memory and lets Chromium
+        // read, seek and cancel freely. Chromium cancels the open-ended request and
+        // re-asks for specific windows as it plays, so the full file is never read.
+        const stream = fs.createReadStream(filePath, { start, end });
+        stream.on('error', () => {}); // file vanished mid-stream (e.g. cache wiped) — drop quietly
+        return new Response(Readable.toWeb(stream), {
           status: 206,
           headers: {
             'Content-Type': mimeType,
@@ -146,8 +153,11 @@ app.whenReady().then(async () => {
         });
       }
 
-      const data = await fs.promises.readFile(filePath);
-      return new Response(data, {
+      // No range header (images, or a client that wants the whole file). Stream it
+      // too, so a large asset never lands in a single buffer.
+      const fullStream = fs.createReadStream(filePath);
+      fullStream.on('error', () => {});
+      return new Response(Readable.toWeb(fullStream), {
         headers: {
           'Content-Type': mimeType,
           'Accept-Ranges': 'bytes',
@@ -222,6 +232,12 @@ app.whenReady().then(async () => {
   seedBundledBibles();
   seedGhsHymnal();
 
+  // Ephemeral YouTube downloads never survive a session. Wipe any leftover files
+  // from a previous run (e.g. a crash where will-quit never fired), and drop the
+  // single-use cues themselves so they don't reappear in the rundown and re-download.
+  youtube.wipeCache();
+  purgeYoutubeItems();
+
   registerSongsIpc();
   registerServicesIpc();
   registerMediaIpc();
@@ -233,6 +249,7 @@ app.whenReady().then(async () => {
   registerPresentationsIpc();
   registerRemoteIpc();
   registerFontsIpc();
+  registerYoutubeIpc();
 
   createMainWindow();
   outputManager.setMainWindow(mainWindow);
@@ -271,4 +288,6 @@ app.on('window-all-closed', () => {
 app.on('will-quit', () => {
   outputManager.closeAll();
   remoteServer.stop();
+  // Single-use clips: delete every downloaded YouTube file on quit.
+  youtube.wipeCache();
 });

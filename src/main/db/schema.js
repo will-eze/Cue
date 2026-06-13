@@ -559,6 +559,44 @@ const migrations = [
       CREATE INDEX IF NOT EXISTS idx_service_items_service_id ON service_items(service_id);
     `);
   },
+
+  // v21 — Native YouTube player. service_items.item_type gains 'youtube': the cue
+  // stores the YouTube URL in `content` (ref_id stays NULL — it is NOT a
+  // media_assets row). The downloaded file is ephemeral, tracked in-memory by
+  // src/main/youtube and wiped on quit, so it never persists in the DB or backups.
+  // CHECK can't be altered in place, so the table is rebuilt (same pattern as v20,
+  // carrying every column). FK off during migrations stops the services ON DELETE
+  // CASCADE from firing on the DROP.
+  function v21(database) {
+    database.exec(`
+      CREATE TABLE service_items_v21 (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        service_id INTEGER NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+        item_type TEXT NOT NULL CHECK(item_type IN ('song','media','slide','scripture','presentation','youtube')),
+        ref_id INTEGER,
+        order_index INTEGER NOT NULL,
+        notes TEXT,
+        content TEXT,
+        background_override_id INTEGER REFERENCES media_assets(id) ON DELETE SET NULL,
+        media_loop INTEGER NOT NULL DEFAULT 0,
+        advance_seconds INTEGER,
+        advance_loop TEXT,
+        advance_wrap INTEGER NOT NULL DEFAULT 1
+      );
+
+      INSERT INTO service_items_v21
+        (id, service_id, item_type, ref_id, order_index, notes, content, background_override_id,
+         media_loop, advance_seconds, advance_loop, advance_wrap)
+      SELECT id, service_id, item_type, ref_id, order_index, notes, content, background_override_id,
+             media_loop, advance_seconds, advance_loop, advance_wrap
+      FROM service_items;
+
+      DROP TABLE service_items;
+      ALTER TABLE service_items_v21 RENAME TO service_items;
+
+      CREATE INDEX IF NOT EXISTS idx_service_items_service_id ON service_items(service_id);
+    `);
+  },
 ];
 
 function runMigrations() {

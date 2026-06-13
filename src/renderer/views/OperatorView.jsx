@@ -176,6 +176,39 @@ export default function OperatorView({
     window.cue.services.get(activeServiceId).then(setServiceData);
   }, [activeServiceId, bgRefreshTick]);
 
+  // Live YouTube download progress → patch the matching rundown cue in place (keyed
+  // by URL), so the rundown status badge and buildPayload's ready path stay current
+  // as a clip resolves/downloads without a full service reload.
+  useEffect(() => {
+    const off = window.cue.on('youtube:status', (snap) => {
+      if (!snap || !snap.url) return;
+      setServiceData((prev) => {
+        if (!prev?.items) return prev;
+        let changed = false;
+        const items = prev.items.map((it) => {
+          if (it.item_type === 'youtube' && it.content === snap.url) {
+            changed = true;
+            return { ...it, youtube: { ...snap } };
+          }
+          return it;
+        });
+        return changed ? { ...prev, items } : prev;
+      });
+    });
+    return off;
+  }, []);
+
+  // Pre-fetch any YouTube cue that isn't downloading yet — covers a saved service
+  // reopened in a new session (cache was wiped) and undo-re-added cues. Idempotent
+  // per video id, and only fires for 'idle' cues so the status stream doesn't loop it.
+  useEffect(() => {
+    for (const it of serviceData?.items || []) {
+      if (it.item_type === 'youtube' && it.content && (!it.youtube || it.youtube.status === 'idle')) {
+        window.cue.youtube.prefetch(it.content);
+      }
+    }
+  }, [serviceData]);
+
   const shortcutRef = useRef({});
   shortcutRef.current = { handleNextSlide, handlePrevSlide, handleNextLiveSlide, handlePrevLiveSlide, handleGo, handleClear, handleLogo, handleLiveToggle, handleRemoteSelect, handleAutoAdvance };
 
@@ -249,8 +282,8 @@ export default function OperatorView({
     const items = (serviceData?.items || []).map((i) => ({
       id: i.id,
       type: i.item_type,
-      label: i.song?.title || i.asset?.filename || i.scripture?.reference
-        || (i.item_type === 'scripture' ? 'Scripture' : i.item_type === 'media' ? 'Media' : 'Item'),
+      label: i.song?.title || i.asset?.filename || i.scripture?.reference || i.youtube?.title
+        || (i.item_type === 'scripture' ? 'Scripture' : i.item_type === 'media' ? 'Media' : i.item_type === 'youtube' ? 'YouTube' : 'Item'),
       slides: slidesForRemote(i),
     }));
     window.cue.remote?.pushNavState?.({ items, previewItemId, liveItemId, liveSlideIdx });
@@ -296,6 +329,9 @@ export default function OperatorView({
       }));
     }
     if (item.item_type === 'media') return [{ id: item.id, type: 'media', content: '', asset: item.asset }];
+    // A YouTube cue is a single full-frame video slide. Its file (when ready) lives
+    // in the ephemeral cache; status rides along on item.youtube.
+    if (item.item_type === 'youtube') return [{ id: item.id, type: 'youtube', content: '', youtube: item.youtube }];
     if (item.item_type === 'presentation') {
       return (item.slides || []).map((s, idx) => ({
         ...s,
@@ -352,7 +388,7 @@ export default function OperatorView({
       sectionLabel: labelForSlide(item, slides, slideIdx),
       nextText: next.text,
       nextSectionLabel: next.label,
-      title: item.song?.title || item.presentation?.title || item.asset?.filename || null,
+      title: item.song?.title || item.presentation?.title || item.asset?.filename || item.youtube?.title || null,
     };
     // Foreground media item — full-frame video/audio/image, no text.
     if (item.item_type === 'media' && item.asset) {
@@ -360,6 +396,18 @@ export default function OperatorView({
         ...base,
         text: '', copyright: null, backgroundPath: null, styleJson: null,
         media: { path: item.asset.path, type: item.asset.type, loop: !!item.media_loop },
+      };
+    }
+    // YouTube cue — once downloaded it's an ordinary local video, so it flows through
+    // the identical media transport. Not ready yet → no payload (GO is soft-blocked
+    // until the cue shows Ready in the rundown).
+    if (item.item_type === 'youtube') {
+      const ytPath = item.youtube?.status === 'ready' ? item.youtube.path : null;
+      if (!ytPath) return null;
+      return {
+        ...base,
+        text: '', copyright: null, backgroundPath: null, styleJson: null,
+        media: { path: ytPath, type: 'video', loop: !!item.media_loop },
       };
     }
     // Presentation slide — a multi-element canvas (text/image/shape). The output
@@ -389,6 +437,7 @@ export default function OperatorView({
   function resolveBackground(item, slide) {
     // Foreground media shows the asset itself in the preview/live monitors.
     if (item.item_type === 'media' && item.asset?.path) return item.asset.path;
+    if (item.item_type === 'youtube') return item.youtube?.status === 'ready' ? item.youtube.path : null;
     if (item.background_override?.path) return item.background_override.path;
     if (item.item_type === 'scripture') return scriptureBgPath;
     // Presentation: per-slide background → global slide default.
@@ -689,7 +738,7 @@ export default function OperatorView({
 
     if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
     const remainingIds = items.filter((i) => i.id !== itemId).map((i) => i.id);
-    const label = item?.song?.title || item?.asset?.filename || item?.scripture?.reference || 'Item';
+    const label = item?.song?.title || item?.asset?.filename || item?.scripture?.reference || item?.youtube?.title || 'Item';
     const serviceIdAtRemoval = activeServiceId;
 
     undoTimerRef.current = setTimeout(() => setUndoStack(null), 5000);
@@ -761,6 +810,26 @@ export default function OperatorView({
 
   async function handleAddMedia(assetId) {
     const item = { item_type: 'media', ref_id: assetId };
+    if (!activeServiceId) {
+      const id = await window.cue.services.create({
+        title: new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }),
+        date: new Date().toISOString().split('T')[0],
+      });
+      onServiceChange(id);
+      setServices(await window.cue.services.list());
+      await window.cue.services.addItem(id, item);
+      window.cue.services.get(id).then(setServiceData);
+    } else {
+      await window.cue.services.addItem(activeServiceId, item);
+      refreshService();
+    }
+  }
+
+  async function handleAddYouTube(url) {
+    // The speculative paste-time prefetch usually already started this; re-asserting
+    // it here is idempotent (deduped per video id in main).
+    window.cue.youtube.prefetch(url);
+    const item = { item_type: 'youtube', content: url };
     if (!activeServiceId) {
       const id = await window.cue.services.create({
         title: new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }),
@@ -914,6 +983,7 @@ export default function OperatorView({
           onScriptureLive={handleScriptureLive}
           onScriptureStyleSaved={loadScriptureDefaults}
           onAddMedia={handleAddMedia}
+          onAddYouTube={handleAddYouTube}
           onAddPresentation={handleAddPresentation}
           onSongSave={refreshService}
           refreshTick={bgRefreshTick + songEditTick}

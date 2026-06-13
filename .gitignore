@@ -12,3 +12,9 @@ installers/
 # Local import source material (EasyWorship DBs, GHS lyric sources). The GHS
 # hymnal is bundled as a generated seed in resources/ghs/ instead.
 temp/
+
+# Bundled YouTube-player binaries (yt-dlp + ffmpeg, ~290 MB across platforms).
+# Not committed — the CI build workflow downloads the per-platform binaries before
+# packaging (.github/workflows/build-installers.yml); locally, fetch them into
+# resources/bin/<platform>-<arch>/ to run a packaged build.
+resources/bin/

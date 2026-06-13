@@ -31,6 +31,8 @@ function SortableItem({ item, index, isPreview, isLive, onClick, onDoubleClick, 
     ? item.scripture?.reference || item.title || 'Scripture'
     : item.item_type === 'presentation'
     ? item.presentation?.title || 'Presentation'
+    : item.item_type === 'youtube'
+    ? item.youtube?.title || 'YouTube video'
     : (item.content?.split('\n')[0]?.trim()) || 'Slide';
 
   const sublabel = item.item_type === 'song'
@@ -40,13 +42,26 @@ function SortableItem({ item, index, isPreview, isLive, onClick, onDoubleClick, 
     ? `Scripture${item.scripture?.versionAbbrev ? ' · ' + item.scripture.versionAbbrev : ''}`
     : item.item_type === 'presentation'
     ? `Presentation · ${item.slides?.length || 0} slide${item.slides?.length === 1 ? '' : 's'}`
+    : item.item_type === 'youtube' ? 'YouTube'
     : 'Slide';
 
   const typeIcon = item.item_type === 'song' ? 'music_note'
     : item.item_type === 'media' ? 'play_circle'
     : item.item_type === 'scripture' ? 'menu_book'
     : item.item_type === 'presentation' ? 'slideshow'
+    : item.item_type === 'youtube' ? 'smart_display'
     : 'article';
+
+  // Ephemeral YouTube download state, shown as a compact badge so the operator
+  // knows when a cue is safe to take live (GO is soft-blocked until 'ready').
+  const yt = item.item_type === 'youtube' ? item.youtube : null;
+  const ytBadge = !yt ? null
+    : yt.status === 'ready'       ? { text: 'READY',     cls: 'bg-tertiary/15 text-tertiary border border-tertiary/30' }
+    : yt.status === 'downloading' ? { text: `${Math.round(yt.percent || 0)}%`, cls: 'bg-primary-container/20 text-primary border border-primary/30' }
+    : yt.status === 'processing'  ? { text: 'PROC',      cls: 'bg-primary-container/20 text-primary border border-primary/30' }
+    : yt.status === 'resolving'   ? { text: 'RESOLVING', cls: 'bg-surface-variant text-on-surface-variant' }
+    : yt.status === 'error'       ? { text: 'ERROR',     cls: 'bg-error/15 text-error border border-error/30' }
+    : { text: 'QUEUED', cls: 'bg-surface-variant text-on-surface-variant' };
 
   return (
     <div
@@ -136,7 +151,15 @@ function SortableItem({ item, index, isPreview, isLive, onClick, onDoubleClick, 
             PRVW
           </span>
         )}
-        {item.item_type === 'media' && !!item.media_loop && (
+        {ytBadge && (
+          <span
+            title={yt.status === 'error' ? (yt.error || 'Download failed') : undefined}
+            className={`font-label-sm text-[9px] font-bold tracking-wider px-xs py-[2px] rounded uppercase ${ytBadge.cls}`}
+          >
+            {ytBadge.text}
+          </span>
+        )}
+        {(item.item_type === 'media' || item.item_type === 'youtube') && !!item.media_loop && (
           <span className="font-label-sm text-[9px] tracking-wider bg-primary-container/20 text-primary border border-primary/30 px-xs py-[2px] rounded uppercase">
             LOOP
           </span>
@@ -559,7 +582,7 @@ export default function RundownPanel({
                 },
               }] : []),
             ] : []),
-            ...(contextMenu.item.item_type === 'media' ? [
+            ...((contextMenu.item.item_type === 'media' || contextMenu.item.item_type === 'youtube') ? [
               { separator: true },
               {
                 label: contextMenu.item.media_loop ? 'Disable Loop' : 'Enable Loop',
@@ -568,6 +591,12 @@ export default function RundownPanel({
                   onRefresh?.();
                   setContextMenu(null);
                 },
+              },
+            ] : []),
+            ...(contextMenu.item.item_type === 'youtube' ? [
+              {
+                label: 'Re-download',
+                onClick: () => { window.cue.youtube.prefetch(contextMenu.item.content); setContextMenu(null); },
               },
             ] : []),
             { separator: true },

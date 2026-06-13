@@ -121,7 +121,7 @@ function transportPosition(t, duration) {
   if (!t || !t.active) return 0;
   const now = Date.now();
   const ref = (t.pausedAt != null) ? t.pausedAt : now;
-  let pos = (ref - t.startAt) / 1000;
+  let pos = (ref - t.startAt) / 1000 * (t.rate || 1);
   if (pos < 0) pos = 0;
   if (duration > 0) pos = t.loop ? pos % duration : Math.min(pos, duration);
   return pos;
@@ -169,7 +169,7 @@ function SyncedVideo({ src, transport, loop, style }) {
       const dur = v.duration;
       const now = Date.now();
       const r = (t.pausedAt != null) ? t.pausedAt : now;
-      let pos = (r - t.startAt) / 1000;
+      let pos = (r - t.startAt) / 1000 * (t.rate || 1);
       if (pos < 0) pos = 0;
       if (Number.isFinite(dur) && dur > 0) pos = loop ? pos % dur : Math.min(pos, dur);
       return pos;
@@ -198,9 +198,10 @@ function SyncedVideo({ src, transport, loop, style }) {
         return;
       }
       if (v.paused) v.play().catch(() => {});
+      const base = t.rate || 1;
       const drift = wrappedDelta(v.currentTime || 0, expected, dur);
-      if (Math.abs(drift) > 0.5) { try { v.currentTime = expected; } catch {} v.playbackRate = 1; }
-      else { let rr = 1 - drift * 0.5; rr = Math.max(0.94, Math.min(1.06, rr)); v.playbackRate = rr; }
+      if (Math.abs(drift) > 0.5) { try { v.currentTime = expected; } catch {} v.playbackRate = base; }
+      else { let rr = base * (1 - drift * 0.5); rr = Math.max(base * 0.94, Math.min(base * 1.06, rr)); v.playbackRate = rr; }
     };
     tickRef.current = tick;
 
@@ -593,8 +594,15 @@ export default function PreviewLivePanel({
   const selectedTemplate = selectedChannel?.template ?? channelTemplate;
   const multiChannel = allChannels.length > 1;
 
-  // Foreground media transport — shown when a video/audio clip is live.
-  const liveMediaType = liveItem?.item_type === 'media' ? liveItem.asset?.type : null;
+  // Foreground media transport — shown when a video/audio clip is live. A YouTube
+  // cue becomes an ordinary local video once downloaded, so it shares these controls.
+  const liveMediaType = liveItem?.item_type === 'media' ? liveItem.asset?.type
+    : (liveItem?.item_type === 'youtube' && liveItem.youtube?.status === 'ready') ? 'video'
+    : null;
+  const liveMediaPath = liveItem?.item_type === 'media' ? liveItem.asset?.path
+    : liveItem?.item_type === 'youtube' ? (liveItem.youtube?.status === 'ready' ? liveItem.youtube.path : null)
+    : null;
+  const liveMediaName = liveItem?.asset?.filename || liveItem?.youtube?.title || '';
   const showTransport = liveMediaType === 'video' || liveMediaType === 'audio';
 
   // Shared transport state (start/pause/loop/mute) from the main process.
@@ -631,7 +639,7 @@ export default function PreviewLivePanel({
   const isPaused = transport?.pausedAt != null;
   const isMuted  = !!transport?.muted;
 
-  const mediaDuration = useMediaDuration(liveMediaType ? liveItem?.asset?.path : null, liveMediaType);
+  const mediaDuration = useMediaDuration(liveMediaPath, liveMediaType);
 
   // Advance the scrubber/readout ~4×/s while playing.
   const [, forceTick] = useState(0);
@@ -644,11 +652,28 @@ export default function PreviewLivePanel({
   const [scrub, setScrub] = useState(null); // non-null while dragging the timeline
   const position = scrub != null ? scrub : transportPosition(transport, mediaDuration);
 
+  // Commit the scrub on a window-level pointer release. A range thumb drag very
+  // often ends with the pointer OUTSIDE the input, so the input's own onMouseUp
+  // never fires and `scrub` would otherwise stay stuck — pinning the scrubber to the
+  // dragged value and making it ignore transport changes (e.g. Restart → 0).
+  useEffect(() => {
+    if (scrub == null) return;
+    const commit = () => setScrub(null);
+    window.addEventListener('pointerup', commit);
+    window.addEventListener('pointercancel', commit);
+    return () => {
+      window.removeEventListener('pointerup', commit);
+      window.removeEventListener('pointercancel', commit);
+    };
+  }, [scrub]);
+
   function handleTogglePlayPause() { window.cue.output.media?.control(isPaused ? 'play' : 'pause'); }
-  function handleRestart()         { window.cue.output.media?.control('restart'); }
+  function handleRestart()         { setScrub(null); window.cue.output.media?.control('restart'); }
   function handleMute()            { window.cue.output.media?.setMuted(!isMuted); }
   function handleScrub(e)          { const v = Number(e.target.value); setScrub(v); window.cue.output.media?.seek(v); }
   function handleScrubCommit()     { setScrub(null); }
+  function handleRate(e)           { window.cue.output.media?.setRate(Number(e.target.value)); }
+  const playRate = transport?.rate || 1;
 
   return (
     <div className="flex flex-col h-full gap-gutter">
@@ -656,7 +681,7 @@ export default function PreviewLivePanel({
       <div className="flex flex-1 gap-gutter min-h-0">
 
         {/* PREVIEW column */}
-        <div className="flex-1 flex flex-col gap-sm min-h-0">
+        <div className="flex-1 min-w-0 flex flex-col gap-sm min-h-0">
           <MonitorFrame
             item={previewItem}
             slideIdx={previewSlideIdx}
@@ -684,7 +709,7 @@ export default function PreviewLivePanel({
         </div>
 
         {/* LIVE column */}
-        <div className="flex-1 flex flex-col gap-sm min-h-0">
+        <div className="flex-1 min-w-0 flex flex-col gap-sm min-h-0">
           <MonitorFrame
             item={liveItem}
             slideIdx={liveSlideIdx}
@@ -707,7 +732,7 @@ export default function PreviewLivePanel({
                   {liveMediaType === 'audio' ? 'volume_up' : 'movie'}
                 </span>
                 <span className="text-[9px] font-mono uppercase tracking-[0.05em] text-on-surface-variant truncate flex-1 min-w-0">
-                  {liveItem.asset?.filename}
+                  {liveMediaName}
                 </span>
                 <span className="text-[9px] font-mono text-on-surface-variant tabular-nums shrink-0">
                   {fmtClock(position)} / {mediaDuration ? fmtClock(mediaDuration) : '--:--'}
@@ -752,6 +777,20 @@ export default function PreviewLivePanel({
                 >
                   <span className="material-symbols-outlined text-[14px]">restart_alt</span>
                 </button>
+                <select
+                  value={playRate}
+                  onChange={handleRate}
+                  title="Playback speed"
+                  className={`h-6 rounded border bg-surface-container text-[10px] font-mono tabular-nums px-xs outline-none cursor-pointer shrink-0 transition-colors ${
+                    playRate !== 1
+                      ? 'border-primary/50 text-primary'
+                      : 'border-outline-variant/30 text-on-surface-variant hover:border-primary/50'
+                  }`}
+                >
+                  {[0.25, 0.5, 0.75, 1, 1.25, 1.5, 2].map((r) => (
+                    <option key={r} value={r}>{r}×</option>
+                  ))}
+                </select>
               </div>
             </div>
           )}

@@ -1,5 +1,6 @@
 import { getDb } from './schema.js';
 import { collectImageMediaIds } from './presentations.js';
+import * as youtube from '../youtube/downloader.js';
 
 export function list() {
   return getDb().prepare('SELECT * FROM services ORDER BY date DESC, id DESC').all();
@@ -152,6 +153,14 @@ function resolveItems(db, items) {
       const sc = resolveScripture(item);
       if (sc) Object.assign(resolved, sc);
     }
+    if (item.item_type === 'youtube' && item.content) {
+      // The URL lives in `content`; the downloaded file (if any) is tracked in
+      // main's ephemeral cache. Status is also pushed live over 'youtube:status'.
+      const url = item.content;
+      const status = youtube.getStatus(url);
+      resolved.youtube = status ? { ...status } : { url, status: 'idle', percent: 0, title: null, path: null };
+      resolved.youtube.url = url;
+    }
     if (item.background_override_id) {
       resolved.background_override = mediaMap.get(item.background_override_id);
     }
@@ -203,11 +212,27 @@ export function addItem(serviceId, item) {
 }
 
 export function removeItem(itemId) {
-  getDb().prepare('DELETE FROM service_items WHERE id=?').run(itemId);
+  const db = getDb();
+  // A removed YouTube cue abandons its ephemeral download + deletes the bytes.
+  const row = db.prepare('SELECT item_type, content FROM service_items WHERE id=?').get(itemId);
+  if (row?.item_type === 'youtube' && row.content) youtube.cancel(row.content);
+  db.prepare('DELETE FROM service_items WHERE id=?').run(itemId);
 }
 
 export function clearItems(serviceId) {
-  getDb().prepare('DELETE FROM service_items WHERE service_id=?').run(serviceId);
+  const db = getDb();
+  for (const r of db.prepare(`SELECT content FROM service_items WHERE service_id=? AND item_type='youtube'`).all(serviceId)) {
+    if (r.content) youtube.cancel(r.content);
+  }
+  db.prepare('DELETE FROM service_items WHERE service_id=?').run(serviceId);
+}
+
+// YouTube cues are single-use: their downloaded files are wiped on quit/startup, so
+// the cues themselves must not survive a session either — otherwise a clip from last
+// time reappears in the rundown on relaunch and starts re-downloading. Called once at
+// startup (crash-safe), after the cache wipe.
+export function purgeYoutubeItems() {
+  getDb().prepare(`DELETE FROM service_items WHERE item_type='youtube'`).run();
 }
 
 export function setItemBackground(itemId, mediaId) {
