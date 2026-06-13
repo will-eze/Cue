@@ -73,11 +73,10 @@ module.exports = {
     // Bundled public-domain Bible translations (KJV + WEB) and the GHS hymnal
     // seed. Copied into the app's Resources/ dir (outside the asar); Bibles seed
     // on first run, GHS imports on demand from Library → Import → GHS Hymnal.
-    // bin/ ships the per-platform yt-dlp + ffmpeg binaries for the native YouTube
-    // player (resources/bin/<platform>-<arch>/). They land in Contents/Resources/bin
-    // outside the asar and are resolved at runtime by src/main/youtube/bin.js; the
-    // macOS postPackage codesign (--deep) reseals them so Gatekeeper allows exec.
-    extraResource: ['./resources/bible', './resources/ghs', './resources/bin'],
+    // The YouTube player's yt-dlp + ffmpeg are NOT bundled — `src/main/youtube/bin.js`
+    // auto-downloads them into userData/bin on first use (keeps yt-dlp fresh; ~85 MB
+    // current-platform only, vs a stale baked-in copy). So nothing for them here.
+    extraResource: ['./resources/bible', './resources/ghs'],
   },
   rebuildConfig: {
     extraModules: ['better-sqlite3', 'grandi'],

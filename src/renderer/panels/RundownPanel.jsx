@@ -57,6 +57,7 @@ function SortableItem({ item, index, isPreview, isLive, onClick, onDoubleClick, 
   const yt = item.item_type === 'youtube' ? item.youtube : null;
   const ytBadge = !yt ? null
     : yt.status === 'ready'       ? { text: 'READY',     cls: 'bg-tertiary/15 text-tertiary border border-tertiary/30' }
+    : yt.status === 'setup'       ? { text: 'SETUP',     cls: 'bg-primary-container/20 text-primary border border-primary/30' }
     : yt.status === 'downloading' ? { text: `${Math.round(yt.percent || 0)}%`, cls: 'bg-primary-container/20 text-primary border border-primary/30' }
     : yt.status === 'processing'  ? { text: 'PROC',      cls: 'bg-primary-container/20 text-primary border border-primary/30' }
     : yt.status === 'resolving'   ? { text: 'RESOLVING', cls: 'bg-surface-variant text-on-surface-variant' }

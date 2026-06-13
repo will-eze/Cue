@@ -68,6 +68,16 @@ export default function AddYouTubeModal({ onClose, onConfirm }) {
     debounceRef.current = setTimeout(() => startSpeculative(next), 400);
   }
 
+  // Re-run a failed prefetch (re-downloads binaries if that was the failure, or a
+  // stale yt-dlp, or a transient network error). Bypasses the same-URL no-op guard.
+  function retry() {
+    const u = (prefetchedRef.current || url).trim();
+    if (!looksLikeYouTube(u)) return;
+    prefetchedRef.current = u;
+    setStatus({ url: u, status: 'resolving', percent: 0 });
+    window.cue.youtube.prefetch(u);
+  }
+
   function handleConfirm() {
     const submitted = url.trim();
     if (!looksLikeYouTube(submitted)) return;
@@ -113,6 +123,14 @@ export default function AddYouTubeModal({ onClose, onConfirm }) {
         <div className="h-6 flex items-center gap-sm text-label-sm font-label-sm">
           {!url.trim() && <span className="text-outline-variant normal-case tracking-normal">Waiting for a link…</span>}
           {url.trim() && !valid && <span className="text-on-surface-variant normal-case tracking-normal">That doesn’t look like a YouTube link.</span>}
+          {valid && st === 'setup' && (
+            <>
+              <span className="text-primary uppercase tracking-wide whitespace-nowrap">Setting up YouTube{status?.setupName ? ` · ${status.setupName}` : ''}</span>
+              <div className="flex-1 h-1 bg-surface-container-lowest rounded-full overflow-hidden">
+                <div className="h-full bg-primary transition-[width] duration-200" style={{ width: `${Math.round(status?.percent || 0)}%` }} />
+              </div>
+            </>
+          )}
           {valid && st === 'resolving' && <span className="text-on-surface-variant uppercase tracking-wide">Resolving…</span>}
           {valid && (st === 'downloading') && (
             <>
@@ -130,7 +148,10 @@ export default function AddYouTubeModal({ onClose, onConfirm }) {
             </span>
           )}
           {valid && st === 'error' && (
-            <span className="text-error normal-case tracking-normal truncate">{status?.error || 'Could not download this video.'}</span>
+            <span className="flex items-center gap-sm min-w-0">
+              <span className="text-error normal-case tracking-normal truncate">{status?.error || 'Could not download this video.'}</span>
+              <button onClick={retry} className="shrink-0 text-primary uppercase tracking-wide hover:brightness-110 cursor-pointer">Retry</button>
+            </span>
           )}
         </div>
 

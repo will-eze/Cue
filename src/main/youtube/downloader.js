@@ -15,7 +15,7 @@ import { app } from 'electron';
 import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
-import { ytDlpPath, ffmpegPath } from './bin.js';
+import { ytDlpPath, ffmpegPath, ensureBinaries, refreshYtDlp, isReady } from './bin.js';
 
 // id → { id, url, status, percent, title, durationMs, path, error, child }
 //   status: 'resolving' | 'downloading' | 'processing' | 'ready' | 'error'
@@ -106,6 +106,12 @@ function resolveMetadata(id, url) {
 // the offscreen NDI window), then any ≤1080p, then best; always remux/merge to mp4.
 const FORMAT = 'bv*[height<=1080][vcodec^=avc1]+ba[ext=m4a]/bv*[height<=1080]+ba/b[height<=1080]/b';
 
+// yt-dlp errors that mean YouTube changed and this yt-dlp is stale — a refresh +
+// retry usually fixes them (vs a genuine private/region/age error, which won't).
+function looksLikeExtractorFailure(err) {
+  return !!err && /unable to extract|signature|nsig|jsinterp|player|precondition check failed|http error 403|requested format is not available|sign in to confirm|not a bot/i.test(err);
+}
+
 function download(e) {
   return new Promise((resolve) => {
     ensureCacheDir();
@@ -192,16 +198,37 @@ export async function prefetch(url) {
     if (existing.status === 'resolving' || existing.status === 'downloading' || existing.status === 'processing') return snapshot(existing);
   }
 
-  const e = { id, url, status: 'resolving', percent: 0, title: null, durationMs: null, path: null, error: null, child: null };
+  const e = { id, url, status: 'resolving', percent: 0, title: null, durationMs: null, path: null, error: null, setupName: null, child: null };
   entries.set(id, e);
   emit(snapshot(e));
+
+  // First YouTube use on this machine: auto-download yt-dlp + ffmpeg into userData
+  // (current platform only, ~85 MB, once). Shown as a 'setup' state in the UI.
+  if (!isReady()) {
+    setStatus(e, { status: 'setup', percent: 0, setupName: null });
+    const setup = await ensureBinaries((p) => {
+      if (entries.get(id) === e) setStatus(e, { status: 'setup', percent: Math.round((p.percent || 0) * 100), setupName: p.name });
+    });
+    if (entries.get(id) !== e) return snapshot(entries.get(id));
+    if (!setup.ok) {
+      setStatus(e, { status: 'error', error: 'Could not download YouTube support (yt-dlp + ffmpeg). Check your connection and retry.' });
+      return snapshot(e);
+    }
+  }
 
   const meta = await resolveMetadata(id, url);
   if (entries.get(id) !== e) return snapshot(entries.get(id)); // superseded/cancelled mid-resolve
   if (!meta.ok) { setStatus(e, { status: 'error', error: meta.error }); return snapshot(e); }
   setStatus(e, { status: 'downloading', percent: 0, title: meta.title, durationMs: meta.durationMs });
 
-  const res = await download(e);
+  let res = await download(e);
+  // Stale yt-dlp (YouTube changed) → refresh it once and retry the download.
+  if (!res.ok && !res.cancelled && looksLikeExtractorFailure(res.error)) {
+    setStatus(e, { status: 'setup', percent: 0, setupName: 'yt-dlp' });
+    const r = await refreshYtDlp((p) => { if (entries.get(id) === e) setStatus(e, { status: 'setup', percent: Math.round((p || 0) * 100), setupName: 'yt-dlp' }); });
+    if (entries.get(id) !== e) return snapshot(entries.get(id));
+    if (r.ok) { setStatus(e, { status: 'downloading', percent: 0, title: meta.title, durationMs: meta.durationMs }); res = await download(e); }
+  }
   if (entries.get(id) !== e) return snapshot(entries.get(id));
   if (res.cancelled) return snapshot(e);
   if (!res.ok) { setStatus(e, { status: 'error', error: res.error }); return snapshot(e); }

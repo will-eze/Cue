@@ -30,7 +30,8 @@ Unified single-process Electron app. Replaces EasyWorship/ProPresenter (worship 
 
 ### YouTube (ephemeral video)
 - A YouTube cue is single-use: `service_items.item_type = 'youtube'` with the URL in `content` (**never** a `media_assets` row). The downloaded file lives in `userData/yt-cache`, wiped on quit AND startup; the cues themselves are purged on startup (`purgeYoutubeItems`). Never insert a YouTube download into `media_assets`, backups, or `media.findUnused()` — and never persist it across sessions.
-- `yt-dlp` output MUST pass `-movflags +faststart` (moov atom at front) or a long clip black-screens on go-live while the player fetches the tail index. Bundled `yt-dlp` + `ffmpeg` live in `resources/bin/<platform>-<arch>/`, shipped via `extraResource` and resolved by `src/main/youtube/bin.js`.
+- `yt-dlp` output MUST pass `-movflags +faststart` (moov atom at front) or a long clip black-screens on go-live while the player fetches the tail index.
+- `yt-dlp` + `ffmpeg` are **NOT bundled** — `src/main/youtube/bin.js` auto-downloads them into `userData/bin` on first use (resolution order: `userData/bin` → system PATH → a dev-only `resources/bin/<platform>-<arch>` copy that ships in no build) and refreshes `yt-dlp` when an extraction fails. Do NOT re-add them to `extraResource`/the installer (bloat + stale yt-dlp).
 
 ### Shortcuts
 - **Do not use `globalShortcut`** — captures at OS level, breaks typing. Shortcuts are `keydown` on `document`, suppressed when an `INPUT`/`TEXTAREA`/`contenteditable` has focus.
