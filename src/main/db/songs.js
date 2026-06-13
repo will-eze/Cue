@@ -101,8 +101,8 @@ export function importSongs(parsedSongs = []) {
         'INSERT INTO songs (title, author, copyright, default_background_id) VALUES (?, ?, ?, ?)'
       ).run(song.title || 'Untitled', song.author || null, song.copyright || null, defaultBgId);
       (song.sections || []).forEach((s, i) =>
-        db.prepare('INSERT INTO song_sections (song_id, type, order_index, content, style_json) VALUES (?, ?, ?, ?, NULL)')
-          .run(lastInsertRowid, _IMPORT_TYPES.has(s.type) ? s.type : 'verse', i, s.content)
+        db.prepare('INSERT INTO song_sections (song_id, type, order_index, content, style_json) VALUES (?, ?, ?, ?, ?)')
+          .run(lastInsertRowid, _IMPORT_TYPES.has(s.type) ? s.type : 'verse', i, s.content, s.style_json ?? null)
       );
       for (const tagName of (song.tags || [])) {
         db.prepare(`INSERT OR IGNORE INTO taggables (tag_id, entity_type, entity_id) VALUES (?, 'song', ?)`)

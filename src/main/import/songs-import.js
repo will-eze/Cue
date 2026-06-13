@@ -218,36 +218,67 @@ const CP1252 = {
 };
 
 // Control destinations whose text content is never lyrics — skipped wholesale.
+// (colortbl is NOT in this set: it is handled specially below so \cf colour
+// references can resolve to hex when recovering formatting runs.)
 const RTF_SKIP_DEST = new Set([
-  'fonttbl', 'colortbl', 'stylesheet', 'info', 'pict', 'object', 'header', 'footer',
+  'fonttbl', 'stylesheet', 'info', 'pict', 'object', 'header', 'footer',
   'pnseclvl', 'listtable', 'revtbl', 'generator', 'datastore', 'themedata',
   'colorschememapping', 'latentstyles', 'rsidtbl',
 ]);
 
-// Minimal RTF → plain text. Handles \par/\line as newlines, \tab, \'xx (cp1252),
-// \uN unicode (+\uc skip), ignorable {\* …} groups, and font/colour/style tables.
-// Every other control word is silently dropped. Good enough for EasyWorship word
-// bodies, which are flat paragraph lists.
-function rtfToText(rtf) {
-  if (!rtf) return '';
+// Resolve a colour-table index to a #rrggbb string, or null when output should
+// defer to the template: index 0 (auto/default), an unknown index, or the
+// near-universal EW defaults black/white — emitting those as runs would fight
+// Cue's theme on every slide.
+function resolveRtfColour(palette, idx) {
+  if (!idx || idx < 0 || idx >= palette.length) return null;
+  const hex = palette[idx];
+  if (!hex) return null;
+  const lc = hex.toLowerCase();
+  return (lc === '#000000' || lc === '#ffffff') ? null : hex;
+}
+
+// RTF → { text, styles }. `text` is identical to the old plain-text output;
+// `styles` is a parallel array — one entry per UTF-16 code unit of `text` —
+// each { bold, italic, underline, color } (color = hex or null). Newlines/tabs
+// carry the current style so a multi-line emphasised block stays one run.
+// Tracks \b \i \ul (scoped to RTF {…} groups via the brace stack) and \cf,
+// parsing \colortbl so \cf resolves. \fs/\f (size/family) are intentionally
+// ignored — EW absolute metrics fight Cue's template/theme-driven sizing.
+function rtfToRich(rtf) {
+  if (!rtf) return { text: '', styles: [] };
   let out = '';
+  const styles = [];
+  const palette = [];         // colour table; index 0 == auto
+  const cur = { b: false, i: false, u: false, cf: 0 };
   const stack = [];
-  let ignore = false;   // current destination produces no text
-  let ucSkip = 1;       // \uc — chars to skip after each \u
-  let skip = 0;         // remaining unicode-fallback chars to swallow
+  let ignore = false;         // current destination produces no text
+  let ucSkip = 1;             // \uc — chars to skip after each \u
+  let skip = 0;               // remaining unicode-fallback chars to swallow
+  let inColorTbl = false;     // inside \colortbl — collect triplets, emit no text
+  let colorTblDepth = -1;     // brace depth at which \colortbl opened
+  let trip = {};              // colour triplet being accumulated
   let i = 0;
   const n = rtf.length;
+
+  const snap = () => ({ bold: cur.b, italic: cur.i, underline: cur.u, color: resolveRtfColour(palette, cur.cf) });
+  const emit = (s) => { out += s; const st = snap(); for (let k = 0; k < s.length; k++) styles.push(st); };
 
   while (i < n) {
     const c = rtf[i];
 
-    if (c === '{') { stack.push({ ignore, ucSkip }); i++; continue; }
-    if (c === '}') { const s = stack.pop(); if (s) { ignore = s.ignore; ucSkip = s.ucSkip; } i++; continue; }
+    if (c === '{') { stack.push({ ignore, ucSkip, style: { ...cur } }); i++; continue; }
+    if (c === '}') {
+      const s = stack.pop();
+      if (s) { ignore = s.ignore; ucSkip = s.ucSkip; cur.b = s.style.b; cur.i = s.style.i; cur.u = s.style.u; cur.cf = s.style.cf; }
+      if (inColorTbl && stack.length < colorTblDepth) inColorTbl = false;
+      i++; continue;
+    }
 
     if (c === '\\') {
       const next = rtf[i + 1];
       if (next === '\\' || next === '{' || next === '}') {
-        if (skip > 0) skip--; else if (!ignore) out += next;
+        if (skip > 0) skip--; else if (!ignore) emit(next);
         i += 2; continue;
       }
       if (next === '*') { ignore = true; i += 2; continue; } // ignorable destination
@@ -255,7 +286,7 @@ function rtfToText(rtf) {
         const code = parseInt(rtf.substr(i + 2, 2), 16);
         i += 4;
         if (skip > 0) { skip--; continue; }
-        if (!ignore && !isNaN(code)) out += CP1252[code] ?? String.fromCharCode(code);
+        if (!ignore && !isNaN(code)) emit(CP1252[code] ?? String.fromCharCode(code));
         continue;
       }
       const m = /^\\([a-z]+)(-?\d+)?[ ]?/i.exec(rtf.slice(i));
@@ -263,25 +294,101 @@ function rtfToText(rtf) {
         const word = m[1].toLowerCase();
         const param = m[2] != null ? parseInt(m[2], 10) : null;
         i += m[0].length;
-        if (word === 'par' || word === 'line' || word === 'sect') { if (!ignore) out += '\n'; }
-        else if (word === 'tab') { if (!ignore) out += '\t'; }
+        if (inColorTbl) {
+          if (word === 'red') trip.r = param ?? 0;
+          else if (word === 'green') trip.g = param ?? 0;
+          else if (word === 'blue') trip.b = param ?? 0;
+          continue;
+        }
+        if (word === 'par' || word === 'line' || word === 'sect') { if (!ignore) emit('\n'); }
+        else if (word === 'tab') { if (!ignore) emit('\t'); }
         else if (word === 'uc') { ucSkip = param ?? 1; }
         else if (word === 'u' && param != null) {
-          if (!ignore) out += String.fromCodePoint(param < 0 ? param + 65536 : param);
+          if (!ignore) emit(String.fromCodePoint(param < 0 ? param + 65536 : param));
           skip = ucSkip;
         }
+        else if (word === 'b') cur.b = param !== 0;        // \b on, \b0 off
+        else if (word === 'i') cur.i = param !== 0;
+        else if (word === 'ul') cur.u = param !== 0;       // \ul on, \ul0 off
+        else if (word === 'ulnone') cur.u = false;
+        else if (word === 'cf') cur.cf = param ?? 0;
+        else if (word === 'plain') { cur.b = cur.i = cur.u = false; cur.cf = 0; }
+        else if (word === 'colortbl') { ignore = true; inColorTbl = true; colorTblDepth = stack.length; trip = {}; }
         else if (RTF_SKIP_DEST.has(word)) { ignore = true; }
         continue;
       }
       i++; continue; // stray backslash
     }
 
+    if (inColorTbl && c === ';') {
+      palette.push(('r' in trip || 'g' in trip || 'b' in trip)
+        ? '#' + [trip.r, trip.g, trip.b].map((v) => (v ?? 0).toString(16).padStart(2, '0')).join('')
+        : null);                                            // bare ';' == auto entry
+      trip = {};
+      i++; continue;
+    }
     if (c === '\r' || c === '\n') { i++; continue; } // RTF line breaks aren't content
     if (skip > 0) { skip--; i++; continue; }
-    if (!ignore) out += c;
+    if (!ignore) emit(c);
     i++;
   }
-  return out;
+  return { text: out, styles };
+}
+
+// Recover Cue formatting from the styled RTF source for one final section.
+// Sound because the entire EW pipeline (per-line trim, blank-run collapse,
+// parseSections/cleanLine, chord strip) only ever DELETES characters — so the
+// cleaned `content` is always a subsequence of `srcText`, and a greedy
+// two-pointer walk maps each surviving char back to its source style. Attributes
+// uniform across the whole section are promoted to section-level style; only
+// intra-section variation becomes runs. Returns a style_json STRING, or null
+// when nothing was captured (preserving the all-default ⇒ null invariant).
+function deriveStyleJson(content, srcText, srcStyles) {
+  if (!content) return null;
+  const cs = new Array(content.length);
+  let p = 0;
+  for (let k = 0; k < content.length; k++) {
+    const ch = content[k];
+    while (p < srcText.length && srcText[p] !== ch) p++;
+    cs[k] = p < srcText.length ? srcStyles[p] : null;
+    p++;
+  }
+  // Promote attributes uniform across every non-whitespace char to section level.
+  const nz = [];
+  for (let k = 0; k < content.length; k++) if (!/\s/.test(content[k]) && cs[k]) nz.push(cs[k]);
+  if (!nz.length) return null;
+  const base = {};
+  if (nz.every((s) => s.bold)) base.bold = true;
+  if (nz.every((s) => s.italic)) base.italic = true;
+  if (nz.every((s) => s.underline)) base.underline = true;
+  const c0 = nz[0].color;
+  if (c0 && nz.every((s) => s.color === c0)) base.color = c0;
+  // Residual (non-promoted) formatting → coalesced runs over content offsets.
+  const runs = [];
+  let run = null;
+  for (let k = 0; k < content.length; k++) {
+    const s = cs[k];
+    const r = s ? {
+      bold: s.bold && !base.bold,
+      italic: s.italic && !base.italic,
+      underline: s.underline && !base.underline,
+      color: s.color && s.color !== base.color ? s.color : null,
+    } : null;
+    const active = r && (r.bold || r.italic || r.underline || r.color);
+    if (!active) { if (run) { runs.push(run); run = null; } continue; }
+    const key = `${r.bold}|${r.italic}|${r.underline}|${r.color || ''}`;
+    if (run && run._key === key) { run.end = k + 1; continue; }
+    if (run) runs.push(run);
+    run = { start: k, end: k + 1, _key: key };
+    if (r.bold) run.bold = true;
+    if (r.italic) run.italic = true;
+    if (r.underline) run.underline = true;
+    if (r.color) run.color = r.color;
+  }
+  if (run) runs.push(run);
+  runs.forEach((r) => delete r._key);
+  if (!Object.keys(base).length && !runs.length) return null;
+  return JSON.stringify(runs.length ? { ...base, runs } : base);
 }
 
 // Read an EasyWorship song library. The picked file is either Songs.db or
@@ -321,9 +428,13 @@ function parseEasyWorship(dbPath) {
       const rtf = words.get(s.rowid);
       // EasyWorship pads lines with leading tabs / trailing spaces — trim per line
       // (worship lyrics never rely on indentation) and collapse blank-line runs so
-      // the header/blank-block parser sees clean section boundaries.
-      const text = rtf
-        ? rtfToText(rtf).split('\n').map((l) => l.trim()).join('\n').replace(/\n{3,}/g, '\n\n').trim()
+      // the header/blank-block parser sees clean section boundaries. `rawText` +
+      // `styles` keep the un-trimmed source for run recovery: every transform
+      // below only deletes chars, so each section's content stays a subsequence
+      // of rawText and deriveStyleJson can re-align it (see deriveStyleJson).
+      const { text: rawText, styles } = rtf ? rtfToRich(rtf) : { text: '', styles: [] };
+      const text = rawText
+        ? rawText.split('\n').map((l) => l.trim()).join('\n').replace(/\n{3,}/g, '\n\n').trim()
         : '';
       const sections = text ? parseSections(text) : [];
       const copyright = [s.copyright, s.administrator].map((x) => (x || '').trim()).filter(Boolean).join(' · ') || null;
@@ -334,7 +445,11 @@ function parseEasyWorship(dbPath) {
         title: (s.title || '').trim() || 'Untitled',
         author: (s.author || '').trim() || null,
         copyright,
-        sections: sections.map((x) => ({ type: ALLOWED_TYPES.has(x.type) ? x.type : 'verse', content: x.content })),
+        sections: sections.map((x) => ({
+          type: ALLOWED_TYPES.has(x.type) ? x.type : 'verse',
+          content: x.content,
+          style_json: deriveStyleJson(x.content, rawText, styles),
+        })),
         error: sections.length ? undefined : 'No lyrics found for this song.',
       };
     });
