@@ -23,9 +23,13 @@ function defaults() {
     deviceId: null,
     asrModel: whisperBin.autoModel(),
     matchVersionId: null,
-    reference: { enabled: true, autoAction: 'off' }, // 'off' = suggest; 'live' = auto go-live
+    // autoAction: 'off' = suggest only · 'preview' = stage to preview · 'live' = auto go-live.
+    // References auto-preview only when confidence clears referenceAutoConfidence;
+    // below that (but above the referenceConfidence detection floor) they suggest.
+    // Content matches are inherently lower-confidence → suggest by default.
+    reference: { enabled: true, autoAction: 'preview' },
     content:   { enabled: true, autoAction: 'off' },
-    thresholds: { referenceConfidence: 0.6, contentMinScore: 0.62, contentMinMargin: 0.05, contentMinWords: 6 },
+    thresholds: { referenceConfidence: 0.6, referenceAutoConfidence: 0.8, contentMinScore: 0.62, contentMinMargin: 0.05, contentMinWords: 6 },
   };
 }
 
@@ -131,12 +135,16 @@ function tryReference() {
   const now = Date.now();
   if (ref.ref === lastRef && now - lastRefAt < REF_COOLDOWN_MS) return;
   lastRef = ref.ref; lastRefAt = now;
+  // High-confidence references take the configured auto-action (preview/live);
+  // lower-confidence ones are suggestions the operator confirms.
+  const action = (ref.confidence >= cfg.thresholds.referenceAutoConfidence && cfg.reference.autoAction !== 'off')
+    ? cfg.reference.autoAction : 'suggest';
   send('scripture:detected', {
     mode: 'reference',
     ref: ref.ref,
     versionId: cfg.matchVersionId ?? firstVersionId(),
     confidence: ref.confidence,
-    autoAction: cfg.reference.autoAction,
+    action,
   });
 }
 
@@ -159,19 +167,22 @@ async function tryContent() {
   if (!res?.ok) return;
   if (res.hit.ref === lastContentRef && Date.now() - lastContentAt < REF_COOLDOWN_MS) return;
   lastContentRef = res.hit.ref; lastContentAt = Date.now();
+  const action = cfg.content.autoAction !== 'off' ? cfg.content.autoAction : 'suggest';
   send('scripture:detected', {
     mode: 'content',
     ref: res.hit.ref,
     coords: { bookNum: res.hit.bookNum, chapter: res.hit.chapter, verse: res.hit.verse },
     versionId: vid,
     confidence: res.score,
-    autoAction: cfg.content.autoAction,
+    action,
   });
 }
 
 // ── provisioning ─────────────────────────────────────────────────────────────
 export async function ensureAsrModel() {
-  return whisperBin.ensureModel(cfg.asrModel, (p) => send('scripture:status', { ...getConfig(), download: { kind: 'asr', ...p } }));
+  const r = await whisperBin.ensureModel(cfg.asrModel, (p) => send('scripture:status', { ...getConfig(), download: { kind: 'asr', ...p } }));
+  pushStatus(); // clears the download field + reflects new model readiness
+  return r;
 }
 
 export async function buildVectors(versionId) {

@@ -181,7 +181,7 @@ function ModeRows({ title, desc, mode, disabled, onToggle, onAuto }) {
       {mode.enabled && (
         <Row label="On Detect" hint="Suggest only, or send straight to air">
           <div className="flex items-center gap-xs">
-            {[['off', 'Suggest'], ['live', 'Auto Go-Live']].map(([v, lbl]) => (
+            {[['off', 'Suggest'], ['preview', 'Auto-Preview'], ['live', 'Auto-Live']].map(([v, lbl]) => (
               <button
                 key={v}
                 onClick={() => onAuto(v)}

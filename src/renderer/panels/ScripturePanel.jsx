@@ -17,7 +17,7 @@ const REF_INPUT =
   'bg-surface-container-lowest border border-outline-variant/50 rounded-lg px-sm h-9 ' +
   'text-body-md text-on-surface outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-all';
 
-export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved }) {
+export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, detectArmed, detectActive, detectDownloadPct, onToggleDetect }) {
   const [versions, setVersions] = useState([]);
   const [versionId, setVersionId] = useState(null);
   const [books, setBooks] = useState([]);
@@ -448,6 +448,27 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved }) {
           />
 
           <div className="flex-1" />
+
+          {/* Auto-detect: listen to the service audio and surface the spoken verse */}
+          {onToggleDetect && (
+            <button
+              onClick={onToggleDetect}
+              title="Auto-detect spoken scripture references and quotes from the service audio"
+              className={`flex items-center gap-xs px-sm h-9 rounded-lg text-label-sm font-label-sm font-bold uppercase tracking-[0.05em] border transition-colors cursor-pointer ${
+                detectArmed
+                  ? 'bg-tertiary-container/60 border-tertiary/50 text-tertiary'
+                  : 'bg-surface-container border-outline-variant/40 text-on-surface-variant hover:border-primary/50 hover:text-primary'
+              }`}
+            >
+              <span className="material-symbols-outlined text-[16px]" style={detectArmed ? { fontVariationSettings: "'FILL' 1" } : undefined}>
+                {detectArmed ? 'mic' : 'mic_none'}
+              </span>
+              {detectDownloadPct != null ? `Downloading ${detectDownloadPct}%` : detectArmed ? 'Listening' : 'Auto Detect'}
+              {detectArmed && detectActive && detectDownloadPct == null && (
+                <span className="w-[6px] h-[6px] rounded-full bg-tertiary animate-pulse" />
+              )}
+            </button>
+          )}
 
           <button
             onClick={() => { if (selectedIdx >= 0) emitLive(chapterData, selectedIdx); }}
