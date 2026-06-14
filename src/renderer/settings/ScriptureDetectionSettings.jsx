@@ -2,9 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 
 // Scripture detection — listen to the service audio and surface the relevant verse
 // automatically (spoken references + quoted/paraphrased content). Fully local: an
-// on-device ASR model (whisper.cpp) and a sentence-embedding model, both
-// auto-downloaded on first enable. References arm a primary suggestion; content
-// matches are suggest-only. Auto-go-live is opt-in per mode.
+// on-device Whisper ASR model and a sentence-embedding model, both auto-downloaded
+// on first enable (no manual binary install). References arm a primary suggestion;
+// content matches are suggest-only. Auto-go-live is opt-in per mode.
 
 const MODELS = [
   { id: 'tiny.en',  label: 'Tiny (fastest)' },
@@ -100,12 +100,6 @@ export default function ScriptureDetectionSettings() {
             <StatusChip ok={ready.asr?.model} okText="Ready" pendingText="Download" onClick={downloadAsr} disabled={busy} />
           </div>
         </Row>
-        {!ready.asr?.bin && (
-          <Note>
-            Whisper binary not found. Install <code className="font-mono">whisper-cli</code> on PATH or place it in
-            the app's <code className="font-mono">whisper</code> data folder. The speech model downloads automatically.
-          </Note>
-        )}
       </div>
 
       {/* Reference detection */}
@@ -166,14 +160,6 @@ function Row({ label, hint, children }) {
         {hint && <p className="text-[11px] text-on-surface-variant mt-[2px]">{hint}</p>}
       </div>
       <div className="ml-auto">{children}</div>
-    </div>
-  );
-}
-
-function Note({ children }) {
-  return (
-    <div className="px-md py-sm bg-surface-container-lowest/50 text-[11px] text-on-surface-variant/80 border-b border-outline-variant/20 last:border-b-0">
-      {children}
     </div>
   );
 }
