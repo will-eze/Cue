@@ -39,6 +39,11 @@ Unified single-process Electron app. Replaces EasyWorship/ProPresenter (worship 
 ### Dependencies
 - **Keep `pdfjs-dist` on v4** (PowerPoint import rasteriser). v5/v6 call native `Promise.try`, which Electron 30's Chromium (~124) lacks — the worker throws and the import hangs forever. Load the worker via Vite `?worker` + `GlobalWorkerOptions.workerPort`, never a `?url` `workerSrc` (silent main-thread fake worker = unusably slow). pdfjs stays renderer-only (needs a DOM canvas); the PPTX→PDF step is `soffice` in main.
 
+### Scripture detection (ASR)
+- **Whisper inference in main MUST disable onnxruntime's CPU memory arena** (`session_options.enableCpuMemArena:false`, also `enableMemPattern:false`). Whisper's decoder makes one large *aligned* arena allocation that Electron's PartitionAlloc shim aborts → `EXC_BREAKPOINT`/SIGTRAP that kills the whole app on the first transcription. Invisible in plain Node (no shim) and to embeddings (small allocs). DO NOT remove it as "cleanup". (`whisper-bin.js`)
+- **English-only Whisper models (`*.en`) reject `language`/`task`** — passing them throws. Only pass `chunk_length_s`/`prompt_ids`.
+- Detection ASR is **VAD-segmented utterances**, not a rolling window — do not reintroduce per-tick rolling-window transcription (Whisper hallucinates over the silence and the commit step drops correct text). See master reference §17.
+
 ---
 
 ## UI Design Guard Rails

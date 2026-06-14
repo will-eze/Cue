@@ -10,6 +10,8 @@ export default defineConfig({
         'grandi',
         /^@grandi\//,
         'tar',
+        'onnxruntime-node',
+        '@huggingface/transformers',
         ...builtinModules,
         ...builtinModules.map((m) => `node:${m}`),
       ],

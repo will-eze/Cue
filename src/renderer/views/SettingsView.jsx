@@ -9,6 +9,7 @@ import FontSettings from '../settings/FontSettings';
 import MediaCleanup from '../settings/MediaCleanup';
 import ShortcutSettings from '../settings/ShortcutSettings';
 import RemoteSettings from '../settings/RemoteSettings';
+import ScriptureDetectionSettings from '../settings/ScriptureDetectionSettings';
 import DataSettings from '../settings/DataSettings';
 import DangerZone from '../settings/DangerZone';
 
@@ -25,6 +26,7 @@ const SECTIONS = [
   { id: 'media',      icon: 'cleaning_services', label: 'Media' },
   { id: 'shortcuts',  icon: 'keyboard',        label: 'Shortcuts' },
   { id: 'remote',     icon: 'cell_tower',      label: 'Remote' },
+  { id: 'detect',     icon: 'hearing',         label: 'Detect' },
   { id: 'data',       icon: 'database',        label: 'Data' },
   { id: 'danger',     icon: 'warning',         label: 'Danger' },
 ];
@@ -88,7 +90,12 @@ export default function SettingsView({ onClose, activeServiceId, onRundownCleare
     const el = sectionRefs.current[id];
     const root = scrollRef.current;
     if (!el || !root) return;
-    root.scrollTo({ top: el.offsetTop - 24, behavior: 'smooth' });
+    // Measure the section's position relative to the scroll container directly
+    // (getBoundingClientRect), so the jump is correct regardless of offsetParent —
+    // `offsetTop` is only valid when <main> is the positioned ancestor, which it
+    // isn't, so it landed off for lower sections.
+    const top = el.getBoundingClientRect().top - root.getBoundingClientRect().top + root.scrollTop - 24;
+    root.scrollTo({ top, behavior: 'smooth' });
     setActive(id);
   }
 
@@ -114,33 +121,37 @@ export default function SettingsView({ onClose, activeServiceId, onRundownCleare
   return (
     <div className="flex h-full bg-background">
       {/* Section navigation */}
-      <aside className="flex flex-col w-24 h-full py-md gap-xs bg-surface-container-low items-center border-r border-outline-variant/20 shrink-0">
+      <aside className="flex flex-col w-24 h-full bg-surface-container-low items-center border-r border-outline-variant/20 shrink-0">
         <button
           onClick={onClose}
           title="Back to Operator"
-          className="mb-md flex flex-col items-center gap-xs py-sm w-20 rounded-lg text-on-surface-variant hover:text-primary hover:bg-surface-variant transition-all active:scale-95 cursor-pointer"
+          className="mt-md mb-sm shrink-0 flex flex-col items-center gap-xs py-sm w-20 rounded-lg text-on-surface-variant hover:text-primary hover:bg-surface-variant transition-all active:scale-95 cursor-pointer"
         >
           <span className="material-symbols-outlined">arrow_back</span>
           <span className="text-label-sm font-label-sm">Back</span>
         </button>
 
-        {SECTIONS.map((item) => {
-          const isActive = active === item.id;
-          return (
-            <button
-              key={item.id}
-              onClick={() => scrollTo(item.id)}
-              className={`flex flex-col items-center gap-xs py-sm w-20 rounded-lg transition-all active:scale-95 cursor-pointer ${
-                isActive
-                  ? 'bg-surface-variant text-primary'
-                  : 'text-on-surface-variant hover:text-primary hover:bg-surface-variant'
-              }`}
-            >
-              <span className="material-symbols-outlined" style={isActive ? { fontVariationSettings: "'FILL' 1" } : undefined}>{item.icon}</span>
-              <span className="text-label-sm font-label-sm">{item.label}</span>
-            </button>
-          );
-        })}
+        {/* The section list scrolls on its own so every header stays reachable on
+            short screens — without it the bottom items (Data/Danger) were clipped. */}
+        <nav className="flex flex-col items-center gap-xs w-full overflow-y-auto custom-scrollbar pb-md">
+          {SECTIONS.map((item) => {
+            const isActive = active === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => scrollTo(item.id)}
+                className={`shrink-0 flex flex-col items-center gap-xs py-sm w-20 rounded-lg transition-all active:scale-95 cursor-pointer ${
+                  isActive
+                    ? 'bg-surface-variant text-primary'
+                    : 'text-on-surface-variant hover:text-primary hover:bg-surface-variant'
+                }`}
+              >
+                <span className="material-symbols-outlined" style={isActive ? { fontVariationSettings: "'FILL' 1" } : undefined}>{item.icon}</span>
+                <span className="text-label-sm font-label-sm">{item.label}</span>
+              </button>
+            );
+          })}
+        </nav>
       </aside>
 
       {/* Main settings content */}
@@ -162,6 +173,7 @@ export default function SettingsView({ onClose, activeServiceId, onRundownCleare
         <section ref={setRef('media')} data-section="media" className="scroll-mt-lg"><MediaCleanup /></section>
         <section ref={setRef('shortcuts')} data-section="shortcuts" className="scroll-mt-lg"><ShortcutSettings /></section>
         <section ref={setRef('remote')} data-section="remote" className="scroll-mt-lg"><RemoteSettings /></section>
+        <section ref={setRef('detect')} data-section="detect" className="scroll-mt-lg"><ScriptureDetectionSettings /></section>
         <section ref={setRef('data')} data-section="data" className="scroll-mt-lg"><DataSettings /></section>
         <section ref={setRef('danger')} data-section="danger" className="scroll-mt-lg">
           <DangerZone

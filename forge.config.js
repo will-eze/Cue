@@ -13,7 +13,14 @@ const path = require('path');
 // can't strip them again). grandi's platform binary lives in an optionalDependency
 // @grandi/<os>-<arch>; only the one installed for the current build OS resolves,
 // so the closure naturally copies the right binary per platform.
-const NATIVE_EXTERNALS = ['better-sqlite3', 'grandi', 'tar'];
+// onnxruntime-node is the scripture-detection embedding runtime. It is N-API
+// (ABI-stable across Node/Electron) so — unlike better-sqlite3 — it needs NO
+// @electron/rebuild step; it only needs its prebuilt .node + libs copied into the
+// packaged node_modules (handled by the closure copy below), kept out of the asar
+// by the asar.unpack rule. @huggingface/transformers is the Whisper ASR runtime
+// (dynamic-imported in main; depends on onnxruntime-node) — its dependency closure
+// is copied the same way so the auto-download ASR pipeline resolves in a packaged app.
+const NATIVE_EXTERNALS = ['better-sqlite3', 'grandi', 'tar', 'onnxruntime-node', '@huggingface/transformers'];
 
 function resolvePkgDir(name, fromDir) {
   let dir = fromDir;
@@ -52,6 +59,12 @@ module.exports = {
     // module's internal layout intact and loadable.
     asar: {
       unpack: '**/node_modules/**',
+    },
+    // Scripture detection captures the service audio via getUserMedia; macOS denies
+    // mic access in a packaged app without this Info.plist usage string. (Dev works
+    // off Electron.app's own plist, so this gap is invisible until packaged.)
+    extendInfo: {
+      NSMicrophoneUsageDescription: 'Cue listens to the service audio to auto-detect spoken scripture references and quotes.',
     },
     name: 'Cue',
     executableName: 'cue',
@@ -181,6 +194,15 @@ module.exports = {
       for (const dir of ['src/output', 'src/fonts']) {
         fs.cpSync(path.join(__dirname, dir), path.join(buildPath, dir), { recursive: true });
       }
+
+      // 3. The embedding worker (embed-worker.js). It is NOT bundled by Vite — it
+      //    runs as a worker_thread loaded by path from app.getAppPath() (see
+      //    content-match.js), exactly like the output windows above. CommonJS, so
+      //    it loads in the type:commonjs project. Without this the verse-vector
+      //    build/match path dies with a missing-worker error in packaged builds.
+      const workerRel = path.join('src', 'main', 'scripture-detect', 'embed-worker.js');
+      fs.mkdirSync(path.dirname(path.join(buildPath, workerRel)), { recursive: true });
+      fs.copyFileSync(path.join(__dirname, workerRel), path.join(buildPath, workerRel));
     },
   },
   makers: [

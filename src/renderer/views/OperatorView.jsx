@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import RundownPanel from '../panels/RundownPanel';
 import PreviewLivePanel from '../panels/PreviewLivePanel';
 import LibraryPanel from '../panels/LibraryPanel';
+import ScriptureDetectionPanel from '../panels/ScriptureDetectionPanel';
+import { useScriptureCapture } from '../audio/useScriptureCapture';
 import { sectionLabels, sectionLabelAt } from '../utils/sectionLabels';
 
 const isMac = window.cue.platform === 'darwin';
@@ -107,6 +109,7 @@ export default function OperatorView({
   // Scripture sent live directly from the Scriptures tab — a synthetic live source
   // that isn't a rundown item. Mutually exclusive with a live rundown item.
   const [liveScripture, setLiveScripture] = useState(null); // { item } | null
+  const [previewScripture, setPreviewScripture] = useState(null); // { item, verse } | null — detected ref staged to preview
 
   // Global scripture appearance — style applied to every verse + default background.
   // Edited in the Scriptures tab (ScriptureEditor) / Settings; resolution mirrors songs.
@@ -128,6 +131,83 @@ export default function OperatorView({
     setSlideBgPath(slideBg?.path || null);
   }, []);
   useEffect(() => { loadScriptureDefaults(); }, [loadScriptureDefaults, bgRefreshTick]);
+
+  // ── Scripture detection (listen → suggest verse) ──────────────────────────
+  // Detection is a virtual operator, like the network remote: main resolves a
+  // candidate and sends 'scripture:detected'; OperatorView resolves the passage
+  // via the EXISTING bible.resolve IPC and reuses handleScriptureLive — no new
+  // payload building, no scripture preview machinery.
+  const [detectCfg, setDetectCfg] = useState(null);
+  const [detectArmed, setDetectArmed] = useState(false);
+  const [detectTail, setDetectTail] = useState('');
+  const [detectSuggestions, setDetectSuggestions] = useState([]);
+  const { active: captureActive, error: captureError } = useScriptureCapture(detectArmed, detectCfg?.deviceId);
+
+  useEffect(() => {
+    window.cue.scriptureDetect.getConfig().then(setDetectCfg);
+  }, [bgRefreshTick]);
+
+  // Arm/disarm drives the main-process ASR loop (capture is driven by the hook).
+  useEffect(() => {
+    if (!detectCfg?.enabled) return;
+    if (detectArmed) window.cue.scriptureDetect.start();
+    else window.cue.scriptureDetect.stop();
+  }, [detectArmed, detectCfg?.enabled]);
+
+  // Disarm if the feature is turned off in Settings.
+  useEffect(() => { if (detectCfg && !detectCfg.enabled) setDetectArmed(false); }, [detectCfg?.enabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The Scriptures-tab mic toggle: enable on first use, kick off the ASR model
+  // download if it isn't present yet, then arm (or disarm).
+  const onToggleDetect = useCallback(async () => {
+    if (detectArmed) { setDetectArmed(false); return; }
+    let c = detectCfg;
+    if (!c?.enabled) { c = await window.cue.scriptureDetect.setConfig({ enabled: true }); setDetectCfg(c); }
+    // Always ensure the model is loaded — the `ready.asr.model` flag is the on-disk
+    // marker, not whether the resident pipeline is live in main (it isn't, on a
+    // fresh launch). ensureAsrModel is single-flight + idempotent. start() also
+    // ensures, so this is belt-and-suspenders that additionally surfaces download %.
+    window.cue.scriptureDetect.ensureAsrModel();
+    setDetectArmed(true);
+  }, [detectArmed, detectCfg]);
+  const detectDownloadPct = detectCfg?.download?.kind === 'asr' && detectCfg.download.percent != null
+    ? Math.round(detectCfg.download.percent * 100) : null;
+
+  const passageToVerse = (passage) => {
+    const v0 = passage?.verses?.[0];
+    if (!v0) return null;
+    return {
+      versionId: passage.versionId, versionAbbrev: passage.versionAbbrev, versionName: passage.versionName,
+      bookNum: passage.bookNum, bookName: passage.bookName, chapter: v0.chapter, verse: v0.verse, text: v0.text,
+    };
+  };
+  const goLiveFromPassage = useCallback((passage) => {
+    const v = passageToVerse(passage);
+    if (v) handleScriptureLive(v);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const offTail = window.cue.on('scripture:transcript', (t) => {
+      setDetectTail(`${t.committed || ''} ${t.tail || ''}`.trim().split(/\s+/).slice(-18).join(' '));
+    });
+    // action: 'live' → straight to air · 'preview' → stage to preview monitor ·
+    // 'suggest' → strip only. Everything also lands in the suggestion strip so the
+    // operator has a record and can re-fire or dismiss.
+    const offDet = window.cue.on('scripture:detected', async (d) => {
+      const passage = await window.cue.bible.resolve(d.versionId, d.ref, 1);
+      if (!passage) return;
+      const sugg = { id: `${d.mode}-${passage.reference}-${Date.now()}`, mode: d.mode, ref: passage.reference, confidence: d.confidence, action: d.action, passage };
+      setDetectSuggestions((prev) => [sugg, ...prev.filter((s) => s.ref !== passage.reference)].slice(0, 4));
+      if (d.action === 'live') goLiveFromPassage(passage);
+      else if (d.action === 'preview') { const v = passageToVerse(passage); if (v) stageScripturePreview(v); }
+    });
+    const offStatus = window.cue.on('scripture:status', (s) => setDetectCfg(s));
+    return () => { offTail(); offDet(); offStatus(); };
+  }, [goLiveFromPassage]);
+
+  // Selecting any rundown item for preview clears a staged detected verse.
+  useEffect(() => { if (previewItemId) setPreviewScripture(null); }, [previewItemId]);
+
   const [undoStack, setUndoStack] = useState(null);
   const undoTimerRef = useRef(null);
 
@@ -308,7 +388,9 @@ export default function OperatorView({
     window.cue.services.get(activeServiceId).then(setServiceData);
   }, [activeServiceId]);
 
-  const previewItem = serviceData?.items?.find((i) => i.id === previewItemId) ?? null;
+  const previewItem = previewScripture
+    ? previewScripture.item
+    : (serviceData?.items?.find((i) => i.id === previewItemId) ?? null);
   const liveItem    = liveScripture
     ? liveScripture.item
     : (serviceData?.items?.find((i) => i.id === liveItemId) ?? null);
@@ -488,6 +570,9 @@ export default function OperatorView({
   }
 
   function handleGo() {
+    // A staged detected verse promotes through the scripture-live path, not the
+    // rundown payload path (it's a non-rundown synthetic item).
+    if (previewScripture) { handleScriptureLive(previewScripture.verse); return; }
     if (!previewItem) return;
     const payload = buildPayload(previewItem, previewSlideIdx);
     if (payload) {
@@ -498,18 +583,25 @@ export default function OperatorView({
     }
   }
 
-  // Send a single scripture verse live, straight from the Scriptures tab. This is
-  // a non-rundown live source, so it clears any live rundown item and renders the
-  // live monitor from a synthetic scripture item.
-  function handleScriptureLive(v) {
+  // Build a synthetic single-verse scripture item (the same shape the monitors +
+  // buildPayload expect) — shared by the live and preview-staging paths.
+  function makeScriptureItem(v, idSuffix) {
     const ref = `${v.bookName} ${v.chapter}:${v.verse}`;
     const slide = {
-      id: `scripture-live-${v.bookNum}-${v.chapter}-${v.verse}`,
+      id: `scripture-${idSuffix}-${v.bookNum}-${v.chapter}-${v.verse}`,
       type: ref,
       content: v.text,
       copyright: `${ref} (${v.versionAbbrev})`,
       style_json: null,
     };
+    return { id: `__scripture_${idSuffix}__`, item_type: 'scripture', scriptureSlides: [slide], scripture: { reference: ref } };
+  }
+
+  // Send a single scripture verse live, straight from the Scriptures tab. This is
+  // a non-rundown live source, so it clears any live rundown item and renders the
+  // live monitor from a synthetic scripture item.
+  function handleScriptureLive(v) {
+    const ref = `${v.bookName} ${v.chapter}:${v.verse}`;
     const payload = {
       type: 'content',
       sectionLabel: ref,
@@ -524,9 +616,18 @@ export default function OperatorView({
       styleJson: scriptureStyle,
     };
     window.cue.output.go(payload);
-    setLiveScripture({ item: { id: '__scripture_live__', item_type: 'scripture', scriptureSlides: [slide], scripture: { reference: ref } } });
+    setPreviewScripture(null);
+    setLiveScripture({ item: makeScriptureItem(v, 'live') });
     setLiveItemId(null);
     setLiveSlideIdx(0);
+  }
+
+  // Stage a detected verse into the PREVIEW monitor (high-confidence reference,
+  // auto-action 'preview'). GO promotes it to live via handleScriptureLive.
+  function stageScripturePreview(v) {
+    setPreviewItemId(null);
+    setPreviewSlideIdx(0);
+    setPreviewScripture({ item: makeScriptureItem(v, 'preview'), verse: v });
   }
 
   function handleClear() {
@@ -966,6 +1067,20 @@ export default function OperatorView({
         </div>
       </div>
 
+      {/* Scripture detection strip (shown once enabled in Settings or armed via the Scriptures-tab mic) */}
+      {(detectCfg?.enabled || detectArmed) && (
+        <ScriptureDetectionPanel
+          armed={detectArmed}
+          onToggleArm={onToggleDetect}
+          transcript={detectTail}
+          suggestions={detectSuggestions}
+          captureActive={captureActive}
+          captureError={captureError || detectCfg?.error}
+          onGoLive={(s) => { goLiveFromPassage(s.passage); setDetectSuggestions((prev) => prev.filter((x) => x.id !== s.id)); }}
+          onDismiss={(s) => setDetectSuggestions((prev) => prev.filter((x) => x.id !== s.id))}
+        />
+      )}
+
       {/* Vertical resize handle */}
       <div
         className="resize-v shrink-0 transition-colors duration-100"
@@ -982,6 +1097,10 @@ export default function OperatorView({
           onAddScripture={handleAddScripture}
           onScriptureLive={handleScriptureLive}
           onScriptureStyleSaved={loadScriptureDefaults}
+          detectArmed={detectArmed}
+          detectActive={captureActive}
+          detectDownloadPct={detectDownloadPct}
+          onToggleDetect={onToggleDetect}
           onAddMedia={handleAddMedia}
           onAddYouTube={handleAddYouTube}
           onAddPresentation={handleAddPresentation}
