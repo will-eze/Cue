@@ -54,8 +54,8 @@ export const NUMBER_WORDS = new Set([
 export function wordsToNumbers(text) {
   const tokens = String(text || '')
     .toLowerCase()
-    .replace(/[-–]/g, ' ')          // split hyphenated compounds
-    .replace(/[^\p{L}\p{N}\s:]/gu, ' ')   // keep letters/digits/colon
+    .replace(/(?<!\d)[-–](?!\d)/g, ' ') // split hyphenated compounds, but keep numeric ranges ("16-18")
+    .replace(/[^\p{L}\p{N}\s:-]/gu, ' ')  // keep letters/digits/colon/range-hyphen
     .split(/\s+/)
     .filter(Boolean);
 

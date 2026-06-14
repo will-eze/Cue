@@ -20,6 +20,10 @@ import { wordsToNumbers } from './numbers.js';
 const VERSE_KEYWORDS = new Set(['verse', 'verses', 'v', 'vs', 'vv']);
 const RANGE_WORDS = new Set(['to', 'through', 'thru', 'until']);
 
+// Single-chapter books: a lone number is the VERSE, not the chapter ("Jude nine"
+// → Jude 1:9; "Philemon verse six" → Philemon 1:6). bookNum per bible-books.js.
+const SINGLE_CHAPTER = new Set([31, 57, 63, 64, 65]); // Obadiah, Philemon, 2 John, 3 John, Jude
+
 // Short abbreviations that are also common English words — accepting them as a
 // book on their own produces constant false positives in running speech. We only
 // honor these when an explicit "chapter"/"verse"/colon cue backs them up.
@@ -123,10 +127,25 @@ function matchBookAt(tokens, i) {
 
 // Parse chapter[:verse[-end]] beginning at index i. Tolerates "chapter"/"verse"
 // keyword cues and the bare two-number form ("john 3 16" → 3:16).
-function parseNumbers(tokens, i) {
+function parseNumbers(tokens, i, singleChapter = false) {
   let idx = i;
   let hadChapterKw = false, hadVerseCue = false;
   if (tokens[idx] === 'chapter') { hadChapterKw = true; idx++; }
+
+  // Single-chapter book with no explicit chapter: the number(s) are the verse,
+  // chapter is implicitly 1. ("jude 9" → 1:9, "philemon verse 6" → 1:6.)
+  if (singleChapter && !hadChapterKw) {
+    if (VERSE_KEYWORDS.has(tokens[idx])) { hadVerseCue = true; idx++; }
+    const vt = parseNumToken(tokens[idx] || '');
+    if (!vt) return null;
+    idx++;
+    let vStart = vt.n, vEnd = vt.e;
+    if (vEnd == null && RANGE_WORDS.has(tokens[idx])) {
+      const et = parseNumToken(tokens[idx + 1] || '');
+      if (et) { vEnd = et.n; idx += 2; }
+    }
+    return { chapter: 1, vStart, vEnd, nextIdx: idx, hadChapterKw, hadVerseCue: true };
+  }
 
   const first = parseNumToken(tokens[idx] || '');
   if (!first) return null;
@@ -178,7 +197,7 @@ export function parseReferences(rawText) {
   while (i < tokens.length) {
     const bm = matchBookAt(tokens, i);
     if (!bm) { i++; continue; }
-    const nums = parseNumbers(tokens, bm.nextIdx);
+    const nums = parseNumbers(tokens, bm.nextIdx, SINGLE_CHAPTER.has(bm.book.num));
     if (!nums) { i = bm.nextIdx; continue; }
     // Reject ambiguous short abbrevs unless an explicit cue backs them.
     const cued = nums.hadChapterKw || nums.hadVerseCue;
