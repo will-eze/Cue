@@ -96,15 +96,40 @@ export async function init() {
 }
 
 // ── audio + detection ────────────────────────────────────────────────────────
-export function pushAudio(int16) { asr?.pushAudio(int16); }
+// Lightweight pipeline tracing — visible in the `npm start` main-process console.
+// Set CUE_SCRIPTURE_DEBUG=0 to silence. Throttled so audio frames don't spam.
+const DBG = process.env.CUE_SCRIPTURE_DEBUG !== '0';
+function dbg(...a) { if (DBG) console.log('[scripture-detect]', ...a); }
+let audioFrames = 0, audioSamples = 0;
+
+export function pushAudio(int16) {
+  if (!asr) return;
+  audioFrames++; audioSamples += int16?.length || 0;
+  if (audioFrames === 1) dbg('audio: first frame received', int16.length, 'samples');
+  else if (audioFrames % 40 === 0) dbg(`audio: ${audioFrames} frames, ${(audioSamples / 16000).toFixed(1)}s total`);
+  asr.pushAudio(int16);
+}
 
 export function start() {
   if (asr?.isRunning()) return { ok: true };
+  // Ensure the resident ASR pipeline is loaded. The disk marker only tells us the
+  // weights are present — it does NOT mean the model is loaded in memory, which it
+  // never is on a fresh app launch. Loading here (reload from cache, or download on
+  // a brand-new machine) is the single robust entry point; the ASR loop below idles
+  // (transcribe → null) until this resolves. Progress is surfaced as status.
+  whisperBin
+    .ensureModel(cfg.asrModel, (p) => send('scripture:status', { ...getConfig(), download: { kind: 'asr', ...p } }))
+    .then((r) => {
+      if (!r?.ok) send('scripture:status', { ...getConfig(), error: r?.error || 'ASR model failed to load' });
+      pushStatus(); // clears download field, reflects readiness
+    });
+  dbg('start: arming VAD/ASR, model =', cfg.asrModel);
+  audioFrames = 0; audioSamples = 0;
   asr = createAsr({
     modelName: cfg.asrModel,
     onTranscript: (t) => send('scripture:transcript', t),
     onCommitted: (fresh, committed) => onCommitted(fresh, committed),
-    onError: (e) => send('scripture:status', { ...getConfig(), error: e }),
+    onError: (e) => { dbg('ASR error:', e); send('scripture:status', { ...getConfig(), error: e }); },
   });
   asr.start();
   pushStatus();
@@ -120,6 +145,7 @@ export function stop() {
 }
 
 function onCommitted(fresh, committed) {
+  dbg('committed:', JSON.stringify(fresh));
   recentWords.push(...fresh.split(/\s+/).filter(Boolean));
   if (recentWords.length > 40) recentWords = recentWords.slice(-40);
 
@@ -131,7 +157,9 @@ function tryReference() {
   // Parse the last ~12 words — enough to span "first corinthians thirteen verse four".
   const window = recentWords.slice(-12).join(' ');
   const ref = bestReference(window);
-  if (!ref || ref.confidence < cfg.thresholds.referenceConfidence) return;
+  if (!ref) return;
+  dbg('reference parse:', JSON.stringify(window), '→', ref.ref, `(conf ${ref.confidence.toFixed(2)}, floor ${cfg.thresholds.referenceConfidence})`);
+  if (ref.confidence < cfg.thresholds.referenceConfidence) return;
   const now = Date.now();
   if (ref.ref === lastRef && now - lastRefAt < REF_COOLDOWN_MS) return;
   lastRef = ref.ref; lastRefAt = now;
@@ -139,6 +167,7 @@ function tryReference() {
   // lower-confidence ones are suggestions the operator confirms.
   const action = (ref.confidence >= cfg.thresholds.referenceAutoConfidence && cfg.reference.autoAction !== 'off')
     ? cfg.reference.autoAction : 'suggest';
+  dbg('DETECTED reference →', ref.ref, `action=${action} conf=${ref.confidence.toFixed(2)}`);
   send('scripture:detected', {
     mode: 'reference',
     ref: ref.ref,
@@ -168,6 +197,7 @@ async function tryContent() {
   if (res.hit.ref === lastContentRef && Date.now() - lastContentAt < REF_COOLDOWN_MS) return;
   lastContentRef = res.hit.ref; lastContentAt = Date.now();
   const action = cfg.content.autoAction !== 'off' ? cfg.content.autoAction : 'suggest';
+  dbg('DETECTED content →', res.hit.ref, `action=${action} score=${res.score.toFixed(2)}`);
   send('scripture:detected', {
     mode: 'content',
     ref: res.hit.ref,

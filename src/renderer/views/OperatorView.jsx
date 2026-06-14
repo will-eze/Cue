@@ -163,7 +163,11 @@ export default function OperatorView({
     if (detectArmed) { setDetectArmed(false); return; }
     let c = detectCfg;
     if (!c?.enabled) { c = await window.cue.scriptureDetect.setConfig({ enabled: true }); setDetectCfg(c); }
-    if (!c?.ready?.asr?.model) window.cue.scriptureDetect.ensureAsrModel();
+    // Always ensure the model is loaded — the `ready.asr.model` flag is the on-disk
+    // marker, not whether the resident pipeline is live in main (it isn't, on a
+    // fresh launch). ensureAsrModel is single-flight + idempotent. start() also
+    // ensures, so this is belt-and-suspenders that additionally surfaces download %.
+    window.cue.scriptureDetect.ensureAsrModel();
     setDetectArmed(true);
   }, [detectArmed, detectCfg]);
   const detectDownloadPct = detectCfg?.download?.kind === 'asr' && detectCfg.download.percent != null

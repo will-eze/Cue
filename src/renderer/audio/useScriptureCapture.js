@@ -30,7 +30,11 @@ export function useScriptureCapture(enabled, deviceId) {
           },
         });
         if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return; }
-        ctx = new AudioContext();
+        // Run the context natively at 16 kHz so Chromium's high-quality (anti-aliased)
+        // resampler does the 48k→16k conversion. The worklet then runs at ratio≈1, i.e.
+        // no decimation, so we avoid the aliasing the old hand-rolled linear downsampler
+        // introduced — aliasing measurably hurts Whisper accuracy.
+        ctx = new AudioContext({ sampleRate: 16000 });
         if (ctx.state === 'suspended') { try { await ctx.resume(); } catch { /* best effort */ } }
         const blobUrl = URL.createObjectURL(new Blob([workletSource], { type: 'application/javascript' }));
         try { await ctx.audioWorklet.addModule(blobUrl); } finally { URL.revokeObjectURL(blobUrl); }

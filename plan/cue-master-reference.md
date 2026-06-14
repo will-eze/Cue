@@ -1474,6 +1474,22 @@ Styling counterpart to `SongEditor`, reusing its exported toolbar/preview/helper
 ### Reference rendering across surfaces
 The reference flows in the payload as `copyright` (text), `copyrightAlign` (`'right'` for scripture), and `copyrightStyle` (the ref style incl. optional `pos`). Applied by `applyCopyrightStyle` in `fullscreen.js`/`lowerthird.js` (lower-third ignores `pos` — the bar owns layout) and `copyrightCss` in the operator monitors (via `slide._refStyle`). The **confidence monitor** (`stage.html` `#current-ref`) shows the reference above the verse in its own legible styling (auto-fit reserves space for it).
 
+### Scripture detection (listen → verse) — `src/main/scripture-detect/`
+A detection front-end feeding the existing scripture display; fully local, no API, no schema. Two modes: **reference detection** (a spoken citation — "John chapter three verse sixteen" — resolves and, at high confidence, auto-stages to Preview) and **content matching** (a quoted/paraphrased verse is identified as a suggestion).
+
+**Pipeline.** Capture lives in the renderer (`audio/useScriptureCapture.js` + `audio/captureWorklet.js`): `getUserMedia` → an `AudioContext` forced to **16 kHz** (Chromium's anti-aliased resampler does 48k→16k; the worklet then runs at ratio≈1) → Int16 PCM frames → `scriptureDetect.pushAudio` IPC. Main (`manager.js`) feeds frames to `asr.js`, which is a **VAD-segmented** transcriber: an energy VAD (adaptive noise floor + hysteresis) buffers a speech segment, and on a ~550 ms trailing pause transcribes that one complete utterance. (This replaced a rolling-window + LocalAgreement scheme that discarded correct transient hypotheses and hallucinated over silence.) The utterance text drives `onCommitted` → `reference-parser.js` (`numbers.js`, fuzzy/phonetic, single-chapter + digit-range aware) and `content-match.js` (FTS prefilter → MiniLM embed in `embed-worker.js` worker_thread → cosine → gate + lexical-anchor guard). A candidate is sent as `scripture:detected`; `OperatorView` resolves it via `bible.resolve` and reuses `handleScriptureLive` / preview staging (state stays in the renderer, mirroring the network remote).
+
+**ASR engine** (`whisper-bin.js`): `@huggingface/transformers` (onnxruntime-node), Whisper resident in main. Decisions baked in (each measured in the Electron runtime):
+- **INT8-quantized weights** (`dtype:'q8'`) — ~1.85× faster than fp32, no transcript change, ¼ the download. The ready-marker is dtype-tagged (`.ready-<model>-q8`).
+- **CPU memory arena disabled** (`session_options.enableCpuMemArena:false`) — mandatory in Electron (see CLAUDE.md guard rail).
+- **Adaptive `chunk_length_s`** = clamp(⌈dur⌉+2, 8, 30) — Whisper pads to the chunk window and the ONNX encoder mel axis is dynamic, so padding short utterances to ~their length (not 30 s) is ~20% faster, single-chunk.
+- **Book-name `prompt_ids`** — primes the decoder with the 66 book names (proper-noun bias); +~23 ms, no harm to normal speech.
+- The resident pipeline lazy-loads on first `transcribe` and `manager.start()` so it survives app restarts (the disk marker means "downloaded", not "loaded in memory").
+
+Models auto-download to `userData/whisper-model` on first arm (nothing ships in the installer). `autoModel()` picks small.en on capable hardware, else base.en. CPU is at the speed/accuracy Pareto frontier; the GPU path is scoped in `plan/scripture-detection-webgpu-plan.md`.
+
+**Action tiers** (`scripture:detected.action`): reference ≥ `referenceAutoConfidence` (0.8) → `reference.autoAction` (default `preview`); 0.6–0.8 → `suggest`; content → `suggest` by default. Config under the `scriptureDetect` settings key; Settings → Scripture Detection (`ScriptureDetectionSettings.jsx`) exposes device, model, modes, Suggest/Auto-Preview/Auto-Live, match translation, verse-index build. Pipeline tracing logs under `[scripture-detect]` (silence with `CUE_SCRIPTURE_DEBUG=0`).
+
 ---
 
 ## 18. Known Gaps and Backlog

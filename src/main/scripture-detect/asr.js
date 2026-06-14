@@ -1,21 +1,32 @@
-// Streaming transcription loop. Maintains a rolling 16 kHz mono PCM buffer fed by
-// the renderer's audio capture, and runs Whisper over a sliding window each step.
-// Uses LocalAgreement: only words that agree across two consecutive hypotheses are
-// "committed", giving stable text ~2–3 s behind speech with no flicker. The
-// committed stream is what the reference parser + content matcher consume.
+// VAD-segmented transcription. Instead of transcribing a rolling window every tick
+// (which makes Whisper hallucinate over the silence between sentences and forces a
+// lossy LocalAgreement commit), we segment the incoming audio into UTTERANCES with
+// a lightweight energy VAD: detect speech onset, buffer until the speaker pauses,
+// then transcribe that one complete, silence-trimmed utterance and hand its FULL
+// text to detection. This is the right model for catching discrete spoken
+// references/quotes — a clean bounded clip per utterance gives Whisper its best
+// accuracy and never discards a correct transcription (the old LocalAgreement path
+// dropped "Matthew 1 verse 1" because it only survived a single hypothesis).
 //
-// The engine is transformers.js (whisper-bin.js), which keeps the model RESIDENT —
-// no per-step process spawn or WAV temp file. We just convert the rolling Int16
-// window to Float32 and hand it to the pipeline. The engine sits behind
-// whisper-bin.js so a faster whisper.cpp path could swap in here unchanged.
+// The engine is transformers.js (whisper-bin.js), model resident; we just convert
+// the utterance's Int16 PCM to Float32 and hand it to the resident pipeline. The
+// engine sits behind whisper-bin.js so a faster path could swap in unchanged.
 
 import * as whisperBin from './whisper-bin.js';
 
 const SAMPLE_RATE = 16000;
-const MAX_WINDOW_SEC = 15;       // rolling-buffer cap (kept modest for latency)
-const KEEP_ON_TRIM_SEC = 5;      // overlap retained after a trim
-const STEP_MS = 1000;            // transcribe cadence
-const MIN_STEP_SAMPLES = SAMPLE_RATE * 1.5; // need ≥1.5 s of new audio to bother
+const FRAME_MS = 250;            // each pushed frame ≈ 4000 samples @ 16 kHz
+const END_SILENCE_MS = 550;      // trailing silence that closes an utterance (lower = snappier)
+const MIN_SPEECH_MS = 350;       // ignore blips shorter than this (clicks, coughs)
+const MAX_UTTERANCE_MS = 18000;  // hard cap: force-flush a run-on so latency is bounded
+const PREROLL_FRAMES = 2;        // ~500 ms kept before onset (don't clip the first word)
+const ABS_FLOOR = 0.005;         // absolute RMS speech floor (normalized −1..1)
+const ONSET_RATIO = 3.0;         // onset threshold = max(ABS_FLOOR, noiseFloor*ratio)
+const RELEASE_RATIO = 0.55;      // hysteresis: stay "in speech" while above onset*this
+const MAX_QUEUE = 4;             // cap the backlog of utterances awaiting transcription
+
+const DBG = process.env.CUE_SCRIPTURE_DEBUG !== '0';
+function dbg(...a) { if (DBG) console.log('[scripture-detect][vad]', ...a); }
 
 function toFloat32(int16) {
   const f = new Float32Array(int16.length);
@@ -23,80 +34,102 @@ function toFloat32(int16) {
   return f;
 }
 
-function commonPrefixWords(a, b) {
-  const n = Math.min(a.length, b.length);
-  let i = 0;
-  while (i < n && a[i] === b[i]) i++;
-  return a.slice(0, i);
+function rmsOf(int16) {
+  let s = 0;
+  for (let i = 0; i < int16.length; i++) { const v = int16[i] / 32768; s += v * v; }
+  return Math.sqrt(s / (int16.length || 1));
+}
+
+function concat(frames) {
+  let n = 0; for (const f of frames) n += f.length;
+  const out = new Int16Array(n);
+  let o = 0; for (const f of frames) { out.set(f, o); o += f.length; }
+  return out;
 }
 
 export function createAsr({ modelName = 'base.en', onTranscript, onCommitted, onError } = {}) {
-  let buffer = new Int16Array(0);   // rolling PCM window
-  let sinceStep = 0;                // new samples since last transcription
-  let prevWords = [];               // previous hypothesis (for LocalAgreement)
-  let committedCount = 0;           // words confirmed within the current buffer
-  let committedText = '';           // full committed string for the current buffer
   let running = false;
-  let busy = false;
-  let timer = null;
+  let transcribing = false;
+  let noiseFloor = ABS_FLOOR;      // adaptive background-energy estimate
+  let inSpeech = false;
+  let speechMs = 0, silenceMs = 0;
+  let utter = [];                  // frames of the active utterance (incl. pre-roll)
+  let preroll = [];                // recent pre-onset frames (ring of PREROLL_FRAMES)
+  let queue = [];                  // utterances awaiting transcription
+  let idleFrames = 0;
 
-  function append(int16) {
-    if (!int16 || !int16.length) return;
-    const merged = new Int16Array(buffer.length + int16.length);
-    merged.set(buffer, 0); merged.set(int16, buffer.length);
-    buffer = merged;
-    sinceStep += int16.length;
-    const max = MAX_WINDOW_SEC * SAMPLE_RATE;
-    if (buffer.length > max) {
-      // Trim oldest audio, keep an overlap, and reset commit bookkeeping (the
-      // retained audio re-transcribes; downstream dedupe absorbs the repeat).
-      buffer = buffer.slice(buffer.length - KEEP_ON_TRIM_SEC * SAMPLE_RATE);
-      prevWords = []; committedCount = 0; committedText = '';
-    }
-  }
-
-  async function transcribeOnce() {
-    if (!buffer.length) return null;
-    try { return await whisperBin.transcribe(toFloat32(buffer), modelName); }
-    catch (err) { onError?.(err.message); return null; }
-  }
-
-  async function step() {
-    if (!running || busy || sinceStep < MIN_STEP_SAMPLES || !buffer.length) return;
-    busy = true; sinceStep = 0;
+  // Transcribe queued utterances one at a time (Whisper is single-session). Draining
+  // sequentially preserves order and never blocks the audio callback.
+  async function drain() {
+    if (transcribing) return;
+    const frames = queue.shift();
+    if (!frames) return;
+    transcribing = true;
     try {
-      const text = await transcribeOnce();
-      if (text == null) return; // model not ready yet — idle until provisioned
-      const words = text.split(/\s+/).filter(Boolean);
-      // LocalAgreement: commit the common prefix of this and the previous hypothesis.
-      const agreed = commonPrefixWords(prevWords, words);
-      prevWords = words;
-      if (agreed.length > committedCount) {
-        const fresh = agreed.slice(committedCount).join(' ');
-        committedCount = agreed.length;
-        committedText = agreed.join(' ');
-        if (fresh) onCommitted?.(fresh, committedText);
+      const text = await whisperBin.transcribe(toFloat32(concat(frames)), modelName);
+      if (text != null) {                 // null = model still loading → just skip
+        dbg('utterance →', JSON.stringify(text));
+        onTranscript?.({ committed: text, tail: '', full: text });
+        if (text) onCommitted?.(text, text);
       }
-      const tail = words.slice(committedCount).join(' ');
-      onTranscript?.({ committed: committedText, tail, full: text });
+    } catch (e) {
+      onError?.(e.message);
     } finally {
-      busy = false;
+      transcribing = false;
+      if (queue.length) drain();          // process the next queued utterance
     }
+  }
+
+  function flush(reason) {
+    const frames = utter; const sp = speechMs;
+    utter = []; inSpeech = false; speechMs = 0; silenceMs = 0;
+    if (!frames.length || sp < MIN_SPEECH_MS) return;
+    dbg(`flush (${reason}): ${sp}ms speech, ${frames.length} frames`);
+    queue.push(frames);
+    if (queue.length > MAX_QUEUE) queue.shift(); // drop oldest if we fall behind
+    drain();
+  }
+
+  function onFrame(int16) {
+    if (!int16 || !int16.length) return;
+    const e = rmsOf(int16);
+    const onset = Math.max(ABS_FLOOR, noiseFloor * ONSET_RATIO);
+
+    if (!inSpeech) {
+      // Idle: adapt the noise floor and keep a short pre-roll so onset isn't clipped.
+      noiseFloor = 0.97 * noiseFloor + 0.03 * e;
+      preroll.push(int16);
+      if (preroll.length > PREROLL_FRAMES) preroll.shift();
+      if (++idleFrames % 40 === 0) dbg(`idle: rms=${e.toFixed(4)} floor=${noiseFloor.toFixed(4)} onset=${onset.toFixed(4)}`);
+      if (e > onset) {
+        inSpeech = true; speechMs = 0; silenceMs = 0; idleFrames = 0;
+        utter = preroll.slice(); preroll = [];
+        utter.push(int16); speechMs += FRAME_MS;
+        dbg(`speech start: rms=${e.toFixed(4)} onset=${onset.toFixed(4)}`);
+      }
+      return;
+    }
+
+    // In speech: accumulate until the speaker pauses (or we hit the hard cap).
+    utter.push(int16);
+    if (e > onset * RELEASE_RATIO) { speechMs += FRAME_MS; silenceMs = 0; }
+    else { silenceMs += FRAME_MS; }
+    if (silenceMs >= END_SILENCE_MS) flush('pause');
+    else if (speechMs + silenceMs >= MAX_UTTERANCE_MS) flush('maxlen');
   }
 
   return {
-    pushAudio(int16) { if (running) append(int16); },
+    pushAudio(int16) { if (running) onFrame(int16); },
     start() {
-      if (running) return;
       running = true;
-      timer = setInterval(step, STEP_MS);
+      noiseFloor = ABS_FLOOR; inSpeech = false;
+      utter = []; preroll = []; queue = [];
+      speechMs = 0; silenceMs = 0; idleFrames = 0;
     },
     stop() {
-      running = false;
-      if (timer) clearInterval(timer);
-      timer = null;
-      buffer = new Int16Array(0); sinceStep = 0;
-      prevWords = []; committedCount = 0; committedText = '';
+      running = false; inSpeech = false;
+      utter = []; preroll = []; queue = [];
+      speechMs = 0; silenceMs = 0;
     },
     isRunning() { return running; },
   };

@@ -26,8 +26,17 @@ const MODELS = {
   'small.en': { repo: 'Xenova/whisper-small.en' },
 };
 
+// Run the INT8-quantized ONNX weights. Benchmarked in the Electron runtime against
+// the fp32 weights (JFK 16 kHz sample): ~1.85× faster on small.en (a 2 s utterance
+// 2925 ms → 1579 ms) with no transcription change, and a much smaller download
+// (~¼ the size). Whisper's encoder is fixed at a 30 s window, so per-utterance time
+// is near-constant regardless of length — quantization is the one real speed lever
+// (CoreML/CPU-EP gave nothing here). The dtype is baked into the ready-marker so a
+// dtype change forces a re-fetch rather than loading stale fp32 files.
+const QUANT = 'q8';
+
 function cacheDir() { return userDir('whisper-model'); }
-function readyMarker(name) { return path.join(cacheDir(), `.ready-${name}`); }
+function readyMarker(name) { return path.join(cacheDir(), `.ready-${name}-${QUANT}`); }
 
 // Pick a default model from detected hardware: Apple Silicon (fast) → small.en; a
 // roomy multi-core box → small.en; otherwise base.en (real-time on a modern CPU).
@@ -58,6 +67,32 @@ export function detect(name) {
 let pipe = null;            // the loaded ASR pipeline
 let pipeModel = null;       // which model it was loaded for
 let loadPromise = null;
+let promptIds = null;       // cached Whisper decoder prompt (book-name bias)
+
+// Bias Whisper's decoder toward the 66 book names (deduped — numbered books share a
+// name). Whisper's `prompt_ids` is the documented way to prime "custom vocabularies
+// or proper nouns" so they're transcribed correctly — book names (Habakkuk,
+// Colossians, Thessalonians…) are exactly the hard, accuracy-critical tokens here.
+// Measured cost in-runtime: +~23 ms/utterance (≈1%), and zero change to normal
+// speech (verified on a non-scripture sample), so it's an effectively free accuracy
+// gain. The reference parser still requires chapter/verse numbers to fire, so a
+// stray prompted noun can't auto-air a false reference.
+const BOOK_PROMPT = ' Genesis Exodus Leviticus Numbers Deuteronomy Joshua Judges Ruth'
+  + ' Samuel Kings Chronicles Ezra Nehemiah Esther Job Psalms Proverbs Ecclesiastes'
+  + ' Song of Solomon Isaiah Jeremiah Lamentations Ezekiel Daniel Hosea Joel Amos'
+  + ' Obadiah Jonah Micah Nahum Habakkuk Zephaniah Haggai Zechariah Malachi Matthew'
+  + ' Mark Luke John Acts Romans Corinthians Galatians Ephesians Philippians Colossians'
+  + ' Thessalonians Timothy Titus Philemon Hebrews James Peter Jude Revelation';
+
+// Build the decoder prompt once per loaded model: [<|startofprev|>, ...book tokens].
+function buildPromptIds(p) {
+  try {
+    const tk = p.tokenizer;
+    const sop = tk.encode('<|startofprev|>', { add_special_tokens: false })[0];
+    const toks = tk.encode(BOOK_PROMPT, { add_special_tokens: false });
+    return Number.isInteger(sop) ? [sop, ...toks] : toks;
+  } catch { return null; }
+}
 
 // Configure transformers.js to cache into userData and run on CPU.
 async function loadTransformers() {
@@ -80,6 +115,16 @@ export function ensureModel(name, onProgress) {
       const { pipeline } = await loadTransformers();
       fs.mkdirSync(cacheDir(), { recursive: true });
       const next = await pipeline('automatic-speech-recognition', MODELS[target].repo, {
+        dtype: QUANT, // INT8-quantized weights — see QUANT note above.
+        // CRITICAL (Electron-only crash): onnxruntime's default CPU memory arena
+        // (BFCArena) requests one large *aligned* block for Whisper's decoder.
+        // Electron overrides global new/malloc with its PartitionAlloc shim, which
+        // aborts that large aligned allocation → EXC_BREAKPOINT/SIGTRAP that takes
+        // down the whole app the instant the first inference runs. (Plain Node has
+        // no such shim, so it never showed; embeddings survive because MiniLM's
+        // allocations are small.) Disabling the arena makes ORT do many small
+        // direct allocations instead, which the shim allows. DO NOT REMOVE.
+        session_options: { enableCpuMemArena: false, enableMemPattern: false, executionProviders: ['cpu'] },
         progress_callback: (p) => {
           if (p?.status === 'progress' && p.total) {
             onProgress?.({ name: p.file || target, percent: (p.loaded || 0) / p.total });
@@ -87,6 +132,7 @@ export function ensureModel(name, onProgress) {
         },
       });
       pipe = next;
+      promptIds = buildPromptIds(next);
       fs.writeFileSync(readyMarker(target), String(Date.now()));
       return { ok: true };
     } catch (err) {
@@ -104,12 +150,31 @@ export function ensureModel(name, onProgress) {
 // user provisions it from Settings — mirrors the old "binary missing" behaviour).
 export async function transcribe(float32, name) {
   const target = MODELS[name] ? name : 'base.en';
-  if (!pipe || pipeModel !== target) return null;
+  if (!pipe || pipeModel !== target) {
+    // The resident pipeline isn't loaded. This is the normal state on every app
+    // launch AFTER the first download: the on-disk `.ready-*` marker exists, so
+    // the renderer skips ensureModel, and nothing ever rehydrates `pipe`. Kick a
+    // single-flight load here (a quick reload from cache; a download only on a
+    // truly fresh machine) and idle until it's ready. Self-heals regardless of
+    // how detection was started.
+    ensureModel(target);
+    return null;
+  }
+  // Whisper's encoder pads every input to a `chunk_length_s` window before running.
+  // The ONNX encoder's mel axis is dynamic, so padding a short VAD utterance to just
+  // above its real length (instead of the full 30 s) cuts encoder work with no change
+  // to the text. Pad to ⌈dur⌉+2 s, floored at 8 s (avoids a near-boundary chunking
+  // slowdown) and capped at 30 s — utterances are VAD-bounded ≤18 s, so this is
+  // always a single chunk (no cross-chunk merge artefacts). Measured ~20% faster.
   // NB: models are English-only (*.en) — passing `language`/`task` throws
   // ("Cannot specify task or language for an English-only model").
-  const r = await pipe(float32, { chunk_length_s: 30 });
+  const durSec = float32.length / 16000;
+  const chunkLengthS = Math.min(30, Math.max(8, Math.ceil(durSec) + 2));
+  const opts = { chunk_length_s: chunkLengthS };
+  if (promptIds) opts.prompt_ids = promptIds; // bias toward book names (see BOOK_PROMPT)
+  const r = await pipe(float32, opts);
   return (r?.text || '').replace(/\s+/g, ' ').trim();
 }
 
-export function dispose() { pipe = null; pipeModel = null; loadPromise = null; }
+export function dispose() { pipe = null; pipeModel = null; loadPromise = null; promptIds = null; }
 export { MODELS };
