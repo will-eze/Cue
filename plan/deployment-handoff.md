@@ -103,6 +103,18 @@ confirm. After the first approved launch macOS remembers it.
 > Note: clearing quarantine does **not** satisfy the Apple Silicon signature
 > requirement — the app must still be at least ad-hoc signed to launch.
 
+### macOS — microphone permission (scripture detection)
+
+Scripture detection's "Auto Detect" mic needs the macOS Microphone permission. The
+packaged app already declares `NSMicrophoneUsageDescription` (forge.config.js
+`extendInfo`), so it appears in **System Settings → Privacy & Security →
+Microphone**. Gotcha on the **ad-hoc-signed** build: after you toggle the permission
+ON, `getUserMedia` keeps returning "Microphone access failed" until the app is
+**fully quit and relaunched** — granting alone is not enough for the running
+instance to pick it up. Quit → reopen → mic works. (Not a bug; the in-app strip
+just shows the denied state until the next launch.) A notarized Developer-ID build
+would make this smoother, but it's $99/yr and not required for USB/LAN distribution.
+
 ### Windows — remove Mark-of-the-Web
 
 ```powershell
