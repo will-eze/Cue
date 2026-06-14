@@ -1,36 +1,26 @@
 // Streaming transcription loop. Maintains a rolling 16 kHz mono PCM buffer fed by
-// the renderer's audio capture, and runs whisper.cpp over a sliding window each
-// step. Uses LocalAgreement: only words that agree across two consecutive
-// hypotheses are "committed", giving stable text ~2–3 s behind speech with no
-// flicker. The committed stream is what the reference parser + content matcher
-// consume.
+// the renderer's audio capture, and runs Whisper over a sliding window each step.
+// Uses LocalAgreement: only words that agree across two consecutive hypotheses are
+// "committed", giving stable text ~2–3 s behind speech with no flicker. The
+// committed stream is what the reference parser + content matcher consume.
 //
-// v1 transport: spawn the stock whisper-cli per step over the current window
-// (simple, uses the established spawn pattern). A resident-model N-API binding can
-// later swap in behind this same interface if per-step spawn proves too slow.
+// The engine is transformers.js (whisper-bin.js), which keeps the model RESIDENT —
+// no per-step process spawn or WAV temp file. We just convert the rolling Int16
+// window to Float32 and hand it to the pipeline. The engine sits behind
+// whisper-bin.js so a faster whisper.cpp path could swap in here unchanged.
 
-import { spawn } from 'child_process';
-import os from 'os';
-import path from 'path';
-import fs from 'fs';
-import { whisperPath, modelPath } from './whisper-bin.js';
+import * as whisperBin from './whisper-bin.js';
 
 const SAMPLE_RATE = 16000;
-const MAX_WINDOW_SEC = 24;       // hard cap on the rolling buffer
-const KEEP_ON_TRIM_SEC = 6;      // overlap retained after a trim
+const MAX_WINDOW_SEC = 15;       // rolling-buffer cap (kept modest for latency)
+const KEEP_ON_TRIM_SEC = 5;      // overlap retained after a trim
 const STEP_MS = 1000;            // transcribe cadence
 const MIN_STEP_SAMPLES = SAMPLE_RATE * 1.5; // need ≥1.5 s of new audio to bother
 
-function writeWav(int16, file) {
-  const dataLen = int16.length * 2;
-  const buf = Buffer.alloc(44 + dataLen);
-  buf.write('RIFF', 0); buf.writeUInt32LE(36 + dataLen, 4); buf.write('WAVE', 8);
-  buf.write('fmt ', 12); buf.writeUInt32LE(16, 16); buf.writeUInt16LE(1, 20);
-  buf.writeUInt16LE(1, 22); buf.writeUInt32LE(SAMPLE_RATE, 24);
-  buf.writeUInt32LE(SAMPLE_RATE * 2, 28); buf.writeUInt16LE(2, 32); buf.writeUInt16LE(16, 34);
-  buf.write('data', 36); buf.writeUInt32LE(dataLen, 40);
-  Buffer.from(int16.buffer, int16.byteOffset, dataLen).copy(buf, 44);
-  fs.writeFileSync(file, buf);
+function toFloat32(int16) {
+  const f = new Float32Array(int16.length);
+  for (let i = 0; i < int16.length; i++) f[i] = int16[i] / 32768;
+  return f;
 }
 
 function commonPrefixWords(a, b) {
@@ -49,7 +39,6 @@ export function createAsr({ modelName = 'base.en', onTranscript, onCommitted, on
   let running = false;
   let busy = false;
   let timer = null;
-  const tmpFile = path.join(os.tmpdir(), `cue-asr-${process.pid}.wav`);
 
   function append(int16) {
     if (!int16 || !int16.length) return;
@@ -66,24 +55,10 @@ export function createAsr({ modelName = 'base.en', onTranscript, onCommitted, on
     }
   }
 
-  function transcribeOnce() {
-    return new Promise((resolve) => {
-      const bin = whisperPath();
-      if (!bin) return resolve(null);
-      writeWav(buffer, tmpFile);
-      const args = [
-        '-m', modelPath(modelName), '-f', tmpFile,
-        '-l', 'en', '-nt', '-np',
-        '-t', String(Math.min(8, Math.max(2, (os.cpus()?.length || 4) - 1))),
-      ];
-      let out = '';
-      let child;
-      try { child = spawn(bin, args, { windowsHide: true }); }
-      catch (err) { onError?.(err.message); return resolve(null); }
-      child.stdout.on('data', (d) => { out += d.toString(); });
-      child.on('error', (err) => { onError?.(err.message); resolve(null); });
-      child.on('close', () => resolve(out.replace(/\s+/g, ' ').trim()));
-    });
+  async function transcribeOnce() {
+    if (!buffer.length) return null;
+    try { return await whisperBin.transcribe(toFloat32(buffer), modelName); }
+    catch (err) { onError?.(err.message); return null; }
   }
 
   async function step() {
@@ -91,7 +66,7 @@ export function createAsr({ modelName = 'base.en', onTranscript, onCommitted, on
     busy = true; sinceStep = 0;
     try {
       const text = await transcribeOnce();
-      if (text == null) return;
+      if (text == null) return; // model not ready yet — idle until provisioned
       const words = text.split(/\s+/).filter(Boolean);
       // LocalAgreement: commit the common prefix of this and the previous hypothesis.
       const agreed = commonPrefixWords(prevWords, words);
@@ -122,7 +97,6 @@ export function createAsr({ modelName = 'base.en', onTranscript, onCommitted, on
       timer = null;
       buffer = new Int16Array(0); sinceStep = 0;
       prevWords = []; committedCount = 0; committedText = '';
-      try { fs.rmSync(tmpFile, { force: true }); } catch {}
     },
     isRunning() { return running; },
   };

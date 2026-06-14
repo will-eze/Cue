@@ -17,8 +17,10 @@ const path = require('path');
 // (ABI-stable across Node/Electron) so — unlike better-sqlite3 — it needs NO
 // @electron/rebuild step; it only needs its prebuilt .node + libs copied into the
 // packaged node_modules (handled by the closure copy below), kept out of the asar
-// by the asar.unpack rule.
-const NATIVE_EXTERNALS = ['better-sqlite3', 'grandi', 'tar', 'onnxruntime-node'];
+// by the asar.unpack rule. @huggingface/transformers is the Whisper ASR runtime
+// (dynamic-imported in main; depends on onnxruntime-node) — its dependency closure
+// is copied the same way so the auto-download ASR pipeline resolves in a packaged app.
+const NATIVE_EXTERNALS = ['better-sqlite3', 'grandi', 'tar', 'onnxruntime-node', '@huggingface/transformers'];
 
 function resolvePkgDir(name, fromDir) {
   let dir = fromDir;
