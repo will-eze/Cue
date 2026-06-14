@@ -17,6 +17,28 @@ import { search } from '../db/bible.js';
 import * as embedBin from './embed-bin.js';
 import { rankByCosine, gate, DEFAULT_GATES } from './match-score.js';
 
+// Distinctive content tokens (≥4 chars, non-stopword) — used as a lexical-anchor
+// guard so a high-cosine match with NO shared words (a pure-semantic coincidence
+// on the brute-force fallback path) is rejected.
+const STOPWORDS = new Set([
+  'the', 'and', 'for', 'that', 'with', 'unto', 'his', 'her', 'him', 'they', 'them',
+  'their', 'you', 'your', 'are', 'was', 'were', 'this', 'but', 'not', 'all', 'who',
+  'shall', 'will', 'have', 'has', 'had', 'from', 'into', 'out', 'about', 'which',
+  'what', 'when', 'then', 'there', 'here', 'our', 'one', 'now', 'also', 'because',
+]);
+function contentTokens(text) {
+  const out = new Set();
+  for (const t of String(text || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/)) {
+    if (t.length >= 4 && !STOPWORDS.has(t)) out.add(t);
+  }
+  return out;
+}
+function sharesAnchor(query, verseText) {
+  const v = contentTokens(verseText);
+  for (const t of contentTokens(query)) if (v.has(t)) return true;
+  return false;
+}
+
 const cacheDir = () => path.join(app.getPath('userData'), 'scripture-embeddings');
 const blobPath = (versionId) => path.join(cacheDir(), `${versionId}.bin`);
 const metaPath = (versionId) => path.join(cacheDir(), `${versionId}.json`);
@@ -172,6 +194,12 @@ export async function match(versionId, text, gates = DEFAULT_GATES) {
   const ranked = rankByCosine(queryVec, candidates);
   const g = gate(ranked, words.length, gates);
   if (!g.ok) return { ok: false, reason: g.reason, score: g.score, margin: g.margin };
+  // Lexical-anchor guard: require ≥1 distinctive word shared with the matched
+  // verse, so a confident cosine with no lexical overlap (brute-force path) is
+  // not surfaced as a quote.
+  if (!sharesAnchor(text, g.hit.text)) {
+    return { ok: false, reason: 'no-anchor', score: g.score, margin: g.margin };
+  }
   return {
     ok: true,
     score: g.score, margin: g.margin,
