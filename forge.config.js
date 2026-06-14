@@ -60,6 +60,12 @@ module.exports = {
     asar: {
       unpack: '**/node_modules/**',
     },
+    // Scripture detection captures the service audio via getUserMedia; macOS denies
+    // mic access in a packaged app without this Info.plist usage string. (Dev works
+    // off Electron.app's own plist, so this gap is invisible until packaged.)
+    extendInfo: {
+      NSMicrophoneUsageDescription: 'Cue listens to the service audio to auto-detect spoken scripture references and quotes.',
+    },
     name: 'Cue',
     executableName: 'cue',
     // Windows version-resource strings → the exe's display name in Explorer /

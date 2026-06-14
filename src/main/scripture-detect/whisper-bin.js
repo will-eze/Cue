@@ -105,7 +105,9 @@ export function ensureModel(name, onProgress) {
 export async function transcribe(float32, name) {
   const target = MODELS[name] ? name : 'base.en';
   if (!pipe || pipeModel !== target) return null;
-  const r = await pipe(float32, { chunk_length_s: 30, language: 'en', task: 'transcribe' });
+  // NB: models are English-only (*.en) — passing `language`/`task` throws
+  // ("Cannot specify task or language for an English-only model").
+  const r = await pipe(float32, { chunk_length_s: 30 });
   return (r?.text || '').replace(/\s+/g, ' ').trim();
 }
 

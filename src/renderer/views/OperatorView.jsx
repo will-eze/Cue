@@ -1071,7 +1071,7 @@ export default function OperatorView({
           transcript={detectTail}
           suggestions={detectSuggestions}
           captureActive={captureActive}
-          captureError={captureError}
+          captureError={captureError || detectCfg?.error}
           onGoLive={(s) => { goLiveFromPassage(s.passage); setDetectSuggestions((prev) => prev.filter((x) => x.id !== s.id)); }}
           onDismiss={(s) => setDetectSuggestions((prev) => prev.filter((x) => x.id !== s.id))}
         />

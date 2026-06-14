@@ -1,5 +1,9 @@
 import { useEffect, useState } from 'react';
-import workletUrl from './captureWorklet.js?url';
+// Import the worklet as raw source and load it via a Blob URL. A bundled `?url`
+// gets inlined to a `data:` URL in packaged builds (file:// origin), which
+// audioWorklet.addModule() handles unreliably; a Blob URL is same-origin and
+// always fetchable. (Same class of issue as the pdfjs worker — see CLAUDE.md.)
+import workletSource from './captureWorklet.js?raw';
 
 // Capture the selected audio input and stream 16 kHz mono Int16 PCM to main for
 // scripture detection. getUserMedia + device enumeration are browser APIs, so
@@ -27,7 +31,9 @@ export function useScriptureCapture(enabled, deviceId) {
         });
         if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return; }
         ctx = new AudioContext();
-        await ctx.audioWorklet.addModule(workletUrl);
+        if (ctx.state === 'suspended') { try { await ctx.resume(); } catch { /* best effort */ } }
+        const blobUrl = URL.createObjectURL(new Blob([workletSource], { type: 'application/javascript' }));
+        try { await ctx.audioWorklet.addModule(blobUrl); } finally { URL.revokeObjectURL(blobUrl); }
         if (cancelled) { ctx.close(); stream.getTracks().forEach((t) => t.stop()); return; }
         const source = ctx.createMediaStreamSource(stream);
         node = new AudioWorkletNode(ctx, 'cue-capture');
