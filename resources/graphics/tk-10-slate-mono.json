@@ -1,0 +1,10 @@
+{
+  "name": "Slate Mono",
+  "kind": "ticker",
+  "graphic": {
+    "label": "Slate Mono",
+    "text": "SCHEDULE · 9:00 Prayer · 9:30 Worship · 10:00 Message · 11:15 Coffee & Connect",
+    "speed": 100,
+    "style_json": { "fontFamily": "JetBrains Mono", "fontSize": 26, "color": "#dfe7ef", "letterSpacing": 0.05, "position": "bottom", "bar": { "color": "#1b2330", "opacity": 0.95 } }
+  }
+}

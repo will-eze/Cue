@@ -1,0 +1,13 @@
+{
+  "name": "Bold Block",
+  "kind": "countdown",
+  "graphic": {
+    "label": "Bold Block",
+    "text": "Welcome",
+    "style_json": {
+      "mode": "countdown", "source": "duration", "durationSec": 600, "targetClock": "11:00", "format": "24h", "showSeconds": true, "endMessage": "We begin now",
+      "time":    { "fontFamily": "Oswald", "fontSize": 160, "color": "#ffffff", "bold": true, "align": "center", "verticalAlign": "center", "textBox": { "x": 20, "y": 28, "w": 60, "h": 44 }, "ltBar": { "color": "#0a0e1a", "opacity": 0.55, "solid": true } },
+      "message": { "fontFamily": "JetBrains Mono", "fontSize": 34, "color": "#ffd166", "uppercase": true, "letterSpacing": 0.2, "align": "center" }
+    }
+  }
+}

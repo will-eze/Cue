@@ -1,0 +1,23 @@
+{
+  "name": "Summit",
+  "category": "song",
+  "sort_order": 20,
+  "style": {
+    "fontFamily": "Cinzel",
+    "color": "#ffffff",
+    "uppercase": true,
+    "fontSize": 84,
+    "letterSpacing": 0.06,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 26,
+      "color": "rgba(0,0,0,0.8)"
+    },
+    "bgRef": "library/unsplash-v7daTKlZzaw.jpg",
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(6,8,12,0.94) 0%, rgba(6,8,12,0.82) 70%, rgba(6,8,12,0) 100%)"
+    }
+  }
+}

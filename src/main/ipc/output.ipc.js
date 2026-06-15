@@ -89,13 +89,13 @@ export function registerOutputIpc() {
 
   // ── Broadcast graphics overlay (independent of the program bus) ────────────
   ipcMain.handle('output:graphic:show', (_e, data) => outputManager.graphicShow(data));
-  ipcMain.handle('output:graphic:hide', () => outputManager.graphicHide());
+  ipcMain.handle('output:graphic:hide', (_e, target) => outputManager.graphicHide(target));
   ipcMain.handle('output:ticker:show',  (_e, data) => outputManager.tickerShow(data));
-  ipcMain.handle('output:ticker:hide',  () => outputManager.tickerHide());
+  ipcMain.handle('output:ticker:hide',  (_e, target) => outputManager.tickerHide(target));
   ipcMain.handle('output:custom:show',  (_e, data) => outputManager.customShow(data));
-  ipcMain.handle('output:custom:hide',  () => outputManager.customHide());
+  ipcMain.handle('output:custom:hide',  (_e, target) => outputManager.customHide(target));
   ipcMain.handle('output:countdown:show', (_e, data) => outputManager.countdownShow(data));
-  ipcMain.handle('output:countdown:hide', () => outputManager.countdownHide());
+  ipcMain.handle('output:countdown:hide', (_e, target) => outputManager.countdownHide(target));
   ipcMain.handle('output:overlay:get',  () => outputManager.getOverlay());
 
   // ── Multiview capture ──────────────────────────────────────────────────────

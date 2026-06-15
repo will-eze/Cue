@@ -1,0 +1,21 @@
+<!-- name: Ribbon -->
+<style>
+  .rb { position:absolute; left:90px; bottom:140px; opacity:0; transform:translateY(18px) rotate(-1deg); }
+  .cue-in .rb  { animation: rb-in .5s cubic-bezier(.2,.9,.2,1) forwards; }
+  .cue-out .rb { animation: rb-out .35s ease forwards; }
+  .rb .tail { position:absolute; left:-18px; top:100%; border-style:solid; border-width:0 18px 18px 0; border-color:transparent #7a0f18 transparent transparent; }
+  .rb .main { position:relative; background:linear-gradient(90deg,#e6122b,#ff4d4d); padding:18px 48px;
+    box-shadow:0 14px 36px rgba(180,10,30,.4); }
+  .rb .n { font:800 50px/1 'Oswald',Inter,sans-serif; text-transform:uppercase; letter-spacing:.03em; color:#fff; }
+  .rb .t { font:600 20px/1 'JetBrains Mono',ui-monospace,monospace; letter-spacing:.18em; text-transform:uppercase; color:rgba(255,255,255,.88); margin-top:8px; }
+  .rb .t:empty { display:none; }
+  @keyframes rb-in  { to { opacity:1; transform:translateY(0) rotate(-1deg); } }
+  @keyframes rb-out { to { opacity:0; transform:translateY(12px) rotate(-1deg); } }
+</style>
+<div class="rb">
+  <div class="main">
+    <div class="n">{{name}}</div>
+    <div class="t">{{title}}</div>
+  </div>
+  <div class="tail"></div>
+</div>

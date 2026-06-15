@@ -1,0 +1,38 @@
+{
+  "name": "Desert Dawn",
+  "category": "scripture",
+  "sort_order": 42,
+  "style": {
+    "fontFamily": "EB Garamond",
+    "italic": true,
+    "fontSize": 58,
+    "color": "#fdf3e6",
+    "lineSpacing": 1.35,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 22,
+      "color": "rgba(0,0,0,0.85)"
+    },
+    "bgRef": "library/pexels-10872797.mp4",
+    "bgScrim": 0.32,
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(6,8,12,0.94) 0%, rgba(6,8,12,0.82) 70%, rgba(6,8,12,0) 100%)"
+    },
+    "refStyle": {
+      "fontFamily": "EB Garamond",
+      "fontSize": 34,
+      "color": "rgba(255,255,255,0.82)",
+      "align": "right",
+      "italic": true,
+      "textShadow": {
+        "enabled": true,
+        "x": 0,
+        "y": 2,
+        "blur": 14,
+        "color": "rgba(0,0,0,0.8)"
+      }
+    }
+  }
+}

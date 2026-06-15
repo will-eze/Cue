@@ -1,0 +1,21 @@
+{
+  "name": "Open Air",
+  "category": "song",
+  "sort_order": 7,
+  "style": {
+    "fontFamily": "Overpass",
+    "color": "#13314f",
+    "fontSize": 76,
+    "bold": true,
+    "textShadow": {
+      "enabled": false
+    },
+    "textStroke": {
+      "enabled": false
+    },
+    "bgCss": "linear-gradient(180deg, #bfe1ff 0%, #e3f2ff 60%, #ffffff 100%)",
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(255,255,255,0.92) 0%, rgba(255,255,255,0.6) 70%, rgba(255,255,255,0) 100%)"
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "First Light",
+  "category": "song",
+  "sort_order": 38,
+  "style": {
+    "fontFamily": "Cormorant Garamond",
+    "color": "#fdf6ea",
+    "fontSize": 90,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 30,
+      "color": "rgba(0,0,0,0.95)"
+    },
+    "bgScrim": 0.25,
+    "bgRef": "library/unsplash-vkdTGW1tyWY.jpg",
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(6,8,12,0.94) 0%, rgba(6,8,12,0.82) 70%, rgba(6,8,12,0) 100%)"
+    }
+  }
+}

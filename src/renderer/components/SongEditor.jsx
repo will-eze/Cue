@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import MediaPickerModal from './MediaPickerModal';
+import ThemePickerModal from './ThemePickerModal';
 import { mediaUrl } from '../utils/mediaUrl';
 import { sectionOrdinals } from '../utils/sectionLabels';
 import { useFonts } from '../utils/fonts';
@@ -115,7 +116,7 @@ export function styleIsDefault(s) {
   return !s.fontFamily && !s.fontSize && !s.color && !s.bold && !s.italic &&
     !s.underline && !s.uppercase && (!s.align || s.align === 'center') &&
     (!s.verticalAlign || s.verticalAlign === 'center') &&
-    !s.lineSpacing && !s.letterSpacing && !s.textShadow && !s.textStroke && !s.textBox && !s.ltBar;
+    !s.lineSpacing && !s.letterSpacing && !s.textShadow && !s.textStroke && !s.textBox && !s.ltBar && !s.bgCss && !s.bgScrim;
 }
 
 function serializeSection(type, text, runs, style) {
@@ -179,6 +180,7 @@ export function copyrightCss(cs, defaultAlign = 'center', allowPos = true) {
 
 function buildBarBg(ltBar) {
   if (!ltBar) return 'transparent';
+  if (ltBar.css) return ltBar.css;
   const c  = ltBar.color   ?? '#000000';
   const op = ltBar.opacity ?? 0.8;
   const r  = parseInt(c.slice(1, 3), 16) || 0;
@@ -381,14 +383,25 @@ export function SlidePreview({ text, runs, style, backgroundPath, copyright, cop
     >
       <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
         <div style={{ width: `${SLIDE_W}px`, height: `${SLIDE_H}px`, transform: `scale(${scale})`, transformOrigin: 'top left', position: 'relative' }}>
-          {/* Background */}
-          {backgroundPath && (
+          {/* Background — media asset wins; else a media theme's remote thumb
+              (bgThumb, preview-only); else a theme's CSS gradient/solid (bgCss). */}
+          {backgroundPath ? (
             <div style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
               {/\.(mp4|webm|mov)$/i.test(backgroundPath)
                 ? <video src={mediaUrl(backgroundPath)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} autoPlay loop muted />
                 : <img src={mediaUrl(backgroundPath)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />}
             </div>
-          )}
+          ) : style?.bgThumb ? (
+            <div style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
+              <img src={style.bgThumb} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />
+            </div>
+          ) : style?.bgCss ? (
+            <div style={{ position: 'absolute', inset: 0, zIndex: 0, background: style.bgCss }} />
+          ) : null}
+          {/* Adjustable dark scrim over the background (style.bgScrim, 0→1) */}
+          {style?.bgScrim ? (
+            <div style={{ position: 'absolute', inset: 0, zIndex: 1, background: '#000', opacity: Math.max(0, Math.min(1, style.bgScrim)), pointerEvents: 'none' }} />
+          ) : null}
           {/* Content window guide — fixed safe area (not interactive) */}
           <div style={{
             position: 'absolute',
@@ -773,6 +786,25 @@ export function FormattingToolbar({ style, onChange, fonts, hasSelection, execCm
           </>
         )}
 
+        {/* Background scrim — darken the background (transparent → black) for legibility
+            on bright displays. Fullscreen background concept; lower-third uses its bar. */}
+        {previewTemplate !== 'lowerthird' && (
+          <>
+            <Divider />
+            <span className={label} title="Darken the background for brighter displays">Scrim</span>
+            <input
+              type="range" min={0} max={1} step={0.05}
+              value={style.bgScrim ?? 0}
+              onChange={(e) => set('bgScrim', Number(e.target.value) || null)}
+              className="w-20 accent-primary cursor-pointer"
+              title="Background scrim (transparent → black)"
+            />
+            <span className="text-[10px] font-mono text-on-surface-variant w-8 text-right tabular-nums">
+              {Math.round((style.bgScrim ?? 0) * 100)}%
+            </span>
+          </>
+        )}
+
         {/* Reference position — fullscreen reference styling only (drag in preview or set X/Y) */}
         {simple && previewTemplate !== 'lowerthird' && (
           <>
@@ -959,6 +991,8 @@ export default function SongEditor({ song, onClose, onSave }) {
   const [previewContent, setPreviewContent] = useState({ text: '', runs: [] });
   const [songBackground, setSongBackground] = useState(null);
   const [showBgPicker, setShowBgPicker]     = useState(false);
+  const [showThemePicker, setShowThemePicker] = useState(false);
+  const [bgLoading, setBgLoading]           = useState(false); // media-theme bg downloading
   const [showPaste, setShowPaste]         = useState(false);
   const [showMeta, setShowMeta]           = useState(true);
   const [previewTemplate, setPreviewTemplate] = useState('fullscreen'); // 'fullscreen' | 'lowerthird'
@@ -976,19 +1010,35 @@ export default function SongEditor({ song, onClose, onSave }) {
   useEffect(() => { sectionsRef.current = sections; }, [sections]);
   useEffect(() => { activeKeyRef.current = activeSectionKey; }, [activeSectionKey]);
 
-  // Load themes list for the "Load Theme…" dropdown
+  // Load themes list for the "Load Theme…" dropdown (song-category themes only)
   useEffect(() => {
-    window.cue.themes.list().then(setThemeList).catch(() => {});
+    window.cue.themes.list()
+      .then((list) => setThemeList((list || []).filter((t) => (t.category || 'song') === 'song')))
+      .catch(() => {});
   }, []);
 
-  function handleLoadTheme(themeId) {
+  async function handleLoadTheme(themeId) {
     const theme = themeList.find((t) => t.id === Number(themeId));
     if (!theme) return;
     try {
-      if (theme.style_json) setStyle({ ...DEFAULT_STYLE, ...JSON.parse(theme.style_json) });
+      const themeStyle = theme.style_json ? JSON.parse(theme.style_json) : null;
+      if (themeStyle) setStyle({ ...DEFAULT_STYLE, ...themeStyle });
       // Loading a theme is explicit — its background replaces the current one.
       if (theme.background_id && theme.background_path) {
         setSongBackground({ id: theme.background_id, path: theme.background_path, filename: theme.background_filename });
+      } else if (themeStyle?.bgRef) {
+        // Media theme whose background isn't downloaded yet — resolve the
+        // background-library item (download → media asset), same as applyTo*.
+        setBgLoading(true);
+        try {
+          const asset = await window.cue.backgrounds.download(themeStyle.bgRef);
+          setSongBackground({ id: asset.id, path: asset.path, filename: asset.filename });
+        } catch { /* leave the current background on failure */ }
+        finally { setBgLoading(false); }
+      } else if (themeStyle?.bgCss) {
+        // A CSS-gradient theme carries its background in the style; clear any media
+        // background so the gradient (style.bgCss) actually shows.
+        setSongBackground(null);
       }
     } catch {}
   }
@@ -1219,14 +1269,13 @@ export default function SongEditor({ song, onClose, onSave }) {
           <div className="flex-1" />
 
           {themeList.length > 0 && (
-            <select
-              value=""
-              onChange={(e) => { if (e.target.value) handleLoadTheme(e.target.value); }}
-              className="bg-surface-container text-on-surface-variant text-[10px] font-mono rounded-lg px-sm h-7 border border-outline-variant/30 hover:border-outline-variant outline-none focus:border-primary cursor-pointer uppercase tracking-[0.05em]"
+            <button
+              onClick={() => setShowThemePicker(true)}
+              className="flex items-center gap-xs bg-surface-container text-on-surface-variant text-[10px] font-mono rounded-lg px-sm h-7 border border-outline-variant/30 hover:border-outline-variant hover:text-on-surface outline-none cursor-pointer uppercase tracking-[0.05em] transition-colors"
             >
-              <option value="">Load Theme…</option>
-              {themeList.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
+              <span className="material-symbols-outlined text-[15px]">style</span>
+              Load Theme…
+            </button>
           )}
           <button onClick={() => setShowPaste(true)}
             className="px-sm h-7 text-label-sm font-mono text-on-surface-variant hover:text-on-surface border border-outline-variant/30 hover:border-outline-variant rounded-lg cursor-pointer transition-colors uppercase tracking-[0.05em] text-[10px]">
@@ -1331,6 +1380,13 @@ export default function SongEditor({ song, onClose, onSave }) {
           />
         )}
 
+        {showThemePicker && (
+          <ThemePickerModal
+            onPick={(t) => { setShowThemePicker(false); handleLoadTheme(t.id); }}
+            onClose={() => setShowThemePicker(false)}
+          />
+        )}
+
         {/* ── Body ────────────────────────────────────────────────────── */}
         {showPaste ? (
           <PasteView onParse={handleParsedImport} onCancel={() => setShowPaste(false)} />
@@ -1423,7 +1479,7 @@ export default function SongEditor({ song, onClose, onSave }) {
                   </div>
                   <div className="flex-1 flex items-center justify-center min-h-0 overflow-hidden">
                     {/* Height-bound 16:9 box: fits the available section regardless of toolbar height */}
-                    <div className="h-full max-w-full" style={{ aspectRatio: '16 / 9' }}>
+                    <div className="h-full max-w-full relative" style={{ aspectRatio: '16 / 9' }}>
                       {previewTemplate === 'lowerthird' ? (
                         <LowerThirdPreview
                           text={previewContent.text}
@@ -1440,6 +1496,12 @@ export default function SongEditor({ song, onClose, onSave }) {
                           copyright={copyright || undefined}
                           onTextBoxChange={(box) => setStyle((s) => ({ ...s, textBox: box }))}
                         />
+                      )}
+                      {bgLoading && (
+                        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-xs bg-background/55 pointer-events-none">
+                          <span className="material-symbols-outlined text-primary animate-spin text-[28px]">progress_activity</span>
+                          <span className="text-[10px] font-mono uppercase tracking-[0.08em] text-on-surface-variant">Loading background…</span>
+                        </div>
                       )}
                     </div>
                   </div>

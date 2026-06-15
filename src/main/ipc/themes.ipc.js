@@ -7,7 +7,9 @@ export function registerThemesIpc() {
   ipcMain.handle('themes:create',         (_e, data)  => themes.create(data));
   ipcMain.handle('themes:update',         (_e, id, d) => themes.update(id, d));
   ipcMain.handle('themes:delete',         (_e, id)    => themes.del(id));
-  ipcMain.handle('themes:applyToSong',    (_e, themeId, songId, setBg)    => themes.applyToSong(themeId, songId, setBg));
-  ipcMain.handle('themes:applyToRundown', (_e, themeId, serviceId, setBg) => themes.applyToRundown(themeId, serviceId, setBg));
-  ipcMain.handle('themes:applyToAllSongs',(_e, themeId, setBg)            => themes.applyToAllSongs(themeId, setBg));
+  // resolveThemeBackground first downloads a media theme's bgRef into the library
+  // (no-op for gradient/text/local-media themes) so applyTo* sees a background_id.
+  ipcMain.handle('themes:applyToSong',    async (_e, themeId, songId, setBg)    => { if (setBg) await themes.resolveThemeBackground(themeId); return themes.applyToSong(themeId, songId, setBg); });
+  ipcMain.handle('themes:applyToRundown', async (_e, themeId, serviceId, setBg) => { if (setBg) await themes.resolveThemeBackground(themeId); return themes.applyToRundown(themeId, serviceId, setBg); });
+  ipcMain.handle('themes:applyToAllSongs',async (_e, themeId, setBg)            => { if (setBg) await themes.resolveThemeBackground(themeId); return themes.applyToAllSongs(themeId, setBg); });
 }

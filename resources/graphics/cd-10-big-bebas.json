@@ -1,0 +1,13 @@
+{
+  "name": "Big Bebas",
+  "kind": "countdown",
+  "graphic": {
+    "label": "Big Bebas",
+    "text": "Up next",
+    "style_json": {
+      "mode": "countdown", "source": "duration", "durationSec": 600, "targetClock": "11:00", "format": "24h", "showSeconds": true, "endMessage": "Now",
+      "time":    { "fontFamily": "Bebas Neue", "fontSize": 240, "color": "#ff3b6b", "letterSpacing": 0.02, "align": "center", "verticalAlign": "center", "textBox": { "x": 18, "y": 24, "w": 64, "h": 52 }, "ltBar": null },
+      "message": { "fontFamily": "JetBrains Mono", "fontSize": 32, "color": "#ffb0c4", "uppercase": true, "letterSpacing": 0.3, "align": "center" }
+    }
+  }
+}

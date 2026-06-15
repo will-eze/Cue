@@ -1,0 +1,23 @@
+{
+  "name": "Nightfall",
+  "category": "song",
+  "sort_order": 1,
+  "style": {
+    "fontFamily": "Oswald",
+    "color": "#eaf2ff",
+    "uppercase": true,
+    "fontSize": 88,
+    "letterSpacing": 0.03,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 30,
+      "color": "rgba(2,12,30,0.7)"
+    },
+    "bgCss": "radial-gradient(circle at 50% 30%, #15315e 0%, #0a1730 55%, #050a18 100%)",
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(8,18,40,0.92) 0%, rgba(8,18,40,0.7) 65%, rgba(8,18,40,0) 100%)"
+    }
+  }
+}

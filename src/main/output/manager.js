@@ -32,7 +32,23 @@ let stageState = {
 // the output template runs the per-second tick, this bus only carries the target time).
 // Dispatched as graphic:update to lower-third windows only, so a graphic never
 // disturbs the fullscreen program. Persisted for newly opened windows.
-let overlay = { nameTitle: null, ticker: null, custom: null, countdown: null };
+//
+// Each slot holds ONE occupant PER DESTINATION KIND ({ screen, ndi }) so different
+// graphics can run In-Room vs Online at the same time (e.g. two different tickers).
+// A fire targeted 'all' fills both kinds with the same object; 'screen'/'ndi' fills
+// just that one (leaving the other kind's occupant running). The output windows are
+// already tagged screen/ndi, so each receives only its kind's occupant — the inner
+// slot-value shape is unchanged, so the output templates need no changes.
+const emptySlot = () => ({ screen: null, ndi: null });
+let overlay = { nameTitle: emptySlot(), ticker: emptySlot(), custom: emptySlot(), countdown: emptySlot() };
+
+// Assign a slot value to the destination(s) named by `target` ('all'|'screen'|'ndi').
+// value=null clears the targeted kind(s). Leaves the untargeted kind untouched.
+function setSlot(name, value, target) {
+  const slot = overlay[name];
+  if ((target || 'all') === 'all') { slot.screen = value; slot.ndi = value; }
+  else slot[target] = value;
+}
 
 // displayMode drives what every output window shows:
 //   'idle'    — nothing was ever GO'd; outputs show black
@@ -811,18 +827,12 @@ function getGraphicsWindowInfos() {
   return infos;
 }
 
-function slotForKind(slot, kind) {
-  if (!slot) return null;
-  const target = slot.target || 'all';
-  return (target === 'all' || target === kind) ? slot : null;
-}
-
 function overlayForKind(kind) {
   return {
-    nameTitle: slotForKind(overlay.nameTitle, kind),
-    ticker:    slotForKind(overlay.ticker, kind),
-    custom:    slotForKind(overlay.custom, kind),
-    countdown: slotForKind(overlay.countdown, kind),
+    nameTitle: overlay.nameTitle[kind],
+    ticker:    overlay.ticker[kind],
+    custom:    overlay.custom[kind],
+    countdown: overlay.countdown[kind],
   };
 }
 
@@ -841,38 +851,41 @@ function broadcastGraphic() {
 }
 
 export function graphicShow(data) {
-  overlay.nameTitle = data && (data.name || data.title)
-    ? { name: data.name ?? '', title: data.title ?? '', style: data.style ?? null, target: data.target || 'all' }
+  const value = data && (data.name || data.title)
+    ? { id: data.id ?? null, name: data.name ?? '', title: data.title ?? '', style: data.style ?? null, target: data.target || 'all' }
     : null;
+  setSlot('nameTitle', value, data && data.target);
   broadcastGraphic();
 }
 
-export function graphicHide() {
-  overlay.nameTitle = null;
+export function graphicHide(target) {
+  setSlot('nameTitle', null, target);
   broadcastGraphic();
 }
 
 export function tickerShow(data) {
-  overlay.ticker = data && data.text
-    ? { text: data.text, speed: Number.isFinite(data.speed) ? data.speed : 100, style: data.style ?? null, target: data.target || 'all' }
+  const value = data && data.text
+    ? { id: data.id ?? null, text: data.text, speed: Number.isFinite(data.speed) ? data.speed : 100, style: data.style ?? null, target: data.target || 'all' }
     : null;
+  setSlot('ticker', value, data && data.target);
   broadcastGraphic();
 }
 
-export function tickerHide() {
-  overlay.ticker = null;
+export function tickerHide(target) {
+  setSlot('ticker', null, target);
   broadcastGraphic();
 }
 
 export function customShow(data) {
-  overlay.custom = data && data.html
-    ? { html: String(data.html), target: data.target || 'all' }
+  const value = data && data.html
+    ? { id: data.id ?? null, html: String(data.html), target: data.target || 'all' }
     : null;
+  setSlot('custom', value, data && data.target);
   broadcastGraphic();
 }
 
-export function customHide() {
-  overlay.custom = null;
+export function customHide(target) {
+  setSlot('custom', null, target);
   broadcastGraphic();
 }
 
@@ -891,7 +904,7 @@ function nextClockTime(hhmm) {
 // time so a window opened mid-countdown still lands on the right value. mode:
 // 'countdown' (endsAt) | 'countup' (startAt) | 'clock' (no anchor).
 export function countdownShow(data) {
-  if (!data || !data.mode) { overlay.countdown = null; broadcastGraphic(); return; }
+  if (!data || !data.mode) { setSlot('countdown', null, data && data.target); broadcastGraphic(); return; }
   const slot = {
     id:      data.id ?? null,
     mode:    data.mode,
@@ -909,12 +922,12 @@ export function countdownShow(data) {
   } else if (data.mode === 'countup') {
     slot.startAt = Date.now();
   }
-  overlay.countdown = slot;
+  setSlot('countdown', slot, data.target);
   broadcastGraphic();
 }
 
-export function countdownHide() {
-  overlay.countdown = null;
+export function countdownHide(target) {
+  setSlot('countdown', null, target);
   broadcastGraphic();
 }
 

@@ -1,11 +1,34 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { app } from 'electron';
 import { getDb } from './schema.js';
+import { get as getSetting, set as setSetting } from './settings.js';
+import { download as downloadBackground } from './background-library.js';
+
+// Media themes (Phase 1b Layer 2) carry a `bgRef` (background-library item id) in
+// style_json instead of a bundled background_id — Option A means the media isn't
+// local until used. Resolve it lazily: download the item into the media library
+// (once) and cache it onto the theme's background_id, after which the theme is an
+// ordinary media-backed theme that applyTo* handles unchanged. Call before apply.
+export async function resolveThemeBackground(themeId) {
+  const db = getDb();
+  const theme = db.prepare('SELECT id, style_json, background_id FROM themes WHERE id=?').get(themeId);
+  if (!theme || theme.background_id) return;
+  let style;
+  try { style = theme.style_json ? JSON.parse(theme.style_json) : {}; } catch { style = {}; }
+  if (!style.bgRef) return;
+  const asset = await downloadBackground(style.bgRef);
+  db.prepare("UPDATE themes SET background_id=?, updated_at=datetime('now') WHERE id=?").run(asset.id, themeId);
+}
 
 export function list() {
+  // Built-ins first within each category, ordered by sort_order; user themes
+  // (sort_order 0) fall back to name. The pickers filter by `category`.
   return getDb().prepare(`
     SELECT t.*, ma.path AS background_path, ma.filename AS background_filename, ma.type AS background_type
     FROM themes t
     LEFT JOIN media_assets ma ON ma.id = t.background_id
-    ORDER BY t.name COLLATE NOCASE
+    ORDER BY t.builtin DESC, t.sort_order ASC, t.name COLLATE NOCASE
   `).all();
 }
 
@@ -19,10 +42,10 @@ export function get(id) {
 }
 
 export function create(data) {
-  const { name, style_json, background_id } = data;
+  const { name, style_json, background_id, category } = data;
   const { lastInsertRowid } = getDb().prepare(
-    `INSERT INTO themes (name, style_json, background_id) VALUES (?, ?, ?)`
-  ).run(name, style_json ?? null, background_id ?? null);
+    `INSERT INTO themes (name, style_json, background_id, category) VALUES (?, ?, ?, ?)`
+  ).run(name, style_json ?? null, background_id ?? null, category || 'song');
   return Number(lastInsertRowid);
 }
 
@@ -35,6 +58,82 @@ export function update(id, data) {
 
 export function del(id) {
   getDb().prepare('DELETE FROM themes WHERE id = ?').run(id);
+}
+
+// ─── Bundled theme packs ─────────────────────────────────────────────────────
+// Mirrors seedBundledBibles()/seedGhsHymnal(): import the authored theme JSON
+// from resources/themes/ on first run, gated by a `themes_seeded` flag so user
+// deletions stick. Each file is one theme:
+//   { name, category, sort_order, style: {…§8 style, incl. bgCss…} }
+// Built-ins carry an original CSS gradient/solid in style.bgCss (zero licensing),
+// so they need no media asset — background_id stays null.
+
+function bundledThemeDir() {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'themes')
+    : path.join(app.getAppPath(), 'resources', 'themes');
+}
+
+// Seed bundled built-in themes by NAME, tracking which names have been seeded in
+// `seeded_theme_keys`. This lets a later release add new built-ins (e.g. the
+// Phase 1b media themes) on upgrade WITHOUT re-adding any a user has deleted —
+// a deleted theme's name stays in the set, so it never resurrects.
+export function seedBundledThemes() {
+  const dir = bundledThemeDir();
+  let files;
+  try {
+    files = fs.readdirSync(dir).filter((f) => f.toLowerCase().endsWith('.json')).sort();
+  } catch {
+    return; // no bundled themes present (e.g. dev checkout without resources)
+  }
+  const db = getDb();
+  // Load the seeded-keys set, migrating the legacy all-or-nothing `themes_seeded`
+  // flag: an existing install has already seeded its built-ins, so treat every
+  // current built-in name as seeded (don't duplicate them).
+  let seeded;
+  try { seeded = new Set(JSON.parse(getSetting('seeded_theme_keys') || 'null')); } catch { seeded = null; }
+  if (!seeded) {
+    seeded = new Set();
+    if (getSetting('themes_seeded')) {
+      for (const r of db.prepare('SELECT name FROM themes WHERE builtin=1').all()) seeded.add(r.name);
+    }
+  }
+  const insert = db.prepare(
+    `INSERT INTO themes (name, style_json, background_id, builtin, category, sort_order)
+     VALUES (@name, @style_json, NULL, 1, @category, @sort_order)`
+  );
+  db.transaction(() => {
+    for (const file of files) {
+      try {
+        const t = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
+        if (!t?.name || !t?.style) continue;
+        const styleJson = JSON.stringify(t.style);
+        const category = t.category || 'song';
+        const sort = Number.isFinite(t.sort_order) ? t.sort_order : 0;
+        const existing = db.prepare('SELECT id, style_json, background_id FROM themes WHERE name=? AND builtin=1').get(t.name);
+        if (existing) {
+          // Built-ins are read-only, so the bundle is the source of truth — push
+          // definition fixes (e.g. a swapped media background) when it changed.
+          if (existing.style_json !== styleJson) {
+            db.prepare("UPDATE themes SET style_json=?, category=?, sort_order=?, updated_at=datetime('now') WHERE id=?")
+              .run(styleJson, category, sort, existing.id);
+            // A media theme whose bgRef changed must drop its cached download so the
+            // new background re-resolves on next apply (resolveThemeBackground).
+            if (t.style.bgRef && existing.background_id != null) {
+              db.prepare('UPDATE themes SET background_id=NULL WHERE id=?').run(existing.id);
+            }
+          }
+        } else if (!seeded.has(t.name)) {
+          insert.run({ name: t.name, style_json: styleJson, category, sort_order: sort });
+        } // else: a built-in the user deleted — don't resurrect it
+        seeded.add(t.name);
+      } catch (err) {
+        console.error('[theme-seed] failed to import', file, err.message);
+      }
+    }
+  })();
+  setSetting('seeded_theme_keys', JSON.stringify([...seeded]));
+  setSetting('themes_seeded', true);
 }
 
 // Merge theme style_json into a section's existing style_json, preserving inline
@@ -57,15 +156,22 @@ export function applyToSong(themeId, songId, setBg = true) {
   const theme = get(themeId);
   if (!theme) return 0;
   const themeStyle = theme.style_json ? JSON.parse(theme.style_json) : {};
+  // A theme's background is either a media asset (background_id) or a license-free
+  // CSS gradient/solid (style_json.bgCss). When the theme uses bgCss, the song's
+  // media background must be cleared (NULL) so the gradient actually shows —
+  // resolveBackground puts a media path above bgCss. A text-only theme (neither)
+  // leaves backgrounds untouched.
+  const bgTarget = themeStyle.bgCss ? null : theme.background_id;
+  const touchesBg = setBg && (theme.background_id || themeStyle.bgCss);
   const sections = db.prepare('SELECT id, style_json FROM song_sections WHERE song_id = ?').all(songId);
   db.transaction(() => {
     for (const sec of sections) {
       db.prepare('UPDATE song_sections SET style_json = ? WHERE id = ?')
         .run(mergeIntoSection(sec.style_json, themeStyle), sec.id);
     }
-    if (setBg && theme.background_id) {
+    if (touchesBg) {
       db.prepare(`UPDATE songs SET default_background_id=?, updated_at=datetime('now') WHERE id=?`)
-        .run(theme.background_id, songId);
+        .run(bgTarget, songId);
       db.prepare(`UPDATE service_items SET background_override_id=NULL WHERE item_type='song' AND ref_id=?`)
         .run(songId);
     }
@@ -79,6 +185,8 @@ export function applyToRundown(themeId, serviceId, setBg = true) {
   const theme = get(themeId);
   if (!theme) return 0;
   const themeStyle = theme.style_json ? JSON.parse(theme.style_json) : {};
+  const bgTarget = themeStyle.bgCss ? null : theme.background_id;
+  const touchesBg = setBg && (theme.background_id || themeStyle.bgCss);
   const songIds = db.prepare(
     `SELECT DISTINCT ref_id FROM service_items WHERE service_id=? AND item_type='song' AND ref_id IS NOT NULL`
   ).all(serviceId).map((r) => r.ref_id);
@@ -90,13 +198,13 @@ export function applyToRundown(themeId, serviceId, setBg = true) {
         db.prepare('UPDATE song_sections SET style_json = ? WHERE id = ?')
           .run(mergeIntoSection(sec.style_json, themeStyle), sec.id);
       }
-      if (setBg && theme.background_id) {
+      if (touchesBg) {
         db.prepare(`UPDATE songs SET default_background_id=?, updated_at=datetime('now') WHERE id=?`)
-          .run(theme.background_id, songId);
+          .run(bgTarget, songId);
       }
     }
     // Clear per-slot overrides on this rundown's song items so the theme bg wins.
-    if (setBg && theme.background_id) {
+    if (touchesBg) {
       db.prepare(`UPDATE service_items SET background_override_id=NULL WHERE service_id=? AND item_type='song'`)
         .run(serviceId);
     }
@@ -110,6 +218,8 @@ export function applyToAllSongs(themeId, setBg = true) {
   const theme = get(themeId);
   if (!theme) return 0;
   const themeStyle = theme.style_json ? JSON.parse(theme.style_json) : {};
+  const bgTarget = themeStyle.bgCss ? null : theme.background_id;
+  const touchesBg = setBg && (theme.background_id || themeStyle.bgCss);
   const songIds = db.prepare('SELECT id FROM songs').all().map((r) => r.id);
   if (!songIds.length) return 0;
   db.transaction(() => {
@@ -119,13 +229,13 @@ export function applyToAllSongs(themeId, setBg = true) {
         db.prepare('UPDATE song_sections SET style_json = ? WHERE id = ?')
           .run(mergeIntoSection(sec.style_json, themeStyle), sec.id);
       }
-      if (setBg && theme.background_id) {
+      if (touchesBg) {
         db.prepare(`UPDATE songs SET default_background_id=?, updated_at=datetime('now') WHERE id=?`)
-          .run(theme.background_id, songId);
+          .run(bgTarget, songId);
       }
     }
     // Clear every song slot's per-slot override so the theme bg wins everywhere.
-    if (setBg && theme.background_id) {
+    if (touchesBg) {
       db.prepare(`UPDATE service_items SET background_override_id=NULL WHERE item_type='song'`).run();
     }
   })();

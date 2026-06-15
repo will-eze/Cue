@@ -1,0 +1,10 @@
+{
+  "name": "Soft Light",
+  "kind": "ticker",
+  "graphic": {
+    "label": "Soft Light",
+    "text": "Giving is open in the app · Small groups resume Wednesday · Thank you for worshipping with us",
+    "speed": 90,
+    "style_json": { "fontFamily": "Inter", "fontSize": 28, "color": "#0a0e1a", "position": "bottom", "bar": { "color": "#ffffff", "opacity": 0.92 } }
+  }
+}

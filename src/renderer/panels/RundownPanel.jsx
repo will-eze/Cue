@@ -319,9 +319,11 @@ export default function RundownPanel({
   const [editSong, setEditSong] = useState(null);
   const [themes, setThemes] = useState([]);
 
-  // Load themes for the song context menu's "Apply Theme" entries.
+  // Load themes for the song context menu's "Apply Theme" entries (song-category only).
   useEffect(() => {
-    window.cue.themes.list().then(setThemes).catch(() => {});
+    window.cue.themes.list()
+      .then((list) => setThemes((list || []).filter((t) => (t.category || 'song') === 'song')))
+      .catch(() => {});
   }, [serviceData?.id]);
 
   const items = serviceData?.items || [];
@@ -558,14 +560,19 @@ export default function RundownPanel({
               }] : []),
               ...(themes.length ? [
                 { separator: true },
-                ...themes.map((t) => ({
-                  label: `Apply Theme: ${t.name}`,
-                  onClick: async () => {
-                    await window.cue.themes.applyToSong(t.id, contextMenu.item.song.id, !!t.background_id);
-                    onRefresh?.();
-                    setContextMenu(null);
-                  },
-                })),
+                {
+                  label: 'Apply Theme',
+                  submenu: themes.map((t) => ({
+                    label: t.name,
+                    onClick: async () => {
+                      // setBg:true — a media or CSS-gradient theme applies its background;
+                      // a text-only theme leaves backgrounds untouched (handled in db/themes.js).
+                      await window.cue.themes.applyToSong(t.id, contextMenu.item.song.id, true);
+                      onRefresh?.();
+                      setContextMenu(null);
+                    },
+                  })),
+                },
               ] : []),
             ] : []),
             ...(contextMenu.item.item_type === 'scripture' ? [

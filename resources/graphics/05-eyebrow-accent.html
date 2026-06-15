@@ -1,0 +1,22 @@
+<!-- name: Eyebrow Accent -->
+<style>
+  .eb { position:absolute; left:90px; bottom:130px; padding-left:26px; border-left:4px solid #ff3b6b;
+    opacity:0; transform:translateX(-30px); }
+  .cue-in .eb  { animation: eb-in .55s cubic-bezier(.2,.9,.2,1) forwards; }
+  .cue-out .eb { animation: eb-out .35s ease forwards; }
+  .eb .k { display:flex; align-items:center; gap:10px; font:700 18px/1 'JetBrains Mono',ui-monospace,monospace;
+    letter-spacing:.28em; text-transform:uppercase; color:#ff7a98; margin-bottom:14px; }
+  .eb .dot { width:9px; height:9px; border-radius:50%; background:#ff3b6b;
+    box-shadow:0 0 0 0 rgba(255,59,107,.6); animation: eb-pulse 1.8s ease-out infinite; }
+  .eb .n { font:700 58px/1.02 Inter,system-ui,sans-serif; color:#fff; text-shadow:0 3px 22px rgba(0,0,0,.5); }
+  .eb .t { font:400 26px/1.2 Inter,system-ui,sans-serif; color:rgba(255,255,255,.66); margin-top:8px; }
+  .eb .t:empty { display:none; }
+  @keyframes eb-in    { to { opacity:1; transform:translateX(0); } }
+  @keyframes eb-out   { to { opacity:0; transform:translateX(-24px); } }
+  @keyframes eb-pulse { 0% { box-shadow:0 0 0 0 rgba(255,59,107,.6); } 100% { box-shadow:0 0 0 16px rgba(255,59,107,0); } }
+</style>
+<div class="eb">
+  <div class="k"><span class="dot"></span>{{text}}</div>
+  <div class="n">{{name}}</div>
+  <div class="t">{{title}}</div>
+</div>

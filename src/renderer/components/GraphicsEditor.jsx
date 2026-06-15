@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { FormattingToolbar, DEFAULT_STYLE, styleIsDefault } from './SongEditor';
 import { useFonts } from '../utils/fonts';
@@ -363,21 +363,38 @@ function CountdownPreview({ cd, timeStyle, msgStyle, label, onBoxChange }) {
   );
 }
 
-function TickerPreview({ text, tickerStyle }) {
+function TickerPreview({ text, tickerStyle, speed = 100 }) {
   const wrapRef = useRef(null);
   const [scale] = useScale(wrapRef);
+  const innerRef = useRef(null);
+  const [dur, setDur] = useState(20);
   const top = tickerStyle?.position === 'top';
   const barBg = tickerStyle?.bar
     ? buildBarBg({ color: tickerStyle.bar.color, opacity: tickerStyle.bar.opacity, solid: true })
     : 'rgba(12,14,18,0.9)';
   const txt = flatTextCss(tickerStyle, { fontSize: 30, color: '#ffffff', fontWeight: 500 });
+  const content = text || 'Ticker text…';
+
+  // Crawl the text horizontally like the live output: the inner starts off the
+  // right edge (padding-left:100%) and animates to translateX(-100%); duration =
+  // travel distance / speed, so the crawl pace matches graphics-overlay.js.
+  useEffect(() => {
+    const el = innerRef.current;
+    if (!el) return;
+    const distance = el.scrollWidth; // 100% padding (≈frame width) + text width
+    const spd = Math.max(20, Number(speed) || 100);
+    setDur(distance / spd);
+  }, [content, tickerStyle, speed]);
+
   return (
     <ScaledFrame wrapRef={wrapRef} scale={scale}>
       <div style={{ position: 'absolute', left: 0, right: 0, [top ? 'top' : 'bottom']: 0, height: 72,
         background: barBg, borderTop: top ? 'none' : '3px solid #4d8eff', borderBottom: top ? '3px solid #4d8eff' : 'none',
         display: 'flex', alignItems: 'center', overflow: 'hidden' }}>
-        <div style={{ ...txt, whiteSpace: 'nowrap', paddingLeft: 40, lineHeight: '72px', textAlign: 'left' }}>
-          {text || 'Ticker text…'}
+        <div ref={innerRef} style={{ ...txt, whiteSpace: 'nowrap', flexShrink: 0, paddingLeft: '100%',
+          lineHeight: '72px', textAlign: 'left', willChange: 'transform',
+          animation: `cue-ticker-crawl ${dur}s linear infinite` }}>
+          {content}
         </div>
       </div>
     </ScaledFrame>
@@ -405,6 +422,202 @@ function CustomPreview({ draft, replayKey }) {
       />
     </ScaledFrame>
   );
+}
+
+// ── Design gallery (built-in presets) ───────────────────────────────────────────
+
+// Sample fill so each tile reads like a real broadcast graphic. {{text}} is the
+// kicker/eyebrow/badge slot most custom designs use as a third line.
+const PRESET_SAMPLE = { name: 'Sarah Bennett', title: 'Worship Pastor', text: 'This Sunday' };
+
+// Per-kind labels/icons + the order they appear as filter tabs.
+const KIND_META = {
+  lower_third: { label: 'Lower Thirds', icon: 'badge' },
+  ticker:      { label: 'Tickers',      icon: 'subtitles' },
+  countdown:   { label: 'Countdowns',   icon: 'timer' },
+  custom:      { label: 'Custom',       icon: 'code' },
+};
+const KIND_ORDER = ['lower_third', 'ticker', 'countdown', 'custom'];
+
+// A preset's style_json (already an object from the loader, but be defensive).
+function presetStyle(preset) {
+  const sj = preset?.graphic?.style_json;
+  if (!sj) return {};
+  return typeof sj === 'string' ? (() => { try { return JSON.parse(sj); } catch { return {}; } })() : sj;
+}
+
+// Live preview of a preset, rendered with the SAME components the editor/output
+// use — so a structured design stays a real (editable) lower-third/ticker/
+// countdown, and custom designs render their HTML in an isolated iframe.
+function PresetPreview({ preset, replay }) {
+  const wrapRef = useRef(null);
+  const [scale] = useScale(wrapRef);
+  const sj = presetStyle(preset);
+  const g = preset.graphic || {};
+
+  if (preset.kind === 'lower_third') {
+    return <BugPreview name={g.name || PRESET_SAMPLE.name} title={g.title || PRESET_SAMPLE.title}
+      nameStyle={sj.name} titleStyle={sj.title} />;
+  }
+  if (preset.kind === 'ticker') {
+    return <TickerPreview text={g.text || 'Scrolling announcement…'} tickerStyle={sj} speed={g.speed} />;
+  }
+  if (preset.kind === 'countdown') {
+    return <CountdownPreview cd={sj} timeStyle={sj.time} msgStyle={sj.message} label={g.text || ''} />;
+  }
+  // custom HTML
+  return (
+    <ScaledFrame wrapRef={wrapRef} scale={scale}>
+      <iframe
+        key={replay}
+        title={preset.name}
+        sandbox="allow-same-origin"
+        srcDoc={previewDoc(fillPlaceholders(g.html, PRESET_SAMPLE))}
+        style={{ width: FRAME_W, height: FRAME_H, border: 0, background: 'transparent', pointerEvents: 'none' }}
+      />
+    </ScaledFrame>
+  );
+}
+
+// One clickable tile: live preview + name + kind badge. Re-mounts custom iframes on
+// hover so their entrance animation replays.
+function PresetTile({ preset, onPick }) {
+  const [replay, setReplay] = useState(0);
+  const meta = KIND_META[preset.kind] || KIND_META.custom;
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onPick(preset)}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPick(preset); } }}
+      onMouseEnter={() => setReplay((k) => k + 1)}
+      className="group bg-surface-container border border-outline-variant/30 rounded-xl overflow-hidden flex flex-col cursor-pointer hover:border-primary/50 hover:ring-1 hover:ring-primary/30 active:scale-[0.99] transition-all"
+    >
+      <div className="p-sm pb-0">
+        <PresetPreview preset={preset} replay={replay} />
+      </div>
+      <div className="px-md py-sm flex items-center justify-between gap-xs">
+        <span className="text-label-sm font-mono font-bold text-on-surface truncate min-w-0">{preset.name}</span>
+        <span className="text-[8px] font-mono uppercase tracking-[0.05em] text-on-surface-variant/50 border border-outline-variant/40 rounded px-[3px] py-[1px] shrink-0">{meta.label}</span>
+      </div>
+    </div>
+  );
+}
+
+// Full-screen gallery of the bundled designs — mirrors ThemePickerModal's shell
+// (search + responsive grid + close) plus per-type filter tabs. Picking a design
+// calls onPick(preset); the caller decides what "use" means (the panel creates a
+// graphic, the editor restyles the current draft). When `lockKind` is set the
+// gallery shows only that kind and hides the tabs (used from inside the editor,
+// where the graphic's kind is fixed).
+export function GraphicsPresetModal({ onPick, onClose, lockKind = null }) {
+  const [presets, setPresets] = useState([]);
+  const [query, setQuery] = useState('');
+  const [tab, setTab] = useState(lockKind || 'all');
+
+  useEffect(() => {
+    window.cue.graphics.presets().then((list) => setPresets(list || [])).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  // Which kinds are actually present (for the tab bar), in canonical order.
+  const presentKinds = useMemo(() => {
+    const set = new Set(presets.map((p) => p.kind));
+    return KIND_ORDER.filter((k) => set.has(k));
+  }, [presets]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const activeKind = lockKind || tab;
+    let list = lockKind ? presets.filter((p) => p.kind === lockKind)
+      : activeKind === 'all' ? presets : presets.filter((p) => p.kind === activeKind);
+    if (q) list = list.filter((p) => p.name.toLowerCase().includes(q));
+    // Keep canonical kind grouping, then preset order (filename) within a kind.
+    return [...list].sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) || a.id.localeCompare(b.id));
+  }, [presets, query, tab, lockKind]);
+
+  const lockedMeta = lockKind ? (KIND_META[lockKind] || KIND_META.custom) : null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[60] bg-background/90 flex flex-col" onMouseDown={onClose}>
+      <div
+        className="flex-1 min-h-0 flex flex-col m-lg bg-surface-container-low rounded-xl border border-outline-variant/30 shadow-2xl ring-1 ring-white/5 overflow-hidden"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-lg py-md border-b border-outline-variant/30 bg-surface-container-high flex-shrink-0 gap-md">
+          <h3 className="text-label-sm font-label-sm text-on-surface uppercase tracking-[0.05em] flex items-center gap-sm shrink-0">
+            <span className="material-symbols-outlined text-primary text-[20px]">grid_view</span>
+            {lockedMeta ? `${lockedMeta.label.replace(/s$/, '')} designs` : 'Design gallery'}
+          </h3>
+          <div className="flex-1 max-w-sm relative">
+            <span className="material-symbols-outlined absolute left-sm top-1/2 -translate-y-1/2 text-on-surface-variant/60 text-[18px]">search</span>
+            <input
+              value={query} onChange={(e) => setQuery(e.target.value)} autoFocus
+              placeholder="Search designs…"
+              className="w-full pl-[34px] pr-sm py-xs text-body-sm bg-surface-container rounded-lg border border-outline-variant/30 text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:border-primary/50"
+            />
+          </div>
+          <button onClick={onClose} className="text-on-surface-variant hover:text-on-surface cursor-pointer flex items-center shrink-0">
+            <span className="material-symbols-outlined">close</span>
+          </button>
+        </div>
+
+        {/* Per-type filter tabs (hidden when the kind is locked from the editor) */}
+        {!lockKind && presentKinds.length > 1 && (
+          <div className="flex items-center gap-xs px-lg py-sm border-b border-outline-variant/20 bg-surface-container/40 shrink-0">
+            {[{ id: 'all', label: 'All', icon: 'apps' }, ...presentKinds.map((k) => ({ id: k, ...KIND_META[k] }))].map((t) => (
+              <button key={t.id} onClick={() => setTab(t.id)}
+                className={`flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] transition-colors cursor-pointer ${
+                  tab === t.id ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'
+                }`}>
+                <span className="material-symbols-outlined text-[14px]">{t.icon}</span>{t.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="flex-1 min-h-0 overflow-y-auto p-lg custom-scrollbar">
+          {filtered.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center gap-sm text-outline-variant">
+              <span className="material-symbols-outlined text-5xl">grid_view</span>
+              <span className="text-label-sm font-label-sm uppercase tracking-widest">{presets.length ? 'No matches' : 'No designs'}</span>
+            </div>
+          ) : (
+            <div className="grid gap-md" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
+              {filtered.map((p) => <PresetTile key={p.id} preset={p} onPick={onPick} />)}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// Convert a preset into the create-payload for a brand-new graphic (used by the
+// Graphics panel's "Designs" gallery — adds it to the tab, ready to customise).
+// Seeds sample content so the new graphic is immediately valid + visible.
+export function presetToGraphic(preset) {
+  const g = preset.graphic || {};
+  const base = { kind: preset.kind, label: g.label || preset.name, target: 'ndi' };
+  if (preset.kind === 'custom') {
+    return { ...base, html: g.html, name: '', title: '', text: '' };
+  }
+  if (preset.kind === 'lower_third') {
+    return { ...base, name: g.name || 'Name', title: g.title || '', style_json: g.style_json };
+  }
+  if (preset.kind === 'ticker') {
+    return { ...base, text: g.text || 'Ticker text', speed: g.speed ?? 100, style_json: g.style_json };
+  }
+  if (preset.kind === 'countdown') {
+    return { ...base, text: g.text || '', style_json: g.style_json };
+  }
+  return base;
 }
 
 // ── Editor ─────────────────────────────────────────────────────────────────────
@@ -437,10 +650,32 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
   });
   const [target, setTarget] = useState('name'); // editing target — LT: 'name'|'title'; countdown: 'time'|'message'
   const [replayKey, setReplayKey] = useState(0);
+  const [showGallery, setShowGallery] = useState(false);
   const htmlRef = useRef(null);
 
+  // Apply a built-in design to the current draft. It's a STYLE preset, so keep the
+  // operator's typed content (name/title/text) and only swap appearance — except
+  // custom designs, where the HTML *is* the design. The gallery is locked to the
+  // current kind, so the preset always matches.
+  function applyPresetStyle(preset) {
+    const sj = presetStyle(preset);
+    setDraft((d) => {
+      if (preset.kind === 'custom') return { ...d, kind: 'custom', html: preset.graphic?.html || '', label: d.label || preset.name };
+      if (preset.kind === 'lower_third') return { ...d, nameStyle: { ...freshNameStyle(), ...(sj.name || {}) }, titleStyle: { ...freshTitleStyle(), ...(sj.title || {}) } };
+      if (preset.kind === 'ticker') return { ...d, tickerStyle: { ...freshTickerStyle(), ...sj }, speed: preset.graphic?.speed ?? d.speed };
+      if (preset.kind === 'countdown') return { ...d, timeStyle: { ...freshTimeStyle(), ...(sj.time || {}) }, msgStyle: { ...freshMsgStyle(), ...(sj.message || {}) } };
+      return d;
+    });
+    setShowGallery(false);
+    setReplayKey((k) => k + 1); // replay the entrance animation in the editor preview
+  }
+
+  // Escape closes the editor — but not while the design gallery is layered on top
+  // (it owns its own Escape). A ref keeps the listener stable without resubscribing.
+  const galleryOpenRef = useRef(false);
+  galleryOpenRef.current = showGallery;
   useEffect(() => {
-    function onKey(e) { if (e.key === 'Escape') onClose(); }
+    function onKey(e) { if (e.key === 'Escape' && !galleryOpenRef.current) onClose(); }
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
@@ -490,6 +725,7 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
   };
 
   return createPortal(
+    <>
     <div className="fixed inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-50 p-6" onClick={onClose}>
       <div
         className="bg-surface-container-low border border-outline-variant/30 rounded-xl w-full max-w-6xl h-[86vh] flex flex-col shadow-2xl ring-1 ring-white/5"
@@ -571,6 +807,13 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
               <input value={draft.label} onChange={(e) => set({ label: e.target.value })} placeholder="For your reference"
                 className="w-full bg-surface-container-lowest border border-outline-variant/40 rounded-lg px-sm py-1.5 text-body-md text-on-surface focus:outline-none focus:border-primary" />
             </Field>
+
+            {/* Start from / restyle with a built-in design (locked to this kind). */}
+            <button onClick={() => setShowGallery(true)}
+              className="flex items-center justify-center gap-xs px-md py-sm rounded-lg text-label-sm font-label-sm uppercase tracking-[0.05em] font-bold bg-primary/15 border border-primary/40 text-primary hover:bg-primary/25 cursor-pointer transition-colors">
+              <span className="material-symbols-outlined text-[16px]">grid_view</span>
+              {isCustom ? 'Browse designs' : 'Apply a design'}
+            </button>
 
             {(isLT || isCustom) && (
               <>
@@ -770,7 +1013,7 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
               {isCustom ? (
                 <CustomPreview draft={draft} replayKey={replayKey} />
               ) : isTK ? (
-                <TickerPreview text={draft.text} tickerStyle={draft.tickerStyle} />
+                <TickerPreview text={draft.text} tickerStyle={draft.tickerStyle} speed={draft.speed} />
               ) : isCD ? (
                 <CountdownPreview cd={draft.cd} timeStyle={draft.timeStyle} msgStyle={draft.msgStyle} label={draft.text}
                   onBoxChange={(box) => set({ timeStyle: { ...draft.timeStyle, textBox: box } })} />
@@ -794,7 +1037,12 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
           </button>
         </div>
       </div>
-    </div>,
+    </div>
+
+    {showGallery && (
+      <GraphicsPresetModal lockKind={draft.kind} onPick={applyPresetStyle} onClose={() => setShowGallery(false)} />
+    )}
+    </>,
     document.body
   );
 }

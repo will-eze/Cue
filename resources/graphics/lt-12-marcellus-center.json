@@ -1,0 +1,13 @@
+{
+  "name": "Marcellus Center",
+  "kind": "lower_third",
+  "graphic": {
+    "label": "Marcellus Center",
+    "name": "Sarah Bennett",
+    "title": "Worship Pastor",
+    "style_json": {
+      "name":  { "fontFamily": "Marcellus", "fontSize": 60, "color": "#ffffff", "align": "center", "verticalAlign": "bottom", "textBox": { "x": 18, "y": 74, "w": 64, "h": 18 }, "ltBar": { "color": "#1a1f2e", "opacity": 0.7, "solid": false } },
+      "title": { "fontFamily": "JetBrains Mono", "fontSize": 22, "color": "#b9c6dd", "uppercase": true, "letterSpacing": 0.24, "align": "center" }
+    }
+  }
+}

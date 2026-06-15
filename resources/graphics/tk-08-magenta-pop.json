@@ -1,0 +1,10 @@
+{
+  "name": "Magenta Pop",
+  "kind": "ticker",
+  "graphic": {
+    "label": "Magenta Pop",
+    "text": "YOUTH NIGHT FRIDAY · GAMES, FOOD & WORSHIP · BRING A FRIEND · 7 PM IN THE MAIN HALL",
+    "speed": 120,
+    "style_json": { "fontFamily": "Oswald", "fontSize": 30, "color": "#ffffff", "uppercase": true, "letterSpacing": 0.04, "position": "bottom", "bar": { "color": "#d11a6b", "opacity": 1 } }
+  }
+}

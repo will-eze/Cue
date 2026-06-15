@@ -71,26 +71,10 @@ function GraphicsOverlayLayer({ overlay }) {
     );
   }
 
-  let ticker = null;
-  if (tk) {
-    const st = tk.style || {};
-    const top = st.position === 'top';
-    const barBg = st.bar ? buildGraphicBarBg({ color: st.bar.color, opacity: st.bar.opacity, solid: true }) : 'rgba(12,14,18,0.9)';
-    ticker = (
-      <div style={{ position: 'absolute', left: 0, right: 0, [top ? 'top' : 'bottom']: 0, height: 72, background: barBg,
-        borderTop: top ? 'none' : '3px solid #4d8eff', borderBottom: top ? '3px solid #4d8eff' : 'none',
-        display: 'flex', alignItems: 'center', overflow: 'hidden' }}>
-        <div style={{ ...flatTextCss(st, { fontSize: 30, color: '#fff', fontWeight: 500 }), whiteSpace: 'nowrap', paddingLeft: 40, lineHeight: '72px', textAlign: 'left' }}>
-          {tk.text}
-        </div>
-      </div>
-    );
-  }
-
   return (
     <>
       {bug}
-      {ticker}
+      {tk && <OverlayTicker tk={tk} />}
       {cd && cd.mode && <OverlayCountdown cd={cd} />}
       {cu && (
         <iframe title="overlay-custom" sandbox="allow-same-origin"
@@ -101,8 +85,41 @@ function GraphicsOverlayLayer({ overlay }) {
   );
 }
 
+// Crawling ticker for the live monitor — scrolls horizontally exactly like the
+// output (output/graphics-overlay.js): inner starts off the right edge
+// (padding-left:100%) and animates to translateX(-100%); duration = travel
+// distance / speed. Keyframes `cue-ticker-crawl` live in index.css.
+function OverlayTicker({ tk }) {
+  const innerRef = useRef(null);
+  const [dur, setDur] = useState(20);
+  const st = tk.style || {};
+  const top = st.position === 'top';
+  const barBg = st.bar ? buildGraphicBarBg({ color: st.bar.color, opacity: st.bar.opacity, solid: true }) : 'rgba(12,14,18,0.9)';
+
+  useEffect(() => {
+    const el = innerRef.current;
+    if (!el) return;
+    const distance = el.scrollWidth;
+    const spd = Math.max(20, Number(tk.speed) || 100);
+    setDur(distance / spd);
+  }, [tk.text, tk.style, tk.speed]);
+
+  return (
+    <div style={{ position: 'absolute', left: 0, right: 0, [top ? 'top' : 'bottom']: 0, height: 72, background: barBg,
+      borderTop: top ? 'none' : '3px solid #4d8eff', borderBottom: top ? '3px solid #4d8eff' : 'none',
+      display: 'flex', alignItems: 'center', overflow: 'hidden' }}>
+      <div ref={innerRef} style={{ ...flatTextCss(st, { fontSize: 30, color: '#fff', fontWeight: 500 }), whiteSpace: 'nowrap',
+        flexShrink: 0, paddingLeft: '100%', lineHeight: '72px', textAlign: 'left', willChange: 'transform',
+        animation: `cue-ticker-crawl ${dur}s linear infinite` }}>
+        {tk.text}
+      </div>
+    </div>
+  );
+}
+
 function buildBarBg(ltBar) {
   if (!ltBar) return 'transparent';
+  if (ltBar.css) return ltBar.css;
   const c  = ltBar.color   ?? '#000000';
   const op = ltBar.opacity ?? 0.8;
   const r  = parseInt(c.slice(1, 3), 16) || 0;
@@ -476,7 +493,7 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
                     backgroundImage: 'repeating-conic-gradient(#1a1a1a 0% 25%, #222 0% 50%)',
                     backgroundSize: '20px 20px',
                   }} />
-                ) : backgroundPath && (
+                ) : backgroundPath ? (
                   <div style={{ position: 'absolute', inset: 0 }}>
                     {/\.(mp4|webm|mov|m4v|avi|mkv)$/i.test(backgroundPath)
                       ? (transport?.active
@@ -488,7 +505,15 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
                         </div>
                       : <img src={mediaUrl(backgroundPath)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />}
                   </div>
-                )}
+                ) : style?.bgCss ? (
+                  // Theme CSS gradient/solid background (no media asset) — matches fullscreen.js setBackground
+                  <div style={{ position: 'absolute', inset: 0, background: style.bgCss }} />
+                ) : null}
+
+                {/* Background scrim (style.bgScrim) — matches fullscreen.js #scrim */}
+                {!isLT && style?.bgScrim ? (
+                  <div style={{ position: 'absolute', inset: 0, background: '#000', opacity: Math.max(0, Math.min(1, style.bgScrim)), pointerEvents: 'none' }} />
+                ) : null}
 
                 {/* Content */}
                 {!hideText && (isLT ? (
@@ -623,15 +648,17 @@ export default function PreviewLivePanel({
     return () => { active = false; off(); };
   }, []);
 
-  // Filter the overlay by the selected channel's kind so the monitor matches what
-  // that specific output shows (a graphic targeted Online won't appear on In-Room).
+  // Each overlay slot now holds one occupant per destination kind ({ screen, ndi }).
+  // Pick the occupant for this monitor's kind so it matches exactly what that output
+  // shows (a graphic targeted Online won't appear on an In-Room monitor, and a
+  // different one can run on each).
   const selKind = selectedChannel?.type === 'ndi' ? 'ndi' : 'screen';
-  const slotMatch = (s) => (s && (!s.target || s.target === 'all' || s.target === selKind)) ? s : null;
+  const pick = (slot) => (slot ? slot[selKind] : null);
   // The overlay rides on top of any program output (fullscreen + lower-third), not stage.
   // A channel with graphics turned off (Lyrics Only) shows no overlay on its monitor.
   const hideGraphics = selectedChannel?.show_graphics === 0;
   const monitorOverlay = (selectedTemplate !== 'stage' && overlay && !hideGraphics)
-    ? { nameTitle: slotMatch(overlay.nameTitle), ticker: slotMatch(overlay.ticker), custom: slotMatch(overlay.custom), countdown: slotMatch(overlay.countdown) }
+    ? { nameTitle: pick(overlay.nameTitle), ticker: pick(overlay.ticker), custom: pick(overlay.custom), countdown: pick(overlay.countdown) }
     : null;
   // Graphics-only lower-third channel → don't render the song lyric band on the monitor.
   const hideProgram = selectedTemplate === 'lowerthird' && selectedChannel?.show_program === 0;

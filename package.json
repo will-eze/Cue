@@ -1,7 +1,7 @@
 {
   "name": "cue",
   "productName": "Cue",
-  "version": "21.3.1",
+  "version": "22.0.0",
   "description": "Unified graphics engine for worship presentation and broadcast overlays",
   "main": ".vite/build/index.js",
   "scripts": {

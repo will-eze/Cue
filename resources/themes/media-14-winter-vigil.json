@@ -1,0 +1,23 @@
+{
+  "name": "Winter Vigil",
+  "category": "song",
+  "sort_order": 33,
+  "style": {
+    "fontFamily": "Cinzel",
+    "color": "#eef4ff",
+    "uppercase": true,
+    "fontSize": 80,
+    "letterSpacing": 0.05,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 24,
+      "color": "rgba(0,0,0,0.85)"
+    },
+    "bgRef": "library/unsplash-mGU0TVjsfnU.jpg",
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(6,8,12,0.94) 0%, rgba(6,8,12,0.82) 70%, rgba(6,8,12,0) 100%)"
+    }
+  }
+}

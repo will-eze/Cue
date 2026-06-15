@@ -1,0 +1,13 @@
+{
+  "name": "Bold Red Strap",
+  "kind": "lower_third",
+  "graphic": {
+    "label": "Bold Red Strap",
+    "name": "Sarah Bennett",
+    "title": "Worship Pastor",
+    "style_json": {
+      "name":  { "fontFamily": "Oswald", "fontSize": 58, "color": "#ffffff", "bold": true, "uppercase": true, "letterSpacing": 0.02, "align": "left", "verticalAlign": "center", "textBox": { "x": 4, "y": 74, "w": 56, "h": 16 }, "ltBar": { "color": "#d11a2a", "opacity": 1, "solid": true } },
+      "title": { "fontFamily": "JetBrains Mono", "fontSize": 22, "color": "#ffd9dc", "bold": false, "uppercase": true, "letterSpacing": 0.16, "align": "left" }
+    }
+  }
+}

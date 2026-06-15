@@ -1,0 +1,23 @@
+<!-- name: Big Stat -->
+<style>
+  .bs { position:absolute; left:90px; bottom:120px; display:flex; align-items:flex-end; gap:30px; opacity:0; transform:translateY(26px); }
+  .cue-in .bs  { animation: bs-in .6s cubic-bezier(.2,.9,.2,1) forwards; }
+  .cue-out .bs { animation: bs-out .4s ease forwards; }
+  .bs .fig { font:800 130px/.86 'Oswald',Inter,sans-serif; letter-spacing:-.01em;
+    background:linear-gradient(180deg,#ffe259,#ffa751); -webkit-background-clip:text; background-clip:text; color:transparent;
+    filter:drop-shadow(0 6px 24px rgba(255,160,40,.25)); }
+  .bs .meta { padding-bottom:18px; }
+  .bs .n { font:700 40px/1.05 Inter,system-ui,sans-serif; color:#fff; }
+  .bs .t { font:500 22px/1.2 'JetBrains Mono',ui-monospace,monospace; letter-spacing:.12em; text-transform:uppercase;
+    color:#ffce6b; margin-top:8px; max-width:520px; }
+  .bs .t:empty { display:none; }
+  @keyframes bs-in  { to { opacity:1; transform:translateY(0); } }
+  @keyframes bs-out { to { opacity:0; transform:translateY(16px); } }
+</style>
+<div class="bs">
+  <div class="fig">{{text}}</div>
+  <div class="meta">
+    <div class="n">{{name}}</div>
+    <div class="t">{{title}}</div>
+  </div>
+</div>

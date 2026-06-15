@@ -1,0 +1,21 @@
+{
+  "name": "Tide",
+  "category": "song",
+  "sort_order": 4,
+  "style": {
+    "fontFamily": "Montserrat",
+    "color": "#ffffff",
+    "fontSize": 76,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 28,
+      "color": "rgba(0,0,0,0.55)"
+    },
+    "bgCss": "linear-gradient(135deg, #0a2540 0%, #155e63 60%, #0d7377 100%)",
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(8,28,52,0.92) 0%, rgba(8,28,52,0.7) 65%, rgba(8,28,52,0) 100%)"
+    }
+  }
+}

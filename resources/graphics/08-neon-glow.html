@@ -1,0 +1,21 @@
+<!-- name: Neon Glow -->
+<style>
+  .ne { position:absolute; left:90px; bottom:130px; padding:22px 48px; border-radius:14px;
+    background:rgba(6,8,16,0.55); border:1.5px solid rgba(0,240,255,.55);
+    box-shadow:0 0 24px rgba(0,240,255,.35), inset 0 0 24px rgba(0,240,255,.12);
+    opacity:0; transform:translateY(26px); }
+  .cue-in .ne  { animation: ne-in .5s ease forwards, ne-flicker 2.6s steps(1) .5s infinite; }
+  .cue-out .ne { animation: ne-out .35s ease forwards; }
+  .ne .n { font:700 56px/1 'Oswald',Inter,sans-serif; text-transform:uppercase; letter-spacing:.04em; color:#eafdff;
+    text-shadow:0 0 8px #00f0ff, 0 0 20px #00f0ff, 0 0 40px rgba(0,240,255,.6); }
+  .ne .t { font:500 22px/1 'JetBrains Mono',ui-monospace,monospace; letter-spacing:.22em; text-transform:uppercase;
+    color:#ff7ae0; text-shadow:0 0 8px #ff2bd0, 0 0 18px rgba(255,43,208,.6); margin-top:10px; }
+  .ne .t:empty { display:none; }
+  @keyframes ne-in      { to { opacity:1; transform:translateY(0); } }
+  @keyframes ne-out     { to { opacity:0; transform:translateY(18px); } }
+  @keyframes ne-flicker { 0%,97%,100% { opacity:1; } 98% { opacity:.78; } 99% { opacity:.92; } }
+</style>
+<div class="ne">
+  <div class="n">{{name}}</div>
+  <div class="t">{{title}}</div>
+</div>

@@ -1,0 +1,19 @@
+<!-- name: Gradient Sweep -->
+<style>
+  .gs { position:absolute; left:0; bottom:120px; padding:24px 72px 26px 96px; border-radius:0 60px 60px 0;
+    background:linear-gradient(100deg,#ff6a00,#ff2b78 55%,#ff2bd0);
+    box-shadow:0 16px 50px rgba(255,43,120,.4); transform:translateX(-105%); }
+  .cue-in .gs  { animation: gs-in .6s cubic-bezier(.2,.85,.2,1) forwards; }
+  .cue-out .gs { animation: gs-out .45s ease forwards; }
+  .gs .n { font:800 56px/1 'Oswald',Inter,sans-serif; text-transform:uppercase; letter-spacing:.02em; color:#fff;
+    text-shadow:0 2px 14px rgba(120,0,40,.5); }
+  .gs .t { font:600 24px/1 'JetBrains Mono',ui-monospace,monospace; letter-spacing:.16em; text-transform:uppercase;
+    color:rgba(255,255,255,.85); margin-top:8px; }
+  .gs .t:empty { display:none; }
+  @keyframes gs-in  { to { transform:translateX(0); } }
+  @keyframes gs-out { to { transform:translateX(-105%); } }
+</style>
+<div class="gs">
+  <div class="n">{{name}}</div>
+  <div class="t">{{title}}</div>
+</div>

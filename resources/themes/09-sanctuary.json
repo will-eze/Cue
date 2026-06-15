@@ -1,0 +1,22 @@
+{
+  "name": "Sanctuary",
+  "category": "song",
+  "sort_order": 9,
+  "style": {
+    "fontFamily": "Playfair Display",
+    "color": "#f3ead7",
+    "fontSize": 78,
+    "letterSpacing": 0.01,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 30,
+      "color": "rgba(0,0,0,0.6)"
+    },
+    "bgCss": "radial-gradient(circle at 50% 35%, #2a2a5e 0%, #14143a 55%, #07071a 100%)",
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(12,12,40,0.92) 0%, rgba(12,12,40,0.7) 65%, rgba(12,12,40,0) 100%)"
+    }
+  }
+}

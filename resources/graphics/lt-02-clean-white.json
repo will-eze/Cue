@@ -1,0 +1,13 @@
+{
+  "name": "Clean White",
+  "kind": "lower_third",
+  "graphic": {
+    "label": "Clean White",
+    "name": "Sarah Bennett",
+    "title": "Worship Pastor",
+    "style_json": {
+      "name":  { "fontFamily": "Inter", "fontSize": 52, "color": "#0a0e1a", "bold": true, "align": "left", "verticalAlign": "center", "textBox": { "x": 4, "y": 74, "w": 48, "h": 18 }, "ltBar": { "color": "#ffffff", "opacity": 0.95, "solid": true } },
+      "title": { "fontFamily": "Inter", "fontSize": 26, "color": "#3a4a63", "bold": false, "align": "left" }
+    }
+  }
+}

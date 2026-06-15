@@ -1,0 +1,24 @@
+{
+  "name": "Headline",
+  "category": "song",
+  "sort_order": 0,
+  "style": {
+    "fontFamily": "Bebas Neue",
+    "color": "#ffffff",
+    "uppercase": true,
+    "fontSize": 116,
+    "letterSpacing": 0.04,
+    "lineSpacing": 0.95,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 18,
+      "color": "rgba(0,0,0,0.55)"
+    },
+    "bgCss": "radial-gradient(circle at 50% 38%, #17191f 0%, #0a0a0c 72%)",
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(8,8,10,0.94) 0%, rgba(8,8,10,0.82) 70%, rgba(8,8,10,0) 100%)"
+    }
+  }
+}

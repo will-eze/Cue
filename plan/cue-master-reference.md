@@ -86,6 +86,8 @@ src/
 │   │   │                     (settings+songs tables) before touching live files, swap cue.db + media/, then
 │   │   │                     rewrite absolute media_assets.path to the local media dir (portable across machines).
 │   │   ├── graphics.js       Broadcast-graphics CRUD (list/get/create/update/del/reorder). style_json + target.
+│   │   │                     presets() reads built-in designs from resources/graphics/ (*.html custom + *.json
+│   │   │                     structured), not DB rows (§7).
 │   │   ├── presentations.js  Presentations CRUD (native multi-element slides) + presentation_templates. get()
 │   │   │                     resolves each slide's image-element mediaIds → paths. collectImageMediaIds(elements_json)
 │   │   │                     is exported for services.js + media.findUnused (image refs live inside elements_json).
@@ -93,6 +95,12 @@ src/
 │   │   │                     applyToAllSongs merge the theme style_json into song_sections (preserving inline
 │   │   │                     text runs) and, when the theme has a background + setBg, write songs.default_background_id
 │   │   │                     and NULL out per-slot service_items.background_override_id so the theme bg wins.
+│   │   │                     seedBundledThemes() (resources/themes/*.json, by-name via seeded_theme_keys, upserts);
+│   │   │                     resolveThemeBackground(id) lazily downloads a media theme's style_json.bgRef (§9).
+│   │   ├── background-library.js  Phase 1b Background Library: reads bundled resources/media-manifest.json
+│   │   │                     (tags + thumb + origin url). list/tagCounts/download/applyAsDefault — a pick streams
+│   │   │                     the origin url into userData/media as a normal media_assets row (Option A, never rehost);
+│   │   │                     bg_library_downloads settings map keeps picks idempotent + out of findUnused.
 │   │   ├── songs.js          Song + section + tag CRUD, FTS5 search. importSongs (bulk insert, tag-aware:
 │   │   │                     song.tags[] get-or-created + assigned). existingTitleSet (duplicate flagging).
 │   │   │                     GHS hymnal: readBundledGhsRows, seedGhsHymnal (once, ghs_seeded flag),
@@ -128,8 +136,10 @@ src/
 │   │   ├── media.ipc.js      Registers media:* handlers.
 │   │   ├── output.ipc.js     Registers output:* handlers (incl. graphic/ticker/overlay + channel show_program/
 │   │   │                     show_graphics; content-mode-only channel updates route to setChannelContentMode).
-│   │   ├── graphics.ipc.js   Registers graphics:* CRUD handlers (registerGraphicsIpc).
-│   │   ├── themes.ipc.js     Registers themes:* CRUD + apply handlers (registerThemesIpc).
+│   │   ├── graphics.ipc.js   Registers graphics:* CRUD handlers + graphics:presets (registerGraphicsIpc).
+│   │   ├── themes.ipc.js     Registers themes:* CRUD + apply handlers (registerThemesIpc); apply* await
+│   │   │                     resolveThemeBackground first when setBg (media-theme bgRef download).
+│   │   ├── background-library.ipc.js  Registers backgrounds:* (list/tagCounts/download/applyAsDefault).
 │   │   ├── presentations.ipc.js  Registers presentations:* + presentationTemplates:* CRUD, the PowerPoint pipeline
 │   │   │                     (detectLibreOffice/setLibreOfficePath/convertPptx, and createFromImages: persist each
 │   │   │                     rasterised PNG via media.importBuffer → build an image-element presentation), and app:openExternal.
@@ -278,11 +288,16 @@ src/
 │   │   │                          duplicates start unselected. Commit → songs.importCommit (forwards tags).
 │   │   ├── ScriptureEditor.jsx    Global scripture appearance modal. Verse/Reference target toggle, drag/resize,
 │   │   │                          object align, background. Reuses SongEditor exports. Saves scripture_*_json + bg.
-│   │   ├── GraphicsEditor.jsx     Broadcast-graphic editor modal. Kind tabs (lower_third/ticker/custom). Reuses
+│   │   ├── GraphicsEditor.jsx     Broadcast-graphic editor modal. Kind tabs (lower_third/ticker/countdown/custom). Reuses
 │   │   │                          SongEditor's FormattingToolbar; lower-third Name/Title target toggle + draggable/
-│   │   │                          resizable BugPreview + bar control; ticker styling + top/bottom; custom HTML +
-│   │   │                          placeholders + sandboxed preview. Default-destination selector. Exports
-│   │   │                          fillPlaceholders, flatTextCss, buildBarBg (shared with GraphicsPanel + monitor).
+│   │   │                          resizable BugPreview + bar control; ticker styling (crawls in preview) + top/bottom;
+│   │   │                          custom HTML + placeholders + sandboxed preview. "Apply a design" opens the design
+│   │   │                          gallery (GraphicsPresetModal — per-kind filter tabs, live tiles) restyling the draft.
+│   │   │                          Default-destination selector. Exports fillPlaceholders, flatTextCss, buildBarBg,
+│   │   │                          GraphicsPresetModal, presetToGraphic (shared with GraphicsPanel + monitor).
+│   │   ├── ThemePickerModal.jsx   Reusable click-to-apply theme gallery (category prop). Full-screen grid of live
+│   │   │                          SlidePreview tiles (sortThemes order, bgThumb for media themes). onPick(theme) —
+│   │   │                          caller decides apply. Used by SongEditor (theme picker) + ScriptureEditor (Load Theme).
 │   │   ├── OnlineBibleModal.jsx   getbible.net catalog browser. Multi-select download with licence warning.
 │   │   ├── PresentationEditor.jsx Full-screen presentation editor (createPortal). Slide sidebar (DnD reorder, built-in
 │   │   │                          LAYOUTS: Blank/Title/Title+Subtitle/Title+Body/Section). Element canvas — a fixed
@@ -314,10 +329,13 @@ src/
 │   │   │                          Lyrics Only / Graphics Only (show_program × show_graphics, via channelMode util).
 │   │   ├── LogoSettings.jsx      Global logo picker.
 │   │   ├── BackgroundSettings.jsx Global song/scripture/slide background pickers. Bulk apply actions.
-│   │   ├── ThemeSettings.jsx     Theme library. Grid of theme cards (SlidePreview thumbnail; Edit/Delete; per-card
-│   │   │                          "Apply background" toggle + Apply-to-rundown selector + Apply-to-all-songs).
-│   │   │                          ThemeEditorModal reuses SongEditor's FormattingToolbar + SlidePreview/LowerThirdPreview
-│   │   │                          over a fixed sample text; width-bound preview (modal is content-sized). Background picker.
+│   │   ├── ThemeSettings.jsx     Theme library. Category tabs (Songs/Scripture/… auto-derived from present themes);
+│   │   │                          grid of theme cards (SlidePreview thumbnail, bgThumb for media themes; Edit/Delete;
+│   │   │                          song cards get "Apply background" toggle + Apply-to-rundown + Apply-to-all-songs,
+│   │   │                          non-song cards show an "open the … editor" hint). Built-ins read-only. ThemeEditorModal
+│   │   │                          reuses SongEditor's FormattingToolbar + SlidePreview/LowerThirdPreview. Background picker.
+│   │   ├── BackgroundLibrary.jsx  Settings → Background Library (Phase 1b). Tag-filter grid of hotlinked remote thumbs
+│   │   │                          (window.cue.backgrounds.*); hover actions set the global default bg per surface.
 │   │   ├── BibleSettings.jsx     Installed translations list (delete) + Import (file/online) menu.
 │   │   │                          Accepts only activeServiceId prop. No DangerZone or footer inside.
 │   │   ├── TagSettings.jsx       Tag CRUD: create (name + preset colour palette), inline rename, recolour, delete
@@ -348,6 +366,7 @@ src/
 │       │                         @font-face <style> into the operator document (called on app start + after import).
 │       ├── channelMode.js        Lower-third content-mode helpers: CHANNEL_MODES, channelMode(ch),
 │       │                         modeToFlags(mode) ({show_program, show_graphics}). Shared by Settings + Graphics panel.
+│       ├── themeSort.js          themeKind(theme) + sortThemes(list): media → gradient → custom ordering for the pickers.
 │       ├── pdfRaster.js          rasterizePdf(bytes, targetWidth=2560, onProgress) → [PNG Uint8Array] per page (pdfjs,
 │       │                         fresh ?worker per call → workerPort; lossless PNG for crisp text). Used by PptxImportModal.
 │       └── sectionLabels.js      Numbered section labels — single source of truth. sectionOrdinals(slides) (n or null,
@@ -414,6 +433,12 @@ src/
 **Project-root data/tooling (outside `src/`):**
 - `resources/bible/{kjv,web}.json` — bundled public-domain translations (seeded on first run; shipped via `extraResource`)
 - `resources/ghs/ghs-hymnal.json` — bundled GHS hymnal seed `{ items:[{ number, name, lyrics }] }` (260 hymns; shipped via `extraResource`, seeded on first run by seedGhsHymnal)
+- `resources/themes/*.json` — bundled built-in theme packs (one theme per file: `{ name, category, sort_order, style }`; song/media/scripture categories). Shipped via `extraResource`, seeded by `seedBundledThemes` (§5 themes)
+- `resources/graphics/` — built-in broadcast-graphic design presets, read at request time by `graphics.presets()` (NOT seeded): `*.html` (custom designs, `<!-- name: … -->` header) + `*.json` (structured lower_third/ticker/countdown). Shipped via `extraResource`
+- `resources/media-manifest.json` — Background Library manifest (tags + dims + hotlinked `thumb` + origin `url` per item). Shipped via `extraResource`; the media files themselves are download-on-demand (Option A, never bundled/rehosted — §7 backgrounds)
+- `scripts/build-fonts.mjs` — regenerates bundled fonts: woff2 → `src/fonts/` + `@font-face` in `fonts.css` + entries in `BUNDLED_FONTS`
+- `scripts/build-themes.mjs` / `build-media-themes.mjs` / `build-scripture-themes.mjs` — author the `resources/themes/*.json` packs (song gradient, media-backed, scripture)
+- `scripts/*.py` (organize-media / fetch-phase1b-media / resolve-urls / add-thumbnails) — build/refresh `media-manifest.json` (curation tooling; see the theme-packs handoff)
 - `resources/bin/<platform>-<arch>/` — **dev-only** local `yt-dlp` + `ffmpeg` (gitignored, never shipped). A dev checkout can drop binaries here so `npm start` uses them instead of triggering the first-use auto-download; packaged builds always auto-download into `userData/bin` (see §6 *Native YouTube player*)
 - `scripts/build-bibles.mjs` — regenerates the bible seed JSON from getbible.net v2 (`node scripts/build-bibles.mjs`)
 - `scripts/build-ghs.mjs` — regenerates the GHS seed from a number→name CSV (cp1252) + lyric text files (`node scripts/build-ghs.mjs <csv> <lyricsDir>`)
@@ -431,7 +456,7 @@ src/
 
 ### Migration system
 
-`schema.js` creates `db_version` table (single integer row) on first run and applies pending migrations in order inside a transaction. **Never delete `db_version`** — it is required to exist before any user-facing build. Current version: **21**. Migrations run with foreign keys disabled, so table-rebuild migrations (v6, v7, v11, v16, v20, v21) do not cascade-delete referencing rows.
+`schema.js` creates `db_version` table (single integer row) on first run and applies pending migrations in order inside a transaction. **Never delete `db_version`** — it is required to exist before any user-facing build. Current version: **22**. Migrations run with foreign keys disabled, so table-rebuild migrations (v6, v7, v11, v16, v20, v21) do not cascade-delete referencing rows.
 
 | Version | Change |
 |---|---|
@@ -456,6 +481,7 @@ src/
 | v19 | Added `service_items.advance_wrap` (INTEGER, default 1) — rundown mode: wrap to first item at the end vs stop |
 | v20 | Presentations: created `presentations`, `presentation_slides`, `presentation_templates`; rebuilt `service_items` to add `'presentation'` to the `item_type` CHECK (v7-pattern table rebuild) |
 | v21 | Native YouTube player: rebuilt `service_items` to add `'youtube'` to the `item_type` CHECK (v7-pattern table rebuild). A YouTube cue stores its URL in `content`, `ref_id` NULL — the downloaded file is ephemeral (never `media_assets`); see §6 *Native YouTube player* |
+| v22 | Theme packs: added `themes.builtin` (INTEGER, default 0 — seeded built-ins, protected from edit/delete, re-seedable), `themes.category` (TEXT, default `'song'` — `'song'`/`'scripture'`/`'graphic'`/`'presentation'`, pickers filter on it), `themes.sort_order` (INTEGER, default 0 — display order within a category). A built-in's CSS gradient/solid background rides inside `style_json.bgCss` (§8/§9), not a new column |
 
 ### All tables
 
@@ -589,16 +615,21 @@ created_at DATETIME, updated_at DATETIME
 
 `style_json` shape — **lower_third**: `{ name: <style incl. textBox + ltBar>, title: <style> }` (the `name` style's `textBox` is the draggable/resizable position box, `ltBar` is the bar background). **ticker**: a flat style + `{ bar:{color,opacity}|null, position:'bottom'|'top' }`. **custom**: `null` (raw HTML). **countdown** (v16): `{ mode:'countdown'|'countup'|'clock', source:'duration'|'target', durationSec, targetClock:'HH:MM', format:'24h'|'12h', showSeconds, endMessage, time:<style incl. textBox + ltBar>, message:<style> }` — the `text` column holds the optional label ("Service starts in").
 
-#### `themes` (v15 — theme / template library)
+#### `themes` (v15 — theme / template library; v22 — theme packs)
 ```sql
 id INTEGER PRIMARY KEY AUTOINCREMENT
 name TEXT NOT NULL
-style_json TEXT                -- a section style snapshot (same shape as §8; no runs)
+style_json TEXT                -- a section style snapshot (same shape as §8; no runs; may carry bgCss/bgScrim/bgRef)
 background_id INTEGER REFERENCES media_assets(id) ON DELETE SET NULL
+builtin INTEGER NOT NULL DEFAULT 0       -- v22: 1 = seeded built-in (read-only in UI, re-seedable)
+category TEXT NOT NULL DEFAULT 'song'    -- v22: 'song'|'scripture'|'graphic'|'presentation'
+sort_order INTEGER NOT NULL DEFAULT 0    -- v22: display order within a category
 created_at DATETIME, updated_at DATETIME
 ```
 
 A theme is a saved section `style_json` (§8 shape) plus an optional default background. Applying a theme merges its `style_json` into every target `song_sections.style_json` (per-section inline `runs` are preserved) and, when it has a background and the background is being applied, writes `songs.default_background_id` and NULLs the relevant `service_items.background_override_id` so the theme background wins over any per-slot override. Apply scope: `applyToSong` (all slots referencing one song), `applyToRundown` (all song slots in a rundown), `applyToAllSongs` (every song slot). The output path is unchanged — themes only write the same columns the editors already write.
+
+**Bundled built-in themes (v22 packs):** `seedBundledThemes()` (called at startup, after the bible/GHS seeders) imports `resources/themes/*.json` — each file is `{ name, category, sort_order, style:{…§8 style, incl. bgCss/bgRef…} }`, authored by `scripts/build-*.mjs`. Seeding is tracked **by theme NAME** in the `seeded_theme_keys` settings array (migrating the legacy `themes_seeded` flag), so a later release can add new built-ins on upgrade without resurrecting ones the user deleted. It also **UPSERTs**: when a bundled theme's `style_json` differs from the DB copy it updates it (built-ins are read-only, so the bundle is source of truth), and if a media theme's `bgRef` changed it resets `background_id=NULL` so the new background re-resolves on next apply. Built-in backgrounds: gradient/solid via `style_json.bgCss`, or a media-library `style_json.bgRef` resolved lazily (§9). Categories drive the pickers (`ThemePickerModal`, `ThemeSettings` tabs); `applyTo*` is song-only — non-song categories are loaded by their own editors.
 
 #### `presentations` / `presentation_slides` / `presentation_templates` (v20)
 ```sql
@@ -643,6 +674,9 @@ Known keys:
 | `keyboard_logo` | string | Key char for Logo shortcut (default: 'l') |
 | `keyboard_live` | string | Key char for Live Toggle shortcut (default: 'o') |
 | `ghs_seeded` | boolean | Set true after the bundled GHS hymnal is imported on first run; gates re-seeding so deletions stick |
+| `seeded_theme_keys` | array | Names of built-in themes already seeded (`seedBundledThemes`); lets new built-ins add on upgrade without resurrecting user-deleted ones. Supersedes the legacy boolean `themes_seeded` |
+| `themes_seeded` | boolean | Legacy all-or-nothing seed flag; migrated into `seeded_theme_keys` on first v22+ run |
+| `bg_library_downloads` | object | Map `{ manifestItemId: media_assets.id }` of backgrounds downloaded on demand from the bundled `media-manifest.json` (Background Library). Treated as referenced by `media.findUnused()` so a download isn't reaped before use |
 | `remote_enabled` | boolean | Network control server on/off (default false) |
 | `remote_port` | number | Server TCP port (default 7373) |
 | `remote_lan` | boolean | Bind all interfaces (LAN) vs 127.0.0.1 only (default false) |
@@ -909,14 +943,21 @@ element) for clean gapless audio. **Program audio comes from one window only** (
 
 **Broadcast-graphics overlay bus** — an independent layer (name/title bug, scrolling ticker, custom
 HTML, countdown/clock) separate from the program slide bus. Held in `manager.js` as `overlay = {
-nameTitle, ticker, custom, countdown }`; each slot carries a `target` (`'all'|'screen'|'ndi'`).
-`broadcastGraphic()` sends a per-window FILTERED `graphic:update` to **every non-stage output window**
-(fullscreen + lower-third, matched by URL in `getGraphicsWindowInfos`) — a window only receives the
-slots whose target matches its kind (numeric map key = screen/in-room, `ndi-*` = online) — and notifies
-the renderer via `output:overlay-changed`. Rendered by the shared `src/output/graphics-overlay.js`
-(injects its own DOM + styles, honours `?graphics=0` and `content:mode`). A program `go`/`clear`/`logo`
-never touches the overlay, and a graphic never touches the program. Default destination for new graphics
-is **Online (NDI)**.
+nameTitle, ticker, custom, countdown }`, where **each slot holds one occupant PER DESTINATION KIND**:
+`slot = { screen, ndi }` (each `null` or a slot-value object). This lets a *different* graphic of the
+same type run In-Room vs Online simultaneously (e.g. two different tickers). `setSlot(name, value, target)`
+writes the kind(s) named by `target` — `'all'` fills both, `'screen'`/`'ndi'` fills just one and leaves
+the other running; `*Hide(target)` clears the same way (no target = clear both). The slot-value object is
+unchanged in shape (`{ id, …, target }`) and carries the originating graphic's **`id`** so the operator UI
+matches "what's live" by identity, not by content (two graphics sharing a text body no longer both light
+up); ad-hoc fires like the quick ticker carry no id. `broadcastGraphic()` sends a per-window `graphic:update`
+to **every non-stage output window** (fullscreen + lower-third, matched by URL in `getGraphicsWindowInfos`)
+carrying `overlayForKind(kind)` = that window's-kind occupant of each slot (numeric map key = screen/in-room,
+`ndi-*` = online), and notifies the renderer via `output:overlay-changed` (the full `{screen,ndi}` shape;
+`GraphicsPanel.liveDests(g)` / `PreviewLivePanel` pick per kind). Rendered by the shared
+`src/output/graphics-overlay.js` (injects its own DOM + styles, honours `?graphics=0` and `content:mode`).
+A program `go`/`clear`/`logo` never touches the overlay, and a graphic never touches the program. Default
+destination for new graphics is **Online (NDI)**.
 
 **Countdown / clock graphic** (v16) — a `countdown` slot is a self-ticking timer the **output template
 owns**: `countdownShow` resolves the anchor in the main process (duration → `endsAt = now + durationSec`;
@@ -937,19 +978,33 @@ target/format, label + end message, the draggable time box (`time.textBox`/`ltBa
 | `update(id, data)` | void | — |
 | `delete(id)` | void | — |
 | `reorder(orderedIds)` | void | Single transaction. |
+| `presets()` | `[{ id, name, kind, graphic }]` | Built-in design presets read at request time from `resources/graphics/` (NOT DB rows): `*.html` → `kind:'custom'` (`graphic:{ html }`, `<!-- name: … -->` header, comment stripped); `*.json` → structured `lower_third`/`ticker`/`countdown` (`graphic` = partial graphic record incl. `style_json`). The gallery offers these; picking one creates an ordinary graphic. |
+
+The graphic-fire methods (`window.cue.output.graphic.show/hide`, `ticker.show/hide`, `graphic.showCustom/hideCustom`, `countdown.show/hide`) take an `id` in their `show` payload (so liveness matches by identity) and an optional `target` on `hide` (clears one destination kind; omitted = both). See the overlay-bus note in `window.cue.output`.
 
 ### `window.cue.themes`
 
 | Method | Returns | Notes |
 |---|---|---|
-| `list()` | `[theme rows]` | Each row joins `background_path`/`background_filename`/`background_type`. Ordered by name. |
+| `list()` | `[theme rows]` | Each row joins `background_path`/`background_filename`/`background_type`. Ordered by `builtin DESC, sort_order, name` (built-ins first within a category). Filter by `category` in the picker. |
 | `get(id)` | `theme row` | — |
-| `create(data)` | `id` | `data` = `{ name, style_json, background_id }`. |
-| `update(id, data)` | void | Same shape as create. |
+| `create(data)` | `id` | `data` = `{ name, style_json, background_id, category }` (category defaults `'song'`; preserved on duplicate). |
+| `update(id, data)` | void | `{ name, style_json, background_id }`. |
 | `delete(id)` | void | — |
-| `applyToSong(themeId, songId, setBg)` | `sectionCount` | Merges style into the song's sections. When `setBg` and the theme has a background, writes the song default bg and clears per-slot overrides on all slots referencing the song. |
-| `applyToRundown(themeId, serviceId, setBg)` | `songCount` | Applies to every distinct song in the rundown; with `setBg`, clears that rundown's song-slot overrides. |
-| `applyToAllSongs(themeId, setBg)` | `songCount` | Applies to every song in the library; with `setBg`, clears all song-slot overrides. |
+| `applyToSong(themeId, songId, setBg)` | `sectionCount` | Merges style into the song's sections. With `setBg`: the handler first `await`s `resolveThemeBackground` (downloads a media theme's `bgRef`, no-op otherwise, §9), then writes the song default bg / clears per-slot overrides; a `bgCss` theme clears the media bg to NULL so the gradient shows. |
+| `applyToRundown(themeId, serviceId, setBg)` | `songCount` | As above for every distinct song in the rundown. |
+| `applyToAllSongs(themeId, setBg)` | `songCount` | As above for every song in the library. |
+
+### `window.cue.backgrounds` (Background Library — Phase 1b)
+
+Browsable pool of curated 16:9 worship backgrounds shipped only as a manifest (`resources/media-manifest.json`: tags + dims + hotlinked `thumb` + origin `url`). **Distribution Option A — never rehost:** the grid hotlinks each `thumb`; a pick downloads the origin `url` into the *same* local media library as any import (a normal `media_assets` row, `cue-media://`/`cue-thumb://`). `db/background-library.js`.
+
+| Method | Returns | Notes |
+|---|---|---|
+| `list()` | `[{ id, kind, source, width, height, tags, thumb, available, mediaId }]` | `mediaId` non-null = already downloaded; `available` false = origin `url` unresolved. No `url` leaves main. |
+| `tagCounts()` | `{ tag: count }` | For the tag filter chips. |
+| `download(id)` | `media_assets row` | Idempotent (settings `bg_library_downloads` map); streams the origin `url` into `userData/media`. |
+| `applyAsDefault(id, surface, toAll)` | void | Downloads then sets the global default bg for `surface` (`'song'`/`'scripture'`/`'slide'`); `toAll` also applies across existing items. |
 
 ### `window.cue.media`
 
@@ -1090,12 +1145,18 @@ Subscribe to main→renderer events. Returns an unsubscribe function — call it
   "textShadow":    null,       // { enabled, x, y, blur, color } or null
   "textStroke":    null,       // { enabled, width, color } or null
   "textBox":       null,       // { x, y, w, h } percent of 1920×1080 canvas (fullscreen only)
-  "ltBar":         null,       // { color, opacity, solid } — lower-third bar; null = transparent
+  "ltBar":         null,       // { color, opacity, solid, css? } — lower-third bar; null = transparent
+  "bgCss":         null,       // CSS background string (gradient/solid) — theme background with no media asset (§9)
+  "bgScrim":       null,       // 0..1 black overlay opacity between background and text (legibility); null/0 = off
+  "bgRef":         null,       // media-library manifest item id — a media theme's background, resolved lazily on apply (§9)
+  "bgThumb":       null,       // hotlinked poster URL — PREVIEW-ONLY (theme cards/SlidePreview), never written to a section
   "runs":          []          // [{start, end, bold, italic, underline, color, fontFamily, fontSize}]
 }
 ```
 
-`null` on any property means "use template defaults." `textBox` and `verticalAlign` apply only to fullscreen channels. `ltBar` applies only to lower-third channels (`null` = transparent background, no bar). `SongEditor.jsx` calls `serializeStyle()` to convert to JSON; saves `null` when all values are default.
+`null` on any property means "use template defaults." `textBox` and `verticalAlign` apply only to fullscreen channels. `ltBar` applies only to lower-third channels (`null` = transparent background, no bar); a built-in theme may set `ltBar.css` (a gradient/solid string) which wins over the computed rgba fade. `SongEditor.jsx` calls `serializeStyle()` to convert to JSON; saves `null` when all values are default (`styleIsDefault` also counts `bgCss`/`bgScrim`).
+
+**Theme-pack additions** (`bgCss`, `bgScrim`, `bgRef`) ride inside `style_json` rather than new DB columns, so they flow through the existing `applyTo*` merge into `song_sections.style_json`. `bgThumb` exists only in preview props. Scripture themes additionally carry a top-level `refStyle` object (the reference-line style), applied to `scripture_ref_style_json` on theme load — it is not a section style key.
 
 `renderWithRuns(text, runs)` is exported from `SongEditor.jsx` and used in `PreviewLivePanel.jsx` to render text with run-level styling in the monitor frame. Output templates have an equivalent inline copy. Runs support `underline`.
 
@@ -1133,7 +1194,16 @@ Setting a background on a rundown slot via "Set Background Override" **also writ
 
 The renderer's `RundownPanel` also calls `window.cue.songs.setBackground` after the picker resolves, as a belt-and-suspenders measure.
 
-**Applying a theme is the inverse write-through**: when a theme with a background is applied (`themes.applyTo*` with `setBg`), it writes `songs.default_background_id` *and* NULLs the per-slot `service_items.background_override_id` on the affected song slots — so the theme background wins over an override that was previously written into a slot (resolution order puts override above the song default). A text-only theme (no `background_id`) never touches backgrounds or overrides.
+**Applying a theme is the inverse write-through**: when a theme with a background is applied (`themes.applyTo*` with `setBg`), it writes `songs.default_background_id` *and* NULLs the per-slot `service_items.background_override_id` on the affected song slots — so the theme background wins over an override that was previously written into a slot (resolution order puts override above the song default). A text-only theme (no `background_id`) never touches backgrounds or overrides. A **gradient theme** (`bgCss`, no media) clears `default_background_id` to NULL so the CSS gradient actually shows (a media path would otherwise win — see below).
+
+### Theme backgrounds: media vs CSS vs lazy media-library ref
+
+A built-in theme carries its background in one of three ways, resolved at output time after the normal path lookup:
+1. **`background_id`** (a `media_assets` row) — behaves like any media background.
+2. **`style_json.bgCss`** (a license-free CSS gradient/solid) — used only when no media path resolves. `output/fullscreen.js setBackground(path, bgCss)` sets `bg.style.background = bgCss` when `path` is null; lower-third uses `ltBar.css` similarly. `SlidePreview`/`MonitorFrame` mirror this. **Media path always wins over `bgCss`.**
+3. **`style_json.bgRef`** (a media-library manifest item id, for the Phase 1b media themes) — the media isn't local until used. `themes.resolveThemeBackground(themeId)` is awaited by the three `applyTo*` IPC handlers when `setBg`: it downloads the `bgRef` item via the background library, caches the resulting asset id onto the theme's `background_id`, after which it is an ordinary case-1 media theme. No-op for gradient/text/local-media themes.
+
+**Scrim:** `style_json.bgScrim` (0..1) is a full-bleed black layer rendered *between* background and text — `#scrim` in `output/fullscreen.js` (opacity clamped, cleared when no slide), plus `SlidePreview` and `MonitorFrame`. Lower-third/graphics-overlay output have no scrim (the LT bar handles legibility; the graphics bus is independent).
 
 ---
 
@@ -1200,6 +1270,7 @@ Oswald is reserved for output window templates only. Do not use in operator UI.
 | `.tally-idle` | Transparent left border |
 | `.dot-pulse` | Pulsing opacity animation (ON AIR dot) |
 | `.live-pulse` | Pulsing box-shadow animation |
+| `@keyframes cue-ticker-crawl` | `translateX(0)`→`translateX(-100%)` horizontal crawl; ticker previews (gallery tiles, editor, live monitor, card thumbs) animate with it, duration = `scrollWidth/speed`, mirroring the output crawl |
 | `.drag-handle` | `cursor: grab` |
 | `.titlebar-drag` | `-webkit-app-region: drag` |
 | `.titlebar-nodrag` | `-webkit-app-region: no-drag` |
@@ -1330,7 +1401,7 @@ Works in both dev (ASAR not used) and production (path is inside ASAR).
 `manager.go(payload)` iterates all active windows and sends `webContents.send('slide:update', payload)`. The `payload.backgroundPath` is an absolute filesystem path — the output template converts it to `cue-media://` using its inline `pathToUrl()`.
 
 ### Fullscreen template structure
-`fullscreen.html` uses `#background` for the full-bleed media, `#text-wrap` (absolutely positioned by JS via `textBox` percentage values) as the text container, `#logo-wrap` as a separate sibling for the logo overlay (never overwrites `#text`), and `#copyright`. The `applyStyle(s)` function positions `#text-wrap` via CSS `left/top/width/height` percent strings, applies all style properties (verticalAlign, letterSpacing, uppercase, textShadow, textStroke, underline in runs) to the inner `#text` element. `showLogo`/`hideLogo` toggle a `.logo-active` class on `#logo-wrap`.
+`fullscreen.html` uses `#background` for the full-bleed media, `#scrim` (a full-bleed black layer between background z0 and content z1), `#text-wrap` (absolutely positioned by JS via `textBox` percentage values) as the text container, `#logo-wrap` as a separate sibling for the logo overlay (never overwrites `#text`), and `#copyright`. The `applyStyle(s)` function sets `#scrim` opacity from `style.bgScrim` (clamped 0..1, cleared when no slide — §9), positions `#text-wrap` via CSS `left/top/width/height` percent strings, applies all style properties (verticalAlign, letterSpacing, uppercase, textShadow, textStroke, underline in runs) to the inner `#text` element. `setBackground(path, bgCss)` shows media when `path` resolves, else paints `bg.style.background = bgCss` (theme gradient/solid). `showLogo`/`hideLogo` toggle a `.logo-active` class on `#logo-wrap`.
 
 ### Lower-third template structure
 `lowerthird.html` uses `#lowerthird` (bottom-anchored, full-width) containing `#text` and `#copyright` — the **lyric band** (program slide) only, handled by `lowerthird.js`. Background is always `transparent` by default — JS sets it from `ltBar` via `buildBarBg()`. The `applyStyle(el, s)` function applies all style properties including the bar background. Clear and logo events explicitly reset `ltDiv.style.background = 'transparent'`. The broadcast-graphics overlay is a separate, shared layer (`graphics-overlay.js`).
@@ -1338,7 +1409,9 @@ Works in both dev (ASAR not used) and production (path is inside ASAR).
 **Default alignment is CENTRE.** A song whose style is all-default saves `style_json = null` (because `align:'center'` is itself the default — see `styleIsDefault`), so the output receives `styleJson: null`. `applyStyle` therefore treats a missing style as `{}` and defaults `text-align` to `center` (and `#text` is `width:100%`, `lowerthird.css` also defaults centre) — it must **not** early-return on null, or centred lyrics render left (fullscreen never hit this because `fullscreen.css #text` already defaults centre). The same `style?.align || 'center'` default lives in the operator monitor (`PreviewLivePanel.MonitorFrame`) and the broadcast name/title bug (`graphics-overlay.js`, width:100%). Explicit left/right makes the style non-default → saved → applied normally.
 
 ### Broadcast-graphics overlay + lower-third content modes
-The broadcast-graphics overlay (name/title bug, ticker, custom HTML) renders on **every non-stage output window** (fullscreen + lower-third) via the shared `src/output/graphics-overlay.js`, so an In-Room graphic overlays the auditorium program and an Online graphic overlays the NDI feed. It injects its own `#cue-gfx` DOM (high z-index, `pointer-events:none`) and listens for `graphic:update`. `manager.broadcastGraphic()` sends each window only the overlay slots whose `target` matches its kind (`getGraphicsWindowInfos` classifies by windows-map key: numeric = screen/in-room, `ndi-*` = online).
+The broadcast-graphics overlay (name/title bug, ticker, custom HTML, countdown) renders on **every non-stage output window** (fullscreen + lower-third) via the shared `src/output/graphics-overlay.js`, so an In-Room graphic overlays the auditorium program and an Online graphic overlays the NDI feed. It injects its own `#cue-gfx` DOM (high z-index, `pointer-events:none`) and listens for `graphic:update`. Each window receives `overlayForKind(kind)` — its own destination-kind occupant of each `{screen,ndi}` slot (`getGraphicsWindowInfos` classifies by windows-map key: numeric = screen/in-room, `ndi-*` = online) — so a different graphic can run In-Room vs Online (§7 overlay-bus note). The output templates take a single occupant per slot, unchanged in shape.
+
+**Custom HTML designs:** a `custom` graphic renders into `#lt-custom` (a shadow root: `position:absolute; inset:0; transparent`) — arbitrary author HTML/CSS, alpha-key safe, with `.cue-in`/`.cue-out` on the `.cue-root` wrapper for enter/exit. The Graphics editor's design gallery (`GraphicsPresetModal`) offers built-in designs (§7 `graphics.presets`) as live tiles; picking one from the panel creates a graphic and opens the editor, while the editor's "Apply a design" restyles the current draft (locked to its kind). **Tickers crawl** in every preview surface too (gallery tiles, editor, live monitor, card thumbs) via the shared `@keyframes cue-ticker-crawl`, duration = `scrollWidth/speed`, mirroring the output crawl.
 
 A lower-third channel has three **content modes** from `show_program` × `show_graphics`: Lyrics + Graphics, Lyrics Only, Graphics Only. The flags reach the window as `?program=` / `?graphics=` on first load (`lowerthird.js` gates the lyric band; `graphics-overlay.js` gates the overlay). Toggling them is a **runtime** operation: `setChannelContentMode(channelId)` sends `content:mode` to the existing window — both scripts hold a mutable flag + a cached last value, so they toggle in place and restore current content without recreating the window (the NDI sender is never dropped). The Graphics panel's per-channel switcher and Settings → Output Channels both drive this.
 
@@ -1395,7 +1468,7 @@ Offscreen rendering (`offscreen: true` BrowserWindow) + `paint` event + `setInte
 
 Three tiers, all surfaced in one picker (grouped by category):
 
-**1. Bundled** — 6 families in `src/fonts/` (12 `.woff2`), pixel-identical on every machine: Inter (default UI), Montserrat, Lato, Oswald (output templates only), Playfair Display, EB Garamond. `fonts.css` has the `@font-face` rules (`font-display: block`), loaded by output templates (`<link href="../fonts/fonts.css">`) and the renderer (`@import` in `index.css`).
+**1. Bundled** — 23 families in `src/fonts/` (`.woff2`), pixel-identical on every machine. The original 6 (Inter — default UI, Montserrat, Lato, Oswald — output templates only, Playfair Display, EB Garamond) plus the **theme-pack additions** (free/OFL): Archivo, Barlow Condensed, Bebas Neue, Jost, Overpass, Poppins, Roboto, Cinzel, Cormorant Garamond, DM Serif Display, Lora, Marcellus, Rakkas, Atma, Dancing Script, DynaPuff, Playpen Sans. Built by `scripts/build-fonts.mjs` (woff2 → `src/fonts/` + `@font-face` rules in `fonts.css` + entries in `BUNDLED_FONTS`). `fonts.css` (`font-display: block`) is loaded by output templates (`<link href="../fonts/fonts.css">`) and the renderer (`@import` in `index.css`); `src/fonts` is copied into the asar by the `packageAfterPrune` hook. (JetBrains Mono is **not** bundled — the operator-UI mono label font falls back to `ui-monospace`.)
 
 **2. System** — ~22 common cross-platform families (Arial, Helvetica, Georgia, Times New Roman, Verdana, Calibri, Segoe UI, Palatino, Garamond, Impact, Courier New, …) listed in `BUNDLED_FONTS` with `family` as a **fallback stack** (e.g. `'"Helvetica Neue", Helvetica, Arial, sans-serif'`) and `bundled: false`. They resolve from the OS — no files shipped.
 
@@ -1469,7 +1542,7 @@ The Import button (Scriptures rail + Settings → Bible Translations) opens a me
 EasyWorship-style live verse browser, a live source independent of the rundown. Left rail: translation picker (hover-delete per version with inline ✓/✕ confirm) + Import + Appearance. Predictive reference bar auto-focused on open: Book autocompletes → Tab → Chapter → Tab → Verse; Enter sends the selected verse live. Verse list shows the whole loaded chapter; single-click selects (preview only), double-click / Enter / right-click→Send Live sends live; with the list focused ↑/↓ move the selection AND send it live (rolling across chapter/book via `adjacent`). Right-click menu also adds verse/chapter to the rundown. Going live → `OperatorView.handleScriptureLive` → `output.go` + synthetic `liveScripture` item (clears any live rundown item; rundown GO clears `liveScripture`). LIVE marker self-clears via `output:state-changed`.
 
 ### Scripture appearance (`ScriptureEditor.jsx`)
-Styling counterpart to `SongEditor`, reusing its exported toolbar/preview/helpers. **Verse Text / Reference** target toggle switches what the toolbar edits: verse style (`scripture_style_json`) or reference-line style (`scripture_ref_style_json`, `simple` toolbar mode). Plus default background (`global_bg_scripture_id`). All apply to every verse — text is fixed. Reference renders as `Book c:v (VERSION)`, default right-aligned with symmetric 60px inset, stylable, and free-positionable (`pos{x,y}`, drag or X/Y).
+Styling counterpart to `SongEditor`, reusing its exported toolbar/preview/helpers. **Verse Text / Reference** target toggle switches what the toolbar edits: verse style (`scripture_style_json`) or reference-line style (`scripture_ref_style_json`, `simple` toolbar mode). Plus default background (`global_bg_scripture_id`). All apply to every verse — text is fixed. Reference renders as `Book c:v (VERSION)`, default right-aligned with symmetric 60px inset, stylable, and free-positionable (`pos{x,y}`, drag or X/Y). A **Load Theme…** button opens `ThemePickerModal category="scripture"`; picking a scripture theme sets the verse style, applies the theme's top-level `refStyle` to the reference line, and resolves its `bgRef`/`bgCss` into `global_bg_scripture_id` (with a download spinner). Scripture themes are seeded built-ins (category `'scripture'`, sort_order 40+), authored by `scripts/build-scripture-themes.mjs`.
 
 ### Reference rendering across surfaces
 The reference flows in the payload as `copyright` (text), `copyrightAlign` (`'right'` for scripture), and `copyrightStyle` (the ref style incl. optional `pos`). Applied by `applyCopyrightStyle` in `fullscreen.js`/`lowerthird.js` (lower-third ignores `pos` — the bar owns layout) and `copyrightCss` in the operator monitors (via `slide._refStyle`). The **confidence monitor** (`stage.html` `#current-ref`) shows the reference above the verse in its own legible styling (auto-fit reserves space for it).

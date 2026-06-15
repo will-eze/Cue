@@ -1,0 +1,21 @@
+{
+  "name": "Noel",
+  "category": "song",
+  "sort_order": 10,
+  "style": {
+    "fontFamily": "DM Serif Display",
+    "color": "#f0e7d2",
+    "fontSize": 80,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 28,
+      "color": "rgba(0,0,0,0.6)"
+    },
+    "bgCss": "radial-gradient(circle at 50% 30%, #1a4a35 0%, #0d2a1f 60%, #061410 100%)",
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(8,32,24,0.92) 0%, rgba(8,32,24,0.7) 65%, rgba(8,32,24,0) 100%)"
+    }
+  }
+}

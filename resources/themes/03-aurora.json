@@ -1,0 +1,22 @@
+{
+  "name": "Aurora",
+  "category": "song",
+  "sort_order": 3,
+  "style": {
+    "fontFamily": "Poppins",
+    "color": "#ffffff",
+    "bold": true,
+    "fontSize": 78,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 30,
+      "color": "rgba(40,10,70,0.5)"
+    },
+    "bgCss": "linear-gradient(120deg, #b14cf0 0%, #c84ce0 32%, #7a5cf0 64%, #4a90e2 100%)",
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(60,24,110,0.92) 0%, rgba(60,24,110,0.7) 65%, rgba(60,24,110,0) 100%)"
+    }
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "name": "Quiet Wood",
+  "category": "scripture",
+  "sort_order": 47,
+  "style": {
+    "fontFamily": "Cormorant Garamond",
+    "fontSize": 58,
+    "color": "#f1f7f2",
+    "lineSpacing": 1.35,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 22,
+      "color": "rgba(0,0,0,0.85)"
+    },
+    "bgRef": "library/coverr-dark-forest-nuemaprau7.mp4",
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(6,8,12,0.94) 0%, rgba(6,8,12,0.82) 70%, rgba(6,8,12,0) 100%)"
+    },
+    "refStyle": {
+      "fontFamily": "Cormorant Garamond",
+      "fontSize": 34,
+      "color": "rgba(255,255,255,0.82)",
+      "align": "right",
+      "italic": true,
+      "textShadow": {
+        "enabled": true,
+        "x": 0,
+        "y": 2,
+        "blur": 14,
+        "color": "rgba(0,0,0,0.8)"
+      }
+    }
+  }
+}

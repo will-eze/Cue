@@ -1,0 +1,18 @@
+<!-- name: Pill Tags -->
+<style>
+  .pt { position:absolute; left:90px; bottom:130px; opacity:0; transform:translateY(22px); }
+  .cue-in .pt  { animation: pt-in .55s cubic-bezier(.2,.9,.2,1) forwards; }
+  .cue-out .pt { animation: pt-out .35s ease forwards; }
+  .pt .n { font:800 58px/1 Inter,system-ui,sans-serif; color:#fff; text-shadow:0 3px 20px rgba(0,0,0,.45); letter-spacing:-.01em; }
+  .pt .tags { display:flex; gap:10px; margin-top:16px; }
+  .pt .tag { font:600 18px/1 'JetBrains Mono',ui-monospace,monospace; letter-spacing:.08em; text-transform:uppercase;
+    color:#0a0e1a; background:#43e97b; padding:9px 18px; border-radius:999px; }
+  .pt .tag.alt { background:#38f9d7; }
+  .pt .tag:empty { display:none; }
+  @keyframes pt-in  { to { opacity:1; transform:translateY(0); } }
+  @keyframes pt-out { to { opacity:0; transform:translateY(14px); } }
+</style>
+<div class="pt">
+  <div class="n">{{name}}</div>
+  <div class="tags"><span class="tag">{{title}}</span><span class="tag alt">{{text}}</span></div>
+</div>

@@ -1,0 +1,22 @@
+{
+  "name": "Constellation",
+  "category": "song",
+  "sort_order": 27,
+  "style": {
+    "fontFamily": "Jost",
+    "color": "#eaf0ff",
+    "fontSize": 78,
+    "letterSpacing": 0.02,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 24,
+      "color": "rgba(0,0,0,0.8)"
+    },
+    "bgRef": "library/unsplash-R49cUgaQ0mk.jpg",
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(6,8,12,0.94) 0%, rgba(6,8,12,0.82) 70%, rgba(6,8,12,0) 100%)"
+    }
+  }
+}

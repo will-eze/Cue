@@ -18,3 +18,17 @@ temp/
 # packaging (.github/workflows/build-installers.yml); locally, fetch them into
 # resources/bin/<platform>-<arch>/ to run a packaged build.
 resources/bin/
+
+# Phase 1b: large curated-media WORKING dir is ephemeral (re-downloaded by
+# scripts/fetch-phase1b-media.py for curation). The shippable deliverable is the
+# small tracked resources/media-manifest.json (tags + origin URLs), NOT ignored —
+# the app downloads each item from its source CDN `url` on demand (Option A).
+resources/media/
+
+# Python bytecode cache from the curation scripts (scripts/*.py)
+__pycache__/
+*.pyc
+
+# Third-party theme reference material used only while authoring the bundled
+# packs (resources/themes/*.json are the shippable outputs). Not a build input.
+plan/themes-references/

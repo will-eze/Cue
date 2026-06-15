@@ -1,0 +1,13 @@
+{
+  "name": "Count Up Timer",
+  "kind": "countdown",
+  "graphic": {
+    "label": "Count Up Timer",
+    "text": "Elapsed",
+    "style_json": {
+      "mode": "countup", "source": "duration", "durationSec": 300, "targetClock": "11:00", "format": "24h", "showSeconds": true, "endMessage": "",
+      "time":    { "fontFamily": "JetBrains Mono", "fontSize": 130, "color": "#43e97b", "bold": true, "align": "center", "verticalAlign": "center", "textBox": { "x": 25, "y": 32, "w": 50, "h": 36 }, "ltBar": null },
+      "message": { "fontFamily": "JetBrains Mono", "fontSize": 32, "color": "#7af0cf", "uppercase": true, "letterSpacing": 0.16, "align": "center" }
+    }
+  }
+}

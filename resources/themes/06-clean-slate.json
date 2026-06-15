@@ -1,0 +1,23 @@
+{
+  "name": "Clean Slate",
+  "category": "song",
+  "sort_order": 6,
+  "style": {
+    "fontFamily": "Archivo",
+    "color": "#f2f4f8",
+    "fontSize": 76,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 28,
+      "color": "rgba(0,0,0,0.55)"
+    },
+    "bgCss": "linear-gradient(150deg, #2b2f36 0%, #1a1d22 100%)",
+    "ltBar": {
+      "color": "#101216",
+      "opacity": 0.88,
+      "solid": true
+    }
+  }
+}

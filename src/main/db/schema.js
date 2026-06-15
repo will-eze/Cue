@@ -597,6 +597,26 @@ const migrations = [
       CREATE INDEX IF NOT EXISTS idx_service_items_service_id ON service_items(service_id);
     `);
   },
+
+  // v22 — Theme packs. Extends the themes table so bundled (built-in) themes can
+  // be seeded, filtered by content type, and ordered in the picker:
+  //   builtin    — 1 for seeded themes (protected from edit/delete in the UI,
+  //                 re-seedable, excluded from "delete all user themes" flows).
+  //   category   — which content surface the theme is meant for: 'song'
+  //                 (default), 'scripture', 'graphic', 'presentation'. Phase 1a
+  //                 ships 'song' themes only; the column lets the pickers filter.
+  //   sort_order — display order within a category (built-ins ordered; user
+  //                 themes default 0 and fall back to name).
+  // The CSS gradient/solid background a built-in theme carries lives inside
+  // style_json as `bgCss` (see §8) — no extra column, it rides the existing
+  // applyTo* merge into song_sections.style_json.
+  function v22(database) {
+    database.exec(`
+      ALTER TABLE themes ADD COLUMN builtin INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE themes ADD COLUMN category TEXT NOT NULL DEFAULT 'song';
+      ALTER TABLE themes ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0;
+    `);
+  },
 ];
 
 function runMigrations() {

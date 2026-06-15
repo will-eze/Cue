@@ -1,0 +1,21 @@
+{
+  "name": "Goldfall",
+  "category": "song",
+  "sort_order": 29,
+  "style": {
+    "fontFamily": "DM Serif Display",
+    "color": "#fdf3df",
+    "fontSize": 86,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 24,
+      "color": "rgba(0,0,0,0.9)"
+    },
+    "bgRef": "library/unsplash-NCb50hjk-pQ.jpg",
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(6,8,12,0.94) 0%, rgba(6,8,12,0.82) 70%, rgba(6,8,12,0) 100%)"
+    }
+  }
+}

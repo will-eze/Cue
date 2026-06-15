@@ -1,0 +1,20 @@
+<!-- name: Mono Brackets -->
+<style>
+  .mb { position:absolute; left:96px; bottom:140px; font-family:'JetBrains Mono',ui-monospace,monospace;
+    color:#dfe7ef; opacity:0; transform:translateY(16px); }
+  .cue-in .mb  { animation: mb-in .5s ease forwards; }
+  .cue-out .mb { animation: mb-out .35s ease forwards; }
+  .mb .tag { font:600 16px/1 inherit; letter-spacing:.24em; text-transform:uppercase; color:#5fd0ff; margin-bottom:14px; }
+  .mb .row { display:flex; align-items:flex-end; gap:16px; }
+  .mb .br { font:300 64px/1 inherit; color:#39506a; }
+  .mb .n { font:600 52px/1 Inter,system-ui,sans-serif; color:#fff; letter-spacing:.01em; }
+  .mb .t { font:400 20px/1 inherit; letter-spacing:.16em; text-transform:uppercase; color:#7c93a8; margin-top:14px; padding-left:2px; }
+  .mb .tag:empty, .mb .t:empty { display:none; }
+  @keyframes mb-in  { to { opacity:1; transform:translateY(0); } }
+  @keyframes mb-out { to { opacity:0; transform:translateY(10px); } }
+</style>
+<div class="mb">
+  <div class="tag">{{text}}</div>
+  <div class="row"><span class="br">[</span><span class="n">{{name}}</span><span class="br">]</span></div>
+  <div class="t">{{title}}</div>
+</div>

@@ -1,0 +1,23 @@
+{
+  "name": "Crimson",
+  "category": "song",
+  "sort_order": 12,
+  "style": {
+    "fontFamily": "Marcellus",
+    "color": "#f2e3d0",
+    "uppercase": true,
+    "fontSize": 74,
+    "letterSpacing": 0.04,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 28,
+      "color": "rgba(0,0,0,0.6)"
+    },
+    "bgCss": "radial-gradient(circle at 50% 35%, #8e1b2b 0%, #4d0d16 60%, #1c0508 100%)",
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(28,5,8,0.92) 0%, rgba(28,5,8,0.7) 65%, rgba(28,5,8,0) 100%)"
+    }
+  }
+}

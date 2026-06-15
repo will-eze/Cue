@@ -1,0 +1,10 @@
+{
+  "name": "Gold Luxe",
+  "kind": "ticker",
+  "graphic": {
+    "label": "Gold Luxe",
+    "text": "Annual gala this Friday · Tickets at the welcome desk · Doors open 6:30 PM",
+    "speed": 95,
+    "style_json": { "fontFamily": "Montserrat", "fontSize": 28, "color": "#1a1205", "bold": true, "position": "bottom", "bar": { "color": "#e8c074", "opacity": 1 } }
+  }
+}

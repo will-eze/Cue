@@ -1,0 +1,13 @@
+{
+  "name": "Amber Right",
+  "kind": "lower_third",
+  "graphic": {
+    "label": "Amber Right",
+    "name": "Sarah Bennett",
+    "title": "Worship Pastor",
+    "style_json": {
+      "name":  { "fontFamily": "Oswald", "fontSize": 54, "color": "#1a1205", "bold": true, "uppercase": true, "align": "right", "verticalAlign": "center", "textBox": { "x": 44, "y": 72, "w": 52, "h": 18 }, "ltBar": { "color": "#ffb020", "opacity": 1, "solid": true } },
+      "title": { "fontFamily": "JetBrains Mono", "fontSize": 22, "color": "#5a3d00", "uppercase": true, "letterSpacing": 0.16, "align": "right" }
+    }
+  }
+}

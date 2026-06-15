@@ -1,0 +1,22 @@
+{
+  "name": "Daybreak",
+  "category": "song",
+  "sort_order": 13,
+  "style": {
+    "fontFamily": "Cormorant Garamond",
+    "color": "#fff6ef",
+    "italic": true,
+    "fontSize": 88,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 26,
+      "color": "rgba(60,30,40,0.45)"
+    },
+    "bgCss": "linear-gradient(180deg, #e98a7a 0%, #d96f8f 40%, #9b6fb0 75%, #6a7fc0 100%)",
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(120,60,90,0.92) 0%, rgba(120,60,90,0.7) 65%, rgba(120,60,90,0) 100%)"
+    }
+  }
+}

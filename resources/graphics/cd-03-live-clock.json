@@ -1,0 +1,13 @@
+{
+  "name": "Live Clock",
+  "kind": "countdown",
+  "graphic": {
+    "label": "Live Clock",
+    "text": "Current Time",
+    "style_json": {
+      "mode": "clock", "source": "duration", "durationSec": 300, "targetClock": "11:00", "format": "12h", "showSeconds": true, "endMessage": "",
+      "time":    { "fontFamily": "Inter", "fontSize": 120, "color": "#ffffff", "bold": true, "align": "center", "verticalAlign": "center", "textBox": { "x": 25, "y": 34, "w": 50, "h": 32 }, "ltBar": null },
+      "message": { "fontFamily": "JetBrains Mono", "fontSize": 30, "color": "#9fb6d6", "uppercase": true, "letterSpacing": 0.18, "align": "center" }
+    }
+  }
+}

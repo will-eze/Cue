@@ -1,0 +1,13 @@
+{
+  "name": "Playfair Elegant",
+  "kind": "lower_third",
+  "graphic": {
+    "label": "Playfair Elegant",
+    "name": "Sarah Bennett",
+    "title": "Worship Pastor",
+    "style_json": {
+      "name":  { "fontFamily": "Playfair Display", "fontSize": 62, "color": "#ffffff", "bold": true, "align": "left", "verticalAlign": "bottom", "textBox": { "x": 5, "y": 72, "w": 58, "h": 20 }, "ltBar": null, "textShadow": { "enabled": true, "x": 0, "y": 2, "blur": 18, "color": "#000000" } },
+      "title": { "fontFamily": "JetBrains Mono", "fontSize": 22, "color": "#e8c074", "uppercase": true, "letterSpacing": 0.24, "align": "left" }
+    }
+  }
+}

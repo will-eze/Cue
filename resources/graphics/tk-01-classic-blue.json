@@ -1,0 +1,10 @@
+{
+  "name": "Classic Blue",
+  "kind": "ticker",
+  "graphic": {
+    "label": "Classic Blue",
+    "text": "Welcome to Sunday service — please silence your phones · Connect card in the app · Kids check-in open until 10:45",
+    "speed": 100,
+    "style_json": { "fontFamily": "Inter", "fontSize": 30, "color": "#ffffff", "position": "bottom", "bar": { "color": "#0b1f3a", "opacity": 0.92 } }
+  }
+}

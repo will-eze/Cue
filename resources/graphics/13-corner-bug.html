@@ -1,0 +1,23 @@
+<!-- name: Corner Bug -->
+<style>
+  .cb { position:absolute; top:70px; right:0; display:flex; align-items:center; gap:18px; padding:16px 40px 16px 28px;
+    background:rgba(10,14,22,0.82); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+    border-left:4px solid #ffd166; border-radius:14px 0 0 14px; transform:translateX(110%); }
+  .cue-in .cb  { animation: cb-in .5s cubic-bezier(.2,.85,.2,1) forwards; }
+  .cue-out .cb { animation: cb-out .4s ease forwards; }
+  .cb .badge { width:54px; height:54px; border-radius:12px; background:linear-gradient(135deg,#ffd166,#ff7a00);
+    display:flex; align-items:center; justify-content:center; font:800 24px/1 'Oswald',Inter,sans-serif; color:#1a1205; }
+  .cb .meta { text-align:right; }
+  .cb .n { font:700 30px/1 Inter,system-ui,sans-serif; color:#fff; }
+  .cb .t { font:500 16px/1 'JetBrains Mono',ui-monospace,monospace; letter-spacing:.16em; text-transform:uppercase; color:#ffd166; margin-top:5px; }
+  .cb .t:empty { display:none; }
+  @keyframes cb-in  { to { transform:translateX(0); } }
+  @keyframes cb-out { to { transform:translateX(110%); } }
+</style>
+<div class="cb">
+  <div class="meta">
+    <div class="n">{{name}}</div>
+    <div class="t">{{title}}</div>
+  </div>
+  <div class="badge">{{text}}</div>
+</div>

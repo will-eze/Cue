@@ -1,0 +1,10 @@
+{
+  "name": "Alert Red",
+  "kind": "ticker",
+  "graphic": {
+    "label": "Alert Red",
+    "text": "BREAKING · Evening service moved to 6:30 PM · Doors open at 6:00",
+    "speed": 130,
+    "style_json": { "fontFamily": "Oswald", "fontSize": 30, "color": "#ffffff", "uppercase": true, "letterSpacing": 0.04, "position": "bottom", "bar": { "color": "#d11a2a", "opacity": 1 } }
+  }
+}

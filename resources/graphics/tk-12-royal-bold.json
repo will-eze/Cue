@@ -1,0 +1,10 @@
+{
+  "name": "Royal Bold",
+  "kind": "ticker",
+  "graphic": {
+    "label": "Royal Bold",
+    "text": "BAPTISMS NEXT SUNDAY · SIGN UP AT THE FRONT · CELEBRATE WITH US",
+    "speed": 120,
+    "style_json": { "fontFamily": "Bebas Neue", "fontSize": 36, "color": "#ffffff", "letterSpacing": 0.05, "position": "bottom", "bar": { "color": "#1d4ed8", "opacity": 1 } }
+  }
+}

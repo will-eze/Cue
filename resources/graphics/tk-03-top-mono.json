@@ -1,0 +1,10 @@
+{
+  "name": "Top Mono",
+  "kind": "ticker",
+  "graphic": {
+    "label": "Top Mono",
+    "text": "NOW PLAYING · Live worship from the main auditorium · Stream replay available all week",
+    "speed": 100,
+    "style_json": { "fontFamily": "JetBrains Mono", "fontSize": 26, "color": "#9fe9ff", "letterSpacing": 0.06, "position": "top", "bar": { "color": "#06121c", "opacity": 0.95 } }
+  }
+}

@@ -46,6 +46,9 @@ function buildShadow(shadow) {
 
 function buildBarBg(ltBar) {
   if (!ltBar) return 'transparent';
+  // A theme may author an explicit CSS background (gradient/solid) for the bar;
+  // it wins over the computed rgba fade. License-free, matches fullscreen bgCss.
+  if (ltBar.css) return ltBar.css;
   const c  = ltBar.color   ?? '#000000';
   const op = ltBar.opacity ?? 0.8;
   const r  = parseInt(c.slice(1, 3), 16) || 0;

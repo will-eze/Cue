@@ -1,0 +1,10 @@
+{
+  "name": "Green Scroll",
+  "kind": "ticker",
+  "graphic": {
+    "label": "Green Scroll",
+    "text": "Volunteer sign-ups now open · Serve on a Sunday team · Ask any host for details",
+    "speed": 100,
+    "style_json": { "fontFamily": "Inter", "fontSize": 30, "color": "#04241a", "bold": true, "position": "bottom", "bar": { "color": "#43e97b", "opacity": 1 } }
+  }
+}

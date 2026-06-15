@@ -1,0 +1,22 @@
+{
+  "name": "Evensong",
+  "category": "song",
+  "sort_order": 21,
+  "style": {
+    "fontFamily": "Cormorant Garamond",
+    "italic": true,
+    "color": "#f3f6fa",
+    "fontSize": 92,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 24,
+      "color": "rgba(0,0,0,0.85)"
+    },
+    "bgRef": "library/unsplash-CO-rNFAVsRU.jpg",
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(6,8,12,0.94) 0%, rgba(6,8,12,0.82) 70%, rgba(6,8,12,0) 100%)"
+    }
+  }
+}

@@ -1,0 +1,18 @@
+<!-- name: Quote Card -->
+<style>
+  .qc { position:absolute; left:160px; right:160px; bottom:150px; opacity:0; transform:translateY(24px); }
+  .cue-in .qc  { animation: qc-in .8s cubic-bezier(.2,.9,.2,1) forwards; }
+  .cue-out .qc { animation: qc-out .45s ease forwards; }
+  .qc .mark { font:800 140px/.6 Georgia,serif; color:#e8c074; height:64px; }
+  .qc .n { font:italic 400 50px/1.32 'Cormorant Garamond',Georgia,serif; color:#fff; text-shadow:0 3px 24px rgba(0,0,0,.5); }
+  .qc .t { display:flex; align-items:center; gap:16px; margin-top:22px; font:600 22px/1 'JetBrains Mono',ui-monospace,monospace; letter-spacing:.2em; text-transform:uppercase; color:#e8c074; }
+  .qc .t::before { content:''; width:42px; height:2px; background:#e8c074; }
+  .qc .t:empty { display:none; }
+  @keyframes qc-in  { to { opacity:1; transform:translateY(0); } }
+  @keyframes qc-out { to { opacity:0; transform:translateY(14px); } }
+</style>
+<div class="qc">
+  <div class="mark">&ldquo;</div>
+  <div class="n">{{name}}</div>
+  <div class="t">{{title}}</div>
+</div>

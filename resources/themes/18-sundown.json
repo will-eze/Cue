@@ -1,0 +1,22 @@
+{
+  "name": "Sundown",
+  "category": "song",
+  "sort_order": 18,
+  "style": {
+    "fontFamily": "Montserrat",
+    "color": "#ffffff",
+    "bold": true,
+    "fontSize": 76,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 30,
+      "color": "rgba(50,10,40,0.5)"
+    },
+    "bgCss": "linear-gradient(160deg, #ff8a4c 0%, #ff5e7e 45%, #8b4bc7 100%)",
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(70,20,60,0.92) 0%, rgba(70,20,60,0.7) 65%, rgba(70,20,60,0) 100%)"
+    }
+  }
+}

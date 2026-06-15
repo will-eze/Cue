@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { app } from 'electron';
 import { getDb } from './schema.js';
 
 // Broadcast graphics — reusable, fully customisable lower-third name/title cards,
@@ -70,4 +73,56 @@ export function reorder(orderedIds) {
       db.prepare('UPDATE graphics SET order_index = ? WHERE id = ?').run(i, id)
     );
   })();
+}
+
+// ─── Built-in design presets ─────────────────────────────────────────────────
+// Ship built-in broadcast-overlay designs in resources/graphics/, in two forms:
+//   • *.html  — self-contained custom-HTML designs (transparent bg, 1920×1080,
+//               {{name}}/{{title}}/{{text}} placeholders, `<!-- name: … -->` header)
+//   • *.json  — STRUCTURED designs for the lower-third / ticker / countdown kinds,
+//               carrying { name, kind, graphic:{…partial graphic record incl.
+//               style_json…} } so the design stays fully editable via the normal
+//               toolbar controls (it's a style preset, not frozen HTML).
+// These are NOT seeded into the DB — they're read at request time and offered by
+// the gallery as starting points; picking one creates an ordinary graphic of that
+// kind the user can edit. Each preset is returned as
+//   { id, name, kind, graphic }   (graphic = the fields to seed onto a new graphic)
+// Mirrors the bundled-theme resource-path pattern in db/themes.js (process.
+// resourcesPath packaged / app path in dev).
+
+function presetDir() {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'graphics')
+    : path.join(app.getAppPath(), 'resources', 'graphics');
+}
+
+export function presets() {
+  const dir = presetDir();
+  let files;
+  try {
+    files = fs.readdirSync(dir).sort();
+  } catch {
+    return []; // no bundled designs present (e.g. dev checkout without resources)
+  }
+  const out = [];
+  for (const file of files) {
+    const lower = file.toLowerCase();
+    try {
+      if (lower.endsWith('.html')) {
+        const raw = fs.readFileSync(path.join(dir, file), 'utf8');
+        const m = raw.match(/<!--\s*name:\s*(.+?)\s*-->/i);
+        const name = m ? m[1].trim() : file.replace(/\.html$/i, '');
+        // Strip the leading metadata comment block so the editor textarea is clean.
+        const html = raw.replace(/^\s*(?:<!--[\s\S]*?-->\s*)+/, '').trim();
+        out.push({ id: file.replace(/\.html$/i, ''), name, kind: 'custom', graphic: { html } });
+      } else if (lower.endsWith('.json')) {
+        const j = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
+        if (!j?.name || !j?.kind || !j?.graphic) continue;
+        out.push({ id: file.replace(/\.json$/i, ''), name: j.name, kind: j.kind, graphic: j.graphic });
+      }
+    } catch (err) {
+      console.error('[graphics-presets] failed to read', file, err.message);
+    }
+  }
+  return out;
 }

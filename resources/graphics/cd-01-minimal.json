@@ -1,0 +1,13 @@
+{
+  "name": "Minimal Countdown",
+  "kind": "countdown",
+  "graphic": {
+    "label": "Minimal Countdown",
+    "text": "Service starts in",
+    "style_json": {
+      "mode": "countdown", "source": "duration", "durationSec": 300, "targetClock": "11:00", "format": "24h", "showSeconds": true, "endMessage": "Starting now",
+      "time":    { "fontFamily": "Inter", "fontSize": 140, "color": "#ffffff", "bold": true, "align": "center", "verticalAlign": "center", "textBox": { "x": 25, "y": 30, "w": 50, "h": 40 }, "ltBar": null },
+      "message": { "fontFamily": "Inter", "fontSize": 36, "color": "#7fb0ff", "bold": false, "align": "center" }
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "Bebas Stack",
+  "kind": "lower_third",
+  "graphic": {
+    "label": "Bebas Stack",
+    "name": "Sarah Bennett",
+    "title": "Worship Pastor",
+    "style_json": {
+      "name":  { "fontFamily": "Bebas Neue", "fontSize": 74, "color": "#ffffff", "bold": false, "letterSpacing": 0.02, "align": "left", "verticalAlign": "bottom", "textBox": { "x": 4, "y": 70, "w": 54, "h": 22 }, "ltBar": { "color": "#0a0e1a", "opacity": 0.92, "solid": true } },
+      "title": { "fontFamily": "JetBrains Mono", "fontSize": 24, "color": "#5fd0ff", "uppercase": true, "letterSpacing": 0.18, "align": "left" }
+    }
+  }
+}

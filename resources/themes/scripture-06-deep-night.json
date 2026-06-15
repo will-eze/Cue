@@ -1,0 +1,36 @@
+{
+  "name": "Deep Night",
+  "category": "scripture",
+  "sort_order": 45,
+  "style": {
+    "fontFamily": "EB Garamond",
+    "fontSize": 56,
+    "color": "#f3f4fa",
+    "lineSpacing": 1.35,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 22,
+      "color": "rgba(0,0,0,0.85)"
+    },
+    "bgRef": "library/unsplash-X8o-P23flgI.jpg",
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(6,8,12,0.94) 0%, rgba(6,8,12,0.82) 70%, rgba(6,8,12,0) 100%)"
+    },
+    "refStyle": {
+      "fontFamily": "EB Garamond",
+      "fontSize": 34,
+      "color": "rgba(255,255,255,0.82)",
+      "align": "right",
+      "italic": true,
+      "textShadow": {
+        "enabled": true,
+        "x": 0,
+        "y": 2,
+        "blur": 14,
+        "color": "rgba(0,0,0,0.8)"
+      }
+    }
+  }
+}

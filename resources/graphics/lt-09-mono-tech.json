@@ -1,0 +1,13 @@
+{
+  "name": "Mono Tech",
+  "kind": "lower_third",
+  "graphic": {
+    "label": "Mono Tech",
+    "name": "Sarah Bennett",
+    "title": "Worship Pastor",
+    "style_json": {
+      "name":  { "fontFamily": "JetBrains Mono", "fontSize": 46, "color": "#eafdff", "bold": true, "letterSpacing": 0.02, "align": "left", "verticalAlign": "center", "textBox": { "x": 4, "y": 72, "w": 52, "h": 18 }, "ltBar": { "color": "#06121c", "opacity": 0.9, "solid": true } },
+      "title": { "fontFamily": "JetBrains Mono", "fontSize": 22, "color": "#9fe9ff", "uppercase": true, "letterSpacing": 0.2, "align": "left" }
+    }
+  }
+}

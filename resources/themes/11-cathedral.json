@@ -1,0 +1,23 @@
+{
+  "name": "Cathedral",
+  "category": "song",
+  "sort_order": 11,
+  "style": {
+    "fontFamily": "Cinzel",
+    "color": "#e8c878",
+    "uppercase": true,
+    "fontSize": 60,
+    "letterSpacing": 0.08,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 26,
+      "color": "rgba(0,0,0,0.65)"
+    },
+    "bgCss": "radial-gradient(circle at 50% 40%, #6e5018 0%, #3b2a0c 55%, #140d03 100%)",
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(20,13,3,0.92) 0%, rgba(20,13,3,0.7) 65%, rgba(20,13,3,0) 100%)"
+    }
+  }
+}

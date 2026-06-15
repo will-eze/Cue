@@ -1,0 +1,24 @@
+{
+  "name": "Tidewatch",
+  "category": "song",
+  "sort_order": 31,
+  "style": {
+    "fontFamily": "Barlow Condensed",
+    "uppercase": true,
+    "bold": true,
+    "color": "#ffffff",
+    "fontSize": 96,
+    "letterSpacing": 0.02,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 24,
+      "color": "rgba(0,0,0,0.85)"
+    },
+    "bgRef": "library/unsplash-gJILnne_HFg.jpg",
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(6,8,12,0.94) 0%, rgba(6,8,12,0.82) 70%, rgba(6,8,12,0) 100%)"
+    }
+  }
+}

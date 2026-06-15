@@ -1,0 +1,26 @@
+{
+  "name": "Banner",
+  "category": "song",
+  "sort_order": 2,
+  "style": {
+    "fontFamily": "Barlow Condensed",
+    "color": "#f6e7c6",
+    "uppercase": true,
+    "fontSize": 92,
+    "bold": true,
+    "letterSpacing": 0.02,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 28,
+      "color": "rgba(0,0,0,0.55)"
+    },
+    "bgCss": "linear-gradient(135deg, #7a1020 0%, #b22234 50%, #5e0d18 100%)",
+    "ltBar": {
+      "color": "#3c0810",
+      "opacity": 0.9,
+      "solid": true
+    }
+  }
+}

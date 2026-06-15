@@ -1,0 +1,22 @@
+{
+  "name": "Vesper",
+  "category": "song",
+  "sort_order": 16,
+  "style": {
+    "fontFamily": "Cormorant Garamond",
+    "color": "#efeaff",
+    "fontSize": 84,
+    "letterSpacing": 0.02,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 28,
+      "color": "rgba(0,0,0,0.55)"
+    },
+    "bgCss": "linear-gradient(160deg, #3b3a6b 0%, #2a2350 50%, #160f30 100%)",
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(22,16,48,0.92) 0%, rgba(22,16,48,0.7) 65%, rgba(22,16,48,0) 100%)"
+    }
+  }
+}

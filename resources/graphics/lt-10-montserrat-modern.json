@@ -1,0 +1,13 @@
+{
+  "name": "Montserrat Modern",
+  "kind": "lower_third",
+  "graphic": {
+    "label": "Montserrat Modern",
+    "name": "Sarah Bennett",
+    "title": "Worship Pastor",
+    "style_json": {
+      "name":  { "fontFamily": "Montserrat", "fontSize": 52, "color": "#0a0e1a", "bold": true, "align": "left", "verticalAlign": "center", "textBox": { "x": 4, "y": 74, "w": 50, "h": 18 }, "ltBar": { "color": "#ffffff", "opacity": 0.96, "solid": true } },
+      "title": { "fontFamily": "Montserrat", "fontSize": 24, "color": "#d11a6b", "bold": true, "uppercase": true, "letterSpacing": 0.06, "align": "left" }
+    }
+  }
+}

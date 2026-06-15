@@ -1,0 +1,23 @@
+{
+  "name": "Jubilee",
+  "category": "song",
+  "sort_order": 34,
+  "style": {
+    "fontFamily": "Bebas Neue",
+    "uppercase": true,
+    "color": "#ffffff",
+    "fontSize": 112,
+    "letterSpacing": 0.04,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 24,
+      "color": "rgba(0,0,0,0.85)"
+    },
+    "bgRef": "library/pexels-19033583.mp4",
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(6,8,12,0.94) 0%, rgba(6,8,12,0.82) 70%, rgba(6,8,12,0) 100%)"
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "Center Stage",
+  "kind": "lower_third",
+  "graphic": {
+    "label": "Center Stage",
+    "name": "Sarah Bennett",
+    "title": "Worship Pastor",
+    "style_json": {
+      "name":  { "fontFamily": "Cormorant Garamond", "fontSize": 66, "color": "#ffffff", "bold": true, "align": "center", "verticalAlign": "bottom", "textBox": { "x": 20, "y": 74, "w": 60, "h": 18 }, "ltBar": { "color": "#0a0e1a", "opacity": 0.78, "solid": false } },
+      "title": { "fontFamily": "JetBrains Mono", "fontSize": 24, "color": "#cbd5e6", "bold": false, "uppercase": true, "letterSpacing": 0.22, "align": "center" }
+    }
+  }
+}

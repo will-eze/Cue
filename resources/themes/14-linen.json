@@ -1,0 +1,17 @@
+{
+  "name": "Linen",
+  "category": "song",
+  "sort_order": 14,
+  "style": {
+    "fontFamily": "EB Garamond",
+    "color": "#4a3b2a",
+    "fontSize": 80,
+    "textShadow": {
+      "enabled": false
+    },
+    "bgCss": "linear-gradient(160deg, #f7f1e6 0%, #efe6d4 100%)",
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(247,241,230,0.92) 0%, rgba(247,241,230,0.6) 70%, rgba(247,241,230,0) 100%)"
+    }
+  }
+}

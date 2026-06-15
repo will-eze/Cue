@@ -123,6 +123,11 @@ export function findUnused() {
     if (!row) continue;
     try { const v = JSON.parse(row.value); if (v != null) referenced.add(Number(v)); } catch {}
   }
+  // Background-library downloads (settings JSON map { manifestId: mediaAssetId },
+  // see db/background-library.js) are intentional library additions — keep them
+  // out of "unused" even before they're applied to a song/global background.
+  const bgRow = db.prepare("SELECT value FROM settings WHERE key='bg_library_downloads'").get();
+  if (bgRow) { try { for (const v of Object.values(JSON.parse(bgRow.value))) if (v != null) referenced.add(Number(v)); } catch {} }
   return db.prepare('SELECT * FROM media_assets ORDER BY filename COLLATE NOCASE').all()
     .filter((m) => !referenced.has(m.id))
     .map((m) => {

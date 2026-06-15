@@ -1,0 +1,18 @@
+{
+  "name": "Grace",
+  "category": "song",
+  "sort_order": 19,
+  "style": {
+    "fontFamily": "Dancing Script",
+    "color": "#6a4a6e",
+    "fontSize": 96,
+    "bold": true,
+    "textShadow": {
+      "enabled": false
+    },
+    "bgCss": "linear-gradient(160deg, #f6dfe8 0%, #e7d4f0 55%, #d8e0f5 100%)",
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(246,223,232,0.92) 0%, rgba(246,223,232,0.6) 70%, rgba(246,223,232,0) 100%)"
+    }
+  }
+}

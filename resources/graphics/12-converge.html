@@ -1,0 +1,26 @@
+<!-- name: Converge -->
+<style>
+  .cv { position:absolute; left:0; right:0; bottom:150px; display:flex; align-items:center; justify-content:center; }
+  .cv .l, .cv .r { height:6px; flex:1; max-width:520px; }
+  .cv .l { background:linear-gradient(90deg,transparent,#00e0ff); transform:translateX(-120%); }
+  .cv .r { background:linear-gradient(90deg,#ff2bd0,transparent); transform:translateX(120%); }
+  .cv .mid { padding:0 38px; text-align:center; opacity:0; }
+  .cv .n { font:700 60px/1 Inter,system-ui,sans-serif; color:#fff; text-shadow:0 3px 24px rgba(0,0,0,.5); white-space:nowrap; }
+  .cv .t { font:500 22px/1 'JetBrains Mono',ui-monospace,monospace; letter-spacing:.2em; text-transform:uppercase; color:#7fe9ff; margin-top:10px; }
+  .cv .t:empty { display:none; }
+  .cue-in .cv .l   { animation: cv-side .6s cubic-bezier(.2,.8,.2,1) forwards; }
+  .cue-in .cv .r   { animation: cv-side .6s cubic-bezier(.2,.8,.2,1) forwards; }
+  .cue-in .cv .mid { animation: cv-m .5s ease .35s forwards; }
+  .cue-out .cv     { animation: cv-out .4s ease forwards; }
+  @keyframes cv-side { to { transform:translateX(0); } }
+  @keyframes cv-m    { to { opacity:1; } }
+  @keyframes cv-out  { to { opacity:0; } }
+</style>
+<div class="cv">
+  <span class="l"></span>
+  <div class="mid">
+    <div class="n">{{name}}</div>
+    <div class="t">{{title}}</div>
+  </div>
+  <span class="r"></span>
+</div>

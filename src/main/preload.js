@@ -73,17 +73,17 @@ contextBridge.exposeInMainWorld('cue', {
     },
     graphic: {
       show: (data) => ipcRenderer.invoke('output:graphic:show', data),
-      hide: () => ipcRenderer.invoke('output:graphic:hide'),
+      hide: (target) => ipcRenderer.invoke('output:graphic:hide', target),
       showCustom: (data) => ipcRenderer.invoke('output:custom:show', data),
-      hideCustom: () => ipcRenderer.invoke('output:custom:hide'),
+      hideCustom: (target) => ipcRenderer.invoke('output:custom:hide', target),
     },
     ticker: {
       show: (data) => ipcRenderer.invoke('output:ticker:show', data),
-      hide: () => ipcRenderer.invoke('output:ticker:hide'),
+      hide: (target) => ipcRenderer.invoke('output:ticker:hide', target),
     },
     countdown: {
       show: (data) => ipcRenderer.invoke('output:countdown:show', data),
-      hide: () => ipcRenderer.invoke('output:countdown:hide'),
+      hide: (target) => ipcRenderer.invoke('output:countdown:hide', target),
     },
     overlay: {
       get: () => ipcRenderer.invoke('output:overlay:get'),
@@ -99,6 +99,7 @@ contextBridge.exposeInMainWorld('cue', {
     update: (id, data) => ipcRenderer.invoke('graphics:update', id, data),
     delete: (id) => ipcRenderer.invoke('graphics:delete', id),
     reorder: (orderedIds) => ipcRenderer.invoke('graphics:reorder', orderedIds),
+    presets: () => ipcRenderer.invoke('graphics:presets'),
   },
   media: {
     import: (filePaths) => ipcRenderer.invoke('media:import', filePaths),
@@ -116,6 +117,12 @@ contextBridge.exposeInMainWorld('cue', {
       delete: (id) => ipcRenderer.invoke('media:folders:delete', id),
       tree: () => ipcRenderer.invoke('media:folders:tree'),
     },
+  },
+  backgrounds: {
+    list: () => ipcRenderer.invoke('backgrounds:list'),
+    tagCounts: () => ipcRenderer.invoke('backgrounds:tagCounts'),
+    download: (id) => ipcRenderer.invoke('backgrounds:download', id),
+    applyAsDefault: (id, surface, toAll) => ipcRenderer.invoke('backgrounds:applyAsDefault', id, surface, toAll),
   },
   bible: {
     versions: () => ipcRenderer.invoke('bible:versions:list'),

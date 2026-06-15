@@ -1,0 +1,23 @@
+<!-- name: Diagonal Slash -->
+<style>
+  .ds { position:absolute; left:0; bottom:120px; }
+  .ds .panel { position:relative; padding:26px 90px 28px 90px;
+    background:linear-gradient(120deg,#1b2740,#0a0e1a);
+    clip-path:polygon(0 0, 100% 0, calc(100% - 56px) 100%, 0 100%);
+    transform:translateX(-105%); }
+  .cue-in .ds .panel  { animation: ds-in .55s cubic-bezier(.2,.85,.2,1) forwards; }
+  .cue-out .ds .panel { animation: ds-out .4s ease forwards; }
+  .ds .accent { position:absolute; left:0; top:0; bottom:0; width:8px; background:linear-gradient(180deg,#00e0ff,#3b82f6); }
+  .ds .n { font:800 56px/1 'Oswald',Inter,sans-serif; text-transform:uppercase; letter-spacing:.02em; color:#fff; }
+  .ds .t { font:600 22px/1 'JetBrains Mono',ui-monospace,monospace; letter-spacing:.18em; text-transform:uppercase; color:#6fd3ff; margin-top:10px; }
+  .ds .t:empty { display:none; }
+  @keyframes ds-in  { to { transform:translateX(0); } }
+  @keyframes ds-out { to { transform:translateX(-105%); } }
+</style>
+<div class="ds">
+  <div class="panel">
+    <div class="accent"></div>
+    <div class="n">{{name}}</div>
+    <div class="t">{{title}}</div>
+  </div>
+</div>

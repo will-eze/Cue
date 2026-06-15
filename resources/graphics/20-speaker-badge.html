@@ -1,0 +1,27 @@
+<!-- name: Speaker Badge -->
+<style>
+  .sb { position:absolute; left:90px; bottom:120px; display:flex; overflow:hidden; border-radius:16px;
+    background:#0c1120; border:1px solid rgba(110,160,255,.3); box-shadow:0 20px 56px rgba(0,0,0,.5);
+    transform:translateY(30px); opacity:0; }
+  .cue-in .sb  { animation: sb-in .55s cubic-bezier(.2,.9,.2,1) forwards; }
+  .cue-out .sb { animation: sb-out .4s ease forwards; }
+  .sb .accent { width:10px; background:linear-gradient(180deg,#4d8eff,#00e0c6); }
+  .sb .body { padding:24px 48px 26px 32px; position:relative; }
+  .sb .k { font:700 15px/1 'JetBrains Mono',ui-monospace,monospace; letter-spacing:.3em; text-transform:uppercase; color:#5fd0ff; margin-bottom:12px; }
+  .sb .n { font:700 52px/1.02 Inter,system-ui,sans-serif; color:#fff; }
+  .sb .t { font:500 24px/1.2 Inter,system-ui,sans-serif; color:#9fb6d6; margin-top:8px; }
+  .sb .k:empty, .sb .t:empty { display:none; }
+  .sb .corner { position:absolute; top:0; right:0; width:0; height:0; border-style:solid;
+    border-width:0 44px 44px 0; border-color:transparent #4d8eff transparent transparent; }
+  @keyframes sb-in  { to { transform:translateY(0); opacity:1; } }
+  @keyframes sb-out { to { transform:translateY(18px); opacity:0; } }
+</style>
+<div class="sb">
+  <div class="accent"></div>
+  <div class="body">
+    <div class="k">{{text}}</div>
+    <div class="n">{{name}}</div>
+    <div class="t">{{title}}</div>
+    <div class="corner"></div>
+  </div>
+</div>

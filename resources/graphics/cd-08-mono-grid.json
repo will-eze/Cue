@@ -1,0 +1,13 @@
+{
+  "name": "Mono Grid",
+  "kind": "countdown",
+  "graphic": {
+    "label": "Mono Grid",
+    "text": "Countdown",
+    "style_json": {
+      "mode": "countdown", "source": "duration", "durationSec": 300, "targetClock": "11:00", "format": "24h", "showSeconds": true, "endMessage": "00:00",
+      "time":    { "fontFamily": "JetBrains Mono", "fontSize": 150, "color": "#9fe9ff", "bold": true, "letterSpacing": 0.02, "align": "center", "verticalAlign": "center", "textBox": { "x": 22, "y": 30, "w": 56, "h": 40 }, "ltBar": { "color": "#06121c", "opacity": 0.85, "solid": true } },
+      "message": { "fontFamily": "JetBrains Mono", "fontSize": 30, "color": "#5fd0ff", "uppercase": true, "letterSpacing": 0.26, "align": "center" }
+    }
+  }
+}

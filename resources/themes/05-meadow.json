@@ -1,0 +1,21 @@
+{
+  "name": "Meadow",
+  "category": "song",
+  "sort_order": 5,
+  "style": {
+    "fontFamily": "Jost",
+    "color": "#ffffff",
+    "fontSize": 78,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 28,
+      "color": "rgba(0,0,0,0.55)"
+    },
+    "bgCss": "linear-gradient(160deg, #1e5631 0%, #2e8b57 55%, #6ab04c 100%)",
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(14,48,30,0.92) 0%, rgba(14,48,30,0.7) 65%, rgba(14,48,30,0) 100%)"
+    }
+  }
+}

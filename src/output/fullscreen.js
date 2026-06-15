@@ -1,4 +1,5 @@
 const bg       = document.getElementById('background');
+const scrim    = document.getElementById('scrim');
 const textWrap = document.getElementById('text-wrap');
 const textEl   = document.getElementById('text');
 const logoWrap = document.getElementById('logo-wrap');
@@ -53,6 +54,8 @@ function buildShadow(shadow) {
 }
 
 function applyStyle(s) {
+  // Background scrim (transparent→black) — clamp 0..1; clear when there's no slide.
+  if (scrim) scrim.style.opacity = String(Math.max(0, Math.min(1, (s && s.bgScrim) || 0)));
   if (!s) {
     textWrap.style.cssText = '';
     textEl.style.cssText   = '';
@@ -111,13 +114,20 @@ function hideLogo() {
   logoWrap.className = '';
 }
 
-function setBackground(path) {
-  if (!path) { bg.innerHTML = ''; return; }
-  const url = pathToUrl(path);
-  const ext = path.split('.').pop().toLowerCase();
-  bg.innerHTML = ['mp4','webm','mov','avi','m4v','mkv'].includes(ext)
-    ? `<video autoplay loop muted playsinline src="${url}"></video>`
-    : `<img src="${url}" alt="" />`;
+// Media path wins; otherwise fall back to a theme's CSS gradient/solid (bgCss,
+// from style_json) so a license-free authored background renders with no asset.
+function setBackground(path, bgCss) {
+  bg.style.background = '';
+  if (path) {
+    const url = pathToUrl(path);
+    const ext = path.split('.').pop().toLowerCase();
+    bg.innerHTML = ['mp4','webm','mov','avi','m4v','mkv'].includes(ext)
+      ? `<video autoplay loop muted playsinline src="${url}"></video>`
+      : `<img src="${url}" alt="" />`;
+    return;
+  }
+  bg.innerHTML = '';
+  if (bgCss) bg.style.background = bgCss;
 }
 
 // ── Foreground media (bumpers/clips) ─────────────────────────────────────────
@@ -134,6 +144,7 @@ function clearForegroundMedia() {
 
 function setForegroundMedia(media, transport) {
   clearForegroundMedia();
+  bg.style.background = '';
   bg.innerHTML = '';
   if (!media || !media.path) return;
   const url = pathToUrl(media.path);
@@ -333,7 +344,7 @@ window.cueOutput.onSlideUpdate((payload) => {
   clearForegroundMedia();
   hideElements();
   hideLogo();
-  setBackground(backgroundPath);
+  setBackground(backgroundPath, styleJson?.bgCss);
   applyStyle(styleJson);
   textEl.innerHTML = renderWithRuns(text || '', styleJson?.runs);
   copyright.textContent = copy || '';

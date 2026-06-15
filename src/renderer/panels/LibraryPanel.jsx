@@ -206,14 +206,19 @@ export default function LibraryPanel({ onAddToRundown, onAddScripture, onScriptu
 
   function loadPresentations() { window.cue.presentations.list().then(setPresentations); }
 
+  // Re-attach on tab change: the songs subtree (and containerRef's node) unmounts
+  // when another tab is active, so an observer bound only on mount would keep
+  // watching a detached node and leave listHeight stale (the song list then stops
+  // filling the tab). Re-running when `tab` flips to 'songs' binds the live node.
   useEffect(() => {
+    if (tab !== 'songs' || !containerRef.current) return;
     const obs = new ResizeObserver((entries) => {
       const h = entries[0]?.contentRect.height;
       if (h) setListHeight(Math.max(h - 8, 60));
     });
-    if (containerRef.current) obs.observe(containerRef.current);
+    obs.observe(containerRef.current);
     return () => obs.disconnect();
-  }, []);
+  }, [tab]);
 
   function loadSongs() { window.cue.songs.listAll().then(setSongs); }
   function loadMedia() {

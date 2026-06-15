@@ -1,0 +1,21 @@
+{
+  "name": "Snowfall",
+  "category": "song",
+  "sort_order": 32,
+  "style": {
+    "fontFamily": "Marcellus",
+    "color": "#ffffff",
+    "fontSize": 82,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 24,
+      "color": "rgba(0,0,0,0.8)"
+    },
+    "bgRef": "library/pexels-26081684.mp4",
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(6,8,12,0.94) 0%, rgba(6,8,12,0.82) 70%, rgba(6,8,12,0) 100%)"
+    }
+  }
+}

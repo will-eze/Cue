@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import GraphicsEditor, { fillPlaceholders, flatTextCss, buildBarBg, cdSampleText, CD_DEFAULT_BOX, TIME_BASE, MSG_BASE } from '../components/GraphicsEditor';
+import GraphicsEditor, { GraphicsPresetModal, presetToGraphic, fillPlaceholders, flatTextCss, buildBarBg, cdSampleText, CD_DEFAULT_BOX, TIME_BASE, MSG_BASE } from '../components/GraphicsEditor';
 import { CHANNEL_MODES, channelMode, modeToFlags } from '../utils/channelMode';
 
 const FRAME_W = 1920, FRAME_H = 1080;
@@ -12,11 +12,6 @@ function parseStyle(g) {
   catch { return {}; }
 }
 
-function ntEqual(a, b) {
-  if (!a || !b) return false;
-  return (a.name || '') === (b.name || '') && (a.title || '') === (b.title || '');
-}
-
 // Destination overrides — 'default' uses each graphic's saved target.
 const DEST_OPTS = [
   { id: 'default', label: 'Default', icon: 'tune' },
@@ -26,11 +21,18 @@ const DEST_OPTS = [
 ];
 const TARGET_LABEL = { all: 'All', screen: 'In-Room', ndi: 'Online' };
 
+// Each overlay slot holds one occupant per destination kind: { screen, ndi }.
+const SLOT_BY_KIND = { lower_third: 'nameTitle', ticker: 'ticker', countdown: 'countdown', custom: 'custom' };
+const EMPTY_OVERLAY = { nameTitle: { screen: null, ndi: null }, ticker: { screen: null, ndi: null }, custom: { screen: null, ndi: null }, countdown: { screen: null, ndi: null } };
+const slotAnyLive = (slot) => !!(slot && (slot.screen || slot.ndi));
+
 export default function GraphicsPanel() {
   const [graphics, setGraphics] = useState([]);
-  const [overlay, setOverlay] = useState({ nameTitle: null, ticker: null, custom: null, countdown: null });
+  const [overlay, setOverlay] = useState(EMPTY_OVERLAY);
   const [editor, setEditor] = useState(null); // {} = new, graphic obj = edit, null = closed
+  const [gallery, setGallery] = useState(false); // design gallery open
   const [quickTicker, setQuickTicker] = useState('');
+  const [quickStyleId, setQuickStyleId] = useState(null); // saved ticker whose style the quick ticker borrows (null = plain default)
   const [dest, setDest] = useState('default'); // live destination override
   const [ltChannels, setLtChannels] = useState([]); // lower-third channels (for the mode switcher)
 
@@ -47,14 +49,24 @@ export default function GraphicsPanel() {
     loadChannels();
   }
 
+  // Pick a design from the gallery → create a graphic of that kind (seeded with the
+  // design's style + sample content), add it to the tab, and open it for editing.
+  async function addFromDesign(preset) {
+    const id = await window.cue.graphics.create(presetToGraphic(preset));
+    setGallery(false);
+    load();
+    const g = await window.cue.graphics.get(id);
+    if (g) setEditor(g);
+  }
+
   useEffect(() => {
     window.cue.output.overlay?.get?.().then((o) => { if (o) setOverlay(o); });
     const off = window.cue.on('output:overlay-changed', (o) => setOverlay(o));
     return off;
   }, []);
 
-  const tickerLive = !!overlay.ticker;
-  const anyLive = !!(overlay.nameTitle || overlay.ticker || overlay.custom || overlay.countdown);
+  const tickerLive = slotAnyLive(overlay.ticker);
+  const anyLive = slotAnyLive(overlay.nameTitle) || slotAnyLive(overlay.ticker) || slotAnyLive(overlay.custom) || slotAnyLive(overlay.countdown);
 
   // Resolve the destination for a fire: live override wins, else the graphic default
   // (graphics default to Online/NDI).
@@ -76,33 +88,50 @@ export default function GraphicsPanel() {
   function take(g) {
     const target = resolveTarget(g);
     const style = parseStyle(g);
-    if (g.kind === 'lower_third') window.cue.output.graphic.show({ name: g.name, title: g.title, style, target });
-    else if (g.kind === 'ticker') window.cue.output.ticker.show({ text: g.text, speed: g.speed, style, target });
+    if (g.kind === 'lower_third') window.cue.output.graphic.show({ id: g.id, name: g.name, title: g.title, style, target });
+    else if (g.kind === 'ticker') window.cue.output.ticker.show({ id: g.id, text: g.text, speed: g.speed, style, target });
     else if (g.kind === 'countdown') window.cue.output.countdown.show({
       id: g.id, mode: style.mode, source: style.source, durationSec: style.durationSec,
       targetClock: style.targetClock, format: style.format, showSeconds: style.showSeconds,
       label: g.text || '', endMessage: style.endMessage || '',
       style: { time: style.time, message: style.message }, target,
     });
-    else if (g.kind === 'custom') window.cue.output.graphic.showCustom({ html: fillPlaceholders(g.html, g), target });
+    else if (g.kind === 'custom') window.cue.output.graphic.showCustom({ id: g.id, html: fillPlaceholders(g.html, g), target });
   }
+  // Which destination kinds this saved graphic is currently live on (match by id,
+  // not content — otherwise two graphics sharing a body would both light up). Ad-hoc
+  // fires (e.g. the quick ticker) carry no id, so no saved card falsely matches.
+  function liveDests(g) {
+    const slot = overlay[SLOT_BY_KIND[g.kind]];
+    if (!slot) return [];
+    const d = [];
+    if (slot.screen && slot.screen.id === g.id) d.push('screen');
+    if (slot.ndi && slot.ndi.id === g.id) d.push('ndi');
+    return d;
+  }
+  const isLive = (g) => liveDests(g).length > 0;
+
   function clear(g) {
-    if (g.kind === 'lower_third') window.cue.output.graphic.hide();
-    else if (g.kind === 'ticker') window.cue.output.ticker.hide();
-    else if (g.kind === 'countdown') window.cue.output.countdown.hide();
-    else if (g.kind === 'custom') window.cue.output.graphic.hideCustom();
+    const dests = liveDests(g);
+    const target = dests.length === 2 ? 'all' : dests[0]; // both kinds → all, else the one it's on
+    if (g.kind === 'lower_third') window.cue.output.graphic.hide(target);
+    else if (g.kind === 'ticker') window.cue.output.ticker.hide(target);
+    else if (g.kind === 'countdown') window.cue.output.countdown.hide(target);
+    else if (g.kind === 'custom') window.cue.output.graphic.hideCustom(target);
   }
-  function isLive(g) {
-    if (g.kind === 'lower_third') return ntEqual(overlay.nameTitle, g);
-    if (g.kind === 'ticker') return tickerLive && overlay.ticker?.text === g.text;
-    if (g.kind === 'countdown') return !!overlay.countdown && overlay.countdown.id === g.id;
-    if (g.kind === 'custom') return !!overlay.custom && overlay.custom.html === fillPlaceholders(g.html, g);
-    return false;
-  }
+
+  // Saved tickers the quick ticker can borrow a look from.
+  const tickerStyles = graphics.filter((g) => g.kind === 'ticker');
 
   function fireQuickTicker() {
     if (!quickTicker.trim()) return;
-    window.cue.output.ticker.show({ text: quickTicker, speed: 100, target: quickTarget() });
+    const base = quickStyleId != null ? tickerStyles.find((g) => g.id === quickStyleId) : null;
+    window.cue.output.ticker.show({
+      text: quickTicker,
+      speed: base?.speed ?? 100,
+      style: base ? parseStyle(base) : undefined,
+      target: quickTarget(),
+    });
   }
 
   const groups = [
@@ -139,6 +168,10 @@ export default function GraphicsPanel() {
               <span className="material-symbols-outlined text-[14px]">block</span> Clear All
             </button>
           )}
+          <button onClick={() => setGallery(true)}
+            className="flex items-center gap-xs px-md py-xs rounded text-label-sm font-label-sm bg-surface-container-high border border-outline-variant/40 text-on-surface-variant hover:text-on-surface cursor-pointer">
+            <span className="material-symbols-outlined text-[14px]">grid_view</span> Designs
+          </button>
           <button onClick={() => setEditor({})}
             className="flex items-center gap-xs px-md py-xs rounded text-label-sm font-label-sm bg-primary text-on-primary font-bold hover:brightness-110 cursor-pointer">
             <span className="material-symbols-outlined text-[14px]">add</span> New Graphic
@@ -186,13 +219,29 @@ export default function GraphicsPanel() {
 
         {/* Quick ticker — fire an ad-hoc announcement without saving */}
         <div className="bg-surface-container rounded-lg border border-outline-variant/30 p-md flex flex-col gap-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant">Quick Ticker</span>
-            {tickerLive && (
-              <span className="flex items-center gap-xs text-label-sm font-label-sm uppercase tracking-[0.05em] text-secondary">
-                <span className="w-[6px] h-[6px] rounded-full bg-secondary dot-pulse" /> On Air
-              </span>
-            )}
+          <div className="flex items-center justify-between gap-sm">
+            <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant shrink-0">Quick Ticker</span>
+            <div className="flex items-center gap-sm">
+              {/* Borrow the look of a saved ticker design (or a plain default) */}
+              <label className="flex items-center gap-xs text-[10px] font-mono text-on-surface-variant/60 uppercase tracking-[0.05em]">
+                Style
+                <select
+                  value={quickStyleId ?? ''}
+                  onChange={(e) => setQuickStyleId(e.target.value ? Number(e.target.value) : null)}
+                  className="bg-surface-container-lowest border border-outline-variant/40 rounded px-xs h-7 text-body-md text-on-surface focus:outline-none focus:border-primary cursor-pointer max-w-[160px]"
+                >
+                  <option value="">Default</option>
+                  {tickerStyles.map((g) => (
+                    <option key={g.id} value={g.id}>{g.label || g.text || `Ticker ${g.id}`}</option>
+                  ))}
+                </select>
+              </label>
+              {tickerLive && (
+                <span className="flex items-center gap-xs text-label-sm font-label-sm uppercase tracking-[0.05em] text-secondary shrink-0">
+                  <span className="w-[6px] h-[6px] rounded-full bg-secondary dot-pulse" /> On Air
+                </span>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-sm">
             <input
@@ -204,7 +253,7 @@ export default function GraphicsPanel() {
             />
             <button onClick={fireQuickTicker} disabled={!quickTicker.trim()}
               className="px-md py-1.5 rounded-lg text-label-sm font-label-sm uppercase tracking-[0.05em] font-bold bg-tertiary-container text-on-tertiary hover:brightness-110 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">Start</button>
-            <button onClick={() => window.cue.output.ticker.hide()} disabled={!tickerLive}
+            <button onClick={() => window.cue.output.ticker.hide(quickTarget())} disabled={!tickerLive}
               className="px-md py-1.5 rounded-lg text-label-sm font-label-sm uppercase tracking-[0.05em] bg-surface-container-high border border-secondary/50 text-secondary hover:bg-surface-variant cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">Stop</button>
           </div>
         </div>
@@ -217,7 +266,7 @@ export default function GraphicsPanel() {
               <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-outline px-xs">{title}</span>
               <div className="grid gap-md" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(248px, 1fr))' }}>
                 {items.map((g) => (
-                  <GraphicCard key={g.id} g={g} live={isLive(g)} destLabel={TARGET_LABEL[resolveTarget(g)]}
+                  <GraphicCard key={g.id} g={g} liveOn={liveDests(g)} destLabel={TARGET_LABEL[resolveTarget(g)]}
                     onTake={() => take(g)} onClear={() => clear(g)}
                     onEdit={() => setEditor(g)} onDelete={() => remove(g)} />
                 ))}
@@ -242,13 +291,22 @@ export default function GraphicsPanel() {
           onSaved={() => { setEditor(null); load(); }}
         />
       )}
+
+      {gallery && (
+        <GraphicsPresetModal onPick={addFromDesign} onClose={() => setGallery(false)} />
+      )}
     </div>
   );
 }
 
 // ── Card with live thumbnail ─────────────────────────────────────────────────
 
-function GraphicCard({ g, live, destLabel, onTake, onClear, onEdit, onDelete }) {
+function GraphicCard({ g, liveOn = [], destLabel, onTake, onClear, onEdit, onDelete }) {
+  const live = liveOn.length > 0;
+  // Where it's live: both kinds → "Live", else name the single destination.
+  const liveLabel = liveOn.length === 2 ? 'Live'
+    : liveOn[0] === 'ndi' ? 'Live · Online'
+    : liveOn[0] === 'screen' ? 'Live · In-Room' : 'Live';
   const cdSt = g.kind === 'countdown' ? parseStyle(g) : null;
   const cdModeLabel = cdSt ? (cdSt.mode === 'clock' ? 'Clock' : cdSt.mode === 'countup' ? 'Count Up' : 'Countdown') : '';
   const primaryText = g.kind === 'ticker' ? g.text
@@ -270,7 +328,7 @@ function GraphicCard({ g, live, destLabel, onTake, onClear, onEdit, onDelete }) 
         <GraphicThumb g={g} />
         {live && (
           <span className="absolute top-1.5 left-1.5 flex items-center gap-xs px-sm py-[2px] rounded bg-secondary text-on-secondary text-[9px] font-label-sm uppercase tracking-[0.08em] font-bold">
-            <span className="w-[5px] h-[5px] rounded-full bg-on-secondary dot-pulse" /> Live
+            <span className="w-[5px] h-[5px] rounded-full bg-on-secondary dot-pulse" /> {liveLabel}
           </span>
         )}
         <span className="absolute top-1.5 right-1.5 px-sm py-[2px] rounded bg-background/70 text-on-surface-variant text-[9px] font-label-sm uppercase tracking-[0.06em]">{destLabel}</span>
@@ -314,6 +372,19 @@ function GraphicThumb({ g }) {
     return () => ro.disconnect();
   }, []);
 
+  // Ticker crawl: measure the text + animate horizontally like the live output
+  // (keyframes `cue-ticker-crawl` in index.css). Hooks run unconditionally; the
+  // effect no-ops for non-ticker graphics.
+  const tkInnerRef = useRef(null);
+  const [tkDur, setTkDur] = useState(20);
+  useEffect(() => {
+    if (g.kind !== 'ticker') return;
+    const el = tkInnerRef.current;
+    if (!el) return;
+    const spd = Math.max(20, Number(g.speed) || 100);
+    setTkDur(el.scrollWidth / spd);
+  }, [g.kind, g.text, g.style_json, g.speed]);
+
   const st = parseStyle(g);
 
   let inner = null;
@@ -338,7 +409,9 @@ function GraphicThumb({ g }) {
       <div style={{ position: 'absolute', left: 0, right: 0, [top ? 'top' : 'bottom']: 0, height: 72, background: barBg,
         borderTop: top ? 'none' : '3px solid #4d8eff', borderBottom: top ? '3px solid #4d8eff' : 'none',
         display: 'flex', alignItems: 'center', overflow: 'hidden' }}>
-        <div style={{ ...flatTextCss(st, { fontSize: 30, color: '#fff', fontWeight: 500 }), whiteSpace: 'nowrap', paddingLeft: 40, lineHeight: '72px', textAlign: 'left' }}>
+        <div ref={tkInnerRef} style={{ ...flatTextCss(st, { fontSize: 30, color: '#fff', fontWeight: 500 }), whiteSpace: 'nowrap',
+          flexShrink: 0, paddingLeft: '100%', lineHeight: '72px', textAlign: 'left', willChange: 'transform',
+          animation: `cue-ticker-crawl ${tkDur}s linear infinite` }}>
           {g.text}
         </div>
       </div>

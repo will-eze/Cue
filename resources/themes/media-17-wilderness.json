@@ -1,0 +1,21 @@
+{
+  "name": "Wilderness",
+  "category": "song",
+  "sort_order": 36,
+  "style": {
+    "fontFamily": "Marcellus",
+    "color": "#f7eedd",
+    "fontSize": 84,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 24,
+      "color": "rgba(0,0,0,0.85)"
+    },
+    "bgRef": "library/unsplash-4cloovdyuvw.jpg",
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(6,8,12,0.94) 0%, rgba(6,8,12,0.82) 70%, rgba(6,8,12,0) 100%)"
+    }
+  }
+}

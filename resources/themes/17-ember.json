@@ -1,0 +1,23 @@
+{
+  "name": "Ember",
+  "category": "song",
+  "sort_order": 17,
+  "style": {
+    "fontFamily": "Playfair Display",
+    "color": "#fbe6c8",
+    "uppercase": true,
+    "fontSize": 74,
+    "letterSpacing": 0.02,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 28,
+      "color": "rgba(40,8,0,0.6)"
+    },
+    "bgCss": "radial-gradient(circle at 50% 45%, #e8821e 0%, #b23a12 45%, #5e1408 100%)",
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(40,10,4,0.92) 0%, rgba(40,10,4,0.7) 65%, rgba(40,10,4,0) 100%)"
+    }
+  }
+}

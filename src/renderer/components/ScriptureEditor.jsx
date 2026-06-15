@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import MediaPickerModal from './MediaPickerModal';
+import ThemePickerModal from './ThemePickerModal';
 import { mediaUrl } from '../utils/mediaUrl';
 import { useFonts } from '../utils/fonts';
 import {
@@ -26,6 +27,8 @@ export default function ScriptureEditor({ onClose, onSave }) {
   const [background, setBackground] = useState(null); // { id, path, filename } | null
   const [previewTemplate, setPreviewTemplate] = useState('fullscreen');
   const [showBgPicker, setShowBgPicker] = useState(false);
+  const [showThemePicker, setShowThemePicker] = useState(false);
+  const [bgLoading, setBgLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
@@ -50,6 +53,28 @@ export default function ScriptureEditor({ onClose, onSave }) {
 
   const activeStyle = target === 'verse' ? style : refStyle;
   const setActiveStyle = target === 'verse' ? setStyle : setRefStyle;
+
+  // Apply a scripture theme: verse style (minus the reference sub-style) → the
+  // verse, style.refStyle → the reference line, and resolve its bgRef background.
+  async function handleLoadTheme(theme) {
+    try {
+      const ts = theme.style_json ? JSON.parse(theme.style_json) : null;
+      if (!ts) return;
+      const { refStyle: refS, ...verse } = ts;
+      setStyle({ ...DEFAULT_STYLE, ...verse });
+      if (refS) setRefStyle({ ...DEFAULT_STYLE, align: 'right', ...refS });
+      if (theme.background_id && theme.background_path) {
+        setBackground({ id: theme.background_id, path: theme.background_path, filename: theme.background_filename });
+      } else if (ts.bgRef) {
+        setBgLoading(true);
+        try {
+          const asset = await window.cue.backgrounds.download(ts.bgRef);
+          setBackground({ id: asset.id, path: asset.path, filename: asset.filename });
+        } catch { /* keep current background on failure */ }
+        finally { setBgLoading(false); }
+      }
+    } catch {}
+  }
 
   // Escape to close (unless the media picker is open).
   useEffect(() => {
@@ -96,6 +121,11 @@ export default function ScriptureEditor({ onClose, onSave }) {
             </div>
           </div>
           <div className="flex-1" />
+          <button onClick={() => setShowThemePicker(true)}
+            className="flex items-center gap-xs bg-surface-container text-on-surface-variant text-[10px] font-mono rounded-lg px-sm h-7 border border-outline-variant/30 hover:border-outline-variant hover:text-on-surface cursor-pointer uppercase tracking-[0.05em] transition-colors">
+            <span className="material-symbols-outlined text-[15px]">style</span>
+            Load Theme…
+          </button>
           <button onClick={onClose}
             className="w-7 h-7 flex items-center justify-center rounded-full text-on-surface-variant hover:text-on-surface hover:bg-surface-variant transition-colors cursor-pointer text-sm">
             ✕
@@ -138,6 +168,14 @@ export default function ScriptureEditor({ onClose, onSave }) {
             initialId={background?.id ?? null}
             onSelect={(asset) => { setBackground(asset); setShowBgPicker(false); }}
             onClose={() => setShowBgPicker(false)}
+          />
+        )}
+
+        {showThemePicker && (
+          <ThemePickerModal
+            category="scripture"
+            onPick={(t) => { setShowThemePicker(false); handleLoadTheme(t); }}
+            onClose={() => setShowThemePicker(false)}
           />
         )}
 
@@ -189,13 +227,19 @@ export default function ScriptureEditor({ onClose, onSave }) {
           </div>
           <div className="flex-1 flex items-center justify-center min-h-0 overflow-hidden">
             {/* Height-bound 16:9 box: fits the available section regardless of toolbar height */}
-            <div className="h-full max-w-full" style={{ aspectRatio: '16 / 9' }}>
+            <div className="h-full max-w-full relative" style={{ aspectRatio: '16 / 9' }}>
               {previewTemplate === 'lowerthird' ? (
                 <LowerThirdPreview text={SAMPLE_TEXT} runs={[]} style={style} copyright={refLine} copyrightAlign="right" copyrightStyle={refStyle} />
               ) : (
                 <SlidePreview text={SAMPLE_TEXT} runs={[]} style={style} backgroundPath={background?.path ?? null} copyright={refLine} copyrightAlign="right" copyrightStyle={refStyle}
                   onTextBoxChange={(box) => setStyle((s) => ({ ...s, textBox: box }))}
                   onRefPosChange={(pos) => setRefStyle((s) => ({ ...s, pos }))} />
+              )}
+              {bgLoading && (
+                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-xs bg-background/55 pointer-events-none">
+                  <span className="material-symbols-outlined text-primary animate-spin text-[28px]">progress_activity</span>
+                  <span className="text-[10px] font-mono uppercase tracking-[0.08em] text-on-surface-variant">Loading background…</span>
+                </div>
               )}
             </div>
           </div>

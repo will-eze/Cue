@@ -1,0 +1,23 @@
+{
+  "name": "Signal",
+  "category": "song",
+  "sort_order": 8,
+  "style": {
+    "fontFamily": "Roboto",
+    "color": "#eafffb",
+    "fontSize": 76,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 28,
+      "color": "rgba(0,0,0,0.55)"
+    },
+    "bgCss": "#0f3d3e",
+    "ltBar": {
+      "color": "#08302f",
+      "opacity": 0.9,
+      "solid": true
+    }
+  }
+}

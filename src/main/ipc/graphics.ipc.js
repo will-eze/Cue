@@ -8,4 +8,5 @@ export function registerGraphicsIpc() {
   ipcMain.handle('graphics:update', (_e, id, data) => graphics.update(id, data));
   ipcMain.handle('graphics:delete', (_e, id) => graphics.del(id));
   ipcMain.handle('graphics:reorder', (_e, orderedIds) => graphics.reorder(orderedIds));
+  ipcMain.handle('graphics:presets', () => graphics.presets());
 }

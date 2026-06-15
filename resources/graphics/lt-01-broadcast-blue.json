@@ -1,0 +1,13 @@
+{
+  "name": "Broadcast Blue",
+  "kind": "lower_third",
+  "graphic": {
+    "label": "Broadcast Blue",
+    "name": "Sarah Bennett",
+    "title": "Worship Pastor",
+    "style_json": {
+      "name":  { "fontFamily": "Inter", "fontSize": 54, "color": "#ffffff", "bold": true, "align": "left", "verticalAlign": "bottom", "textBox": { "x": 4, "y": 72, "w": 52, "h": 20 }, "ltBar": { "color": "#0b1f3a", "opacity": 0.92, "solid": false } },
+      "title": { "fontFamily": "Inter", "fontSize": 28, "color": "#7fb0ff", "bold": false, "align": "left" }
+    }
+  }
+}

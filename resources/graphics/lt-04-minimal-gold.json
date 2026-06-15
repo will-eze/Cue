@@ -1,0 +1,13 @@
+{
+  "name": "Minimal Gold",
+  "kind": "lower_third",
+  "graphic": {
+    "label": "Minimal Gold",
+    "name": "Sarah Bennett",
+    "title": "Worship Pastor",
+    "style_json": {
+      "name":  { "fontFamily": "Inter", "fontSize": 60, "color": "#ffffff", "bold": false, "align": "left", "verticalAlign": "bottom", "textBox": { "x": 5, "y": 72, "w": 60, "h": 20 }, "ltBar": null, "textShadow": { "enabled": true, "x": 0, "y": 2, "blur": 18, "color": "#000000" } },
+      "title": { "fontFamily": "JetBrains Mono", "fontSize": 24, "color": "#e8c074", "bold": false, "uppercase": true, "letterSpacing": 0.2, "align": "left" }
+    }
+  }
+}

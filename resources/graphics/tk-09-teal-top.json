@@ -1,0 +1,10 @@
+{
+  "name": "Teal Top",
+  "kind": "ticker",
+  "graphic": {
+    "label": "Teal Top",
+    "text": "Welcome guests · Fill out a connect card · Coffee is on us in the lobby",
+    "speed": 100,
+    "style_json": { "fontFamily": "JetBrains Mono", "fontSize": 26, "color": "#04241f", "letterSpacing": 0.04, "position": "top", "bar": { "color": "#16e0a3", "opacity": 1 } }
+  }
+}

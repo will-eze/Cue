@@ -1,0 +1,13 @@
+{
+  "name": "Sunrise Count Up",
+  "kind": "countdown",
+  "graphic": {
+    "label": "Sunrise Count Up",
+    "text": "On air",
+    "style_json": {
+      "mode": "countup", "source": "duration", "durationSec": 300, "targetClock": "11:00", "format": "24h", "showSeconds": true, "endMessage": "",
+      "time":    { "fontFamily": "Oswald", "fontSize": 160, "color": "#ffb020", "bold": true, "align": "center", "verticalAlign": "center", "textBox": { "x": 20, "y": 28, "w": 60, "h": 44 }, "ltBar": null, "textShadow": { "enabled": true, "x": 0, "y": 4, "blur": 26, "color": "#3a1d00" } },
+      "message": { "fontFamily": "JetBrains Mono", "fontSize": 30, "color": "#ffd98a", "uppercase": true, "letterSpacing": 0.26, "align": "center" }
+    }
+  }
+}

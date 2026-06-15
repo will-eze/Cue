@@ -1,0 +1,21 @@
+<!-- name: Skew Strike -->
+<style>
+  .sk { position:absolute; left:0; bottom:140px; }
+  .sk .bar { display:inline-block; transform:skewX(-12deg); transform-origin:left;
+    background:linear-gradient(90deg,#00e0c6,#00a3ff); padding:14px 64px 14px 100px; margin-left:-44px;
+    clip-path:inset(0 100% 0 0); }
+  .sk .bar2 { background:linear-gradient(90deg,#0a0e1a,#162338); margin-top:10px; }
+  .cue-in .sk .bar  { animation: sk-wipe .55s cubic-bezier(.2,.8,.2,1) forwards; }
+  .cue-in .sk .bar2 { animation-delay:.12s; }
+  .cue-out .sk .bar { animation: sk-unwipe .4s ease forwards; }
+  .sk .inner { transform:skewX(12deg); }
+  .sk .n { font:800 54px/1 'Oswald',Inter,sans-serif; text-transform:uppercase; letter-spacing:.02em; color:#04141a; }
+  .sk .t { font:600 24px/1 'JetBrains Mono',ui-monospace,monospace; letter-spacing:.14em; text-transform:uppercase; color:#9fe9ff; }
+  .sk .t:empty { display:none; }
+  @keyframes sk-wipe   { from { clip-path:inset(0 100% 0 0); } to { clip-path:inset(0 0 0 0); } }
+  @keyframes sk-unwipe { from { clip-path:inset(0 0 0 0); } to { clip-path:inset(0 0 0 100%); } }
+</style>
+<div class="sk">
+  <div class="bar"><div class="inner"><div class="n">{{name}}</div></div></div>
+  <div class="bar bar2"><div class="inner"><div class="t">{{title}}</div></div></div>
+</div>

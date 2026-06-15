@@ -53,6 +53,11 @@ body {
 }
 .dot-pulse { animation: pulse-dot 1.4s ease-in-out infinite; }
 
+/* ── Ticker crawl (preview) ────────────────────────────────── */
+/* Mirrors output/graphics-overlay.js so the editor + gallery previews scroll
+   horizontally exactly like the live ticker. */
+@keyframes cue-ticker-crawl { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+
 /* ── Tally states ──────────────────────────────────────────── */
 .tally-live    { border-left: 4px solid #ffb3ad; background: rgba(164,2,23,0.12); }
 .tally-preview { border-left: 4px solid #adc6ff; background: rgba(77,142,255,0.08); }

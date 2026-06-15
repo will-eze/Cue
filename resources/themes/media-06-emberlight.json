@@ -1,0 +1,21 @@
+{
+  "name": "Emberlight",
+  "category": "song",
+  "sort_order": 25,
+  "style": {
+    "fontFamily": "Cormorant Garamond",
+    "color": "#f8ecd6",
+    "fontSize": 90,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 24,
+      "color": "rgba(0,0,0,0.9)"
+    },
+    "bgRef": "library/coverr-bokeh-lit-candle-ssevqevlcp.mp4",
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(6,8,12,0.94) 0%, rgba(6,8,12,0.82) 70%, rgba(6,8,12,0) 100%)"
+    }
+  }
+}

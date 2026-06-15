@@ -1,0 +1,10 @@
+{
+  "name": "Sunset",
+  "kind": "ticker",
+  "graphic": {
+    "label": "Sunset",
+    "text": "Summer series starts Sunday · New message every week · Invite your neighbours",
+    "speed": 110,
+    "style_json": { "fontFamily": "Oswald", "fontSize": 30, "color": "#ffffff", "uppercase": true, "letterSpacing": 0.03, "position": "bottom", "bar": { "color": "#ff5a2c", "opacity": 1 } }
+  }
+}

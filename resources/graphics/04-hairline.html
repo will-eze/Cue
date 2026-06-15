@@ -1,0 +1,23 @@
+<!-- name: Hairline -->
+<style>
+  .hl { position:absolute; left:96px; bottom:150px; }
+  .hl .n { font:300 64px/1 Inter,system-ui,sans-serif; letter-spacing:.01em; color:#fff;
+    text-shadow:0 2px 20px rgba(0,0,0,.5); opacity:0; transform:translateY(18px); }
+  .hl .rule { height:2px; width:0; background:linear-gradient(90deg,#ffd166,transparent); margin-top:14px; }
+  .hl .t { font:500 22px/1 'JetBrains Mono',ui-monospace,monospace; letter-spacing:.3em; text-transform:uppercase;
+    color:#ffd166; margin-top:18px; opacity:0; }
+  .hl .t:empty { display:none; }
+  .cue-in .hl .n    { animation: hl-up .6s cubic-bezier(.2,.9,.2,1) .05s forwards; }
+  .cue-in .hl .rule { animation: hl-draw .7s cubic-bezier(.6,0,.2,1) .25s forwards; }
+  .cue-in .hl .t    { animation: hl-fade .5s ease .5s forwards; }
+  .cue-out .hl { animation: hl-out .4s ease forwards; }
+  @keyframes hl-up   { to { opacity:1; transform:translateY(0); } }
+  @keyframes hl-draw { to { width:440px; } }
+  @keyframes hl-fade { to { opacity:1; } }
+  @keyframes hl-out  { to { opacity:0; transform:translateX(-30px); } }
+</style>
+<div class="hl">
+  <div class="n">{{name}}</div>
+  <div class="rule"></div>
+  <div class="t">{{title}}</div>
+</div>

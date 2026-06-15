@@ -1,0 +1,23 @@
+<!-- name: Side Rail -->
+<style>
+  .sr { position:absolute; left:0; bottom:120px; display:flex; align-items:stretch; transform:translateX(-100%); }
+  .cue-in .sr  { animation: sr-in .55s cubic-bezier(.2,.85,.2,1) forwards; }
+  .cue-out .sr { animation: sr-out .4s ease forwards; }
+  .sr .rail { width:54px; background:linear-gradient(180deg,#16e0a3,#04b3c4); display:flex; align-items:center; justify-content:center; }
+  .sr .rail span { writing-mode:vertical-rl; transform:rotate(180deg); font:700 16px/1 'JetBrains Mono',ui-monospace,monospace;
+    letter-spacing:.3em; text-transform:uppercase; color:#04141a; }
+  .sr .body { background:rgba(8,12,18,0.85); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+    padding:22px 48px; display:flex; flex-direction:column; justify-content:center; }
+  .sr .n { font:700 50px/1.04 Inter,system-ui,sans-serif; color:#fff; }
+  .sr .t { font:500 24px/1.2 Inter,system-ui,sans-serif; color:#7af0cf; margin-top:6px; }
+  .sr .t:empty { display:none; }
+  @keyframes sr-in  { to { transform:translateX(0); } }
+  @keyframes sr-out { to { transform:translateX(-100%); } }
+</style>
+<div class="sr">
+  <div class="rail"><span>{{text}}</span></div>
+  <div class="body">
+    <div class="n">{{name}}</div>
+    <div class="t">{{title}}</div>
+  </div>
+</div>

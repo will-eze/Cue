@@ -20,6 +20,18 @@ html, body {
   display: block;
 }
 
+/* Dark scrim between background (z0) and content (z1). Same z-index as the
+   background but later in the DOM, so it paints over the media yet under text.
+   Opacity is driven by the slide style's bgScrim (0 = off). */
+#scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: #000;
+  opacity: 0;
+  pointer-events: none;
+}
+
 #content {
   position: absolute;
   inset: 0;

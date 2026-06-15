@@ -1,0 +1,13 @@
+{
+  "name": "Serif Elegant",
+  "kind": "countdown",
+  "graphic": {
+    "label": "Serif Elegant",
+    "text": "The service begins in",
+    "style_json": {
+      "mode": "countdown", "source": "duration", "durationSec": 300, "targetClock": "11:00", "format": "24h", "showSeconds": true, "endMessage": "Welcome",
+      "time":    { "fontFamily": "Cormorant Garamond", "fontSize": 170, "color": "#f4ecd8", "bold": true, "align": "center", "verticalAlign": "center", "textBox": { "x": 20, "y": 28, "w": 60, "h": 44 }, "ltBar": null },
+      "message": { "fontFamily": "JetBrains Mono", "fontSize": 30, "color": "#d4b478", "uppercase": true, "letterSpacing": 0.34, "align": "center" }
+    }
+  }
+}

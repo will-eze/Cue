@@ -1,0 +1,13 @@
+{
+  "name": "Target Time",
+  "kind": "countdown",
+  "graphic": {
+    "label": "Target Time",
+    "text": "Doors close at 11:00",
+    "style_json": {
+      "mode": "countdown", "source": "target", "durationSec": 300, "targetClock": "11:00", "format": "12h", "showSeconds": true, "endMessage": "We've begun",
+      "time":    { "fontFamily": "Oswald", "fontSize": 156, "color": "#ffffff", "bold": true, "align": "center", "verticalAlign": "center", "textBox": { "x": 20, "y": 28, "w": 60, "h": 44 }, "ltBar": null, "textShadow": { "enabled": true, "x": 0, "y": 3, "blur": 20, "color": "#000000" } },
+      "message": { "fontFamily": "JetBrains Mono", "fontSize": 32, "color": "#ffd166", "uppercase": true, "letterSpacing": 0.2, "align": "center" }
+    }
+  }
+}

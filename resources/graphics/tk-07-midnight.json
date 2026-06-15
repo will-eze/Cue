@@ -1,0 +1,10 @@
+{
+  "name": "Midnight",
+  "kind": "ticker",
+  "graphic": {
+    "label": "Midnight",
+    "text": "Tonight: prayer & worship at 7 PM · Livestream on the app · All are welcome",
+    "speed": 100,
+    "style_json": { "fontFamily": "Inter", "fontSize": 30, "color": "#cfe0ff", "position": "bottom", "bar": { "color": "#0a1228", "opacity": 0.95 } }
+  }
+}

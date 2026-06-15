@@ -16,12 +16,14 @@ import { registerRemoteIpc, applyRemoteConfig } from './ipc/remote.ipc.js';
 import { registerFontsIpc } from './ipc/fonts.ipc.js';
 import { registerYoutubeIpc } from './ipc/youtube.ipc.js';
 import { registerScriptureDetectIpc } from './ipc/scripture-detect.ipc.js';
+import { registerBackgroundLibraryIpc } from './ipc/background-library.ipc.js';
 import * as scriptureDetect from './scripture-detect/manager.js';
 import * as youtube from './youtube/downloader.js';
 import { purgeYoutubeItems } from './db/services.js';
 import * as remoteServer from './remote/server.js';
 import { seedBundledBibles } from './db/bible.js';
 import { seedGhsHymnal } from './db/songs.js';
+import { seedBundledThemes } from './db/themes.js';
 import * as outputManager from './output/manager.js';
 import { isAvailable as ndiAvailable } from './output/ndi.js';
 import { thumbCachePath, getThumbnailDir } from './db/media.js';
@@ -233,6 +235,7 @@ app.whenReady().then(async () => {
   initDb();
   seedBundledBibles();
   seedGhsHymnal();
+  seedBundledThemes();
 
   // Ephemeral YouTube downloads never survive a session. Wipe any leftover files
   // from a previous run (e.g. a crash where will-quit never fired), and drop the
@@ -253,6 +256,7 @@ app.whenReady().then(async () => {
   registerFontsIpc();
   registerYoutubeIpc();
   registerScriptureDetectIpc();
+  registerBackgroundLibraryIpc();
 
   createMainWindow();
   outputManager.setMainWindow(mainWindow);
