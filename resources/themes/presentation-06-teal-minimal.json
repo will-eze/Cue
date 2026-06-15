@@ -1,0 +1,17 @@
+{
+  "name": "Teal Minimal",
+  "category": "presentation",
+  "sort_order": 66,
+  "style": {
+    "kind": "pres-theme",
+    "bg": "linear-gradient(160deg,#04242a,#0a3a44)",
+    "display": "Inter",
+    "body": "Inter",
+    "title": "#ffffff",
+    "sub": "#7fe0d0",
+    "bodyColor": "#bfe9e0",
+    "accent": "#16e0a3",
+    "accentText": "#04241f",
+    "kicker": "#5fe0c8"
+  }
+}

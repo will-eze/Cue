@@ -1,0 +1,19 @@
+{
+  "name": "Cinematic",
+  "category": "presentation",
+  "sort_order": 70,
+  "style": {
+    "kind": "pres-theme",
+    "bg": "radial-gradient(circle at 50% 38%,#1c1c1c,#000000)",
+    "display": "Cinzel",
+    "body": "Inter",
+    "quoteFont": "Cormorant Garamond",
+    "title": "#f4ecd8",
+    "sub": "#c9c2b0",
+    "bodyColor": "#d8d2c4",
+    "accent": "#d4b478",
+    "accentText": "#1a1206",
+    "kicker": "#d4b478",
+    "serif": true
+  }
+}

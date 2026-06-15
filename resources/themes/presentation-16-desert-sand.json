@@ -1,0 +1,19 @@
+{
+  "name": "Desert Sand",
+  "category": "presentation",
+  "sort_order": 76,
+  "style": {
+    "kind": "pres-theme",
+    "bg": "linear-gradient(160deg,#1c1408,#3a2a14)",
+    "display": "Marcellus",
+    "body": "EB Garamond",
+    "quoteFont": "Cormorant Garamond",
+    "title": "#f6ecd6",
+    "sub": "#d8c79a",
+    "bodyColor": "#e8dcc0",
+    "accent": "#e0a64e",
+    "accentText": "#1c1206",
+    "kicker": "#e0a64e",
+    "serif": true
+  }
+}

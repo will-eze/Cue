@@ -1,0 +1,17 @@
+{
+  "name": "Pure Light",
+  "category": "presentation",
+  "sort_order": 62,
+  "style": {
+    "kind": "pres-theme",
+    "bg": "linear-gradient(160deg,#f5f7fb,#dbe4f0)",
+    "display": "Montserrat",
+    "body": "Montserrat",
+    "title": "#0a0e1a",
+    "sub": "#41506a",
+    "bodyColor": "#2a3650",
+    "accent": "#1d4ed8",
+    "accentText": "#ffffff",
+    "kicker": "#1d4ed8"
+  }
+}

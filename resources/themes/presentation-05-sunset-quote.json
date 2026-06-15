@@ -1,0 +1,18 @@
+{
+  "name": "Sunset Quote",
+  "category": "presentation",
+  "sort_order": 65,
+  "style": {
+    "kind": "pres-theme",
+    "bg": "linear-gradient(135deg,#3a1020,#7a2a12)",
+    "display": "Oswald",
+    "body": "Inter",
+    "quoteFont": "Cormorant Garamond",
+    "title": "#ffffff",
+    "sub": "#ffd0b0",
+    "bodyColor": "#ffe3d0",
+    "accent": "#ffce6b",
+    "accentText": "#3a1208",
+    "kicker": "#ffce6b"
+  }
+}

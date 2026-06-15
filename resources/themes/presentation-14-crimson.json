@@ -1,0 +1,18 @@
+{
+  "name": "Crimson",
+  "category": "presentation",
+  "sort_order": 74,
+  "style": {
+    "kind": "pres-theme",
+    "bg": "linear-gradient(135deg,#1a0608,#7a0f1a)",
+    "display": "Oswald",
+    "body": "Inter",
+    "title": "#ffffff",
+    "sub": "#ffb3b8",
+    "bodyColor": "#ffd6d9",
+    "accent": "#ff3b4e",
+    "accentText": "#2a0408",
+    "kicker": "#ff8a93",
+    "titleUpper": true
+  }
+}

@@ -11,6 +11,8 @@ import { FormattingToolbar } from './SongEditor';
 import MediaPickerModal from './MediaPickerModal';
 import { useFonts } from '../utils/fonts';
 import { mediaUrl } from '../utils/mediaUrl';
+import { StaticSlide } from './SlideElements';
+import { PRES_LAYOUTS, PLAIN_THEME, buildThemeSlide, reskinSlide, detectThemeId } from '../utils/presentationThemes';
 
 const NATIVE_W = 1920;
 const NATIVE_H = 1080;
@@ -22,30 +24,6 @@ function newTextElement() {
   return { id: newId(), type: 'text', x: 15, y: 38, w: 70, h: 24, rotation: 0, opacity: 1, z: 1,
     text: 'New text', style: { align: 'center', verticalAlign: 'center', color: '#ffffff', fontSize: 72 } };
 }
-function txt(text, box, style) {
-  return { id: newId(), type: 'text', rotation: 0, opacity: 1, z: 1, ...box, text, style };
-}
-
-// Built-in slide layouts — pre-arranged element sets the operator picks when adding
-// a slide (build() returns fresh-id elements each call).
-const LAYOUTS = [
-  { id: 'blank', name: 'Blank', build: () => [] },
-  { id: 'title', name: 'Title Page', build: () => [
-    txt('Title', { x: 10, y: 40, w: 80, h: 20 }, { align: 'center', verticalAlign: 'center', color: '#ffffff', fontSize: 96, bold: true }),
-  ] },
-  { id: 'title-sub', name: 'Title + Subtitle', build: () => [
-    txt('Title', { x: 10, y: 33, w: 80, h: 18 }, { align: 'center', verticalAlign: 'center', color: '#ffffff', fontSize: 88, bold: true }),
-    txt('Subtitle', { x: 15, y: 56, w: 70, h: 12 }, { align: 'center', verticalAlign: 'center', color: '#c2c6d6', fontSize: 48 }),
-  ] },
-  { id: 'title-body', name: 'Title + Body', build: () => [
-    txt('Title', { x: 8, y: 8, w: 84, h: 16 }, { align: 'left', verticalAlign: 'center', color: '#ffffff', fontSize: 72, bold: true }),
-    txt('Body text', { x: 8, y: 28, w: 84, h: 64 }, { align: 'left', verticalAlign: 'top', color: '#ffffff', fontSize: 44, lineSpacing: 1.3 }),
-  ] },
-  { id: 'section', name: 'Section Header', build: () => [
-    { id: newId(), type: 'shape', shape: 'rect', x: 0, y: 42, w: 100, h: 16, rotation: 0, opacity: 1, z: 0, fill: '#4d8eff' },
-    txt('Section', { x: 10, y: 42, w: 80, h: 16 }, { align: 'center', verticalAlign: 'center', color: '#ffffff', fontSize: 80, bold: true }),
-  ] },
-];
 function newImageElement(asset) {
   return { id: newId(), type: 'image', x: 30, y: 25, w: 40, h: 50, rotation: 0, opacity: 1, z: 1,
     mediaId: asset.id, path: asset.path, mediaType: asset.type, fit: 'contain' };
@@ -208,7 +186,8 @@ export default function PresentationEditor({ presentationId, onClose, onSave }) 
   const [picker, setPicker] = useState(null); // 'element' | 'background'
   const [ctxMenu, setCtxMenu] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [slideMenuOpen, setSlideMenuOpen] = useState(false);
+  const [newSlideOpen, setNewSlideOpen] = useState(false);
+  const [applyOpen, setApplyOpen] = useState(false);
   const canvasRef = useRef(null);
   const [scale, setScale] = useState(0.4);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
@@ -263,13 +242,21 @@ export default function PresentationEditor({ presentationId, onClose, onSave }) 
     patchElement({ ...selected, z: minZ - 1 });
   }
 
-  function addSlide(layout) {
-    const elements = layout ? layout.build() : [];
-    const label = layout && layout.id !== 'blank' ? layout.name : null;
-    setSlides((arr) => [...arr, { _key: newId(), label, background_id: null, background_path: null, elements }]);
+  // Add a slide composed from a theme × layout (buildThemeSlide bakes the theme's
+  // background as a full-bleed gradient shape — fully offline — and tags each element
+  // with its role so the deck can be re-skinned later). PLAIN_THEME = "No theme".
+  function addThemedSlide(tokens, layoutId) {
+    const elements = buildThemeSlide(tokens, layoutId);
+    setSlides((arr) => [...arr, { _key: newId(), label: null, background_id: null, background_path: null, elements }]);
     setCur(slides.length);
     setSelId(null);
-    setSlideMenuOpen(false);
+    setNewSlideOpen(false);
+  }
+  // Re-skin existing slides with a theme: this slide, or the whole deck.
+  function applyTheme(tokens, scope) {
+    if (scope === 'all') setSlides((arr) => arr.map((s) => ({ ...s, elements: reskinSlide(tokens, s.elements) })));
+    else patchSlide({ elements: reskinSlide(tokens, slide.elements) });
+    setApplyOpen(false);
   }
   function duplicateSlide(i) {
     const src = slides[i];
@@ -361,25 +348,10 @@ export default function PresentationEditor({ presentationId, onClose, onSave }) 
               </SortableContext>
             </DndContext>
           </div>
-          <div className="relative m-sm">
-            {slideMenuOpen && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setSlideMenuOpen(false)} />
-                <div className="absolute bottom-full mb-xs left-0 right-0 z-20 bg-surface-container-high border border-outline-variant/40 rounded-lg shadow-2xl py-xs">
-                  <p className="px-md py-1 text-[10px] font-label-sm uppercase tracking-widest text-on-surface-variant/60">New slide</p>
-                  {LAYOUTS.map((l) => (
-                    <button key={l.id} onClick={() => addSlide(l)}
-                      className="block w-full text-left px-md py-xs text-label-sm font-label-sm text-on-surface hover:bg-surface-variant transition-colors">
-                      {l.name}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-            <button onClick={() => setSlideMenuOpen((o) => !o)}
+          <div className="m-sm">
+            <button onClick={() => setNewSlideOpen(true)}
               className="w-full bg-surface-container border border-outline-variant/40 text-on-surface px-md py-xs rounded text-label-sm font-label-sm hover:bg-surface-container-high transition-colors flex items-center justify-center gap-xs">
               <span className="material-symbols-outlined text-[14px]">add</span> Slide
-              <span className="material-symbols-outlined text-[14px]">arrow_drop_down</span>
             </button>
           </div>
         </div>
@@ -395,6 +367,8 @@ export default function PresentationEditor({ presentationId, onClose, onSave }) 
             <div className="w-px h-5 bg-outline-variant/40 mx-xs" />
             <AddBtn icon="wallpaper" label="Background" onClick={() => setPicker('background')} />
             {slide?.background_path && <AddBtn icon="hide_image" label="Clear BG" onClick={() => patchSlide({ background_id: null, background_path: null })} />}
+            <div className="ml-auto" />
+            <AddBtn icon="palette" label="Apply Theme" onClick={() => setApplyOpen(true)} />
           </div>
           <div className="flex-1 min-h-0 flex items-center justify-center p-lg overflow-hidden">
             <div ref={canvasRef} onPointerDown={() => setSelId(null)}
@@ -426,6 +400,8 @@ export default function PresentationEditor({ presentationId, onClose, onSave }) 
         </div>
       </div>
 
+      {newSlideOpen && <NewSlideModal currentElements={slide?.elements} onAdd={addThemedSlide} onClose={() => setNewSlideOpen(false)} />}
+      {applyOpen && <ApplyThemeModal hasSlide={!!slide} onApply={applyTheme} onClose={() => setApplyOpen(false)} />}
       {picker && <MediaPickerModal onSelect={onPickMedia} onClose={() => setPicker(null)} />}
       {ctxMenu && createPortal(
         <>
@@ -451,6 +427,158 @@ function AddBtn({ icon, label, onClick }) {
 }
 function MenuItem({ children, onClick, danger }) {
   return <button onClick={onClick} className={`block w-full text-left px-md py-xs hover:bg-surface-variant transition-colors ${danger ? 'text-error' : 'text-on-surface'}`}>{children}</button>;
+}
+
+// Load built-in presentation themes (themes table, category 'presentation') and
+// parse their token style_json. Returns [{ id, name, tokens }].
+function usePresentationThemes() {
+  const [themes, setThemes] = useState([]);
+  useEffect(() => {
+    window.cue.themes.list().then((list) => {
+      const out = [];
+      for (const t of (list || [])) {
+        if ((t.category || 'song') !== 'presentation') continue;
+        let tokens = null;
+        try { tokens = typeof t.style_json === 'string' ? JSON.parse(t.style_json) : t.style_json; } catch {}
+        if (tokens) out.push({ id: t.id, name: t.name, tokens });
+      }
+      setThemes(out);
+    }).catch(() => {});
+  }, []);
+  return themes;
+}
+
+function useEscape(onClose) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+}
+
+// New-slide modal: pick a theme (left rail, incl. "No theme") → see it across every
+// layout as tiles (right) → click a theme×layout tile to add that slide. Defaults the
+// selected theme to the deck's current one (detected from the active slide) so adding
+// slides stays within the chosen theme pack — the rail still lets you switch.
+function NewSlideModal({ currentElements, onAdd, onClose }) {
+  const themes = usePresentationThemes();
+  const [query, setQuery] = useState('');
+  const [selId, setSelId] = useState('__plain');
+  const seeded = useRef(false);
+  useEscape(onClose);
+
+  // Once themes load, default the selection to the deck's current theme (one-shot, so
+  // it doesn't fight the user's own rail clicks afterward).
+  useEffect(() => {
+    if (seeded.current || !themes.length) return;
+    seeded.current = true;
+    const id = detectThemeId(currentElements, themes);
+    if (id) setSelId(id);
+  }, [themes, currentElements]);
+
+  const all = [{ id: '__plain', name: 'No theme', tokens: PLAIN_THEME }, ...themes];
+  const q = query.trim().toLowerCase();
+  const list = q ? all.filter((t) => t.name.toLowerCase().includes(q)) : all;
+  const sel = all.find((t) => t.id === selId) || all[0];
+
+  return createPortal(
+    <div className="fixed inset-0 z-[70] bg-background/90 flex flex-col" onMouseDown={onClose}>
+      <div className="flex-1 min-h-0 flex flex-col m-lg bg-surface-container-low rounded-xl border border-outline-variant/30 shadow-2xl ring-1 ring-white/5 overflow-hidden"
+        onMouseDown={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-lg py-md border-b border-outline-variant/30 bg-surface-container-high flex-shrink-0 gap-md">
+          <h3 className="text-label-sm font-label-sm text-on-surface uppercase tracking-[0.05em] flex items-center gap-sm shrink-0">
+            <span className="material-symbols-outlined text-primary text-[20px]">grid_view</span>New slide
+          </h3>
+          <div className="flex-1 max-w-sm relative">
+            <span className="material-symbols-outlined absolute left-sm top-1/2 -translate-y-1/2 text-on-surface-variant/60 text-[18px]">search</span>
+            <input value={query} onChange={(e) => setQuery(e.target.value)} autoFocus placeholder="Search themes…"
+              className="w-full pl-[34px] pr-sm py-xs text-body-sm bg-surface-container rounded-lg border border-outline-variant/30 text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:border-primary/50" />
+          </div>
+          <button onClick={onClose} className="text-on-surface-variant hover:text-on-surface cursor-pointer flex items-center shrink-0">
+            <span className="material-symbols-outlined">close</span>
+          </button>
+        </div>
+        <div className="flex-1 min-h-0 flex">
+          {/* Theme rail */}
+          <div className="w-60 shrink-0 border-r border-outline-variant/30 overflow-y-auto custom-scrollbar p-sm flex flex-col gap-xs">
+            {list.map((t) => (
+              <button key={t.id} onClick={() => setSelId(t.id)}
+                className={`flex items-center gap-sm p-xs rounded-lg border text-left transition-colors ${t.id === selId ? 'border-primary/60 bg-primary/10' : 'border-transparent hover:bg-surface-variant'}`}>
+                <div className="w-24 shrink-0"><StaticSlide elements={buildThemeSlide(t.tokens, 'title')} /></div>
+                <span className="text-label-sm font-mono text-on-surface truncate min-w-0">{t.name}</span>
+              </button>
+            ))}
+          </div>
+          {/* Layout tiles for the selected theme */}
+          <div className="flex-1 min-w-0 overflow-y-auto custom-scrollbar p-lg">
+            <p className="text-[10px] font-label-sm uppercase tracking-widest text-on-surface-variant/60 mb-sm">{sel?.name} · pick a layout</p>
+            <div className="grid gap-md" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
+              {PRES_LAYOUTS.map((l) => (
+                <div key={l.id} role="button" tabIndex={0}
+                  onClick={() => onAdd(sel.tokens, l.id)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAdd(sel.tokens, l.id); } }}
+                  className="bg-surface-container border border-outline-variant/30 rounded-xl overflow-hidden flex flex-col cursor-pointer hover:border-primary/50 hover:ring-1 hover:ring-primary/30 active:scale-[0.99] transition-all">
+                  <div className="p-sm pb-0"><StaticSlide elements={buildThemeSlide(sel.tokens, l.id)} /></div>
+                  <div className="px-md py-sm"><span className="text-label-sm font-mono text-on-surface truncate">{l.name}</span></div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// Apply-theme modal: re-skin this slide or the whole deck with a theme (preserves
+// content + positions; swaps background, fonts, colours by element role).
+function ApplyThemeModal({ hasSlide, onApply, onClose }) {
+  const themes = usePresentationThemes();
+  const [scope, setScope] = useState('slide');
+  useEscape(onClose);
+  const choices = [{ id: '__plain', name: 'No theme', tokens: PLAIN_THEME }, ...themes];
+
+  return createPortal(
+    <div className="fixed inset-0 z-[70] bg-background/90 flex flex-col" onMouseDown={onClose}>
+      <div className="flex-1 min-h-0 flex flex-col m-lg bg-surface-container-low rounded-xl border border-outline-variant/30 shadow-2xl ring-1 ring-white/5 overflow-hidden"
+        onMouseDown={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-lg py-md border-b border-outline-variant/30 bg-surface-container-high flex-shrink-0 gap-md">
+          <h3 className="text-label-sm font-label-sm text-on-surface uppercase tracking-[0.05em] flex items-center gap-sm shrink-0">
+            <span className="material-symbols-outlined text-primary text-[20px]">palette</span>Apply a theme
+          </h3>
+          <div className="flex items-center gap-[2px] bg-surface-container rounded-lg p-[3px]">
+            {[{ id: 'slide', label: 'This slide' }, { id: 'all', label: 'All slides' }].map((s) => (
+              <button key={s.id} onClick={() => setScope(s.id)} disabled={s.id === 'slide' && !hasSlide}
+                className={`px-md py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] transition-colors cursor-pointer disabled:opacity-30 ${scope === s.id ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>
+                {s.label}
+              </button>
+            ))}
+          </div>
+          <button onClick={onClose} className="text-on-surface-variant hover:text-on-surface cursor-pointer flex items-center shrink-0">
+            <span className="material-symbols-outlined">close</span>
+          </button>
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto p-lg custom-scrollbar">
+          <p className="text-[10px] font-label-sm uppercase tracking-widest text-on-surface-variant/60 mb-sm">
+            Re-skins {scope === 'all' ? 'every slide' : 'the current slide'} — keeps your text & positions.
+          </p>
+          <div className="grid gap-md" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
+            {choices.map((t) => (
+              <div key={t.id} role="button" tabIndex={0}
+                onClick={() => onApply(t.tokens, scope)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onApply(t.tokens, scope); } }}
+                className="bg-surface-container border border-outline-variant/30 rounded-xl overflow-hidden flex flex-col cursor-pointer hover:border-primary/50 hover:ring-1 hover:ring-primary/30 active:scale-[0.99] transition-all">
+                <div className="p-sm pb-0"><StaticSlide elements={buildThemeSlide(t.tokens, 'title-sub')} /></div>
+                <div className="px-md py-sm"><span className="text-label-sm font-mono text-on-surface truncate">{t.name}</span></div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
 }
 
 // Per-type element inspector. Text reuses SongEditor's FormattingToolbar (simple

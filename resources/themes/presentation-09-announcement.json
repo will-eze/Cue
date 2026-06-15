@@ -1,0 +1,18 @@
+{
+  "name": "Announcement",
+  "category": "presentation",
+  "sort_order": 69,
+  "style": {
+    "kind": "pres-theme",
+    "bg": "linear-gradient(120deg,#102a5c,#1d4ed8)",
+    "display": "Oswald",
+    "body": "Inter",
+    "title": "#ffffff",
+    "sub": "#cfe0ff",
+    "bodyColor": "#e3ecff",
+    "accent": "#ffd166",
+    "accentText": "#1a1205",
+    "kicker": "#ffd166",
+    "titleUpper": true
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "Berry",
+  "category": "presentation",
+  "sort_order": 79,
+  "style": {
+    "kind": "pres-theme",
+    "bg": "linear-gradient(135deg,#240a2e,#5a1a6e)",
+    "display": "Poppins",
+    "body": "Inter",
+    "title": "#ffffff",
+    "sub": "#e6b8ff",
+    "bodyColor": "#f0d8ff",
+    "accent": "#ff5edb",
+    "accentText": "#2a0a30",
+    "kicker": "#ff9ae8"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "Scripture Slide",
+  "category": "presentation",
+  "sort_order": 68,
+  "style": {
+    "kind": "pres-theme",
+    "bg": "linear-gradient(180deg,#0c1424,#0a0f1a)",
+    "display": "Cormorant Garamond",
+    "body": "Inter",
+    "quoteFont": "Cormorant Garamond",
+    "title": "#ffffff",
+    "sub": "#9bc4ff",
+    "bodyColor": "#d6e2f5",
+    "accent": "#7cc0ff",
+    "accentText": "#02132e",
+    "kicker": "#9bc4ff",
+    "serif": true
+  }
+}

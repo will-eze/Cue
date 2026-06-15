@@ -1,0 +1,19 @@
+{
+  "name": "Deep Ocean",
+  "category": "presentation",
+  "sort_order": 78,
+  "style": {
+    "kind": "pres-theme",
+    "bg": "linear-gradient(180deg,#021a2e,#063a52)",
+    "display": "Lora",
+    "body": "Inter",
+    "quoteFont": "Lora",
+    "title": "#eaf6ff",
+    "sub": "#8fc8e6",
+    "bodyColor": "#cbe6f3",
+    "accent": "#34c6e0",
+    "accentText": "#02202c",
+    "kicker": "#7fd6ec",
+    "serif": true
+  }
+}

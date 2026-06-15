@@ -50,10 +50,19 @@ export function create(data) {
 }
 
 export function update(id, data) {
-  const { name, style_json, background_id } = data;
-  getDb().prepare(
-    `UPDATE themes SET name=?, style_json=?, background_id=?, updated_at=datetime('now') WHERE id=?`
-  ).run(name, style_json ?? null, background_id ?? null, id);
+  const { name, style_json, background_id, category } = data;
+  // `category` is optional: when the editor lets the user retarget a theme to a
+  // different content surface (song/scripture/presentation) it's passed through;
+  // older callers that omit it leave the existing category untouched.
+  if (category === undefined) {
+    getDb().prepare(
+      `UPDATE themes SET name=?, style_json=?, background_id=?, updated_at=datetime('now') WHERE id=?`
+    ).run(name, style_json ?? null, background_id ?? null, id);
+  } else {
+    getDb().prepare(
+      `UPDATE themes SET name=?, style_json=?, background_id=?, category=?, updated_at=datetime('now') WHERE id=?`
+    ).run(name, style_json ?? null, background_id ?? null, category, id);
+  }
 }
 
 export function del(id) {

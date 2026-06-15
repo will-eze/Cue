@@ -11,6 +11,7 @@ import ContextMenu from '../components/ContextMenu';
 import MediaPickerModal from '../components/MediaPickerModal';
 import SongPreviewModal from '../components/SongPreviewModal';
 import SongEditor from '../components/SongEditor';
+import PresentationEditor from '../components/PresentationEditor';
 import MediaThumb from '../components/MediaThumb';
 
 function SortableItem({ item, index, isPreview, isLive, onClick, onDoubleClick, onContextMenu }) {
@@ -317,6 +318,7 @@ export default function RundownPanel({
   const [advanceForItem, setAdvanceForItem] = useState(null);
   const [previewSong, setPreviewSong] = useState(null);
   const [editSong, setEditSong] = useState(null);
+  const [editPresentation, setEditPresentation] = useState(null);
   const [themes, setThemes] = useState([]);
 
   // Load themes for the song context menu's "Apply Theme" entries (song-category only).
@@ -590,6 +592,13 @@ export default function RundownPanel({
                 },
               }] : []),
             ] : []),
+            ...(contextMenu.item.item_type === 'presentation' ? [
+              { separator: true },
+              {
+                label: 'Edit Presentation',
+                onClick: () => { setEditPresentation({ id: contextMenu.item.ref_id }); setContextMenu(null); },
+              },
+            ] : []),
             ...((contextMenu.item.item_type === 'media' || contextMenu.item.item_type === 'youtube') ? [
               { separator: true },
               {
@@ -670,6 +679,14 @@ export default function RundownPanel({
           song={editSong}
           onClose={() => setEditSong(null)}
           onSave={() => { setEditSong(null); onRefresh?.(); onSongEdited?.(); }}
+        />
+      )}
+
+      {editPresentation !== null && (
+        <PresentationEditor
+          presentationId={editPresentation.id || null}
+          onClose={() => setEditPresentation(null)}
+          onSave={() => { setEditPresentation(null); onRefresh?.(); }}
         />
       )}
     </div>

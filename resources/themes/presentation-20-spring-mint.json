@@ -1,0 +1,17 @@
+{
+  "name": "Spring Mint",
+  "category": "presentation",
+  "sort_order": 80,
+  "style": {
+    "kind": "pres-theme",
+    "bg": "linear-gradient(160deg,#0a221c,#13443a)",
+    "display": "Jost",
+    "body": "Inter",
+    "title": "#ffffff",
+    "sub": "#9fe6cf",
+    "bodyColor": "#cdeede",
+    "accent": "#43e9c0",
+    "accentText": "#04241c",
+    "kicker": "#7af0d8"
+  }
+}

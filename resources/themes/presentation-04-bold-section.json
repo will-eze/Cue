@@ -1,0 +1,19 @@
+{
+  "name": "Bold Section",
+  "category": "presentation",
+  "sort_order": 64,
+  "style": {
+    "kind": "pres-theme",
+    "bg": "linear-gradient(120deg,#0a0e1a,#04343a)",
+    "display": "Oswald",
+    "body": "Inter",
+    "title": "#ffffff",
+    "sub": "#8fe9da",
+    "bodyColor": "#cfeee7",
+    "accent": "#00e0c6",
+    "accentText": "#04141a",
+    "kicker": "#00e0c6",
+    "titleUpper": true,
+    "sectionUpper": true
+  }
+}

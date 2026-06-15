@@ -1,0 +1,17 @@
+{
+  "name": "Forest Green",
+  "category": "presentation",
+  "sort_order": 72,
+  "style": {
+    "kind": "pres-theme",
+    "bg": "linear-gradient(160deg,#06120c,#103a22)",
+    "display": "Archivo",
+    "body": "Inter",
+    "title": "#ffffff",
+    "sub": "#9fd8b5",
+    "bodyColor": "#cfeede",
+    "accent": "#43e97b",
+    "accentText": "#04241a",
+    "kicker": "#7af0a8"
+  }
+}

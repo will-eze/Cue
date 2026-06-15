@@ -1,0 +1,17 @@
+{
+  "name": "Midnight Title",
+  "category": "presentation",
+  "sort_order": 61,
+  "style": {
+    "kind": "pres-theme",
+    "bg": "linear-gradient(135deg,#0b1220,#1b2b4a)",
+    "display": "Inter",
+    "body": "Inter",
+    "title": "#ffffff",
+    "sub": "#9fb6d6",
+    "bodyColor": "#cdd9ee",
+    "accent": "#4d8eff",
+    "accentText": "#02132e",
+    "kicker": "#7fb0ff"
+  }
+}

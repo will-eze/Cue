@@ -1,0 +1,17 @@
+{
+  "name": "Mono Tech",
+  "category": "presentation",
+  "sort_order": 67,
+  "style": {
+    "kind": "pres-theme",
+    "bg": "#0a0e12",
+    "display": "Inter",
+    "body": "JetBrains Mono",
+    "title": "#ffffff",
+    "sub": "#9fb6d6",
+    "bodyColor": "#c3d0e0",
+    "accent": "#5fd0ff",
+    "accentText": "#02141c",
+    "kicker": "#5fd0ff"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "Charcoal",
+  "category": "presentation",
+  "sort_order": 77,
+  "style": {
+    "kind": "pres-theme",
+    "bg": "#16181d",
+    "display": "Bebas Neue",
+    "body": "Inter",
+    "title": "#ffffff",
+    "sub": "#aab2c0",
+    "bodyColor": "#cdd3de",
+    "accent": "#ffb020",
+    "accentText": "#1a1205",
+    "kicker": "#ffb020"
+  }
+}

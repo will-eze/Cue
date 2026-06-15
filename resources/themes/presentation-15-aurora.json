@@ -1,0 +1,17 @@
+{
+  "name": "Aurora",
+  "category": "presentation",
+  "sort_order": 75,
+  "style": {
+    "kind": "pres-theme",
+    "bg": "linear-gradient(135deg,#06121f,#0a2f4a 55%,#103a44)",
+    "display": "Jost",
+    "body": "Inter",
+    "title": "#ffffff",
+    "sub": "#9fe0ff",
+    "bodyColor": "#d0eefb",
+    "accent": "#38f9d7",
+    "accentText": "#042422",
+    "kicker": "#7fe9ff"
+  }
+}

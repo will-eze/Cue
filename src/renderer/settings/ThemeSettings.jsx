@@ -10,24 +10,187 @@ import MediaPickerModal from '../components/MediaPickerModal';
 import BackgroundLibrary from './BackgroundLibrary.jsx';
 import { themeKind } from '../utils/themeSort';
 import { mediaUrl } from '../utils/mediaUrl';
+import { StaticSlide } from '../components/SlideElements';
+import { buildThemeSlide, PRES_LAYOUTS } from '../utils/presentationThemes';
 import { useFonts } from '../utils/fonts';
 
 const SAMPLE_TEXT = 'Amazing Grace\nHow Sweet the Sound';
 
+const labelCls = 'block text-[9px] font-mono text-on-surface-variant/60 mb-0.5 uppercase tracking-[0.05em]';
+
+// Which content surfaces a custom theme can target. Song & scripture themes share
+// the song text-style shape (DEFAULT_STYLE + a media background) and differ only by
+// `category`; presentation themes are layout-agnostic tokens ({ kind:'pres-theme' }).
+const THEME_CATS = [
+  { id: 'song', label: 'Songs' },
+  { id: 'scripture', label: 'Scripture' },
+  { id: 'presentation', label: 'Presentations' },
+];
+
+// Default tokens for a brand-new presentation theme (mirrors the "Midnight Title"
+// built-in shape — see scripts/build-presentation-themes.mjs).
+const DEFAULT_PRES_TOKENS = {
+  kind: 'pres-theme', bg: 'linear-gradient(135deg,#0b1220,#1b2b4a)',
+  display: 'Inter', body: 'Inter', quoteFont: 'Cormorant Garamond',
+  title: '#ffffff', sub: '#9fb6d6', bodyColor: '#cdd9ee',
+  accent: '#4d8eff', accentText: '#02132e', kicker: '#7fb0ff',
+  titleUpper: false, sectionUpper: false, serif: false,
+};
+
+// ─── Presentation token editor ─────────────────────────────────────────────
+// Edits a { kind:'pres-theme', … } token bag: background (solid/gradient/custom
+// CSS), heading/body/quote fonts, role colours, and case/serif flags. buildThemeSlide
+// composes any layout from these, so the slide preview stays WYSIWYG with output.
+
+// Parse a token bg string back into editable controls. Simple 2-stop linear gradients
+// and solid hex colours round-trip; anything else (radial, multi-stop) drops to a raw
+// CSS field so it's never silently lost.
+function parseBg(bg) {
+  const d = { mode: 'gradient', solid: '#0a0e1a', c1: '#0b1220', c2: '#1b2b4a', angle: 135, raw: bg || '' };
+  if (!bg) return d;
+  const s = bg.trim();
+  const color = '(#[0-9a-fA-F]{3,8}|rgba?\\([^)]+\\))';
+  const lin = new RegExp(`^linear-gradient\\(\\s*(-?\\d+)deg\\s*,\\s*${color}\\s*,\\s*${color}\\s*\\)$`).exec(s);
+  if (lin) return { ...d, mode: 'gradient', angle: Number(lin[1]), c1: lin[2], c2: lin[3] };
+  if (/^#[0-9a-fA-F]{3,8}$/.test(s)) return { ...d, mode: 'solid', solid: s };
+  return { ...d, mode: 'custom', raw: s };
+}
+
+function PresBgEditor({ value, onChange }) {
+  const [bg, setBg] = useState(() => parseBg(value));
+  // Recompose the CSS bg from the editable parts and push it up.
+  const push = (next) => {
+    setBg(next);
+    const css = next.mode === 'solid' ? next.solid
+      : next.mode === 'gradient' ? `linear-gradient(${next.angle}deg,${next.c1},${next.c2})`
+      : next.raw;
+    onChange(css);
+  };
+  const modes = [['solid', 'Solid'], ['gradient', 'Gradient'], ['custom', 'CSS']];
+  return (
+    <div className="flex flex-col gap-xs">
+      <span className={labelCls}>Background</span>
+      <div className="flex items-center gap-[2px] bg-surface-container rounded p-[2px] w-fit">
+        {modes.map(([id, label]) => (
+          <button key={id} onClick={() => push({ ...bg, mode: id })}
+            className={`px-sm py-[2px] text-[9px] font-mono rounded uppercase tracking-[0.05em] transition-colors cursor-pointer ${bg.mode === id ? 'bg-primary text-on-primary' : 'text-on-surface-variant/60 hover:text-on-surface-variant'}`}>{label}</button>
+        ))}
+      </div>
+      {bg.mode === 'solid' && (
+        <Swatch value={bg.solid} onChange={(v) => push({ ...bg, solid: v })} />
+      )}
+      {bg.mode === 'gradient' && (
+        <div className="flex items-center gap-sm">
+          <Swatch value={bg.c1} onChange={(v) => push({ ...bg, c1: v })} />
+          <Swatch value={bg.c2} onChange={(v) => push({ ...bg, c2: v })} />
+          <label className="flex items-center gap-1 text-[10px] font-mono text-on-surface-variant/70">
+            <span className="uppercase tracking-[0.05em]">Angle</span>
+            <input type="number" value={bg.angle} onChange={(e) => push({ ...bg, angle: Number(e.target.value) })}
+              className="w-14 bg-surface-container-lowest border border-outline-variant/40 rounded px-1 py-[2px] text-on-surface outline-none focus:border-primary" />
+          </label>
+        </div>
+      )}
+      {bg.mode === 'custom' && (
+        <input value={bg.raw} onChange={(e) => push({ ...bg, raw: e.target.value })}
+          placeholder="radial-gradient(circle, #000, #111)"
+          className="w-full bg-surface-container-lowest border border-outline-variant/40 rounded px-sm py-1 text-[11px] font-mono text-on-surface outline-none focus:border-primary" />
+      )}
+    </div>
+  );
+}
+
+function Swatch({ value, onChange }) {
+  return <input type="color" value={value || '#000000'} onChange={(e) => onChange(e.target.value)}
+    className="w-8 h-8 rounded cursor-pointer bg-transparent border border-outline-variant/30 shrink-0" />;
+}
+
+function FontSelect({ label, value, onChange, fonts }) {
+  return (
+    <label className="flex flex-col gap-0.5 min-w-0">
+      <span className={labelCls}>{label}</span>
+      <select value={value || ''} onChange={(e) => onChange(e.target.value)}
+        className="w-full bg-surface-container-lowest border border-outline-variant/40 rounded px-sm py-1 text-[11px] font-mono text-on-surface outline-none focus:border-primary cursor-pointer">
+        {fonts.map((f) => <option key={f.family} value={f.family}>{f.label || f.family}</option>)}
+      </select>
+    </label>
+  );
+}
+
+function ColorRow({ label, value, onChange }) {
+  return (
+    <label className="flex items-center justify-between gap-sm">
+      <span className="text-[10px] font-mono text-on-surface-variant/70 uppercase tracking-[0.04em] truncate">{label}</span>
+      <Swatch value={value} onChange={onChange} />
+    </label>
+  );
+}
+
+function PresThemeEditor({ tokens, setTokens, fonts }) {
+  const setTok = (k, v) => setTokens((t) => ({ ...t, [k]: v }));
+  const flag = (k, label) => (
+    <label className="flex items-center gap-xs cursor-pointer">
+      <input type="checkbox" checked={!!tokens[k]} onChange={(e) => setTok(k, e.target.checked)} className="accent-primary w-3 h-3" />
+      <span className="text-[10px] font-mono text-on-surface-variant/70 uppercase tracking-[0.04em]">{label}</span>
+    </label>
+  );
+  return (
+    <div className="px-lg py-md grid grid-cols-2 gap-lg border-b border-outline-variant/20">
+      {/* Left: background + fonts + flags */}
+      <div className="flex flex-col gap-md min-w-0">
+        <PresBgEditor value={tokens.bg} onChange={(v) => setTok('bg', v)} />
+        <div className="grid grid-cols-1 gap-sm">
+          <FontSelect label="Heading font" value={tokens.display} onChange={(v) => setTok('display', v)} fonts={fonts} />
+          <FontSelect label="Body font" value={tokens.body} onChange={(v) => setTok('body', v)} fonts={fonts} />
+          <FontSelect label="Quote font" value={tokens.quoteFont} onChange={(v) => setTok('quoteFont', v)} fonts={fonts} />
+        </div>
+        <div className="flex flex-wrap gap-md pt-xs">
+          {flag('titleUpper', 'Uppercase titles')}
+          {flag('sectionUpper', 'Uppercase sections')}
+          {flag('serif', 'Serif headings')}
+        </div>
+      </div>
+      {/* Right: role colours */}
+      <div className="flex flex-col gap-sm min-w-0">
+        <span className={labelCls}>Colours</span>
+        <ColorRow label="Title" value={tokens.title} onChange={(v) => setTok('title', v)} />
+        <ColorRow label="Subtitle" value={tokens.sub} onChange={(v) => setTok('sub', v)} />
+        <ColorRow label="Body" value={tokens.bodyColor} onChange={(v) => setTok('bodyColor', v)} />
+        <ColorRow label="Accent" value={tokens.accent} onChange={(v) => setTok('accent', v)} />
+        <ColorRow label="Accent text (on accent)" value={tokens.accentText} onChange={(v) => setTok('accentText', v)} />
+        <ColorRow label="Kicker / reference" value={tokens.kicker} onChange={(v) => setTok('kicker', v)} />
+      </div>
+    </div>
+  );
+}
+
 // ─── Theme Editor Modal ────────────────────────────────────────────────────
 
-function ThemeEditorModal({ theme, onClose, onSaved }) {
+function ThemeEditorModal({ theme, initialCategory, onClose, onSaved }) {
+  const startCat = theme?.category || initialCategory || 'song';
+  const [category, setCategory] = useState(startCat);
   const [name, setName] = useState(theme?.name ?? '');
+  // Song/scripture text-style state. (Skip parsing if the theme being edited is a
+  // presentation theme — its style_json holds tokens, not a text style.)
   const [style, setStyle] = useState(() =>
-    theme?.style_json ? { ...DEFAULT_STYLE, ...JSON.parse(theme.style_json) } : { ...DEFAULT_STYLE }
+    (theme?.category !== 'presentation' && theme?.style_json)
+      ? { ...DEFAULT_STYLE, ...JSON.parse(theme.style_json) } : { ...DEFAULT_STYLE }
   );
   const [background, setBackground] = useState(
     theme?.background_id ? { id: theme.background_id, path: theme.background_path, filename: theme.background_filename } : null
   );
+  // Presentation token state (independent of `style`, so toggling category keeps both).
+  const [tokens, setTokens] = useState(() => {
+    if (theme?.category === 'presentation' && theme?.style_json) {
+      try { return { ...DEFAULT_PRES_TOKENS, ...JSON.parse(theme.style_json) }; } catch {}
+    }
+    return { ...DEFAULT_PRES_TOKENS };
+  });
   const [showBgPicker, setShowBgPicker] = useState(false);
   const [previewTemplate, setPreviewTemplate] = useState('fullscreen');
+  const [previewLayout, setPreviewLayout] = useState('title-sub');
   const [saving, setSaving] = useState(false);
   const fonts = useFonts();
+  const isPres = category === 'presentation';
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape' && !showBgPicker) onClose(); };
@@ -41,8 +204,9 @@ function ThemeEditorModal({ theme, onClose, onSaved }) {
     try {
       const data = {
         name: name.trim(),
-        style_json: JSON.stringify(style),
-        background_id: background?.id ?? null,
+        style_json: JSON.stringify(isPres ? tokens : style),
+        background_id: isPres ? null : (background?.id ?? null),
+        category,
       };
       if (theme?.id) {
         await window.cue.themes.update(theme.id, data);
@@ -54,8 +218,6 @@ function ThemeEditorModal({ theme, onClose, onSaved }) {
       setSaving(false);
     }
   }
-
-  const labelCls = 'block text-[9px] font-mono text-on-surface-variant/60 mb-0.5 uppercase tracking-[0.05em]';
 
   return createPortal(
     <div className="fixed inset-0 bg-background/90 backdrop-blur-sm flex items-center justify-center z-50 p-2">
@@ -71,6 +233,16 @@ function ThemeEditorModal({ theme, onClose, onSaved }) {
             <p className="text-[9px] font-mono text-on-surface-variant/50 uppercase tracking-[0.06em]">Theme Editor</p>
           </div>
           <div className="flex-1" />
+          {/* Target surface — switches the editor between the song text-style and the
+              presentation token editor; elements below update accordingly. */}
+          <div className="flex items-center gap-[2px] bg-surface-container rounded-lg p-[3px]">
+            {THEME_CATS.map((c) => (
+              <button key={c.id} onClick={() => setCategory(c.id)}
+                className={`px-md py-1 rounded text-label-sm font-mono uppercase tracking-[0.05em] transition-colors cursor-pointer ${category === c.id ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>
+                {c.label}
+              </button>
+            ))}
+          </div>
           <button onClick={onClose}
             className="w-7 h-7 flex items-center justify-center rounded-full text-on-surface-variant hover:text-on-surface hover:bg-surface-variant transition-colors cursor-pointer text-sm">
             ✕
@@ -88,6 +260,8 @@ function ThemeEditorModal({ theme, onClose, onSaved }) {
               className="w-full bg-surface-container-lowest text-on-surface text-body-sm rounded-lg px-md py-1.5 border border-outline-variant/50 outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors"
             />
           </div>
+          {/* Presentation backgrounds are CSS tokens (edited below), not a media asset. */}
+          {!isPres && (
           <div>
             <label className={labelCls}>Background</label>
             <div className="flex items-center gap-sm">
@@ -116,56 +290,80 @@ function ThemeEditorModal({ theme, onClose, onSaved }) {
               )}
             </div>
           </div>
+          )}
         </div>
 
-        {/* Formatting toolbar */}
-        <FormattingToolbar
-          style={style}
-          onChange={setStyle}
-          fonts={fonts}
-          hasSelection={() => false}
-          execCmd={() => {}}
-          previewTemplate={previewTemplate}
-        />
+        {isPres ? (
+          <>
+            {/* Presentation token editor */}
+            <PresThemeEditor tokens={tokens} setTokens={setTokens} fonts={fonts} />
 
-        {/* Preview — width-bound so it derives its height from the modal width
-            (the modal is content-sized; a height-bound box would collapse to 0). */}
-        <div className="p-md bg-surface-container-lowest">
-          <div className="flex items-center justify-between mb-sm">
-            <span className="text-[9px] font-mono text-on-surface-variant/40 uppercase tracking-[0.06em]">
-              {previewTemplate === 'lowerthird' ? 'Lower Third Preview' : 'Fullscreen Preview'}
-            </span>
-            <div className="flex items-center gap-[2px] bg-surface-container rounded p-[2px]">
-              {[
-                { id: 'fullscreen', label: 'Full' },
-                { id: 'lowerthird', label: 'L3' },
-              ].map(({ id, label }) => (
-                <button
-                  key={id}
-                  onMouseDown={(e) => { e.preventDefault(); setPreviewTemplate(id); }}
-                  className={`px-sm h-[18px] text-[9px] font-mono rounded transition-colors cursor-pointer uppercase tracking-[0.05em] ${
-                    previewTemplate === id
-                      ? 'bg-primary text-on-primary'
-                      : 'text-on-surface-variant/50 hover:text-on-surface-variant'
-                  }`}
-                >{label}</button>
-              ))}
+            {/* Slide preview — rendered from the tokens across a selectable layout. */}
+            <div className="p-md bg-surface-container-lowest">
+              <div className="flex items-center justify-between mb-sm">
+                <span className="text-[9px] font-mono text-on-surface-variant/40 uppercase tracking-[0.06em]">Slide Preview</span>
+                <select value={previewLayout} onChange={(e) => setPreviewLayout(e.target.value)}
+                  className="bg-surface-container border border-outline-variant/30 rounded px-sm py-[2px] text-[10px] font-mono text-on-surface outline-none focus:border-primary cursor-pointer">
+                  {PRES_LAYOUTS.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+                </select>
+              </div>
+              <div className="w-full max-w-xl mx-auto">
+                <StaticSlide elements={buildThemeSlide(tokens, previewLayout)} />
+              </div>
             </div>
-          </div>
-          <div className="w-full">
-            {previewTemplate === 'lowerthird' ? (
-              <LowerThirdPreview text={SAMPLE_TEXT} runs={[]} style={style} />
-            ) : (
-              <SlidePreview
-                text={SAMPLE_TEXT}
-                runs={[]}
-                style={style}
-                backgroundPath={background?.path ?? null}
-                onTextBoxChange={(box) => setStyle((s) => ({ ...s, textBox: box }))}
-              />
-            )}
-          </div>
-        </div>
+          </>
+        ) : (
+          <>
+            {/* Formatting toolbar */}
+            <FormattingToolbar
+              style={style}
+              onChange={setStyle}
+              fonts={fonts}
+              hasSelection={() => false}
+              execCmd={() => {}}
+              previewTemplate={previewTemplate}
+            />
+
+            {/* Preview — width-bound so it derives its height from the modal width
+                (the modal is content-sized; a height-bound box would collapse to 0). */}
+            <div className="p-md bg-surface-container-lowest">
+              <div className="flex items-center justify-between mb-sm">
+                <span className="text-[9px] font-mono text-on-surface-variant/40 uppercase tracking-[0.06em]">
+                  {previewTemplate === 'lowerthird' ? 'Lower Third Preview' : 'Fullscreen Preview'}
+                </span>
+                <div className="flex items-center gap-[2px] bg-surface-container rounded p-[2px]">
+                  {[
+                    { id: 'fullscreen', label: 'Full' },
+                    { id: 'lowerthird', label: 'L3' },
+                  ].map(({ id, label }) => (
+                    <button
+                      key={id}
+                      onMouseDown={(e) => { e.preventDefault(); setPreviewTemplate(id); }}
+                      className={`px-sm h-[18px] text-[9px] font-mono rounded transition-colors cursor-pointer uppercase tracking-[0.05em] ${
+                        previewTemplate === id
+                          ? 'bg-primary text-on-primary'
+                          : 'text-on-surface-variant/50 hover:text-on-surface-variant'
+                      }`}
+                    >{label}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="w-full">
+                {previewTemplate === 'lowerthird' ? (
+                  <LowerThirdPreview text={SAMPLE_TEXT} runs={[]} style={style} />
+                ) : (
+                  <SlidePreview
+                    text={SAMPLE_TEXT}
+                    runs={[]}
+                    style={style}
+                    backgroundPath={background?.path ?? null}
+                    onTextBoxChange={(box) => setStyle((s) => ({ ...s, textBox: box }))}
+                  />
+                )}
+              </div>
+            </div>
+          </>
+        )}
 
         {/* Footer */}
         <div className="flex items-center justify-end gap-sm px-lg py-sm border-t border-outline-variant/30 bg-surface-container-high flex-shrink-0">
@@ -202,6 +400,9 @@ function ThemeCard({ theme, services, onEdit, onDelete, onApplied, bgThumb, song
 
   const isBuiltin = !!theme.builtin;
   const style = theme.style_json ? { ...DEFAULT_STYLE, ...JSON.parse(theme.style_json) } : { ...DEFAULT_STYLE };
+  // Presentation themes are element layouts (not a section text style), so they
+  // preview with the slide-element renderer rather than the song SlidePreview.
+  const isPresentation = (theme.category || 'song') === 'presentation';
   // A theme carries a background if it has a media asset, an authored CSS gradient,
   // or a media-library reference (bgRef) resolved on apply.
   const hasBackground = !!theme.background_id || !!style.bgCss || !!style.bgRef;
@@ -242,12 +443,16 @@ function ThemeCard({ theme, services, onEdit, onDelete, onApplied, bgThumb, song
     <div className="bg-surface-container border border-outline-variant/30 rounded-xl overflow-hidden flex flex-col">
       {/* Slide preview */}
       <div className="p-sm pb-0">
-        <SlidePreview
-          text={SAMPLE_TEXT}
-          runs={[]}
-          style={bgThumb ? { ...style, bgThumb } : style}
-          backgroundPath={theme.background_path ?? null}
-        />
+        {isPresentation ? (
+          <StaticSlide elements={buildThemeSlide(style, 'title-sub')} />
+        ) : (
+          <SlidePreview
+            text={SAMPLE_TEXT}
+            runs={[]}
+            style={bgThumb ? { ...style, bgThumb } : style}
+            backgroundPath={theme.background_path ?? null}
+          />
+        )}
       </div>
 
       {/* Name + edit/delete */}
@@ -447,7 +652,7 @@ export default function ThemeSettings() {
             </p>
           </div>
           <button
-            onClick={() => setEditingTheme({})}
+            onClick={() => setEditingTheme({ category: cat })}
             className="shrink-0 px-md py-xs text-label-sm font-label-sm font-bold bg-primary/10 border border-primary/30 text-primary rounded-lg hover:bg-primary/20 active:scale-95 transition-all cursor-pointer"
           >
             + New Theme
@@ -522,6 +727,7 @@ export default function ThemeSettings() {
       {editingTheme !== null && (
         <ThemeEditorModal
           theme={editingTheme?.id ? editingTheme : null}
+          initialCategory={editingTheme?.category || cat}
           onClose={() => setEditingTheme(null)}
           onSaved={() => { setEditingTheme(null); reload(); }}
         />

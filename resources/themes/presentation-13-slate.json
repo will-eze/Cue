@@ -1,0 +1,17 @@
+{
+  "name": "Slate",
+  "category": "presentation",
+  "sort_order": 73,
+  "style": {
+    "kind": "pres-theme",
+    "bg": "linear-gradient(160deg,#10141c,#222a38)",
+    "display": "Inter",
+    "body": "Inter",
+    "title": "#f2f5fa",
+    "sub": "#9aa6bd",
+    "bodyColor": "#c3ccdc",
+    "accent": "#6e8cff",
+    "accentText": "#0a0e1a",
+    "kicker": "#9fb0e0"
+  }
+}

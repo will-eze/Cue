@@ -1,0 +1,17 @@
+{
+  "name": "Royal Blue",
+  "category": "presentation",
+  "sort_order": 71,
+  "style": {
+    "kind": "pres-theme",
+    "bg": "linear-gradient(140deg,#0a1a4a,#2a4bd0)",
+    "display": "Poppins",
+    "body": "Inter",
+    "title": "#ffffff",
+    "sub": "#c7d4ff",
+    "bodyColor": "#e0e8ff",
+    "accent": "#ffffff",
+    "accentText": "#0a1a4a",
+    "kicker": "#bcd0ff"
+  }
+}

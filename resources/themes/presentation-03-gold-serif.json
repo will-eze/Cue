@@ -1,0 +1,19 @@
+{
+  "name": "Gold Serif",
+  "category": "presentation",
+  "sort_order": 63,
+  "style": {
+    "kind": "pres-theme",
+    "bg": "linear-gradient(180deg,#16130d,#241c10)",
+    "display": "Cormorant Garamond",
+    "body": "EB Garamond",
+    "quoteFont": "Cormorant Garamond",
+    "title": "#f4ecd8",
+    "sub": "#cbb892",
+    "bodyColor": "#e6dcc4",
+    "accent": "#d4b478",
+    "accentText": "#1a1206",
+    "kicker": "#d4b478",
+    "serif": true
+  }
+}
