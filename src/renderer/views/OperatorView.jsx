@@ -141,6 +141,9 @@ export default function OperatorView({
   const [detectArmed, setDetectArmed] = useState(false);
   const [detectTail, setDetectTail] = useState('');
   const [detectSuggestions, setDetectSuggestions] = useState([]);
+  // candidateId currently staged into preview by detection — gates re-staging so a
+  // commit confirming an interim doesn't flicker the preview monitor.
+  const previewCandidateRef = useRef(null);
   const { active: captureActive, error: captureError } = useScriptureCapture(detectArmed, detectCfg?.deviceId);
 
   useEffect(() => {
@@ -193,13 +196,35 @@ export default function OperatorView({
     // action: 'live' → straight to air · 'preview' → stage to preview monitor ·
     // 'suggest' → strip only. Everything also lands in the suggestion strip so the
     // operator has a record and can re-fire or dismiss.
+    //
+    // Detection is progressive: an INTERIM hypothesis (heard mid-sentence) can
+    // auto-Preview but NEVER auto-airs; the authoritative commit arrives with the
+    // same `candidateId` and either confirms in place (no re-stage/flicker) or
+    // corrects. We de-dupe + update by candidateId so the strip shows one evolving
+    // entry per detection, not a stack of partials.
     const offDet = window.cue.on('scripture:detected', async (d) => {
       const passage = await window.cue.bible.resolve(d.versionId, d.ref, 1);
       if (!passage) return;
-      const sugg = { id: `${d.mode}-${passage.reference}-${Date.now()}`, mode: d.mode, ref: passage.reference, confidence: d.confidence, action: d.action, passage };
-      setDetectSuggestions((prev) => [sugg, ...prev.filter((s) => s.ref !== passage.reference)].slice(0, 4));
-      if (d.action === 'live') goLiveFromPassage(passage);
-      else if (d.action === 'preview') { const v = passageToVerse(passage); if (v) stageScripturePreview(v); }
+      const candidateId = d.candidateId || `${d.mode}:${passage.reference}`;
+      const sugg = { id: candidateId, candidateId, mode: d.mode, ref: passage.reference, confidence: d.confidence, action: d.action, interim: !!d.interim, passage };
+      setDetectSuggestions((prev) => {
+        const exists = prev.some((s) => s.candidateId === candidateId);
+        const next = exists
+          ? prev.map((s) => (s.candidateId === candidateId ? { ...s, ...sugg } : s))
+          : [sugg, ...prev.filter((s) => s.ref !== passage.reference && s.candidateId !== candidateId)];
+        return next.slice(0, 4);
+      });
+      // Interim never auto-airs; only the confirmed commit can go live.
+      if (!d.interim && d.action === 'live') {
+        goLiveFromPassage(passage); previewCandidateRef.current = null;
+      } else if (d.action === 'preview') {
+        // Stage only when this candidate isn't already in preview — the commit
+        // confirming an interim must not re-stage (would flicker the monitor).
+        if (previewCandidateRef.current !== candidateId) {
+          const v = passageToVerse(passage);
+          if (v) { stageScripturePreview(v); previewCandidateRef.current = candidateId; }
+        }
+      }
     });
     const offStatus = window.cue.on('scripture:status', (s) => setDetectCfg(s));
     return () => { offTail(); offDet(); offStatus(); };
@@ -888,6 +913,27 @@ export default function OperatorView({
     }
   }
 
+  // Batch-append (Paste Song List). One service, one transaction, one refresh —
+  // a per-song loop over the stale activeServiceId closure would otherwise spawn a
+  // fresh service per song whenever none is active yet.
+  async function handleAddManyToRundown(songIds) {
+    const items = (songIds || []).map((id) => ({ item_type: 'song', ref_id: id }));
+    if (!items.length) return;
+    if (!activeServiceId) {
+      const id = await window.cue.services.create({
+        title: new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }),
+        date: new Date().toISOString().split('T')[0],
+      });
+      onServiceChange(id);
+      setServices(await window.cue.services.list());
+      await window.cue.services.addItems(id, items);
+      window.cue.services.get(id).then(setServiceData);
+    } else {
+      await window.cue.services.addItems(activeServiceId, items);
+      refreshService();
+    }
+  }
+
   async function handleAddScripture(passage) {
     const item = {
       item_type: 'scripture',
@@ -1076,8 +1122,8 @@ export default function OperatorView({
           suggestions={detectSuggestions}
           captureActive={captureActive}
           captureError={captureError || detectCfg?.error}
-          onGoLive={(s) => { goLiveFromPassage(s.passage); setDetectSuggestions((prev) => prev.filter((x) => x.id !== s.id)); }}
-          onDismiss={(s) => setDetectSuggestions((prev) => prev.filter((x) => x.id !== s.id))}
+          onGoLive={(s) => { goLiveFromPassage(s.passage); if (previewCandidateRef.current === s.candidateId) previewCandidateRef.current = null; setDetectSuggestions((prev) => prev.filter((x) => x.id !== s.id)); }}
+          onDismiss={(s) => { if (previewCandidateRef.current === s.candidateId) previewCandidateRef.current = null; setDetectSuggestions((prev) => prev.filter((x) => x.id !== s.id)); }}
         />
       )}
 
@@ -1094,6 +1140,7 @@ export default function OperatorView({
       <div className="flex-1 min-h-0 overflow-hidden">
         <LibraryPanel
           onAddToRundown={handleAddToRundown}
+          onAddManyToRundown={handleAddManyToRundown}
           onAddScripture={handleAddScripture}
           onScriptureLive={handleScriptureLive}
           onScriptureStyleSaved={loadScriptureDefaults}

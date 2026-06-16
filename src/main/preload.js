@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('cue', {
     importParse: (filePaths) => ipcRenderer.invoke('songs:importParse', filePaths),
     importGhs: () => ipcRenderer.invoke('songs:importGhs'),
     importCommit: (parsedSongs) => ipcRenderer.invoke('songs:importCommit', parsedSongs),
+    matchTitles: (rawText) => ipcRenderer.invoke('songs:matchTitles', rawText),
   },
   tags: {
     list: () => ipcRenderer.invoke('tags:list'),
@@ -31,6 +32,7 @@ contextBridge.exposeInMainWorld('cue', {
     delete: (id) => ipcRenderer.invoke('services:delete', id),
     reorderItems: (serviceId, orderedIds) => ipcRenderer.invoke('services:reorderItems', serviceId, orderedIds),
     addItem: (serviceId, item) => ipcRenderer.invoke('services:addItem', serviceId, item),
+    addItems: (serviceId, items) => ipcRenderer.invoke('services:addItems', serviceId, items),
     removeItem: (itemId) => ipcRenderer.invoke('services:removeItem', itemId),
     setItemBackground: (itemId, mediaId) => ipcRenderer.invoke('services:setItemBackground', itemId, mediaId),
     setItemNotes: (itemId, notes) => ipcRenderer.invoke('services:setItemNotes', itemId, notes),

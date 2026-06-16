@@ -91,6 +91,26 @@ async function streamDownload(url, destPath) {
   fs.renameSync(tmp, destPath);
 }
 
+// Unsplash download-tracking (ToS nicety). Fire-and-forget — never throws.
+// The photo short ID lives in item.file: "library/unsplash-{id}.jpg".
+// The ixid lives in the CDN URL query string (it encodes the app context).
+// A client_id (UNSPLASH_ACCESS_KEY env var) is required by the API; without it
+// the request gets a 401 and we swallow it — the CDN fetch with ixid still fires.
+function triggerUnsplashDownload(item) {
+  try {
+    const photoId = path.basename(item.file, path.extname(item.file)).replace(/^unsplash-/, '');
+    const u = new URL(item.url);
+    const ixid = u.searchParams.get('ixid');
+    const key = process.env.UNSPLASH_ACCESS_KEY || '';
+    const params = new URLSearchParams();
+    if (ixid) params.set('ixid', ixid);
+    if (key) params.set('client_id', key);
+    const qs = params.toString();
+    fetch(`https://api.unsplash.com/photos/${photoId}/download${qs ? '?' + qs : ''}`,
+      { headers: { 'User-Agent': 'CueApp/1.0' } }).catch(() => {});
+  } catch {}
+}
+
 // Download (once) into the local media library; idempotent via the map.
 export async function download(id) {
   const item = findItem(id);
@@ -113,6 +133,11 @@ export async function download(id) {
     .run(filename, destPath, type);
   const mediaId = Number(lastInsertRowid);
   map[id] = mediaId; saveDownloadMap(map);
+  // Unsplash ToS — trigger their download-tracking endpoint so the photographer's
+  // download count is credited. The CDN request above already carries the ixid
+  // tracking param; this is an additional best-effort signal. Requires a registered
+  // client_id (set UNSPLASH_ACCESS_KEY env var); silently skipped if absent.
+  if (item.source === 'unsplash') triggerUnsplashDownload(item);
   return { id: mediaId, path: destPath, type, filename };
 }
 

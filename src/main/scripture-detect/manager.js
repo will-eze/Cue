@@ -10,6 +10,7 @@ import { getDb } from '../db/schema.js';
 import { createAsr } from './asr.js';
 import { bestReference } from './reference-parser.js';
 import * as contentMatch from './content-match.js';
+import * as lexicalIndex from './lexical-index.js';
 import * as whisperBin from './whisper-bin.js';
 import * as embedBin from './embed-bin.js';
 
@@ -17,19 +18,42 @@ const CONFIG_KEY = 'scriptureDetect';
 const REF_COOLDOWN_MS = 8000;       // don't re-fire the same ref while still spoken
 const CONTENT_MIN_INTERVAL_MS = 1500;
 
+// Responsiveness presets bundle the latency-vs-accuracy knobs (asr.js VAD close +
+// interim cadence, and the lexical/semantic content path). 'balanced' is the default
+// and matches the shipped tuning; 'instant' leans on aggressive interims + a snappy
+// VAD close; 'accurate' restores the original behaviour (no interims, slow close).
+const PRESETS = {
+  instant:  { endSilenceMs: 300, interim: { enabled: true,  cadenceMs: 800,  softPauseMs: 240, model: 'tiny.en' }, lexical: { lexicalMinWords: 3, lexicalMinShared: 3, lexicalMinScore: 0.45, lexicalMinMargin: 0.06 } },
+  balanced: { endSilenceMs: 380, interim: { enabled: true,  cadenceMs: 1000, softPauseMs: 280, model: 'tiny.en' }, lexical: { lexicalMinWords: 4, lexicalMinShared: 3, lexicalMinScore: 0.50, lexicalMinMargin: 0.08 } },
+  accurate: { endSilenceMs: 550, interim: { enabled: false, cadenceMs: 1200, softPauseMs: 280, model: 'tiny.en' }, lexical: { lexicalMinWords: 5, lexicalMinShared: 4, lexicalMinScore: 0.55, lexicalMinMargin: 0.10 } },
+};
+
 function defaults() {
+  const p = PRESETS.balanced;
   return {
     enabled: false,
     deviceId: null,
     asrModel: whisperBin.autoModel(),
     matchVersionId: null,
+    // Responsiveness preset (see PRESETS). Changing it re-bundles the knobs below.
+    responsiveness: 'balanced',
+    // VAD utterance close + VAD-gated interim decode (asr.js). interim.model is a
+    // fast resident model for live partials; the commit still uses asrModel.
+    endSilenceMs: p.endSilenceMs,
+    interim: { ...p.interim },
     // autoAction: 'off' = suggest only · 'preview' = stage to preview · 'live' = auto go-live.
     // References auto-preview only when confidence clears referenceAutoConfidence;
     // below that (but above the referenceConfidence detection floor) they suggest.
     // Content matches are inherently lower-confidence → suggest by default.
     reference: { enabled: true, autoAction: 'preview' },
     content:   { enabled: true, autoAction: 'off' },
-    thresholds: { referenceConfidence: 0.6, referenceAutoConfidence: 0.8, contentMinScore: 0.62, contentMinMargin: 0.05, contentMinWords: 6 },
+    // Lexical path (verbatim quotes, runs on interims, cheap) gates first; the
+    // contentMin* gates are the MiniLM semantic fallback (paraphrase). See content-match.js.
+    thresholds: {
+      referenceConfidence: 0.6, referenceAutoConfidence: 0.8,
+      contentMinScore: 0.62, contentMinMargin: 0.05, contentMinWords: 6,
+      ...p.lexical,
+    },
   };
 }
 
@@ -40,9 +64,23 @@ let vectorBuild = { building: false, progress: null };
 
 // rolling state
 let recentWords = [];               // recent committed words for reference parsing
-let lastRef = null, lastRefAt = 0;
+let lastRef = null, lastRefAt = 0;          // last COMMITTED reference fired
+let interimRef = null, interimRefAt = 0;    // last INTERIM reference fired (separate)
 let lastContentRef = null, lastContentAt = 0;
+let interimContentRef = null, interimContentAt = 0;
 let lastContentRunAt = 0;
+
+// Apply a responsiveness preset's bundled knobs onto a config object (mutates a copy
+// the caller passes in). Leaves explicit per-key overrides the user later sets intact
+// — those are merged on top by setConfig after this runs.
+function applyPreset(target, name) {
+  const p = PRESETS[name] || PRESETS.balanced;
+  target.responsiveness = name;
+  target.endSilenceMs = p.endSilenceMs;
+  target.interim = { ...p.interim };
+  target.thresholds = { ...target.thresholds, ...p.lexical };
+  return target;
+}
 
 export function setMainWindow(win) { mainWindow = win; }
 function send(channel, payload) {
@@ -72,14 +110,26 @@ export function getConfig() {
 }
 
 export function setConfig(patch = {}) {
-  cfg = { ...cfg, ...patch,
-    reference: { ...cfg.reference, ...(patch.reference || {}) },
-    content: { ...cfg.content, ...(patch.content || {}) },
-    thresholds: { ...cfg.thresholds, ...(patch.thresholds || {}) },
+  const prev = cfg;
+  // A responsiveness change first re-bundles the preset's knobs, THEN any explicit
+  // fields in the same patch win on top (so the presets stay a starting point).
+  let base = cfg;
+  if (patch.responsiveness && patch.responsiveness !== cfg.responsiveness) {
+    base = applyPreset({ ...cfg }, patch.responsiveness);
+  }
+  cfg = { ...base, ...patch,
+    interim: { ...base.interim, ...(patch.interim || {}) },
+    reference: { ...base.reference, ...(patch.reference || {}) },
+    content: { ...base.content, ...(patch.content || {}) },
+    thresholds: { ...base.thresholds, ...(patch.thresholds || {}) },
   };
   settings.set(CONFIG_KEY, cfg);
-  // Re-arm ASR with the (possibly new) model.
-  if (asr?.isRunning() && patch.asrModel) { stop(); start(); }
+  // Re-arm ASR if anything that shapes the VAD/interim loop or the model changed.
+  const armChanged = patch.asrModel
+    || (patch.responsiveness && patch.responsiveness !== prev.responsiveness)
+    || patch.endSilenceMs != null
+    || patch.interim != null;
+  if (asr?.isRunning() && armChanged) { stop(); start(); }
   pushStatus();
   return getConfig();
 }
@@ -88,10 +138,12 @@ function pushStatus() { send('scripture:status', getConfig()); }
 
 export async function init() {
   const saved = settings.get(CONFIG_KEY);
-  cfg = { ...defaults(), ...(saved || {}),
-    reference: { ...defaults().reference, ...(saved?.reference || {}) },
-    content: { ...defaults().content, ...(saved?.content || {}) },
-    thresholds: { ...defaults().thresholds, ...(saved?.thresholds || {}) },
+  const d = defaults();
+  cfg = { ...d, ...(saved || {}),
+    interim: { ...d.interim, ...(saved?.interim || {}) },
+    reference: { ...d.reference, ...(saved?.reference || {}) },
+    content: { ...d.content, ...(saved?.content || {}) },
+    thresholds: { ...d.thresholds, ...(saved?.thresholds || {}) },
   };
 }
 
@@ -123,12 +175,33 @@ export function start() {
       if (!r?.ok) send('scripture:status', { ...getConfig(), error: r?.error || 'ASR model failed to load' });
       pushStatus(); // clears download field, reflects readiness
     });
-  dbg('start: arming VAD/ASR, model =', cfg.asrModel);
+  // Two-tier interims: keep a fast model resident for live partials alongside the
+  // commit model. Provision it in the background (a different repo from asrModel);
+  // until it's ready, interim decodes idle (transcribe → null) like the commit does.
+  const interimModel = cfg.interim?.enabled ? (cfg.interim.model || 'tiny.en') : null;
+  if (interimModel && interimModel !== cfg.asrModel) {
+    whisperBin.ensureModel(interimModel).then(() => pushStatus());
+  }
+  dbg('start: arming VAD/ASR, model =', cfg.asrModel, 'interim =', interimModel || 'off');
+  // Warm the lexical verse index off the hot path so the first interim content match
+  // doesn't pay the one-time ~31k-verse build mid-service.
+  if (cfg.content.enabled) {
+    const vid = cfg.matchVersionId ?? firstVersionId();
+    if (vid != null) setImmediate(() => { try { lexicalIndex.build(vid); } catch {} });
+  }
   audioFrames = 0; audioSamples = 0;
   asr = createAsr({
     modelName: cfg.asrModel,
+    config: {
+      endSilenceMs: cfg.endSilenceMs,
+      interimEnabled: !!cfg.interim?.enabled,
+      interimCadenceMs: cfg.interim?.cadenceMs,
+      softPauseMs: cfg.interim?.softPauseMs,
+      interimModel: cfg.interim?.model,
+    },
     onTranscript: (t) => send('scripture:transcript', t),
-    onCommitted: (fresh, committed) => onCommitted(fresh, committed),
+    onCommitted: (fresh, committed, meta) => onCommitted(fresh, committed, meta),
+    onInterim: (m) => onInterim(m),
     onError: (e) => { dbg('ASR error:', e); send('scripture:status', { ...getConfig(), error: e }); },
   });
   asr.start();
@@ -140,70 +213,130 @@ export function stop() {
   asr?.stop();
   asr = null;
   recentWords = [];
+  interimRef = null; interimRefAt = 0;
+  interimContentRef = null; interimContentAt = 0;
   pushStatus();
   return { ok: true };
 }
 
-function onCommitted(fresh, committed) {
+// Authoritative end-of-utterance commit (Whisper on the closed clip). This is the
+// source of truth: it CONFIRMS an interim already previewed (same candidateId, no
+// re-stage/flicker) or corrects it.
+function onCommitted(fresh, committed, meta = {}) {
   dbg('committed:', JSON.stringify(fresh));
   recentWords.push(...fresh.split(/\s+/).filter(Boolean));
   if (recentWords.length > 40) recentWords = recentWords.slice(-40);
 
-  if (cfg.reference.enabled) tryReference();
-  if (cfg.content.enabled) tryContent();
+  if (cfg.reference.enabled) detectReference(recentWords.slice(-12).join(' '), false, meta);
+  if (cfg.content.enabled) tryContent(recentWords.slice(-25).join(' '), false, meta);
 }
 
-function tryReference() {
-  // Parse the last ~12 words — enough to span "first corinthians thirteen verse four".
-  const window = recentWords.slice(-12).join(' ');
-  const ref = bestReference(window);
+// Interim hypothesis WHILE speech is still active (VAD-gated, latest-wins). Runs the
+// same cheap reference parse + lexical content match on the partial so an announced
+// reference resolves mid-sentence. Interims only ever stage a Preview — never Live.
+function onInterim({ text, onsetAt } = {}) {
+  if (!text) return;
+  dbg('interim:', JSON.stringify(text));
+  const w = text.split(/\s+/).filter(Boolean);
+  const meta = { onsetAt, interim: true };
+  if (cfg.reference.enabled) {
+    detectReference(recentWords.slice(-6).concat(w).slice(-12).join(' '), true, meta);
+  }
+  if (cfg.content.enabled) {
+    tryContent(recentWords.slice(-15).concat(w).slice(-25).join(' '), true, meta);
+  }
+}
+
+// candidateId is stable across an interim and its confirming/correcting commit (it's
+// the resolved ref), so OperatorView updates the suggestion IN PLACE rather than
+// prepending a duplicate. `interim` flips the cooldown bookkeeping: interim fires are
+// tracked separately so the final commit is allowed through as a CONFIRMATION, not
+// suppressed as a duplicate of the interim.
+function logLatency(kind, ref, meta) {
+  if (DBG && meta?.onsetAt) dbg(`latency onset→${kind} = ${Date.now() - meta.onsetAt} ms (${ref})`);
+}
+
+function detectReference(text, interim, meta) {
+  const ref = bestReference(text);
   if (!ref) return;
-  dbg('reference parse:', JSON.stringify(window), '→', ref.ref, `(conf ${ref.confidence.toFixed(2)}, floor ${cfg.thresholds.referenceConfidence})`);
+  dbg('reference parse:', JSON.stringify(text), '→', ref.ref, `(conf ${ref.confidence.toFixed(2)}, floor ${cfg.thresholds.referenceConfidence}${interim ? ', interim' : ''})`);
   if (ref.confidence < cfg.thresholds.referenceConfidence) return;
   const now = Date.now();
-  if (ref.ref === lastRef && now - lastRefAt < REF_COOLDOWN_MS) return;
-  lastRef = ref.ref; lastRefAt = now;
-  // High-confidence references take the configured auto-action (preview/live);
-  // lower-confidence ones are suggestions the operator confirms.
-  const action = (ref.confidence >= cfg.thresholds.referenceAutoConfidence && cfg.reference.autoAction !== 'off')
-    ? cfg.reference.autoAction : 'suggest';
-  dbg('DETECTED reference →', ref.ref, `action=${action} conf=${ref.confidence.toFixed(2)}`);
-  send('scripture:detected', {
-    mode: 'reference',
-    ref: ref.ref,
-    versionId: cfg.matchVersionId ?? firstVersionId(),
-    confidence: ref.confidence,
-    action,
-  });
+  const highConf = ref.confidence >= cfg.thresholds.referenceAutoConfidence;
+
+  if (interim) {
+    if (ref.ref === interimRef && now - interimRefAt < REF_COOLDOWN_MS) return;
+    interimRef = ref.ref; interimRefAt = now;
+    // Interim NEVER auto-airs: a 'live' auto-action is downgraded to Preview here;
+    // the authoritative commit (or operator GO) is the only path to air.
+    const action = (highConf && cfg.reference.autoAction !== 'off') ? 'preview' : 'suggest';
+    logLatency('ref(interim)', ref.ref, meta);
+    fireDetected('reference', ref.ref, ref.confidence, action, true, null);
+  } else {
+    // Confirming the interim we already previewed bypasses the duplicate cooldown.
+    const confirming = ref.ref === interimRef;
+    if (!confirming && ref.ref === lastRef && now - lastRefAt < REF_COOLDOWN_MS) return;
+    lastRef = ref.ref; lastRefAt = now;
+    if (confirming) interimRef = null;
+    const action = (highConf && cfg.reference.autoAction !== 'off') ? cfg.reference.autoAction : 'suggest';
+    logLatency('ref', ref.ref, meta);
+    fireDetected('reference', ref.ref, ref.confidence, action, false, null);
+  }
 }
 
-async function tryContent() {
+async function tryContent(text, interim, meta) {
+  // The commit path throttles its own cadence; interims are already rate-limited by
+  // the ASR interim cadence, so they bypass this gate to stay responsive.
   const now = Date.now();
-  if (now - lastContentRunAt < CONTENT_MIN_INTERVAL_MS) return;
-  lastContentRunAt = now;
+  if (!interim) {
+    if (now - lastContentRunAt < CONTENT_MIN_INTERVAL_MS) return;
+    lastContentRunAt = now;
+  }
   const vid = cfg.matchVersionId ?? firstVersionId();
   if (vid == null) return;
-  // Never build on the hot path — only match once the index exists (Settings builds it).
-  if (!embedBin.isReady() || !contentMatch.isBuilt(vid)) return;
-  const window = recentWords.slice(-25).join(' ');
   const gates = {
     minScore: cfg.thresholds.contentMinScore,
     minMargin: cfg.thresholds.contentMinMargin,
     minWords: cfg.thresholds.contentMinWords,
+    lexicalMinWords: cfg.thresholds.lexicalMinWords,
+    lexicalMinShared: cfg.thresholds.lexicalMinShared,
+    lexicalMinScore: cfg.thresholds.lexicalMinScore,
+    lexicalMinMargin: cfg.thresholds.lexicalMinMargin,
   };
+  // Lexical-first (verbatim) runs from the DB only; the MiniLM semantic fallback
+  // (paraphrase) needs the embedding index, which content-match handles internally.
   let res;
-  try { res = await contentMatch.match(vid, window, gates); } catch { return; }
+  try { res = await contentMatch.match(vid, text, gates); } catch { return; }
   if (!res?.ok) return;
-  if (res.hit.ref === lastContentRef && Date.now() - lastContentAt < REF_COOLDOWN_MS) return;
-  lastContentRef = res.hit.ref; lastContentAt = Date.now();
-  const action = cfg.content.autoAction !== 'off' ? cfg.content.autoAction : 'suggest';
-  dbg('DETECTED content →', res.hit.ref, `action=${action} score=${res.score.toFixed(2)}`);
+
+  if (interim) {
+    if (res.hit.ref === interimContentRef && now - interimContentAt < REF_COOLDOWN_MS) return;
+    interimContentRef = res.hit.ref; interimContentAt = now;
+    const action = cfg.content.autoAction === 'preview' ? 'preview' : 'suggest'; // never auto-live on interim
+    dbg('DETECTED content (interim) →', res.hit.ref, `via ${res.method || 'semantic'} action=${action} score=${res.score.toFixed(2)}`);
+    logLatency('content(interim)', res.hit.ref, meta);
+    fireDetected('content', res.hit.ref, res.score, action, true, res.hit);
+  } else {
+    const confirming = res.hit.ref === interimContentRef;
+    if (!confirming && res.hit.ref === lastContentRef && Date.now() - lastContentAt < REF_COOLDOWN_MS) return;
+    lastContentRef = res.hit.ref; lastContentAt = Date.now();
+    if (confirming) interimContentRef = null;
+    const action = cfg.content.autoAction !== 'off' ? cfg.content.autoAction : 'suggest';
+    dbg('DETECTED content →', res.hit.ref, `via ${res.method || 'semantic'} action=${action} score=${res.score.toFixed(2)}`);
+    logLatency('content', res.hit.ref, meta);
+    fireDetected('content', res.hit.ref, res.score, action, false, res.hit);
+  }
+}
+
+function fireDetected(mode, ref, confidence, action, interim, hit) {
   send('scripture:detected', {
-    mode: 'content',
-    ref: res.hit.ref,
-    coords: { bookNum: res.hit.bookNum, chapter: res.hit.chapter, verse: res.hit.verse },
-    versionId: vid,
-    confidence: res.score,
+    mode,
+    ref,
+    candidateId: `${mode}:${ref}`,
+    interim: !!interim,
+    coords: hit ? { bookNum: hit.bookNum, chapter: hit.chapter, verse: hit.verse } : undefined,
+    versionId: (mode === 'content' ? hit?.versionId : null) ?? cfg.matchVersionId ?? firstVersionId(),
+    confidence,
     action,
   });
 }

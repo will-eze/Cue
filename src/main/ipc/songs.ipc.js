@@ -4,6 +4,7 @@ import { parseSongFiles } from '../import/songs-import.js';
 
 export function registerSongsIpc() {
   ipcMain.handle('songs:search', (_e, query) => songs.search(query));
+  ipcMain.handle('songs:matchTitles', (_e, rawText) => songs.matchTitles(rawText));
   ipcMain.handle('songs:importParse', (_e, filePaths) => parseSongFiles(filePaths));
   ipcMain.handle('songs:importGhs', () => songs.readBundledGhsRows());
   ipcMain.handle('songs:importCommit', (_e, parsedSongs) => songs.importSongs(parsedSongs));

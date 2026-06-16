@@ -15,6 +15,7 @@ import fs from 'fs';
 import { getDb } from '../db/schema.js';
 import { search } from '../db/bible.js';
 import * as embedBin from './embed-bin.js';
+import * as lexicalIndex from './lexical-index.js';
 import { rankByCosine, gate, DEFAULT_GATES } from './match-score.js';
 
 // Distinctive content tokens (≥4 chars, non-stopword) — used as a lexical-anchor
@@ -164,6 +165,14 @@ export async function ensureActive(versionId) {
 // { ok, hit:{ ref, bookNum, chapter, verse, versionId, text }, score, margin } or
 // a non-ok result with a reason. `text` is the last N committed words.
 export async function match(versionId, text, gates = DEFAULT_GATES) {
+  // Lexical-first: for a VERBATIM quote (the common case — they're reading the words)
+  // the in-memory n-gram index localizes a verse in microseconds, with no embedding
+  // index and no worker round-trip, so it runs cheaply on every interim partial.
+  // MiniLM stays as the paraphrase backstop below, off the critical path.
+  const lex = lexicalIndex.match(versionId, text, gates);
+  if (lex.ok) return lex;
+
+  // Semantic fallback (paraphrase): needs the prebuilt embedding index.
   const r = await ensureActive(versionId);
   if (!r.ok) return { ok: false, reason: 'not-ready', error: r.error };
 
@@ -201,7 +210,7 @@ export async function match(versionId, text, gates = DEFAULT_GATES) {
     return { ok: false, reason: 'no-anchor', score: g.score, margin: g.margin };
   }
   return {
-    ok: true,
+    ok: true, method: 'semantic',
     score: g.score, margin: g.margin,
     hit: { ref: g.hit.ref, bookNum: g.hit.bookNum, chapter: g.hit.chapter, verse: g.hit.verse, versionId },
   };
@@ -210,4 +219,5 @@ export async function match(versionId, text, gates = DEFAULT_GATES) {
 export function dispose() {
   try { worker?.terminate(); } catch {}
   worker = null; workerReady = null; active = null; pending.clear();
+  lexicalIndex.dispose();
 }

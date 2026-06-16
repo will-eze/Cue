@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { FixedSizeList as List } from 'react-window';
 import SongPreviewModal from '../components/SongPreviewModal';
 import SongImportModal from '../components/SongImportModal';
+import SongListImportModal from '../components/SongListImportModal';
 import SongEditor from '../components/SongEditor';
 import ContextMenu from '../components/ContextMenu';
 import ScripturePanel from './ScripturePanel';
@@ -156,7 +157,7 @@ function MediaGrid({ assets, onDelete, onSetBackground, onAddToRundown }) {
   );
 }
 
-export default function LibraryPanel({ onAddToRundown, onAddScripture, onScriptureLive, onScriptureStyleSaved, onAddMedia, onAddYouTube, onAddPresentation, onSongSave, refreshTick = 0, focusSearchRef, detectArmed, detectActive, detectDownloadPct, onToggleDetect }) {
+export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAddScripture, onScriptureLive, onScriptureStyleSaved, onAddMedia, onAddYouTube, onAddPresentation, onSongSave, refreshTick = 0, focusSearchRef, detectArmed, detectActive, detectDownloadPct, onToggleDetect }) {
   const [tab, setTab] = useState('songs');
   const [searchQuery, setSearchQuery] = useState('');
   const [songs, setSongs] = useState([]);
@@ -199,6 +200,7 @@ export default function LibraryPanel({ onAddToRundown, onAddScripture, onScriptu
   const [presContext, setPresContext] = useState(null);
   const [pptxImport, setPptxImport] = useState(false);
   const [ytModal, setYtModal] = useState(false);
+  const [songListModal, setSongListModal] = useState(false);
 
   useEffect(() => { loadSongs(); window.cue.tags.list().then(setTags); }, [refreshTick]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (tab === 'media') loadMedia(); }, [tab, activeFolderId]);
@@ -444,6 +446,17 @@ export default function LibraryPanel({ onAddToRundown, onAddScripture, onScriptu
                         <span className="text-label-sm font-label-sm text-on-surface-variant tracking-normal normal-case">260 bundled Gospel Hymns &amp; Songs</span>
                       </span>
                     </button>
+                    <div className="my-xs border-t border-outline-variant/20" />
+                    <button
+                      onClick={() => { setImportMenuOpen(false); setSongListModal(true); }}
+                      className="w-full flex items-start gap-sm px-md py-sm text-left hover:bg-surface-variant transition-colors cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-[16px] text-on-surface-variant mt-[1px]">format_list_bulleted_add</span>
+                      <span className="flex flex-col">
+                        <span className="text-body-md text-on-surface">Paste Song List…</span>
+                        <span className="text-label-sm font-label-sm text-on-surface-variant tracking-normal normal-case">Match a list of titles and add to rundown</span>
+                      </span>
+                    </button>
                   </div>
                 </>
               )}
@@ -685,6 +698,11 @@ export default function LibraryPanel({ onAddToRundown, onAddScripture, onScriptu
           preview={importPreview}
           onCancel={() => setImportPreview(null)}
           onImported={handleImportedSongs} />
+      )}
+      {songListModal && (
+        <SongListImportModal
+          onCancel={() => setSongListModal(false)}
+          onAddManyToRundown={onAddManyToRundown} />
       )}
       {songContextMenu && (
         <ContextMenu

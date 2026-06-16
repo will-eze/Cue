@@ -211,6 +211,31 @@ export function addItem(serviceId, item) {
   return Number(lastInsertRowid);
 }
 
+// Append several items in one transaction with consecutive order_index values —
+// used by the Paste Song List importer so a batch lands as one rundown edit
+// (and never spawns a service per song, which a per-item loop over a stale
+// activeServiceId would). Returns the new item ids in order.
+export function addItems(serviceId, items) {
+  const db = getDb();
+  return db.transaction(() => {
+    let { m } = db.prepare('SELECT COALESCE(MAX(order_index),-1) AS m FROM service_items WHERE service_id=?').get(serviceId);
+    const insert = db.prepare(`
+      INSERT INTO service_items (service_id, item_type, ref_id, order_index, notes, content, background_override_id)
+      VALUES (?,?,?,?,?,?,?)
+    `);
+    const ids = [];
+    for (const item of (items || [])) {
+      m += 1;
+      const { lastInsertRowid } = insert.run(
+        serviceId, item.item_type, item.ref_id || null, m,
+        item.notes || null, item.content || null, item.background_override_id || null,
+      );
+      ids.push(Number(lastInsertRowid));
+    }
+    return ids;
+  })();
+}
+
 export function removeItem(itemId) {
   const db = getDb();
   // A removed YouTube cue abandons its ephemeral download + deletes the bytes.

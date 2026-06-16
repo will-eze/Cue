@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { mediaUrl } from '../utils/mediaUrl';
+import BackgroundLibrary from './BackgroundLibrary.jsx';
 
 const typeFromKey = (k) => k.includes('song') ? 'song' : k.includes('scripture') ? 'scripture' : 'slide';
 
@@ -198,6 +199,9 @@ export default function BackgroundSettings({ activeServiceId }) {
           </button>
         </div>
       </div>
+
+      {/* Curated library */}
+      <BackgroundLibrary />
 
       {/* Feedback toast */}
       {feedback && (

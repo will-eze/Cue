@@ -5,9 +5,21 @@
 announced references and **~1–2 s** for verbatim quotes, **without** new cloud/LLM
 calls and **without** requiring a GPU.
 
-**Status:** planning. Owner: scripture-detect. Related: §17 of
-`plan/cue-master-reference.md`, `plan/scripture-detection-webgpu-plan.md` (GPU path,
-complementary not a substitute).
+**Status:** Phases 0, 1, 2A, 3, 4 **implemented** (2026-06). Phase 2B (streaming-native
+engine) remains a future research spike — not adopted. Owner: scripture-detect. Related:
+§17 of `plan/cue-master-reference.md`, `plan/scripture-detection-webgpu-plan.md` (GPU
+path, complementary not a substitute).
+
+**What shipped:** per-utterance timing traces (`[scripture-detect]`, gated by
+`CUE_SCRIPTURE_DEBUG`); configurable VAD close (`endSilenceMs`); VAD-gated interim
+decode in `asr.js` (`runInterim`/`kickInterim`, latest-wins, soft-pause + cadence);
+two-tier resident pipes in `whisper-bin.js` (tiny.en interims, per-model serialization);
+`interim`/`candidateId` on `scripture:detected` with in-place confirm/correct in
+`OperatorView` (interims Preview-only, never auto-air); lexical-first content matching
+(`lexical-index.js`) with MiniLM as paraphrase fallback; Responsiveness presets
+(Instant/Balanced/Accurate) in `manager.js` + `ScriptureDetectionSettings.jsx`. The
+CLAUDE.md guard rail + master reference §17 now encode the interim-vs-rolling-window
+distinction.
 
 ---
 

@@ -617,6 +617,54 @@ const migrations = [
       ALTER TABLE themes ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0;
     `);
   },
+
+  // v23 — Repair songs_fts and stop it silently corrupting itself.
+  // v3 recreated songs_fts as a plain contentless table (content='') but kept
+  // triggers that issue the FTS5 'delete' command with EMPTY-STRING column
+  // values. On a contentless table without contentless_delete, 'delete' must be
+  // given the original indexed values so FTS5 knows which tokens to remove —
+  // empty strings remove nothing, so every section edit/delete orphaned the old
+  // tokens. The inverted index eventually decoded to bogus rowids and a
+  // MATCH-inside-a-JOIN (exactly what songs.search() runs) threw "database disk
+  // image is malformed", so song search returned no results. The runtime SQLite
+  // (3.49) supports contentless_delete=1, whose documented delete idiom is a
+  // plain `DELETE FROM songs_fts WHERE rowid=?`. Recreate the table with that
+  // option, rebuild the index from live data, and replace the triggers.
+  function v23(database) {
+    database.exec(`
+      DROP TRIGGER IF EXISTS songs_fts_insert;
+      DROP TRIGGER IF EXISTS songs_fts_update;
+      DROP TRIGGER IF EXISTS songs_fts_delete;
+      DROP TABLE IF EXISTS songs_fts;
+
+      CREATE VIRTUAL TABLE songs_fts USING fts5(
+        title, author, content,
+        content='', contentless_delete=1
+      );
+
+      INSERT INTO songs_fts(rowid, title, author, content)
+        SELECT ss.id, s.title, s.author, ss.content
+        FROM song_sections ss
+        JOIN songs s ON s.id = ss.song_id;
+
+      CREATE TRIGGER songs_fts_insert AFTER INSERT ON song_sections BEGIN
+        INSERT INTO songs_fts(rowid, title, author, content)
+        SELECT NEW.id, s.title, s.author, NEW.content
+        FROM songs s WHERE s.id = NEW.song_id;
+      END;
+
+      CREATE TRIGGER songs_fts_update AFTER UPDATE ON song_sections BEGIN
+        DELETE FROM songs_fts WHERE rowid = OLD.id;
+        INSERT INTO songs_fts(rowid, title, author, content)
+        SELECT NEW.id, s.title, s.author, NEW.content
+        FROM songs s WHERE s.id = NEW.song_id;
+      END;
+
+      CREATE TRIGGER songs_fts_delete AFTER DELETE ON song_sections BEGIN
+        DELETE FROM songs_fts WHERE rowid = OLD.id;
+      END;
+    `);
+  },
 ];
 
 function runMigrations() {

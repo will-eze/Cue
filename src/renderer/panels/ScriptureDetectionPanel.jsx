@@ -50,19 +50,22 @@ export default function ScriptureDetectionPanel({
         {suggestions.map((s) => (
           <div
             key={s.id}
-            className={`flex items-center gap-xs pl-sm pr-xs h-8 rounded-lg border shrink-0 ${
-              s.mode === 'reference'
-                ? 'border-primary/50 bg-primary/10'
-                : 'border-outline-variant/40 bg-surface-container-high'
+            className={`flex items-center gap-xs pl-sm pr-xs h-8 rounded-lg border shrink-0 transition-colors ${
+              s.interim
+                ? 'border-dashed border-primary/40 bg-primary/5 animate-pulse'
+                : s.mode === 'reference'
+                  ? 'border-primary/50 bg-primary/10'
+                  : 'border-outline-variant/40 bg-surface-container-high'
             }`}
+            title={s.interim ? 'Hearing… (interim — confirms when the phrase completes)' : undefined}
           >
-            <span className={`material-symbols-outlined text-[15px] ${s.mode === 'reference' ? 'text-primary' : 'text-on-surface-variant'}`}>
-              {s.mode === 'reference' ? 'menu_book' : 'format_quote'}
+            <span className={`material-symbols-outlined text-[15px] ${s.interim ? 'text-primary/70' : s.mode === 'reference' ? 'text-primary' : 'text-on-surface-variant'}`}>
+              {s.interim ? 'graphic_eq' : s.mode === 'reference' ? 'menu_book' : 'format_quote'}
             </span>
             <span className="flex flex-col leading-tight min-w-0">
               <span className="text-label-sm font-mono font-bold text-on-surface truncate">{s.ref}</span>
               <span className="text-[9px] font-mono uppercase tracking-[0.05em] text-on-surface-variant/60">
-                {s.mode} · {Math.round((s.confidence || 0) * 100)}%
+                {s.interim ? 'hearing…' : `${s.mode} · ${Math.round((s.confidence || 0) * 100)}%`}
               </span>
             </span>
             <button

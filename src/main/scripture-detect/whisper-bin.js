@@ -63,11 +63,17 @@ export function detect(name) {
   return { engine: 'transformers.js', model: modelReady(name) ? MODELS[name]?.repo : null, modelName: name };
 }
 
-// ── resident pipeline ────────────────────────────────────────────────────────
-let pipe = null;            // the loaded ASR pipeline
-let pipeModel = null;       // which model it was loaded for
-let loadPromise = null;
-let promptIds = null;       // cached Whisper decoder prompt (book-name bias)
+// ── resident pipelines ───────────────────────────────────────────────────────
+// A MAP of resident pipelines keyed by model name, not a single pipe: the two-tier
+// interim path keeps a fast tiny.en pipe resident for live partials WHILE the
+// authoritative commit model (base/small.en) stays loaded. Each entry holds its own
+// decoder prompt and a single-flight tail promise that SERIALIZES transcribe() calls
+// for that model — onnxruntime CPU sessions are not concurrency-safe, and the commit
+// decode and an interim decode can otherwise overlap. Different models run on
+// independent sessions, so interims never block the commit when they use a separate
+// model (the recommended/default config).
+const pipes = new Map();        // name → { pipe, promptIds, tail: Promise }
+const loadPromises = new Map(); // name → in-flight ensureModel promise
 
 // Bias Whisper's decoder toward the 66 book names (deduped — numbered books share a
 // name). Whisper's `prompt_ids` is the documented way to prime "custom vocabularies
@@ -83,6 +89,9 @@ const BOOK_PROMPT = ' Genesis Exodus Leviticus Numbers Deuteronomy Joshua Judges
   + ' Obadiah Jonah Micah Nahum Habakkuk Zephaniah Haggai Zechariah Malachi Matthew'
   + ' Mark Luke John Acts Romans Corinthians Galatians Ephesians Philippians Colossians'
   + ' Thessalonians Timothy Titus Philemon Hebrews James Peter Jude Revelation';
+
+// Resolve a requested model name to a known repo key (fallback base.en).
+function resolveName(name) { return MODELS[name] ? name : 'base.en'; }
 
 // Build the decoder prompt once per loaded model: [<|startofprev|>, ...book tokens].
 function buildPromptIds(p) {
@@ -106,11 +115,10 @@ async function loadTransformers() {
 // per file via onProgress({ name, percent }). Single-flight; re-loads if the model
 // changed. Returns { ok } | { ok:false, error }.
 export function ensureModel(name, onProgress) {
-  const target = MODELS[name] ? name : 'base.en';
-  if (pipe && pipeModel === target) return Promise.resolve({ ok: true });
-  if (loadPromise && pipeModel === target) return loadPromise;
-  pipeModel = target;
-  loadPromise = (async () => {
+  const target = resolveName(name);
+  if (pipes.has(target)) return Promise.resolve({ ok: true });
+  if (loadPromises.has(target)) return loadPromises.get(target);
+  const p = (async () => {
     try {
       const { pipeline } = await loadTransformers();
       fs.mkdirSync(cacheDir(), { recursive: true });
@@ -125,41 +133,51 @@ export function ensureModel(name, onProgress) {
         // allocations are small.) Disabling the arena makes ORT do many small
         // direct allocations instead, which the shim allows. DO NOT REMOVE.
         session_options: { enableCpuMemArena: false, enableMemPattern: false, executionProviders: ['cpu'] },
-        progress_callback: (p) => {
-          if (p?.status === 'progress' && p.total) {
-            onProgress?.({ name: p.file || target, percent: (p.loaded || 0) / p.total });
+        progress_callback: (pg) => {
+          if (pg?.status === 'progress' && pg.total) {
+            onProgress?.({ name: pg.file || target, percent: (pg.loaded || 0) / pg.total });
           }
         },
       });
-      pipe = next;
-      promptIds = buildPromptIds(next);
+      pipes.set(target, { pipe: next, promptIds: buildPromptIds(next), tail: Promise.resolve() });
       fs.writeFileSync(readyMarker(target), String(Date.now()));
       return { ok: true };
     } catch (err) {
-      pipe = null; pipeModel = null;
       return { ok: false, error: err.message };
     } finally {
-      loadPromise = null;
+      loadPromises.delete(target);
     }
   })();
-  return loadPromise;
+  loadPromises.set(target, p);
+  return p;
 }
 
 // Transcribe a Float32 mono 16 kHz buffer with the resident pipeline. Returns the
 // text, or null if the model isn't loaded yet (detection silently idles until the
 // user provisions it from Settings — mirrors the old "binary missing" behaviour).
 export async function transcribe(float32, name) {
-  const target = MODELS[name] ? name : 'base.en';
-  if (!pipe || pipeModel !== target) {
+  const target = resolveName(name);
+  const entry = pipes.get(target);
+  if (!entry) {
     // The resident pipeline isn't loaded. This is the normal state on every app
     // launch AFTER the first download: the on-disk `.ready-*` marker exists, so
-    // the renderer skips ensureModel, and nothing ever rehydrates `pipe`. Kick a
+    // the renderer skips ensureModel, and nothing ever rehydrates the map. Kick a
     // single-flight load here (a quick reload from cache; a download only on a
     // truly fresh machine) and idle until it's ready. Self-heals regardless of
     // how detection was started.
     ensureModel(target);
     return null;
   }
+  // Serialize per-model: chain this decode behind the model's previous one so a
+  // commit decode and an interim decode on the SAME pipe never run concurrently
+  // (onnxruntime CPU sessions aren't re-entrant). Independent models don't share a
+  // tail, so two-tier interims (tiny.en) run free of the commit (small/base.en).
+  const run = entry.tail.then(() => decodeOne(entry, float32));
+  entry.tail = run.catch(() => {}); // keep the chain alive even if a decode throws
+  return run;
+}
+
+async function decodeOne(entry, float32) {
   // Whisper's encoder pads every input to a `chunk_length_s` window before running.
   // The ONNX encoder's mel axis is dynamic, so padding a short VAD utterance to just
   // above its real length (instead of the full 30 s) cuts encoder work with no change
@@ -171,10 +189,10 @@ export async function transcribe(float32, name) {
   const durSec = float32.length / 16000;
   const chunkLengthS = Math.min(30, Math.max(8, Math.ceil(durSec) + 2));
   const opts = { chunk_length_s: chunkLengthS };
-  if (promptIds) opts.prompt_ids = promptIds; // bias toward book names (see BOOK_PROMPT)
-  const r = await pipe(float32, opts);
+  if (entry.promptIds) opts.prompt_ids = entry.promptIds; // bias toward book names (see BOOK_PROMPT)
+  const r = await entry.pipe(float32, opts);
   return (r?.text || '').replace(/\s+/g, ' ').trim();
 }
 
-export function dispose() { pipe = null; pipeModel = null; loadPromise = null; promptIds = null; }
+export function dispose() { pipes.clear(); loadPromises.clear(); }
 export { MODELS };

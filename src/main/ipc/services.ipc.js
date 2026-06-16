@@ -9,6 +9,7 @@ export function registerServicesIpc() {
   ipcMain.handle('services:delete', (_e, id) => services.del(id));
   ipcMain.handle('services:reorderItems', (_e, serviceId, orderedIds) => services.reorderItems(serviceId, orderedIds));
   ipcMain.handle('services:addItem', (_e, serviceId, item) => services.addItem(serviceId, item));
+  ipcMain.handle('services:addItems', (_e, serviceId, items) => services.addItems(serviceId, items));
   ipcMain.handle('services:removeItem', (_e, itemId) => services.removeItem(itemId));
   ipcMain.handle('services:setItemBackground', (_e, itemId, mediaId) => services.setItemBackground(itemId, mediaId));
   ipcMain.handle('services:setItemNotes', (_e, itemId, notes) => services.setItemNotes(itemId, notes));

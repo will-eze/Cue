@@ -12,6 +12,15 @@ const MODELS = [
   { id: 'small.en', label: 'Small (most accurate)' },
 ];
 
+// Responsiveness presets bundle the latency knobs (VAD close + live interim decode +
+// lexical-match aggressiveness). Instant = present partials as soon as a verse is
+// identifiable; Accurate = wait for the full phrase (original behaviour).
+const RESPONSIVENESS = [
+  ['instant',  'Instant',  'Aggressive live partials + snappy phrase close. Fastest, may briefly self-correct.'],
+  ['balanced', 'Balanced', 'Live partials with a steadier phrase close. Recommended.'],
+  ['accurate', 'Accurate', 'No live partials — waits for the full phrase. Most stable, slowest.'],
+];
+
 export default function ScriptureDetectionSettings() {
   const [cfg, setCfg] = useState(null);
   const [devices, setDevices] = useState([]);
@@ -98,6 +107,26 @@ export default function ScriptureDetectionSettings() {
               {MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
             </select>
             <StatusChip ok={ready.asr?.model} okText="Ready" pendingText="Download" onClick={downloadAsr} disabled={busy} />
+          </div>
+        </Row>
+
+        <Row label="Responsiveness" hint="How quickly to present vs how sure to be">
+          <div className="flex items-center gap-xs">
+            {RESPONSIVENESS.map(([v, lbl, tip]) => (
+              <button
+                key={v}
+                title={tip}
+                onClick={() => apply({ responsiveness: v })}
+                disabled={busy}
+                className={`px-sm h-8 rounded-lg text-label-sm font-mono uppercase tracking-[0.05em] border transition-colors cursor-pointer ${
+                  (cfg.responsiveness || 'balanced') === v
+                    ? 'bg-primary/15 border-primary/50 text-primary'
+                    : 'bg-surface-container-high border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
+                }`}
+              >
+                {lbl}
+              </button>
+            ))}
           </div>
         </Row>
       </div>

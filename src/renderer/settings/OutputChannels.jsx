@@ -116,6 +116,8 @@ export default function OutputChannels() {
             >
               <span className="material-symbols-outlined text-[12px] text-outline">monitor</span>
               {d.label}
+              <span className="font-mono text-[9px] text-on-surface-variant/60 tabular-nums">{d.bounds.width}×{d.bounds.height}</span>
+              {d.primary && <span className="text-[9px] font-label-sm text-primary/80 uppercase tracking-[0.04em]">Primary</span>}
             </span>
           ))}
         </div>
@@ -451,7 +453,7 @@ function ChannelCard({ channel, monitors, screens, assignedBounds, onUpdate, onD
 
 function MonitorTile({ monitor, screens, onRemove }) {
   const bounds = monitor.display_bounds ? JSON.parse(monitor.display_bounds) : null;
-  const screen = bounds
+  const matched = bounds
     ? screens.find(
         (s) =>
           s.bounds.x === bounds.x &&
@@ -460,24 +462,31 @@ function MonitorTile({ monitor, screens, onRemove }) {
           s.bounds.height === bounds.height,
       )
     : null;
-  const isConnected = !!screen;
-  const label = screen?.label || (bounds ? `${bounds.width}×${bounds.height}` : 'Unknown');
+  const isConnected = !!matched;
+  const res = bounds ? `${bounds.width}×${bounds.height}` : null;
+  // Live OS name > stored label at assignment time > geometry fallback
+  const name = matched?.label ?? monitor.label ?? res ?? 'Unknown';
+  const showRes = isConnected && res && name !== res;
 
   return (
-    <div className={`relative group flex flex-col items-center justify-between w-[100px] aspect-video rounded-lg border-2 p-xs transition-all ${
-      isConnected
-        ? 'border-primary/40 bg-primary/5'
-        : 'border-error/30 bg-error/5'
-    }`}>
+    <div
+      title={[name, res].filter(Boolean).join(' · ')}
+      className={`relative group flex flex-col items-center justify-between w-[100px] aspect-video rounded-lg border-2 p-xs transition-all ${
+        isConnected
+          ? 'border-primary/40 bg-primary/5'
+          : 'border-error/30 bg-error/5'
+      }`}
+    >
       <span
         className={`material-symbols-outlined text-xl ${isConnected ? 'text-primary' : 'text-error'}`}
         style={{ fontVariationSettings: "'FILL' 1" }}
       >
         {isConnected ? 'monitor' : 'monitor_off'}
       </span>
-      <span className="text-[10px] font-label-sm text-on-surface-variant text-center leading-tight line-clamp-2 w-full">
-        {label}
-      </span>
+      <div className="text-center w-full min-w-0">
+        <div className="text-[10px] font-label-sm text-on-surface-variant leading-tight truncate">{name}</div>
+        {showRes && <div className="font-mono text-[9px] text-on-surface-variant/60 leading-none mt-[1px] tabular-nums">{res}</div>}
+      </div>
       {!isConnected && (
         <span className="absolute top-1 left-1 text-[9px] font-label-sm text-error uppercase">
           Disconnected
@@ -522,7 +531,7 @@ function ScreenPicker({ screens, assignedBounds, onPick, onClose }) {
                 key={d.id}
                 disabled={isAssigned}
                 onClick={() => onPick(d)}
-                className={`relative flex flex-col items-center justify-center gap-xs w-[110px] aspect-video rounded-lg border-2 transition-all cursor-pointer ${
+                className={`relative flex flex-col items-center justify-center gap-[3px] w-[110px] aspect-video rounded-lg border-2 transition-all cursor-pointer px-xs ${
                   isAssigned
                     ? 'border-primary/40 bg-primary/10 cursor-not-allowed opacity-60'
                     : 'border-outline-variant/30 hover:border-primary hover:bg-primary/5'
@@ -533,8 +542,11 @@ function ScreenPicker({ screens, assignedBounds, onPick, onClose }) {
                 >
                   monitor
                 </span>
-                <span className="text-[10px] font-label-sm text-on-surface-variant text-center leading-tight px-xs">
+                <span className="text-[10px] font-label-sm text-on-surface-variant text-center leading-tight truncate max-w-full">
                   {d.label}
+                </span>
+                <span className="font-mono text-[9px] text-on-surface-variant/60 tabular-nums leading-none">
+                  {d.bounds.width}×{d.bounds.height}
                 </span>
                 {isAssigned && (
                   <span
@@ -542,6 +554,11 @@ function ScreenPicker({ screens, assignedBounds, onPick, onClose }) {
                     style={{ fontVariationSettings: "'FILL' 1" }}
                   >
                     check_circle
+                  </span>
+                )}
+                {d.primary && (
+                  <span className="absolute bottom-[3px] left-[5px] text-[8px] font-label-sm text-primary/70 uppercase leading-none tracking-[0.03em]">
+                    Primary
                   </span>
                 )}
               </button>

@@ -16,11 +16,13 @@ export function registerOutputIpc() {
 
   // ── Screens (connected displays) ───────────────────────────────────────────
   ipcMain.handle('output:screens:list', () => {
-    return screen.getAllDisplays().map((d) => ({
+    const primaryId = screen.getPrimaryDisplay().id;
+    return screen.getAllDisplays().map((d, i) => ({
       id: d.id,
       bounds: d.bounds,
       scaleFactor: d.scaleFactor,
-      label: `${d.bounds.width}×${d.bounds.height} at (${d.bounds.x},${d.bounds.y})`,
+      primary: d.id === primaryId,
+      label: d.label || `Display ${i + 1} · ${d.bounds.width}×${d.bounds.height}`,
     }));
   });
 
