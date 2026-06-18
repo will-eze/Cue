@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import MediaPickerModal from './MediaPickerModal';
 import ThemePickerModal from './ThemePickerModal';
 import { mediaUrl } from '../utils/mediaUrl';
-import { sectionOrdinals } from '../utils/sectionLabels';
+import { sectionOrdinals, SLIDE_BREAK } from '../utils/sectionLabels';
 import { useFonts } from '../utils/fonts';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
@@ -46,6 +46,25 @@ const TEXTBOX_PRESETS = [
 
 let keyCounter = 0;
 const newKey = () => `k${++keyCounter}`;
+
+// In-editor rendering of a slide split. Storage keeps the canonical ⁂ marker in
+// `content`; the contenteditable shows it as a styled, atomic (contenteditable
+// =false) "slide break" divider. The element is self-contained (inline styles, no
+// external CSS) and tagged `data-break` so extractContentAndRuns() can convert it
+// back to the marker on read-back.
+const SLIDE_BREAK_HTML =
+  '<div data-break="1" contenteditable="false" ' +
+  'style="display:flex;align-items:center;gap:8px;margin:10px 2px;user-select:none;cursor:default;">' +
+  '<span style="flex:1;height:1px;background:rgba(173,198,255,0.35);"></span>' +
+  '<span style="font:700 8px/1 ui-monospace,monospace;letter-spacing:0.12em;text-transform:uppercase;color:rgba(173,198,255,0.7);">▾ slide break ▾</span>' +
+  '<span style="flex:1;height:1px;background:rgba(173,198,255,0.35);"></span>' +
+  '</div>';
+
+// Wrap renderWithRuns for the editor: swap the canonical ⁂ marker (and any <br>
+// renderWithRuns put around its blank line) for the visual divider.
+function renderEditorHtml(content, runs) {
+  return renderWithRuns(content || '', runs || []).replace(/(?:<br>)?⁂(?:<br>)?/g, SLIDE_BREAK_HTML);
+}
 
 // ─── Core helpers (exported for output windows) ────────────────────────────
 
@@ -91,6 +110,13 @@ function extractContentAndRuns(el) {
     if (node.nodeType !== Node.ELEMENT_NODE) return;
     const tag = node.tagName;
     if (tag === 'BR') { text += '\n'; return; }
+    // Slide-break divider → canonical marker on its own line. Atomic: never recurse
+    // into its label/rule spans.
+    if (node.dataset && node.dataset.break) {
+      if (text.length && !text.endsWith('\n')) text += '\n';
+      text += SLIDE_BREAK + '\n';
+      return;
+    }
     const s = { ...style };
     if (tag === 'B' || tag === 'STRONG') s.bold = true;
     if (tag === 'I' || tag === 'EM')     s.italic = true;
@@ -125,6 +151,39 @@ function serializeSection(type, text, runs, style) {
   if (!hasStyle && !hasRuns) return { type, content: text, style_json: null };
   const { runs: _r, ...base } = style;
   return { type, content: text, style_json: JSON.stringify({ ...base, runs: hasRuns ? runs : undefined }) };
+}
+
+// Split the editor's working text+runs into display parts on the ⁂ break marker,
+// rebasing each run's character offsets into its part so the preview styles the
+// part correctly. Empty parts (leading/trailing/back-to-back markers) are dropped;
+// a section with no marker yields exactly one part. Mirrors splitSectionContent()
+// in utils/sectionLabels.js, but offset-aware so runs survive.
+function splitForPreview(text, runs) {
+  const raw = text || '';
+  const allRuns = runs || [];
+  const bounds = [];
+  let start = 0, idx;
+  while ((idx = raw.indexOf(SLIDE_BREAK, start)) !== -1) {
+    bounds.push([start, idx]);
+    start = idx + SLIDE_BREAK.length;
+  }
+  bounds.push([start, raw.length]);
+
+  const parts = [];
+  for (const [s, e] of bounds) {
+    const seg = raw.slice(s, e);
+    const lead = seg.length - seg.replace(/^\s+/, '').length;
+    const trail = seg.length - seg.replace(/\s+$/, '').length;
+    const ts = s + lead, te = e - trail;
+    if (te <= ts) continue;                       // empty part
+    const partRuns = [];
+    for (const r of allRuns) {
+      const rs = Math.max(r.start, ts), re = Math.min(r.end, te);
+      if (re > rs) partRuns.push({ ...r, start: rs - ts, end: re - ts });
+    }
+    parts.push({ text: raw.slice(ts, te), runs: partRuns });
+  }
+  return parts.length ? parts : [{ text: '', runs: [] }];
 }
 
 function buildShadowCss(shadow) {
@@ -897,6 +956,7 @@ function SortableSectionItem({ section, ordinal, isActive, onSelect, onDelete, o
   return (
     <div
       ref={setNodeRef}
+      data-section-key={section._key}
       style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
       onClick={() => onSelect(section._key)}
       className={`group relative flex flex-col gap-0.5 px-sm py-2 border-b border-outline-variant/15 cursor-pointer transition-colors
@@ -928,6 +988,18 @@ function SortableSectionItem({ section, ordinal, isActive, onSelect, onDelete, o
         {ordinal != null && (
           <span className={`text-[9px] font-mono font-bold tabular-nums flex-shrink-0 ${typeColor}`}>{ordinal}</span>
         )}
+
+        {(() => {
+          const parts = (section.content || '').split(SLIDE_BREAK).filter((p) => p.trim()).length;
+          return parts > 1 ? (
+            <span
+              title={`${parts} slides`}
+              className="flex items-center gap-[1px] text-[8px] font-mono text-on-surface-variant/50 flex-shrink-0"
+            >
+              <span className="material-symbols-outlined text-[10px]">content_cut</span>{parts}
+            </span>
+          ) : null;
+        })()}
 
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(section._key); }}
@@ -989,6 +1061,7 @@ export default function SongEditor({ song, onClose, onSave }) {
   const [style, setStyle]         = useState({ ...DEFAULT_STYLE });
   const [activeSectionKey, setActiveSectionKey] = useState(null);
   const [previewContent, setPreviewContent] = useState({ text: '', runs: [] });
+  const [previewPart, setPreviewPart]       = useState(0); // which split part the preview shows
   const [songBackground, setSongBackground] = useState(null);
   const [showBgPicker, setShowBgPicker]     = useState(false);
   const [showThemePicker, setShowThemePicker] = useState(false);
@@ -1003,12 +1076,45 @@ export default function SongEditor({ song, onClose, onSave }) {
   const editorRef    = useRef(null);
   const sectionsRef  = useRef([]);
   const activeKeyRef = useRef(null);
+  const sidebarRef   = useRef(null);   // section list — wheel flicks through sections
+  const wheelAccum   = useRef(0);
   const fonts        = useFonts();
   const sensors      = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   // Keep sectionsRef in sync
   useEffect(() => { sectionsRef.current = sections; }, [sections]);
   useEffect(() => { activeKeyRef.current = activeSectionKey; }, [activeSectionKey]);
+
+  // Flick through sections by scrolling over the list — no need to click each one.
+  // A native non-passive listener (React's onWheel is passive, so preventDefault is
+  // ignored there) steps the active section one notch per ~24px of wheel.
+  useEffect(() => {
+    const el = sidebarRef.current;
+    if (!el) return;
+    const onWheel = (e) => {
+      const list = sectionsRef.current;
+      if (list.length < 2) return;
+      e.preventDefault();
+      wheelAccum.current += e.deltaY;
+      if (Math.abs(wheelAccum.current) < 24) return;
+      const dir = wheelAccum.current > 0 ? 1 : -1;
+      wheelAccum.current = 0;
+      const idx  = list.findIndex((s) => s._key === activeKeyRef.current);
+      const next = Math.min(Math.max((idx < 0 ? 0 : idx) + dir, 0), list.length - 1);
+      if (list[next] && next !== idx) switchSection(list[next]._key);
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
+
+  // Keep the active section visible as it changes (wheel/click), since the wheel
+  // handler suppresses native list scrolling.
+  useEffect(() => {
+    if (!activeSectionKey || !sidebarRef.current) return;
+    sidebarRef.current
+      .querySelector(`[data-section-key="${activeSectionKey}"]`)
+      ?.scrollIntoView({ block: 'nearest' });
+  }, [activeSectionKey]);
 
   // Load themes list for the "Load Theme…" dropdown (song-category themes only)
   useEffect(() => {
@@ -1096,8 +1202,9 @@ export default function SongEditor({ song, onClose, onSave }) {
     if (!activeSectionKey || !editorRef.current) return;
     const sec = sectionsRef.current.find((s) => s._key === activeSectionKey);
     if (sec) {
-      editorRef.current.innerHTML = renderWithRuns(sec.content || '', sec.runs || []);
+      editorRef.current.innerHTML = renderEditorHtml(sec.content || '', sec.runs || []);
       setPreviewContent({ text: sec.content || '', runs: sec.runs || [] });
+      setPreviewPart(0);
     }
   }, [activeSectionKey]);
 
@@ -1130,6 +1237,8 @@ export default function SongEditor({ song, onClose, onSave }) {
   }
 
   function handleEditorKeyDown(e) {
+    // ⌘/Ctrl+Enter → split slide here; plain Enter → soft line break.
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); insertSplit(); return; }
     if (e.key === 'Enter') { e.preventDefault(); document.execCommand('insertLineBreak'); }
   }
 
@@ -1142,6 +1251,33 @@ export default function SongEditor({ song, onClose, onSave }) {
   function execCmd(cmd) {
     editorRef.current?.focus();
     document.execCommand(cmd);
+  }
+
+  // Insert a slide-break marker at the caret. The section stays one logical unit;
+  // it just renders as multiple slides at the break (variable-size parts).
+  function insertSplit() {
+    if (!editorRef.current) return;
+    editorRef.current.focus();
+    // Insert the styled, atomic divider at the caret; a trailing <br> drops the
+    // caret onto a fresh line after the break. extractContentAndRuns turns the
+    // divider back into the canonical ⁂ marker.
+    document.execCommand('insertHTML', false, SLIDE_BREAK_HTML + '<br>');
+    handleEditorInput();
+  }
+
+  // Auto-split the active section into parts at every blank line — the quick way
+  // to break a multi-stanza verse into one slide per stanza. Existing breaks are
+  // normalised first so re-running is idempotent. Inline runs are dropped (the
+  // restructured whitespace would invalidate their offsets).
+  function autoSplit() {
+    if (!editorRef.current) return;
+    const { text } = extractContentAndRuns(editorRef.current);
+    const clean = text.replace(/\s*⁂\s*/g, '\n');          // neutralise existing breaks
+    const parts = clean.split(/\n[ \t]*\n+/).map((p) => p.trim()).filter(Boolean);
+    if (parts.length <= 1) return;                          // nothing to split on
+    const joined = parts.join(`\n${SLIDE_BREAK}\n`);
+    editorRef.current.innerHTML = renderEditorHtml(joined, []);
+    handleEditorInput();
   }
 
   // ── Section mutations ───────────────────────────────────────────────────
@@ -1255,6 +1391,12 @@ export default function SongEditor({ song, onClose, onSave }) {
   const inputCls  = 'w-full bg-surface-container-lowest text-on-surface text-body-sm rounded-lg px-md py-1.5 border border-outline-variant/50 outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors';
   const labelCls  = 'block text-[9px] font-mono text-on-surface-variant/60 mb-0.5 uppercase tracking-[0.05em]';
   const activeSection = sections.find((s) => s._key === activeSectionKey);
+
+  // The active section's display parts (split on the ⁂ marker). The preview shows
+  // one part at a time so the operator never sees a slide with a marker in it.
+  const previewParts = splitForPreview(previewContent.text, previewContent.runs);
+  const partIdx      = Math.min(Math.max(previewPart, 0), previewParts.length - 1);
+  const activePart   = previewParts[partIdx] || { text: '', runs: [] };
 
   return createPortal(
     <div className="fixed inset-0 bg-background/90 backdrop-blur-sm flex items-center justify-center z-50 p-2">
@@ -1411,7 +1553,7 @@ export default function SongEditor({ song, onClose, onSave }) {
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto custom-scrollbar">
+              <div ref={sidebarRef} className="flex-1 overflow-y-auto custom-scrollbar">
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                   <SortableContext items={sections.map((s) => s._key)} strategy={verticalListSortingStrategy}>
                     {(() => {
@@ -1462,9 +1604,16 @@ export default function SongEditor({ song, onClose, onSave }) {
                 {/* Slide preview */}
                 <div className="flex-1 flex flex-col min-h-0 bg-surface-container-lowest border-r border-outline-variant/20 p-md">
                   <div className="flex items-center justify-between mb-sm flex-shrink-0">
-                    <span className="text-[9px] font-mono text-on-surface-variant/40 uppercase tracking-[0.06em]">
-                      {activeSection ? `${activeSection.type} — ` : ''}{previewTemplate === 'lowerthird' ? 'Lower Third' : 'Fullscreen'}
-                    </span>
+                    <div className="flex items-center gap-sm">
+                      <span className="text-[9px] font-mono text-on-surface-variant/40 uppercase tracking-[0.06em]">
+                        {activeSection ? `${activeSection.type} — ` : ''}{previewTemplate === 'lowerthird' ? 'Lower Third' : 'Fullscreen'}
+                      </span>
+                      {previewParts.length > 1 && (
+                        <span className="text-[9px] font-mono text-primary/70 tabular-nums uppercase tracking-[0.06em]">
+                          {previewParts.length} slides
+                        </span>
+                      )}
+                    </div>
                     {/* Template toggle */}
                     <div className="flex items-center gap-[2px] bg-surface-container rounded p-[2px]">
                       {[
@@ -1488,15 +1637,15 @@ export default function SongEditor({ song, onClose, onSave }) {
                     <div className="h-full max-w-full relative" style={{ aspectRatio: '16 / 9' }}>
                       {previewTemplate === 'lowerthird' ? (
                         <LowerThirdPreview
-                          text={previewContent.text}
-                          runs={previewContent.runs}
+                          text={activePart.text}
+                          runs={activePart.runs}
                           style={style}
                           copyright={copyright || undefined}
                         />
                       ) : (
                         <SlidePreview
-                          text={previewContent.text}
-                          runs={previewContent.runs}
+                          text={activePart.text}
+                          runs={activePart.runs}
                           style={style}
                           backgroundPath={songBackground?.path ?? null}
                           copyright={copyright || undefined}
@@ -1511,6 +1660,32 @@ export default function SongEditor({ song, onClose, onSave }) {
                       )}
                     </div>
                   </div>
+
+                  {/* Part filmstrip — every slide of a split section at a glance;
+                      click a thumbnail to load it into the big preview above. */}
+                  {previewParts.length > 1 && (
+                    <div className="flex-shrink-0 mt-sm flex gap-sm overflow-x-auto custom-scrollbar pb-1">
+                      {previewParts.map((part, i) => (
+                        <button
+                          key={i}
+                          onClick={() => setPreviewPart(i)}
+                          title={`Slide ${i + 1}`}
+                          className={`relative flex-shrink-0 w-32 rounded overflow-hidden border-2 transition-colors cursor-pointer ${
+                            i === partIdx ? 'border-primary' : 'border-outline-variant/30 hover:border-outline-variant'
+                          }`}
+                        >
+                          {previewTemplate === 'lowerthird' ? (
+                            <LowerThirdPreview text={part.text} runs={part.runs} style={style} />
+                          ) : (
+                            <SlidePreview text={part.text} runs={part.runs} style={style} backgroundPath={songBackground?.path ?? null} />
+                          )}
+                          <span className="absolute top-0.5 left-0.5 text-[8px] font-mono bg-black/60 text-white rounded px-1 tabular-nums leading-tight">
+                            {i + 1}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Section text editor */}
@@ -1520,15 +1695,33 @@ export default function SongEditor({ song, onClose, onSave }) {
                       {activeSection?.type ?? 'Section'}
                     </span>
                     {activeSection && (
-                      <select
-                        value={activeSection.type}
-                        onChange={(e) => onTypeChange(activeSection._key, e.target.value)}
-                        className="text-[9px] font-mono bg-transparent border-none outline-none cursor-pointer text-on-surface-variant hover:text-on-surface"
-                      >
-                        {SECTION_TYPES.map((t) => (
-                          <option key={t} value={t} className="bg-surface-container text-on-surface">{t}</option>
-                        ))}
-                      </select>
+                      <div className="flex items-center gap-sm">
+                        <button
+                          onMouseDown={(e) => { e.preventDefault(); insertSplit(); }}
+                          title="Split into a new slide at the cursor (⌘/Ctrl+Enter)"
+                          className="flex items-center gap-[2px] text-[9px] font-mono text-on-surface-variant hover:text-primary cursor-pointer uppercase tracking-[0.05em] transition-colors"
+                        >
+                          <span className="material-symbols-outlined text-[13px]">content_cut</span>
+                          Split
+                        </button>
+                        <button
+                          onMouseDown={(e) => { e.preventDefault(); autoSplit(); }}
+                          title="Split this section into one slide per blank-line stanza"
+                          className="flex items-center gap-[2px] text-[9px] font-mono text-on-surface-variant hover:text-primary cursor-pointer uppercase tracking-[0.05em] transition-colors"
+                        >
+                          <span className="material-symbols-outlined text-[13px]">splitscreen</span>
+                          Auto
+                        </button>
+                        <select
+                          value={activeSection.type}
+                          onChange={(e) => onTypeChange(activeSection._key, e.target.value)}
+                          className="text-[9px] font-mono bg-transparent border-none outline-none cursor-pointer text-on-surface-variant hover:text-on-surface"
+                        >
+                          {SECTION_TYPES.map((t) => (
+                            <option key={t} value={t} className="bg-surface-container text-on-surface">{t}</option>
+                          ))}
+                        </select>
+                      </div>
                     )}
                   </div>
 

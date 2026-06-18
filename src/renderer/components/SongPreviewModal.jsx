@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { splitSectionContent } from '../utils/sectionLabels';
 
 const TYPE_LABELS = {
   verse: 'Verse', chorus: 'Chorus', bridge: 'Bridge',
@@ -67,9 +68,18 @@ export default function SongPreviewModal({ song, onClose, onEdit, onAddToRundown
                     <div className={`section-chip mb-sm inline-flex ${isChorus ? 'bg-primary text-on-primary border-transparent' : ''}`}>
                       {TYPE_LABELS[section.type] || section.type}
                     </div>
-                    <pre className="text-body-sm text-on-surface whitespace-pre-wrap leading-relaxed m-0 font-sans">
-                      {section.content}
-                    </pre>
+                    {splitSectionContent(section.content).map((part, pi, arr) => (
+                      <React.Fragment key={pi}>
+                        {pi > 0 && (
+                          <div className="flex items-center gap-sm my-sm text-[8px] font-mono text-on-surface-variant/30 uppercase tracking-[0.1em]">
+                            <span className="flex-1 h-px bg-outline-variant/20" />slide break<span className="flex-1 h-px bg-outline-variant/20" />
+                          </div>
+                        )}
+                        <pre className="text-body-sm text-on-surface whitespace-pre-wrap leading-relaxed m-0 font-sans">
+                          {part}
+                        </pre>
+                      </React.Fragment>
+                    ))}
                   </div>
                 );
               })}

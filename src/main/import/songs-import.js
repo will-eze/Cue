@@ -17,6 +17,12 @@ import Database from 'better-sqlite3';
 // The only section types song_sections.type allows (schema CHECK constraint).
 const ALLOWED_TYPES = new Set(['verse', 'chorus', 'refrain', 'bridge', 'pre-chorus', 'tag', 'intro', 'outro']);
 
+// Slide-break marker stored inline in a section's content — splits one logical
+// section into variable-size display parts. MUST match SLIDE_BREAK in the renderer
+// (src/renderer/utils/sectionLabels.js). Symbol-only, so it stays invisible to the
+// song FTS index and the lyric matchers.
+const SLIDE_BREAK = '⁂';
+
 function decodeEntities(s) {
   return String(s ?? '')
     .replace(/&lt;/g, '<')
@@ -401,6 +407,10 @@ function deriveStyleJson(content, srcText, srcStyles) {
   let p = 0;
   for (let k = 0; k < content.length; k++) {
     const ch = content[k];
+    // The slide-break marker is injected after the fact (it's not in the RTF
+    // source), so it has no style and must not advance the source pointer — else
+    // the subsequence alignment derails for every char after it.
+    if (ch === SLIDE_BREAK) { cs[k] = null; continue; }
     while (p < srcText.length && srcText[p] !== ch) p++;
     cs[k] = p < srcText.length ? srcStyles[p] : null;
     p++;
@@ -497,11 +507,18 @@ function parseEasyWorship(dbPath) {
         title: (s.title || '').trim() || 'Untitled',
         author: (s.author || '').trim() || null,
         copyright,
-        sections: sections.map((x) => ({
-          type: ALLOWED_TYPES.has(x.type) ? x.type : 'verse',
-          content: x.content,
-          style_json: deriveStyleJson(x.content, rawText, styles),
-        })),
+        sections: sections.map((x) => {
+          // EasyWorship keeps a verse's multiple slides as blank-line-separated
+          // stanzas under one header. Turn each internal blank line into a slide
+          // break so the section imports as variable-size parts (one slide per
+          // stanza) instead of a single oversized slide.
+          const content = x.content.replace(/\n[ \t]*\n+/g, `\n${SLIDE_BREAK}\n`);
+          return {
+            type: ALLOWED_TYPES.has(x.type) ? x.type : 'verse',
+            content,
+            style_json: deriveStyleJson(content, rawText, styles),
+          };
+        }),
         error: sections.length ? undefined : 'No lyrics found for this song.',
       };
     });

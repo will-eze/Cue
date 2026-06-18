@@ -121,7 +121,10 @@ src/
 │   │   ├── songs-import.js   Song-file parsers (pure, preview-before-commit). parseSongFiles(filePaths)
 │   │   │                     auto-detects per file: OpenLyrics XML (regex), ChordPro ({directives} +
 │   │   │                     [chord] stripping), plain text (filename → title), EasyWorship (SQLite
-│   │   │                     Songs.db + SongWords.db join, RTF→text via rtfToText, one file → many rows).
+│   │   │                     Songs.db + SongWords.db join, RTF→rich via rtfToRich, one file → many rows).
+│   │   │                     EW: a section's internal blank lines (a verse's multiple slides under one header)
+│   │   │                     become ⁂ slide-break markers (§8 parts); deriveStyleJson skips ⁂ during its
+│   │   │                     subsequence alignment against the RTF source so runs stay aligned past the break.
 │   │   │                     parseGhsItems(items) → "GHS N - Name" rows tagged GHS. Shared parseSections
 │   │   │                     (header / blank-block splitter, mirrors SongEditor's Paste Song parser).
 │   │   └── pptx-import.js    PowerPoint import (main side). findLibreOffice/detectLibreOffice (known per-OS soffice
@@ -281,6 +284,12 @@ src/
 │   │   │                          Tags row is always shown: toggles existing tags + a "+ New" inline input that creates a tag
 │   │   │                          (tags.create, auto palette colour) and auto-selects it — no need to visit Settings.
 │   │   │                          Paste Song parser (parseSong). renderWithRuns (exported). Escape key closes.
+│   │   │                          Section splitting: a Split button / ⌘-Ctrl+Enter inserts a slide break at the caret
+│   │   │                          (a contenteditable=false styled divider that round-trips to the ⁂ marker via
+│   │   │                          renderEditorHtml + extractContentAndRuns' data-break guard); an Auto button splits the
+│   │   │                          section at every blank-line stanza. The preview shows a click-to-jump thumbnail
+│   │   │                          filmstrip of the section's parts (splitForPreview rebases runs per part). The sections
+│   │   │                          sidebar flicks through sections on mouse-wheel (native non-passive listener).
 │   │   ├── SongPreviewModal.jsx   Read-only song preview. Add to Rundown / Edit.
 │   │   ├── SongImportModal.jsx    Import preview/confirm (createPortal). One row per parsed song: checkbox,
 │   │   │                          uncontrolled editable title (titlesRef — no re-render for large batches),
@@ -372,6 +381,10 @@ src/
 │       └── sectionLabels.js      Numbered section labels — single source of truth. sectionOrdinals(slides) (n or null,
 │                                 numbered only when a type repeats); sectionLabels(slides,{abbrev}); sectionLabelAt.
 │                                 Used by SlideList, SongEditor, OperatorView buildPayload (stage label), the remote.
+│                                 Also owns variable-size section splitting: SLIDE_BREAK ('⁂'), splitSectionContent(content)
+│                                 → parts, expandSongSections(sections) → flat slide list (one slide per part, labels
+│                                 computed at the SECTION level so parts share "Verse 1"; carries _label/_labelAbbr/
+│                                 _partIndex/_partCount/_key). getSlides()'s song branch returns this.
 │
 ├── output/                   Plain HTML — no build step, no React, served directly.
 │   ├── media-player.js       Shared classic script (loaded before fullscreen.js/stage.js). window.CueMediaPlayer.
@@ -482,6 +495,7 @@ src/
 | v20 | Presentations: created `presentations`, `presentation_slides`, `presentation_templates`; rebuilt `service_items` to add `'presentation'` to the `item_type` CHECK (v7-pattern table rebuild) |
 | v21 | Native YouTube player: rebuilt `service_items` to add `'youtube'` to the `item_type` CHECK (v7-pattern table rebuild). A YouTube cue stores its URL in `content`, `ref_id` NULL — the downloaded file is ephemeral (never `media_assets`); see §6 *Native YouTube player* |
 | v22 | Theme packs: added `themes.builtin` (INTEGER, default 0 — seeded built-ins, protected from edit/delete, re-seedable), `themes.category` (TEXT, default `'song'` — `'song'`/`'scripture'`/`'graphic'`/`'presentation'`, pickers filter on it), `themes.sort_order` (INTEGER, default 0 — display order within a category). A built-in's CSS gradient/solid background rides inside `style_json.bgCss` (§8/§9), not a new column |
+| v23 | Repaired `songs_fts`: rebuilt as `contentless_delete=1` and replaced the three triggers so the delete idiom is `DELETE FROM songs_fts WHERE rowid=?`. The old triggers issued the FTS5 `'delete'` command with empty-string values, orphaning tokens until a `MATCH`-in-a-JOIN threw "database disk image is malformed" and song search returned nothing |
 
 ### All tables
 
@@ -502,7 +516,9 @@ id INTEGER PRIMARY KEY AUTOINCREMENT
 song_id INTEGER NOT NULL REFERENCES songs(id) ON DELETE CASCADE
 type TEXT NOT NULL CHECK(type IN ('verse','chorus','refrain','bridge','pre-chorus','tag','intro','outro'))
 order_index INTEGER NOT NULL
-content TEXT NOT NULL          -- Plain text. \n for line breaks.
+content TEXT NOT NULL          -- Plain text. \n for line breaks. An inline ⁂ (U+2042) marker splits the
+                              --   section into variable-size display parts (see §8). Symbol-only, so it is
+                              --   invisible to songs_fts (unicode61) and the lyric matchers.
 style_json TEXT                -- Nullable JSON. See §8.
 ```
 
@@ -1161,6 +1177,8 @@ Subscribe to main→renderer events. Returns an unsubscribe function — call it
 
 `renderWithRuns(text, runs)` is exported from `SongEditor.jsx` and used in `PreviewLivePanel.jsx` to render text with run-level styling in the monitor frame. Output templates have an equivalent inline copy. Runs support `underline`.
 
+**Variable-size section splitting.** A single section can render as multiple display slides while staying **one logical section** in `song_sections`. The split point is an inline `⁂` (U+2042) marker in `content` — symbol-only, so it is invisible to `songs_fts` (unicode61 tokenizer) and the lyric matchers (`db/songs.js` `_norm`, paste-list, future song detection), and needs **no schema change**. `utils/sectionLabels.js` owns the logic: `splitSectionContent(content)` → parts, `expandSongSections(sections)` → the flat slide list `getSlides()` returns for songs (one slide per part; labels are computed at the section level so all parts share "Verse 1", with `_partIndex`/`_partCount` for the operator's "1/2" chip). The editor stores the canonical glyph but renders it as a styled non-editable divider; the EW importer turns a verse's blank-line-separated slides into `⁂` markers (§4 `songs-import.js`).
+
 ---
 
 ## 9. Background Resolution Order
@@ -1361,7 +1379,7 @@ Two ref patterns used to avoid stale closures:
 A rundown item can carry a per-slide auto-advance interval (`service_items.advance_seconds`, set from the RundownPanel context menu → Auto-Advance modal). When that item is live, a `useEffect` keyed on `(liveItemId, liveSlideIdx, liveScripture, serviceData)` arms one `setTimeout`; on fire it calls `handleAutoAdvance` via `shortcutRef.current`. The effect re-runs on every live slide/item change, so each advance restarts the countdown; scripture-live (synthetic, not in the rundown) and items without an interval are skipped. `handleAutoAdvance` reads the live item's `advance_loop`/`advance_wrap`: `'item'` bounces back to slide 0 of the same item (forever); `'rundown'` steps forward like Space and, at the end of the rundown, wraps to the first item or stops based on `advance_wrap` (stopping = no state change = no new timer). The whole feature is renderer-side — it reuses the same handlers as the keyboard/remote, never resolving slides in main.
 
 ### Section labels (numbered verses)
-`utils/sectionLabels.js` is the single source of truth. A section type is numbered only when it repeats within the song — three verses → "Verse 1 / Verse 2 / Verse 3", a lone chorus stays "Chorus" (numbering is derived from the ordered list, never stored). `buildPayload`/`nextSlideInfo` use `labelForSlide()` so the stage/confidence display gets the numbered `sectionLabel`; `SlideList` (abbrev forms) and the song editor's ordinal badge use it too. Scripture/media slides pass through unchanged (each "type" is unique → no number).
+`utils/sectionLabels.js` is the single source of truth. A section type is numbered only when it repeats within the song — three verses → "Verse 1 / Verse 2 / Verse 3", a lone chorus stays "Chorus" (numbering is derived from the ordered list, never stored). `buildPayload`/`nextSlideInfo` use `labelForSlide()` so the stage/confidence display gets the numbered `sectionLabel`; `SlideList` (abbrev forms) and the song editor's ordinal badge use it too. Scripture/media slides pass through unchanged (each "type" is unique → no number). For songs, `getSlides()` first runs `expandSongSections()` (§8) so a split section becomes several navigable slides (GO/NEXT/PREV/SELECT operate per-slide, so parts are free); each carries a per-part `_label`/`_labelAbbr` that `labelForSlide`/`slidesForRemote`/`SlideList` prefer over the recomputed ordinal — all parts of a split verse keep the same label.
 
 ### Network remote integration
 `OperatorView` listens for `remote:command` and routes go/clear/logo/next/prev/live/select to the same handlers as the keyboard (the remote is a "virtual operator", so UI state stays in sync — it is always mounted, CSS-hidden when off-view). `handlePrevLiveSlide` mirrors the space-driven `handleNextLiveSlide` backwards; `handleRemoteSelect(itemId, slideIdx?)` jumps live to an item (or a specific slide). A `useEffect` pushes the rundown (`slidesForRemote` per item) + selection to the server via `window.cue.remote.pushNavState` whenever it changes.

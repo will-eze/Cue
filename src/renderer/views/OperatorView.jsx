@@ -4,14 +4,14 @@ import PreviewLivePanel from '../panels/PreviewLivePanel';
 import LibraryPanel from '../panels/LibraryPanel';
 import ScriptureDetectionPanel from '../panels/ScriptureDetectionPanel';
 import { useScriptureCapture } from '../audio/useScriptureCapture';
-import { sectionLabels, sectionLabelAt } from '../utils/sectionLabels';
+import { sectionLabelAt, expandSongSections } from '../utils/sectionLabels';
 
 const isMac = window.cue.platform === 'darwin';
 
 // Display label for a slide. Songs get numbered section labels (Verse 1/Verse 2);
 // scripture/media slides keep their own label (the reference / type).
 function labelForSlide(item, slides, idx) {
-  if (item?.item_type === 'song') return sectionLabelAt(slides, idx);
+  if (item?.item_type === 'song') return slides[idx]?._label ?? sectionLabelAt(slides, idx);
   return slides[idx]?.type || '';
 }
 
@@ -422,7 +422,9 @@ export default function OperatorView({
 
   function getSlides(item) {
     if (!item) return [];
-    if (item.item_type === 'song') return item.sections || [];
+    // Songs expand each section into its display parts (variable-size splits on
+    // the ⁂ break marker); a section with no marker is one part — unchanged.
+    if (item.item_type === 'song') return expandSongSections(item.sections || []);
     if (item.item_type === 'scripture') {
       const slides = item.scriptureSlides || [];
       // Inject the global scripture verse style + reference style so the monitors
@@ -457,11 +459,10 @@ export default function OperatorView({
   function slidesForRemote(item) {
     const slides = getSlides(item);
     if (!slides || slides.length <= 1) return [];
-    const songLabels = item.item_type === 'song' ? sectionLabels(slides) : null;
     return slides.map((s, idx) => {
-      const label = songLabels
-        ? songLabels[idx]
-        : (s.type || (item.item_type === 'scripture' ? `Verse ${idx + 1}` : `Slide ${idx + 1}`));
+      // Song slides carry a per-part label (`_label`); other items derive one.
+      const label = s._label
+        ?? (s.type || (item.item_type === 'scripture' ? `Verse ${idx + 1}` : `Slide ${idx + 1}`));
       const preview = (s.content || '').replace(/\s+/g, ' ').trim().slice(0, 70);
       return { index: idx, label, preview };
     });
