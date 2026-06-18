@@ -1071,10 +1071,16 @@ export default function SongEditor({ song, onClose, onSave }) {
         }
       });
     } else {
-      const first = { _key: newKey(), type: 'verse', content: '', runs: [] };
-      setSections([first]);
-      setActiveSectionKey(first._key);
-      setPreviewContent({ text: '', runs: [] });
+      // New song — optionally seed title/lyrics from a prefill (e.g. the Paste
+      // Song List modal creating a song it couldn't find in the library).
+      if (song?.prefillTitle) setTitle(song.prefillTitle);
+      const seeded = (song?.prefillSections || []).filter((s) => (s.content || '').trim());
+      const mapped = seeded.length
+        ? seeded.map((s) => ({ _key: newKey(), type: s.type || 'verse', content: s.content, runs: [] }))
+        : [{ _key: newKey(), type: 'verse', content: '', runs: [] }];
+      setSections(mapped);
+      setActiveSectionKey(mapped[0]._key);
+      setPreviewContent({ text: mapped[0].content, runs: mapped[0].runs });
     }
   }, [song?.id]);
 
@@ -1237,7 +1243,7 @@ export default function SongEditor({ song, onClose, onSave }) {
         savedId = await window.cue.songs.create(data);
         if (songBackground?.id != null) await window.cue.songs.setBackground(savedId, songBackground.id);
       }
-      onSave();
+      onSave(savedId);
     } catch (err) {
       console.error('[SongEditor] save failed:', err);
       setSaveError(`Save failed: ${err?.message || 'unknown error'}`);
