@@ -7,19 +7,25 @@
   <link rel="stylesheet" href="fullscreen.css" />
 </head>
 <body>
-  <div id="background"></div>
-  <!-- Adjustable dark scrim over the background (transparent→black) for legibility -->
-  <div id="scrim"></div>
-  <div id="content">
-    <div id="text-wrap">
-      <div id="text"></div>
+  <!-- #stage wraps the whole program layer (background + scrim + content) so the
+       transition engine can clone/animate it as one unit. The #cue-gfx broadcast
+       overlay stays OUTSIDE #stage — it's an independent bus, never transitioned. -->
+  <div id="stage">
+    <div id="background"></div>
+    <!-- Adjustable dark scrim over the background (transparent→black) for legibility -->
+    <div id="scrim"></div>
+    <div id="content">
+      <div id="text-wrap">
+        <div id="text"></div>
+      </div>
+      <!-- Presentation slide: a fixed 1920×1080 element canvas scaled to the viewport -->
+      <div id="slide-elements"></div>
+      <div id="logo-wrap"></div>
+      <div id="copyright"></div>
     </div>
-    <!-- Presentation slide: a fixed 1920×1080 element canvas scaled to the viewport -->
-    <div id="slide-elements"></div>
-    <div id="logo-wrap"></div>
-    <div id="copyright"></div>
   </div>
   <script src="media-player.js"></script>
+  <script src="transitions.js"></script>
   <script src="fullscreen.js"></script>
   <!-- Broadcast-graphics overlay (independent of the program slide) -->
   <script src="graphics-overlay.js"></script>

@@ -119,9 +119,16 @@ function renderProgram(payload) {
   applyCopyrightStyle(copyright, payload.copyrightStyle, payload.copyrightAlign === 'right' ? 'right' : '');
 }
 
+// The lyric band never contains a video, so transitions are always safe here — the
+// band cross-fades/slides between lyric lines and fades out when an item with no band
+// (media/presentation/clear/logo) goes live. Only the slide-update path animates;
+// the content-mode toggle below snaps (it's a mode change, not a slide change).
+const stageEl = document.getElementById('lowerthird');
+
 window.cueOutput.onSlideUpdate((payload) => {
   lastPayload = payload;
-  renderProgram(payload);
+  if (window.CueTransitions) window.CueTransitions.run(stageEl, payload.transition, () => renderProgram(payload));
+  else renderProgram(payload);
 });
 
 // Live content-mode toggle — switch the lyric band on/off without a window reload.

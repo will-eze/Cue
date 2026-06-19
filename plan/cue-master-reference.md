@@ -224,10 +224,10 @@ src/
 │   │   │                     Loads output channels list. Does NOT capture output or subscribe to multiview —
 │   │   │                     the live monitor renders the slide from payload (no per-frame capture loop).
 │   │   │                     liveChannelIdx tracks which channel the live monitor displays.
-│   │   ├── SettingsView.jsx  Settings layout. Left column is section navigation (Channels/Logo/Background/Themes/
+│   │   ├── SettingsView.jsx  Settings layout. Left column is section navigation (Channels/Logo/Background/Themes/Motion/
 │   │   │                     Bible/Tags/Media/Shortcuts/Remote/Data/Danger) + Back-to-Operator: click scrolls to the section; an
 │   │   │                     IntersectionObserver highlights the section in view. Section order: OutputChannels →
-│   │   │                     LogoSettings → BackgroundSettings → ThemeSettings → BibleSettings → TagSettings → MediaCleanup →
+│   │   │                     LogoSettings → BackgroundSettings → ThemeSettings → TransitionSettings → BibleSettings → TagSettings → MediaCleanup →
 │   │   │                     ShortcutSettings → RemoteSettings → DataSettings → DangerZone → SettingsFooter (always last two,
 │   │   │                     rendered at layout level — not inside any sub-component).
 │   │   └── MultiviewView.jsx Multi-output monitor wall — one uniform responsive grid of equal tiles (every
@@ -363,6 +363,8 @@ src/
 │   │   │                          reuses SongEditor's FormattingToolbar + SlidePreview/LowerThirdPreview. Background picker.
 │   │   ├── BackgroundLibrary.jsx  Settings → Background Library (Phase 1b). Tag-filter grid of hotlinked remote thumbs
 │   │   │                          (window.cue.backgrounds.*); hover actions set the global default bg per surface.
+│   │   ├── TransitionSettings.jsx Settings → Motion. Per trigger (slide/logo/clear): style picker (§13 library) +
+│   │   │                          duration slider + easing + click-to-play NOW→NEXT preview. Persists `output_transitions`.
 │   │   ├── BibleSettings.jsx     Installed translations list (delete) + Import (file/online) menu.
 │   │   │                          Accepts only activeServiceId prop. No DangerZone or footer inside.
 │   │   ├── TagSettings.jsx       Tag CRUD: create (name + preset colour palette), inline rename, recolour, delete
@@ -414,7 +416,15 @@ src/
 │   │                         style.name.textBox, styled per name/title), ticker crawl (top/bottom, speed), and custom
 │   │                         HTML (isolated shadow root, .cue-in/.cue-out). Honours onGraphicUpdate; ?graphics=0 and
 │   │                         content:mode toggle the whole overlay live (caches last overlay to restore on re-enable).
-│   ├── fullscreen.html       #background + #content (#text-wrap > #text, #slide-elements, #logo-wrap, #copyright). + graphics-overlay.js.
+│   ├── transitions.js        Shared program-output transition engine (loaded before fullscreen.js/lowerthird.js).
+│   │                         window.CueTransitions.run(stage, {type,durationMs,easing}, render, {fgSel}): clones the
+│   │                         live stage as a ghost overlay, calls render() to mutate the live stage to the new content,
+│   │                         then animates. fade/zoom keep the new BACKGROUND solid and fade/scale only the foreground
+│   │                         (fgSel) IN while the ghost fades out (no mid-transition black dip); slides move the whole
+│   │                         frame. Latest-wins (settles any in-flight transition first), honours reduced-motion, GPU
+│   │                         will-change. CALLER passes {type:'none'} when a video is on either side (§13). NOT in stage.
+│   ├── fullscreen.html       #stage (#background + #scrim + #content[#text-wrap > #text, #slide-elements, #logo-wrap,
+│   │                         #copyright]) + graphics-overlay.js. #stage wraps the program layer as the transition clone unit.
 │   ├── fullscreen.css        Fullscreen output styles. #text-wrap is absolutely positioned by JS. #slide-elements is a
 │   │                         fixed 1920×1080 presentation-element layer scaled to the viewport. #logo-wrap is a separate sibling.
 │   ├── fullscreen.js         applyStyle(s): positions #text-wrap via textBox %, applies all style props to #text.
@@ -424,12 +434,15 @@ src/
 │   │                         Foreground media via CueMediaPlayer.attach (single element, native loop). No clock-master
 │   │                         time reporting, no dual-element loop swap. renderElements(payload.elements): a presentation
 │   │                         slide — absolutely-positioned text/image/shape elements (% of the scaled 1920×1080 #slide-elements).
+│   │                         Render body factored into renderSlide(payload); onSlideUpdate routes it through CueTransitions
+│   │                         (fgSel '#content'), forcing {type:'none'} when the stage holds a <video> or payloadHasVideo(payload).
 │   ├── lowerthird.html       #lowerthird > #text + #copyright (lyric band) + graphics-overlay.js. Always transparent.
 │   ├── lowerthird.css        #lowerthird: bottom-anchored, background: transparent (controlled by JS via ltBar).
 │   ├── lowerthird.js         The LYRIC BAND only (program slide). applyStyle(el, s) incl. ltBar gradient to #lowerthird.
 │   │                         buildBarBg(ltBar): null → transparent; {color,opacity,solid} → CSS gradient or solid.
 │   │                         ?program=0 / content:mode toggle the lyric band live (caches lastPayload to restore).
-│   │                         The graphics overlay is separate (graphics-overlay.js).
+│   │                         onSlideUpdate routes the band through CueTransitions (whole #lowerthird, no fgSel); the
+│   │                         content:mode path snaps (no transition). The graphics overlay is separate (graphics-overlay.js).
 │   ├── stage.html            Confidence monitor. #top-bar (local time / REMAINING timer / VIDEO countdown),
 │   │                         #content (#media-wrap + #current-text, #next-text), #bottom-bar (#message-text).
 │   ├── stage.css             Stage monitor styles — info bars, progress track, countdown colour states, message alert.
@@ -1473,8 +1486,13 @@ Works in both dev (ASAR not used) and production (path is inside ASAR).
 ### go / clear / logo dispatch
 `manager.go(payload)` iterates all active windows and sends `webContents.send('slide:update', payload)`. The `payload.backgroundPath` is an absolute filesystem path — the output template converts it to `cue-media://` using its inline `pathToUrl()`.
 
+`go`/`clear`/`logo` each resolve a transition spec via `transitionFor(kind)` (reads the `output_transitions` setting, falls back to defaults, clamps duration 0–2000ms) and stash it in a module-scoped `pendingTransition`; `sendCurrentState()` reads it into every `slide:update` payload's `transition` field, then clears it — so it rides **exactly one** dispatch. Late-attach syncs (`sendStateToWindow`), `applyScene`, and output refreshes leave it null → `{type:'none'}` → no animation (Scenes stay atomic by design).
+
+### Slide transitions (output-side)
+The program-output templates animate slide changes via `transitions.js` (`window.CueTransitions`). Library (`type`): `none` (cut), `fade`, `slide-left|right|up|down`, `zoom-in|out`; each carries `durationMs` + `easing`. The engine clones the live `#stage` as a ghost overlay, renders the new content underneath, then animates: **fade/zoom keep the new background solid and fade/scale only the foreground in** (the fullscreen caller passes `fgSel:'#content'`) while the ghost fades out — so a same-background advance shows no black dip and the incoming text genuinely fades in (not a cut-in); **slides** move the whole frame. Latest-wins (settles any in-flight transition before starting), respects `prefers-reduced-motion`, uses `will-change` for GPU compositing. **Option 2 — video swaps always hard-cut**: the template forces `{type:'none'}` when the outgoing stage holds a `<video>` or the incoming payload carries one (a video background, a video item, a video presentation element, or a video logo), because two live decoders + the single-element transport clock don't mix (§6). The lower-third routes its whole band through the engine (no `fgSel`); the operator live monitor renders from payload and ignores `transition` (snaps). Configured in Settings → Motion per trigger (slide / logo / clear).
+
 ### Fullscreen template structure
-`fullscreen.html` uses `#background` for the full-bleed media, `#scrim` (a full-bleed black layer between background z0 and content z1), `#text-wrap` (absolutely positioned by JS via `textBox` percentage values) as the text container, `#logo-wrap` as a separate sibling for the logo overlay (never overwrites `#text`), and `#copyright`. The `applyStyle(s)` function sets `#scrim` opacity from `style.bgScrim` (clamped 0..1, cleared when no slide — §9), positions `#text-wrap` via CSS `left/top/width/height` percent strings, applies all style properties (verticalAlign, letterSpacing, uppercase, textShadow, textStroke, underline in runs) to the inner `#text` element. `setBackground(path, bgCss)` shows media when `path` resolves, else paints `bg.style.background = bgCss` (theme gradient/solid). `showLogo`/`hideLogo` toggle a `.logo-active` class on `#logo-wrap`.
+`fullscreen.html` wraps the whole program layer in `#stage` (the transition clone unit; the `#cue-gfx` broadcast overlay stays outside it, never transitioned). Inside: `#background` for the full-bleed media, `#scrim` (a full-bleed black layer between background z0 and content z1), `#text-wrap` (absolutely positioned by JS via `textBox` percentage values) as the text container, `#logo-wrap` as a separate sibling for the logo overlay (never overwrites `#text`), and `#copyright`. The `applyStyle(s)` function sets `#scrim` opacity from `style.bgScrim` (clamped 0..1, cleared when no slide — §9), positions `#text-wrap` via CSS `left/top/width/height` percent strings, applies all style properties (verticalAlign, letterSpacing, uppercase, textShadow, textStroke, underline in runs) to the inner `#text` element. `setBackground(path, bgCss)` shows media when `path` resolves, else paints `bg.style.background = bgCss` (theme gradient/solid). `showLogo`/`hideLogo` toggle a `.logo-active` class on `#logo-wrap`.
 
 ### Lower-third template structure
 `lowerthird.html` uses `#lowerthird` (bottom-anchored, full-width) containing `#text` and `#copyright` — the **lyric band** (program slide) only, handled by `lowerthird.js`. Background is always `transparent` by default — JS sets it from `ltBar` via `buildBarBg()`. The `applyStyle(el, s)` function applies all style properties including the bar background. Clear and logo events explicitly reset `ltDiv.style.background = 'transparent'`. The broadcast-graphics overlay is a separate, shared layer (`graphics-overlay.js`).
@@ -1671,6 +1689,7 @@ Models auto-download to `userData/whisper-model` on first arm (nothing ships in 
 | ~~Auto-advance / timed loops~~ | ~~Medium~~ | Implemented — `service_items.advance_seconds/advance_loop/advance_wrap`, renderer-side scheduler in `OperatorView.handleAutoAdvance`. See §12. |
 | ~~Presentations (native slides) + PowerPoint import~~ | ~~High~~ | Implemented — multi-element slide editor + LibreOffice/pdfjs PPTX→image import. See §21. |
 | ~~Scenes — multi-output state recall~~ | ~~Low~~ | Implemented (reframed from the roadmap's "macros" proposal — recorded timed playback + event triggers deliberately dropped). `scenes` table (v24), `ScenesPanel` capture-driven editor, number-key 1–9 recall, atomic `applyScene`. See §5/§7/§13. |
+| ~~Transition / animation library~~ | ~~Low~~ | Implemented — `transitions.js` engine + Settings → Motion (`output_transitions`). Per-trigger (slide/logo/clear) fade/slide/zoom, foreground-only fade-in over a solid background, video swaps always hard-cut. See §13. |
 | Presentation user-saved templates | Low | `presentation_templates` table + IPC exist; only built-in layouts wired into the editor so far. |
 | Drag asset from Library onto rundown item | Medium | Background override currently only via context menu. |
 | `operator_preview_layout` setting | Low | Side-by-side monitor layout toggle. Setting key exists, no UI toggle. |

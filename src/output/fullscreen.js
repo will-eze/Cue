@@ -292,7 +292,26 @@ function renderElements(elements) {
   slideEls.classList.add('active');
 }
 
-window.cueOutput.onSlideUpdate((payload) => {
+// ── Transition gating (Option 2: never animate when a video is involved) ──────
+const VIDEO_EXT = ['mp4', 'webm', 'mov', 'avi', 'm4v', 'mkv'];
+function isVideoPath(p) {
+  if (!p) return false;
+  return VIDEO_EXT.includes(String(p).split('.').pop().toLowerCase());
+}
+// True if the INCOMING payload paints a video on the program layer.
+function payloadHasVideo(p) {
+  if (!p) return false;
+  if (p.media && (p.media.type === 'video' || isVideoPath(p.media.path))) return true;
+  if (isVideoPath(p.backgroundPath)) return true;
+  if (isVideoPath(p.logoPath)) return true;
+  if (Array.isArray(p.elements) && p.elements.some(
+    (el) => el && el.type === 'image' && (el.mediaType === 'video' || isVideoPath(el.path)))) return true;
+  return false;
+}
+
+const stageEl = document.getElementById('stage');
+
+function renderSlide(payload) {
   const { type, text, copyright: copy, backgroundPath, logoPath, logoScaleMode, styleJson } = payload;
 
   if (type === 'clear') {
@@ -350,4 +369,15 @@ window.cueOutput.onSlideUpdate((payload) => {
   copyright.textContent = copy || '';
   // Scripture attribution ("John 1:1 (KJV)") sits bottom-right (stylable); song copyright centred.
   applyCopyrightStyle(copyright, payload.copyrightStyle, payload.copyrightAlign === 'right' ? 'right' : 'center');
+}
+
+window.cueOutput.onSlideUpdate((payload) => {
+  // Hard-cut (no transition) whenever a video is on either side: the outgoing stage
+  // already shows one, or the incoming payload brings one (Option 2 — see transitions.js).
+  const involvesVideo = !!(stageEl && stageEl.querySelector('video')) || payloadHasVideo(payload);
+  const transition = involvesVideo ? { type: 'none' } : payload.transition;
+  // fgSel '#content' fades/zooms only the text layer in; #background + #scrim stay
+  // solid so a same-background advance never dips to black.
+  if (window.CueTransitions) window.CueTransitions.run(stageEl, transition, () => renderSlide(payload), { fgSel: '#content' });
+  else renderSlide(payload);
 });

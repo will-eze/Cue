@@ -423,6 +423,35 @@ function getAllOutputWindows() {
   return wins;
 }
 
+// ── Output transitions ────────────────────────────────────────────────────────
+// The operator picks a transition per trigger (slide / logo / clear) in Settings;
+// the resolved spec rides ONE slide:update dispatch in `payload.transition`, and the
+// output template animates the swap (the template enforces the no-video rule). Main
+// only resolves the configured spec — `pendingTransition` is set by go/clear/logo
+// right before sendCurrentState(), consumed once, then cleared, so late-attach syncs
+// (sendStateToWindow), scene recalls and output refreshes never animate.
+const DEFAULT_TRANSITIONS = {
+  slide: { type: 'fade', durationMs: 350, easing: 'ease' },
+  logo:  { type: 'fade', durationMs: 350, easing: 'ease' },
+  clear: { type: 'fade', durationMs: 250, easing: 'ease' },
+};
+let pendingTransition = null;
+
+function transitionFor(kind) {
+  const def = DEFAULT_TRANSITIONS[kind];
+  let cfg = null;
+  try {
+    const row = getDb().prepare('SELECT value FROM settings WHERE key = ?').get('output_transitions');
+    cfg = row ? JSON.parse(row.value) : null;
+  } catch { cfg = null; }
+  const t = (cfg && cfg[kind]) || def;
+  return {
+    type: t.type || 'none',
+    durationMs: Math.max(0, Math.min(2000, Number(t.durationMs ?? def.durationMs))),
+    easing: t.easing || def.easing,
+  };
+}
+
 // ── Display state machine ─────────────────────────────────────────────────────
 
 // Send the current display state to a single window only.
@@ -464,11 +493,16 @@ function sendStateToWindow(win, channel) {
 }
 
 function sendCurrentState() {
+  // Consume the pending transition once: it rides exactly this dispatch, then clears
+  // so a later re-sync (e.g. a window reopening) doesn't replay the animation.
+  const transition = pendingTransition || { type: 'none' };
+  pendingTransition = null;
+
   if (state.displayMode === 'idle') {
     for (const win of getAllOutputWindows()) {
       win.webContents.send('slide:update', {
         type: 'clear', text: null, backgroundPath: null, logoPath: null,
-        copyright: null, sectionLabel: null,
+        copyright: null, sectionLabel: null, transition,
       });
     }
     return;
@@ -479,7 +513,7 @@ function sendCurrentState() {
     for (const win of getAllOutputWindows()) {
       win.webContents.send('slide:update', {
         type: 'clear', text: null, backgroundPath: bgPath, logoPath: null,
-        copyright: null, sectionLabel: null,
+        copyright: null, sectionLabel: null, transition,
       });
     }
     return;
@@ -495,7 +529,7 @@ function sendCurrentState() {
     for (const channel of channels) {
       const logoPath = resolveLogo(channel);
       const logoPayload = { type: 'logo', logoPath, logoScaleMode, text: null,
-        backgroundPath: null, copyright: null, sectionLabel: null };
+        backgroundPath: null, copyright: null, sectionLabel: null, transition };
       if (channel.type === 'ndi') {
         const win = windows.get(`ndi-${channel.id}`);
         if (win && !win.isDestroyed()) win.webContents.send('slide:update', logoPayload);
@@ -514,7 +548,7 @@ function sendCurrentState() {
 
   // displayMode === 'content'
   for (const win of getAllOutputWindows()) {
-    win.webContents.send('slide:update', { ...state.livePayload, type: 'content', transport: { ...transport } });
+    win.webContents.send('slide:update', { ...state.livePayload, type: 'content', transport: { ...transport }, transition });
   }
 }
 
@@ -537,6 +571,7 @@ export function go(payload) {
   state.livePayload = payload;
   state.displayMode = 'content';
   state.preLogoMode = null;
+  pendingTransition = transitionFor('slide');
   sendCurrentState();
   broadcastTransport();
   notifyMainWindow('output:state-changed', getState());
@@ -556,6 +591,7 @@ export function clear() {
     state.preLogoMode = null;
   }
 
+  pendingTransition = transitionFor('clear');
   sendCurrentState();
   notifyMainWindow('output:state-changed', getState());
 }
@@ -570,6 +606,7 @@ export function logo() {
     state.displayMode = 'logo';
   }
 
+  pendingTransition = transitionFor('logo');
   sendCurrentState();
   notifyMainWindow('output:state-changed', getState());
 }

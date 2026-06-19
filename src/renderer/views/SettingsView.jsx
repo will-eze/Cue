@@ -3,6 +3,7 @@ import OutputChannels from '../settings/OutputChannels';
 import LogoSettings from '../settings/LogoSettings';
 import BackgroundSettings from '../settings/BackgroundSettings';
 import ThemeSettings from '../settings/ThemeSettings';
+import TransitionSettings from '../settings/TransitionSettings';
 import BibleSettings from '../settings/BibleSettings';
 import TagSettings from '../settings/TagSettings';
 import FontSettings from '../settings/FontSettings';
@@ -20,6 +21,7 @@ const SECTIONS = [
   { id: 'logo',       icon: 'image',           label: 'Logo' },
   { id: 'background', icon: 'wallpaper',       label: 'Background' },
   { id: 'themes',     icon: 'style',           label: 'Themes' },
+  { id: 'transitions', icon: 'animation',      label: 'Motion' },
   { id: 'bible',      icon: 'menu_book',       label: 'Bible' },
   { id: 'tags',       icon: 'sell',            label: 'Tags' },
   { id: 'fonts',      icon: 'font_download',   label: 'Fonts' },
@@ -167,6 +169,7 @@ export default function SettingsView({ onClose, activeServiceId, onRundownCleare
         <section ref={setRef('logo')} data-section="logo" className="scroll-mt-lg"><LogoSettings /></section>
         <section ref={setRef('background')} data-section="background" className="scroll-mt-lg"><BackgroundSettings activeServiceId={activeServiceId} /></section>
         <section ref={setRef('themes')} data-section="themes" className="scroll-mt-lg"><ThemeSettings /></section>
+        <section ref={setRef('transitions')} data-section="transitions" className="scroll-mt-lg"><TransitionSettings /></section>
         <section ref={setRef('bible')} data-section="bible" className="scroll-mt-lg"><BibleSettings /></section>
         <section ref={setRef('tags')} data-section="tags" className="scroll-mt-lg"><TagSettings /></section>
         <section ref={setRef('fonts')} data-section="fonts" className="scroll-mt-lg"><FontSettings /></section>
