@@ -52,7 +52,9 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Node 22 LTS: the Electron 42 toolchain (Forge 7.11 / @electron/rebuild 4)
+          # requires Node >= 20.17; 22 is the current LTS and matches local dev (.nvmrc).
+          node-version: 22
           cache: npm
 
       # npm ci installs the platform-matched grandi binary (@grandi/<os>-<arch>
