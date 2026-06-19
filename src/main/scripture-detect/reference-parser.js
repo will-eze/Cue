@@ -172,10 +172,23 @@ function parseNumbers(tokens, i, singleChapter = false) {
 function scoreConfidence({ source, short, nums }) {
   let c = 0.6;
   if (source === 'name') c += 0.2;
-  if (source === 'fuzzy') c -= 0.2;
+  // A mis-heard book name (fuzzy) is risky on its own, but far less so when it
+  // rides a complete numeric reference (see the corroboration bonus below) — so the
+  // penalty is light enough that "Genisis 1 1" still clears the detection floor.
+  else if (source === 'fuzzy') c -= 0.1;
+
   const hadCue = nums.hadChapterKw || nums.hadVerseCue;
-  if (hadCue) c += 0.2;
-  if (nums.vStart != null) c += 0.1;
+  // A complete reference is corroborated either by an explicit "chapter"/"verse"/
+  // colon cue OR by a bare "<book> <chapter> <verse>" pair ("Genesis 1 1",
+  // "Psalms 20 13") — how ministers most often speak a reference.
+  const corroborated = hadCue || nums.vStart != null;
+  if (corroborated) {
+    // Full (auto-air-eligible) credit only when the book is an exact NAME. An
+    // abbreviation or fuzzy mis-hear is an uncertain book ID — and is often an
+    // everyday word ("jon 3 16", "act 2 38") — so it gets just enough to clear the
+    // detection floor as a suggestion, never the auto-air threshold.
+    c += source === 'name' ? 0.2 : 0.15;
+  }
   if (short && !hadCue) c -= 0.4;      // bare "am 3" etc.
   return Math.max(0, Math.min(1, c));
 }

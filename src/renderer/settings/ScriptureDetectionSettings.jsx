@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 
 // Scripture detection — listen to the service audio and surface the relevant verse
 // automatically (spoken references + quoted/paraphrased content). Fully local: an
@@ -42,6 +42,15 @@ export default function ScriptureDetectionSettings() {
     const off = window.cue.on('scripture:status', (s) => setCfg(s));
     return off;
   }, []);
+
+  // Reference detection is configured entirely by the confidence bar, which pins the
+  // On-Detect action to 'preview' (the live band is the only path to air, gated by the
+  // opt-in toggle). Migrate any legacy autoAction once so the bands stay coherent.
+  useEffect(() => {
+    if (cfg && cfg.reference && cfg.reference.autoAction !== 'preview') {
+      window.cue.scriptureDetect.setConfig({ reference: { autoAction: 'preview' } }).then(setCfg);
+    }
+  }, [cfg?.reference?.autoAction]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const apply = useCallback(async (patch) => {
     setBusy(true);
@@ -131,14 +140,21 @@ export default function ScriptureDetectionSettings() {
         </Row>
       </div>
 
-      {/* Reference detection */}
+      {/* Reference detection — confidence bands on a single bar (the bar IS the config;
+          autoAction is pinned to 'preview' under the hood, the bands express the rest). */}
       <ModeBlock
         title="Reference Detection"
         desc='Catches a spoken citation ("first Corinthians thirteen") and stages the passage.'
         mode={cfg.reference}
         disabled={busy}
         onToggle={() => apply({ reference: { enabled: !cfg.reference.enabled } })}
-        onAuto={(v) => apply({ reference: { autoAction: v } })}
+        bands
+        thresholds={cfg.thresholds}
+        autoLive={cfg.reference.autoLive}
+        onThresholds={(patch) => apply({ reference: { autoAction: 'preview' }, thresholds: patch })}
+        onAutoLive={(next, extra) =>
+          apply({ reference: { autoAction: 'preview', autoLive: next }, ...(extra ? { thresholds: extra } : {}) })
+        }
       />
 
       {/* Content matching */}
@@ -201,13 +217,37 @@ function ModeBlock(props) {
   );
 }
 
-function ModeRows({ title, desc, mode, disabled, onToggle, onAuto }) {
+function ModeRows({ title, desc, mode, disabled, onToggle, onAuto, bands, thresholds, autoLive, onThresholds, onAutoLive }) {
+  const floorPct   = Math.round((thresholds?.referenceConfidence ?? 0.6) * 100);
+  const previewPct = Math.round((thresholds?.referenceAutoConfidence ?? 0.8) * 100);
+  const livePct    = Math.round((thresholds?.referenceAutoLiveConfidence ?? 0.97) * 100);
+
+  // Enabling auto-live introduces a third divider, so re-normalize the whole triple to
+  // a < b < c ≤ 99 in one commit — guarantees the new live band can never sit below the
+  // preview band regardless of where the operator had dragged things.
+  const toggleAutoLive = () => {
+    const next = !autoLive;
+    if (!next) { onAutoLive(false); return; }
+    let c = Math.min(99, Math.max(livePct, 2));
+    let b = Math.min(previewPct, c - 1);
+    let a = Math.max(1, Math.min(floorPct, b - 1));
+    if (b <= a) b = a + 1;
+    if (c <= b) c = Math.min(99, b + 1);
+    onAutoLive(true, {
+      referenceConfidence: a / 100,
+      referenceAutoConfidence: b / 100,
+      referenceAutoLiveConfidence: c / 100,
+    });
+  };
+
   return (
     <>
       <Row label={title} hint={desc}>
         <Toggle on={mode.enabled} disabled={disabled} onClick={onToggle} />
       </Row>
-      {mode.enabled && (
+
+      {/* Content matching keeps the simple three-way action picker (it has no bands). */}
+      {mode.enabled && !bands && (
         <Row label="On Detect" hint="Suggest only, or send straight to air">
           <div className="flex items-center gap-xs">
             {[['off', 'Suggest'], ['preview', 'Auto-Preview'], ['live', 'Auto-Live']].map(([v, lbl]) => (
@@ -229,7 +269,121 @@ function ModeRows({ title, desc, mode, disabled, onToggle, onAuto }) {
           </div>
         </Row>
       )}
+
+      {/* Reference detection: one bar, drag the dividers to size each confidence band. */}
+      {mode.enabled && bands && (
+        <>
+          <div className="px-md pt-sm pb-md border-b border-outline-variant/20">
+            <p className="text-[11px] text-on-surface-variant mb-sm">
+              Drag the dividers to set how a citation is handled at each confidence level.
+            </p>
+            <ConfidenceBar
+              floorPct={floorPct}
+              previewPct={previewPct}
+              livePct={livePct}
+              autoLive={!!autoLive}
+              disabled={disabled}
+              onCommit={(a, b, c) => onThresholds({
+                referenceConfidence: a / 100,
+                referenceAutoConfidence: b / 100,
+                referenceAutoLiveConfidence: c / 100,
+              })}
+            />
+          </div>
+          <Row label="Auto-Go-Live" hint="Add a top band that airs a near-certain citation">
+            <Toggle on={!!autoLive} disabled={disabled} onClick={toggleAutoLive} />
+          </Row>
+        </>
+      )}
     </>
+  );
+}
+
+// A single segmented bar (0–100% confidence) with draggable dividers. Bands have fixed
+// meanings — Ignore · Suggest · Auto-Preview · Auto-Live (the last only when armed). Drag
+// updates locally for a smooth feel; the new thresholds are committed once on release.
+function ConfidenceBar({ floorPct, previewPct, livePct, autoLive, disabled, onCommit }) {
+  const trackRef = useRef(null);
+  const [drag, setDrag] = useState(null);                 // 'a' | 'b' | 'c' | null
+  const [vals, setVals] = useState({ a: floorPct, b: previewPct, c: livePct });
+  const valsRef = useRef(vals);
+  valsRef.current = vals;
+
+  // Mirror external changes when not mid-drag.
+  useEffect(() => {
+    if (!drag) setVals({ a: floorPct, b: previewPct, c: livePct });
+  }, [floorPct, previewPct, livePct, drag]);
+
+  const clampFor = (v, key, pct) => {
+    if (key === 'a') return Math.min(Math.max(pct, 1), v.b - 1);
+    if (key === 'b') return Math.min(Math.max(pct, v.a + 1), autoLive ? v.c - 1 : 100);
+    return Math.min(Math.max(pct, v.b + 1), 99); // 'c'
+  };
+
+  useEffect(() => {
+    if (!drag) return;
+    const move = (e) => {
+      const r = trackRef.current?.getBoundingClientRect();
+      if (!r) return;
+      const pct = Math.round(((e.clientX - r.left) / r.width) * 100);
+      setVals((v) => ({ ...v, [drag]: clampFor(v, drag, pct) }));
+    };
+    const up = () => {
+      setDrag(null);
+      const { a, b, c } = valsRef.current;
+      onCommit(a, b, c);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+  }, [drag]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const { a, b, c } = vals;
+  const segs = [
+    { key: 'ignore',  from: 0, to: a, label: 'Ignore',       cls: 'bg-surface-container-highest', txt: 'text-on-surface-variant/60' },
+    { key: 'suggest', from: a, to: b, label: 'Suggest',      cls: 'bg-on-surface-variant/15',     txt: 'text-on-surface-variant' },
+    autoLive
+      ? { key: 'preview', from: b, to: c,   label: 'Auto-Preview', cls: 'bg-primary/25',   txt: 'text-primary' }
+      : { key: 'preview', from: b, to: 100, label: 'Auto-Preview', cls: 'bg-primary/25',   txt: 'text-primary' },
+    ...(autoLive ? [{ key: 'live', from: c, to: 100, label: 'Auto-Live', cls: 'bg-secondary/25', txt: 'text-secondary' }] : []),
+  ];
+  const handles = autoLive ? ['a', 'b', 'c'] : ['a', 'b'];
+  const handlePct = { a, b, c };
+
+  return (
+    <div
+      ref={trackRef}
+      className={`relative h-14 w-full rounded-lg overflow-hidden select-none bg-surface-container-lowest border border-outline-variant/40 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}
+    >
+      {segs.map((s) => {
+        const w = s.to - s.from;
+        return (
+          <div
+            key={s.key}
+            className={`absolute top-0 bottom-0 flex flex-col items-center justify-center gap-[2px] ${s.cls} ${s.txt}`}
+            style={{ left: `${s.from}%`, width: `${w}%` }}
+          >
+            {w >= 11 && (
+              <>
+                <span className="text-[10px] font-mono uppercase tracking-[0.06em] leading-none whitespace-nowrap">{s.label}</span>
+                <span className="text-[10px] font-mono opacity-70 leading-none">{s.from}–{s.to}%</span>
+              </>
+            )}
+          </div>
+        );
+      })}
+      {handles.map((key) => (
+        <button
+          key={key}
+          onPointerDown={(e) => { if (!disabled) { e.preventDefault(); setDrag(key); } }}
+          className="absolute top-0 bottom-0 w-5 -ml-[10px] z-10 flex items-center justify-center cursor-ew-resize touch-none"
+          style={{ left: `${handlePct[key]}%` }}
+          aria-label={`${key} divider ${handlePct[key]}%`}
+        >
+          <span className="w-[3px] h-8 rounded-full bg-on-surface/85" />
+        </button>
+      ))}
+    </div>
   );
 }
 

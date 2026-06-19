@@ -49,6 +49,17 @@ export function autoModel() {
   return 'base.en';
 }
 
+// CPU thread budgets for the resident ONNX sessions. onnxruntime-node defaults each
+// session's intra-op pool to ~core count, and transformers.js loads encoder + decoder
+// as separate sessions — so a two-tier setup (commit model + tiny.en interim) spins up
+// ~4 full-core pools that thrash the cores and slow the AUTHORITATIVE commit decode.
+// We cap them so commit + interim together never exceed the cores: the commit gets the
+// lion's share (it's the result that goes to air), the interim a small slice, and ~1–2
+// cores stay free for the audio callback + main. (The commit only ever runs alongside
+// an interim briefly — interims defer while a commit is in flight, see asr.js.)
+export function commitThreads() { return Math.max(1, (os.cpus()?.length || 4) - 2); }
+export function interimThreads() { return Math.max(1, Math.min(2, (os.cpus()?.length || 4) - 2)); }
+
 // The engine (npm package) is always present — there is no separate binary to
 // install. Kept for the manager/Settings readiness shape.
 export function binReady() { return true; }
@@ -114,10 +125,15 @@ async function loadTransformers() {
 // Ensure the chosen model is downloaded + resident. Reports 0–1 download progress
 // per file via onProgress({ name, percent }). Single-flight; re-loads if the model
 // changed. Returns { ok } | { ok:false, error }.
-export function ensureModel(name, onProgress) {
+export function ensureModel(name, onProgress, opts = {}) {
   const target = resolveName(name);
   if (pipes.has(target)) return Promise.resolve({ ok: true });
   if (loadPromises.has(target)) return loadPromises.get(target);
+  // Thread cap is baked into the session at load — the first ensureModel for a given
+  // model wins (the manager loads commit then interim with their budgets up front, so
+  // a later self-heal call's default never overrides). interOp stays 1: a single
+  // utterance runs its graph serially, so inter-op parallelism only adds contention.
+  const intraOpNumThreads = opts.intraOpNumThreads ?? commitThreads();
   const p = (async () => {
     try {
       const { pipeline } = await loadTransformers();
@@ -132,7 +148,10 @@ export function ensureModel(name, onProgress) {
         // no such shim, so it never showed; embeddings survive because MiniLM's
         // allocations are small.) Disabling the arena makes ORT do many small
         // direct allocations instead, which the shim allows. DO NOT REMOVE.
-        session_options: { enableCpuMemArena: false, enableMemPattern: false, executionProviders: ['cpu'] },
+        session_options: {
+          enableCpuMemArena: false, enableMemPattern: false, executionProviders: ['cpu'],
+          intraOpNumThreads, interOpNumThreads: 1,
+        },
         progress_callback: (pg) => {
           if (pg?.status === 'progress' && pg.total) {
             onProgress?.({ name: pg.file || target, percent: (pg.loaded || 0) / pg.total });

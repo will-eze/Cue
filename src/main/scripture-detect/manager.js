@@ -22,10 +22,16 @@ const CONTENT_MIN_INTERVAL_MS = 1500;
 // interim cadence, and the lexical/semantic content path). 'balanced' is the default
 // and matches the shipped tuning; 'instant' leans on aggressive interims + a snappy
 // VAD close; 'accurate' restores the original behaviour (no interims, slow close).
+// endSilenceMs is the trailing-silence window that CLOSES an utterance. Too low and a
+// natural mid-citation pause ("Matthew chapter five … verse three") splits the reference
+// across two clips so the parser only sees a fragment — kept ≥ ~360ms even on 'instant'
+// to protect reference accuracy. interimCadenceMs is the floor gap between live partial
+// decodes; partials defer entirely while a commit is in flight (asr.js), so this only
+// paces spare-CPU work.
 const PRESETS = {
-  instant:  { endSilenceMs: 300, interim: { enabled: true,  cadenceMs: 800,  softPauseMs: 240, model: 'tiny.en' }, lexical: { lexicalMinWords: 3, lexicalMinShared: 3, lexicalMinScore: 0.45, lexicalMinMargin: 0.06 } },
-  balanced: { endSilenceMs: 380, interim: { enabled: true,  cadenceMs: 1000, softPauseMs: 280, model: 'tiny.en' }, lexical: { lexicalMinWords: 4, lexicalMinShared: 3, lexicalMinScore: 0.50, lexicalMinMargin: 0.08 } },
-  accurate: { endSilenceMs: 550, interim: { enabled: false, cadenceMs: 1200, softPauseMs: 280, model: 'tiny.en' }, lexical: { lexicalMinWords: 5, lexicalMinShared: 4, lexicalMinScore: 0.55, lexicalMinMargin: 0.10 } },
+  instant:  { endSilenceMs: 360, interim: { enabled: true,  cadenceMs: 900,  softPauseMs: 240, model: 'tiny.en' }, lexical: { lexicalMinWords: 3, lexicalMinShared: 3, lexicalMinScore: 0.45, lexicalMinMargin: 0.06 } },
+  balanced: { endSilenceMs: 500, interim: { enabled: true,  cadenceMs: 1100, softPauseMs: 300, model: 'tiny.en' }, lexical: { lexicalMinWords: 4, lexicalMinShared: 3, lexicalMinScore: 0.50, lexicalMinMargin: 0.08 } },
+  accurate: { endSilenceMs: 600, interim: { enabled: false, cadenceMs: 1200, softPauseMs: 280, model: 'tiny.en' }, lexical: { lexicalMinWords: 5, lexicalMinShared: 4, lexicalMinScore: 0.55, lexicalMinMargin: 0.10 } },
 };
 
 function defaults() {
@@ -45,12 +51,18 @@ function defaults() {
     // References auto-preview only when confidence clears referenceAutoConfidence;
     // below that (but above the referenceConfidence detection floor) they suggest.
     // Content matches are inherently lower-confidence → suggest by default.
-    reference: { enabled: true, autoAction: 'preview' },
+    //
+    // autoLive is the upper band ON TOP of autoAction (feature #4): an explicit opt-in
+    // that routes a VERY high-confidence reference (≥ referenceAutoLiveConfidence)
+    // straight to air, while mid-high confidence still follows autoAction (preview).
+    // Off by default — sending wrong text to air is worse than to preview. Only the
+    // authoritative commit can auto-live; interims always downgrade to preview.
+    reference: { enabled: true, autoAction: 'preview', autoLive: false },
     content:   { enabled: true, autoAction: 'off' },
     // Lexical path (verbatim quotes, runs on interims, cheap) gates first; the
     // contentMin* gates are the MiniLM semantic fallback (paraphrase). See content-match.js.
     thresholds: {
-      referenceConfidence: 0.6, referenceAutoConfidence: 0.8,
+      referenceConfidence: 0.6, referenceAutoConfidence: 0.8, referenceAutoLiveConfidence: 0.97,
       contentMinScore: 0.62, contentMinMargin: 0.05, contentMinWords: 6,
       ...p.lexical,
     },
@@ -65,7 +77,7 @@ let vectorBuild = { building: false, progress: null };
 // rolling state
 let recentWords = [];               // recent committed words for reference parsing
 let lastRef = null, lastRefAt = 0;          // last COMMITTED reference fired
-let interimRef = null, interimRefAt = 0;    // last INTERIM reference fired (separate)
+let interimRef = null;                       // last INTERIM reference (for stability + commit confirm)
 let lastContentRef = null, lastContentAt = 0;
 let interimContentRef = null, interimContentAt = 0;
 let lastContentRunAt = 0;
@@ -145,6 +157,12 @@ export async function init() {
     content: { ...d.content, ...(saved?.content || {}) },
     thresholds: { ...d.thresholds, ...(saved?.thresholds || {}) },
   };
+  // Re-bundle the active responsiveness preset over the saved config so latency tuning
+  // shipped in an update (endSilenceMs, interim cadence, lexical gates) reaches existing
+  // users — these are preset-derived, with no manual UI, so re-applying them never
+  // clobbers a hand-set value. User choices (model, actions, reference thresholds,
+  // device, enabled) live outside the preset and are left intact.
+  applyPreset(cfg, cfg.responsiveness || 'balanced');
 }
 
 // ── audio + detection ────────────────────────────────────────────────────────
@@ -170,7 +188,7 @@ export function start() {
   // a brand-new machine) is the single robust entry point; the ASR loop below idles
   // (transcribe → null) until this resolves. Progress is surfaced as status.
   whisperBin
-    .ensureModel(cfg.asrModel, (p) => send('scripture:status', { ...getConfig(), download: { kind: 'asr', ...p } }))
+    .ensureModel(cfg.asrModel, (p) => send('scripture:status', { ...getConfig(), download: { kind: 'asr', ...p } }), { intraOpNumThreads: whisperBin.commitThreads() })
     .then((r) => {
       if (!r?.ok) send('scripture:status', { ...getConfig(), error: r?.error || 'ASR model failed to load' });
       pushStatus(); // clears download field, reflects readiness
@@ -180,7 +198,8 @@ export function start() {
   // until it's ready, interim decodes idle (transcribe → null) like the commit does.
   const interimModel = cfg.interim?.enabled ? (cfg.interim.model || 'tiny.en') : null;
   if (interimModel && interimModel !== cfg.asrModel) {
-    whisperBin.ensureModel(interimModel).then(() => pushStatus());
+    // A small thread budget — interims run on spare CPU and must not starve the commit.
+    whisperBin.ensureModel(interimModel, undefined, { intraOpNumThreads: whisperBin.interimThreads() }).then(() => pushStatus());
   }
   dbg('start: arming VAD/ASR, model =', cfg.asrModel, 'interim =', interimModel || 'off');
   // Warm the lexical verse index off the hot path so the first interim content match
@@ -213,7 +232,7 @@ export function stop() {
   asr?.stop();
   asr = null;
   recentWords = [];
-  interimRef = null; interimRefAt = 0;
+  interimRef = null;
   interimContentRef = null; interimContentAt = 0;
   pushStatus();
   return { ok: true };
@@ -265,11 +284,15 @@ function detectReference(text, interim, meta) {
   const highConf = ref.confidence >= cfg.thresholds.referenceAutoConfidence;
 
   if (interim) {
-    if (ref.ref === interimRef && now - interimRefAt < REF_COOLDOWN_MS) return;
-    interimRef = ref.ref; interimRefAt = now;
-    // Interim NEVER auto-airs: a 'live' auto-action is downgraded to Preview here;
-    // the authoritative commit (or operator GO) is the only path to air.
-    const action = (highConf && cfg.reference.autoAction !== 'off') ? 'preview' : 'suggest';
+    // An interim is a partial hypothesis on the fast model, so by default it only
+    // SUGGESTS. But once it parses a COMPLETE reference (an explicit verse, not just a
+    // book/chapter), clears the preview band, AND repeats on the next interim (stable,
+    // i.e. not a one-frame mis-hear), it's as trustworthy as the commit for that ref —
+    // so stage it to Preview now for the speed win. Interims still never auto-air; the
+    // commit confirms it in place (or corrects) via the shared candidateId.
+    const stable = ref.ref === interimRef;          // same ref as the previous interim
+    interimRef = ref.ref;
+    const action = (stable && highConf && ref.vStart != null) ? 'preview' : 'suggest';
     logLatency('ref(interim)', ref.ref, meta);
     fireDetected('reference', ref.ref, ref.confidence, action, true, null);
   } else {
@@ -278,7 +301,17 @@ function detectReference(text, interim, meta) {
     if (!confirming && ref.ref === lastRef && now - lastRefAt < REF_COOLDOWN_MS) return;
     lastRef = ref.ref; lastRefAt = now;
     if (confirming) interimRef = null;
-    const action = (highConf && cfg.reference.autoAction !== 'off') ? cfg.reference.autoAction : 'suggest';
+    // Band routing (feature #4): very-high confidence + opt-in → live; high → autoAction;
+    // floor → suggest. The auto-live band sits ABOVE autoAction, so it can promote a
+    // 'preview' (or even 'suggest') default to air for a near-certain citation.
+    let action;
+    if (cfg.reference.autoLive && ref.confidence >= cfg.thresholds.referenceAutoLiveConfidence) {
+      action = 'live';
+    } else if (highConf && cfg.reference.autoAction !== 'off') {
+      action = cfg.reference.autoAction;
+    } else {
+      action = 'suggest';
+    }
     logLatency('ref', ref.ref, meta);
     fireDetected('reference', ref.ref, ref.confidence, action, false, null);
   }
@@ -343,7 +376,7 @@ function fireDetected(mode, ref, confidence, action, interim, hit) {
 
 // ── provisioning ─────────────────────────────────────────────────────────────
 export async function ensureAsrModel() {
-  const r = await whisperBin.ensureModel(cfg.asrModel, (p) => send('scripture:status', { ...getConfig(), download: { kind: 'asr', ...p } }));
+  const r = await whisperBin.ensureModel(cfg.asrModel, (p) => send('scripture:status', { ...getConfig(), download: { kind: 'asr', ...p } }), { intraOpNumThreads: whisperBin.commitThreads() });
   pushStatus(); // clears the download field + reflects new model readiness
   return r;
 }

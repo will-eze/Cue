@@ -94,9 +94,12 @@ export function createAsr({
   let softPauseFired = false;      // one soft-pause interim per pause stretch
 
   async function runInterim(job) {
-    // Same-model interims share the commit pipe → don't pile an interim in front of
-    // a pending/active commit (the commit must win). Different model = independent.
-    if (interimModel === modelName && (transcribing || queue.length)) { interimPending = job; return; }
+    // The authoritative commit always wins the CPU: defer ANY interim — even one on a
+    // separate model — while a commit is decoding or queued. With capped thread pools
+    // (whisper-bin.js), a concurrent interim would otherwise steal cores and slow the
+    // result that goes to air. The deferred job is re-kicked from the commit's drain()
+    // once the queue clears (and dropped by flush() if its utterance has since ended).
+    if (transcribing || queue.length) { interimPending = job; return; }
     if (interimBusy) { interimPending = job; return; } // latest-wins: keep only newest
     interimBusy = true;
     try {
