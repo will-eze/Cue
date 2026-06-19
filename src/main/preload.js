@@ -72,6 +72,9 @@ contextBridge.exposeInMainWorld('cue', {
     stage: {
       message: (text)           => ipcRenderer.invoke('output:stage:message', text),
       timer:   (action, seconds) => ipcRenderer.invoke('output:stage:timer', action, seconds),
+      getSchedule: ()           => ipcRenderer.invoke('output:stage:schedule:get'),
+      schedule:    (msg)        => ipcRenderer.invoke('output:stage:schedule:add', msg),
+      unschedule:  (id)         => ipcRenderer.invoke('output:stage:schedule:remove', id),
     },
     graphic: {
       show: (data) => ipcRenderer.invoke('output:graphic:show', data),
@@ -227,6 +230,7 @@ contextBridge.exposeInMainWorld('cue', {
       'output:multiview-captures',
       'output:media-transport',
       'output:overlay-changed',
+      'stage:schedule',
       'shortcut:next', 'shortcut:prev',
       'remote:command',
       'youtube:status',

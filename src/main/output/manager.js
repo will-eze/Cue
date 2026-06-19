@@ -2,6 +2,7 @@ import { BrowserWindow, screen, app } from 'electron';
 import path from 'path';
 import { getDb } from '../db/schema.js';
 import * as ndi from './ndi.js';
+import { resolveAnchors, pruneExpired, nextPruneDelay } from '../../shared/stage-schedule.js';
 
 // windows keyed by monitor.id (integer) for screen monitors,
 // or 'ndi-{channelId}' (string) for NDI channels.
@@ -20,10 +21,16 @@ let multiviewRefCount = 0;
 let outputsEnabled = true;
 
 // Stage display state — persisted so newly opened stage windows can be synced.
+// `scheduled` holds timed messages as ABSOLUTE epoch-ms anchors ({ showAt, clearAt });
+// main resolves the anchors once and the stage template ticks them against Date.now()
+// (never per-second updates over the bus — same model as the countdown graphics).
 let stageState = {
   timer: { totalSeconds: 0, remainingSeconds: 0, running: false, startedAt: null },
   message: '',
+  scheduled: [],
 };
+let stageScheduleSeq = 1;
+let stagePruneTimer = null;
 
 // Broadcast-graphics overlay — an independent bus from the program slide bus.
 // nameTitle = { name, title } | null (built-in lower-third bug); ticker = { text, speed }
@@ -748,8 +755,60 @@ function getAllStageWindows() {
 }
 
 function sendStageState(win) {
-  win.webContents.send('stage:timer',   { ...stageState.timer });
-  win.webContents.send('stage:message', { text: stageState.message });
+  win.webContents.send('stage:timer',    { ...stageState.timer });
+  win.webContents.send('stage:message',  { text: stageState.message });
+  win.webContents.send('stage:schedule', { scheduled: stageState.scheduled });
+}
+
+// Push the scheduled-message list to every stage window AND the operator (so its
+// pending list stays live). The anchors are absolute — windows tick them locally.
+function broadcastStageSchedule() {
+  for (const win of getAllStageWindows()) {
+    win.webContents.send('stage:schedule', { scheduled: stageState.scheduled });
+  }
+  notifyMainWindow('stage:schedule', { scheduled: stageState.scheduled });
+}
+
+// Drop messages whose clearAt has passed (keeps the operator's pending list tidy).
+// Driven by a single setTimeout aimed at the next boundary — event-driven, never
+// a per-second poll.
+function pruneStageSchedule() {
+  const before = stageState.scheduled.length;
+  stageState.scheduled = pruneExpired(stageState.scheduled, Date.now());
+  if (stageState.scheduled.length !== before) broadcastStageSchedule();
+  scheduleNextStagePrune();
+}
+
+function scheduleNextStagePrune() {
+  if (stagePruneTimer) { clearTimeout(stagePruneTimer); stagePruneTimer = null; }
+  const delay = nextPruneDelay(stageState.scheduled, Date.now());
+  if (delay == null) return;
+  stagePruneTimer = setTimeout(pruneStageSchedule, Math.max(250, delay));
+}
+
+export function getStageSchedule() {
+  return stageState.scheduled;
+}
+
+// Schedule a timed message. `afterSeconds` → countdown from now; `atHour`/`atMinute`
+// → next occurrence of that wall-clock time; `clearAfter` (seconds) → auto-clear that
+// long after it appears. Main resolves the absolute showAt/clearAt once here.
+export function scheduleStageMessage({ text, afterSeconds, atHour, atMinute, clearAfter } = {}) {
+  const t = (text ?? '').trim();
+  if (!t) return stageState.scheduled;
+  const { showAt, clearAt } = resolveAnchors({ afterSeconds, atHour, atMinute, clearAfter }, Date.now());
+  const entry = { id: stageScheduleSeq++, text: t, showAt, clearAt };
+  stageState.scheduled = [...stageState.scheduled, entry].sort((a, b) => a.showAt - b.showAt);
+  broadcastStageSchedule();
+  scheduleNextStagePrune();
+  return stageState.scheduled;
+}
+
+export function unscheduleStageMessage(id) {
+  stageState.scheduled = stageState.scheduled.filter((m) => m.id !== id);
+  broadcastStageSchedule();
+  scheduleNextStagePrune();
+  return stageState.scheduled;
 }
 
 export function setStageMessage(text) {

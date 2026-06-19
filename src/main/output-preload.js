@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('cueOutput', {
   onSlideUpdate:   (cb) => ipcRenderer.on('slide:update',   (_e, p) => cb(p)),
   onStageTimer:    (cb) => ipcRenderer.on('stage:timer',    (_e, p) => cb(p)),
   onStageMessage:  (cb) => ipcRenderer.on('stage:message',  (_e, p) => cb(p)),
+  onStageSchedule: (cb) => ipcRenderer.on('stage:schedule', (_e, p) => cb(p)),
   onGraphicUpdate: (cb) => ipcRenderer.on('graphic:update', (_e, p) => cb(p)),
   // Runtime content-mode toggle (lyrics band / graphics overlay) — avoids
   // recreating the window (and dropping the NDI sender) on a mode switch.

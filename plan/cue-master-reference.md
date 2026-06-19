@@ -182,6 +182,10 @@ src/
 │       │                     broadcastTransport() pushes `media:transport` to every window + `output:media-transport`
 │       │                     to the renderer. isPrimaryAudioMonitor() picks the single program-audio window (?mute=).
 │       │                     Stage timer/message state (stageTimerCmd, setStageMessage) → stage:timer / stage:message.
+│       │                     Scheduled stage messages: stageState.scheduled (in-memory, no DB) → scheduleStageMessage /
+│       │                     unscheduleStageMessage / getStageSchedule; broadcastStageSchedule → stage:schedule to stage
+│       │                     windows + operator; a single setTimeout (nextPruneDelay) prunes expired entries. Anchor
+│       │                     resolution + pruning come from src/shared/stage-schedule.js.
 │       │                     NDI: ndiCaptureLoops Map, ndiLastFrames Map (1fps JPEG cache for multiview).
 │       │                     startNdiCapture/stopNdiCapture. multiviewRefCount: refcounted start/stop —
 │       │                     multiview capture is driven only by MultiviewView (start on mount, stop on unmount).
@@ -194,12 +198,21 @@ src/
 │       └── ndi.js            Active NDI implementation. createRequire loads @grandi/<platform>-<arch>
 │                             at runtime. createSender / sendFrame (inflight guard) / destroySender.
 │
+├── shared/
+│   ├── stage-schedule.js     Pure scheduled-stage-message logic (no electron/DOM) shared by main + renderer:
+│   │                         resolveAnchors (spec→{showAt,clearAt}), collides/overlapIds (true-conflict detection),
+│   │                         resolveActive (which message owns the bar), pruneExpired, nextPruneDelay. stage.js
+│   │                         mirrors resolveActive inline (classic <script>). Tested by stage-schedule.test.mjs.
+│   └── stage-schedule.test.mjs  Node assertion test (in `npm test`) — anchor/collision/active/prune edge cases.
+│
 ├── renderer/
 │   ├── main.jsx              React entry point. Mounts <App />.
 │   ├── index.css             Design system CSS: tally classes, monitor glow, scrollbar, fonts.
 │   ├── App.jsx               Root. Titlebar + transport bar + view switcher (Operator/Settings).
-│   │                         StagePanel popover (Stage button): presenter countdown timer + stage message,
-│   │                         driven via window.cue.output.stage.timer / .message.
+│   │                         StagePanel popover (Stage button): presenter countdown timer + immediate stage message +
+│   │                         scheduled messages (queue with live "in M:SS"/ON badges, collision flags, auto-clear),
+│   │                         driven via window.cue.output.stage.timer / .message / .schedule|getSchedule|unschedule.
+│   │                         Preview/collision use src/shared/stage-schedule.js so they match main's resolution.
 │   │
 │   ├── views/
 │   │   ├── OperatorView.jsx  Three-panel layout. All transport state. Keyboard shortcuts (configurable via shortcutsRef).
@@ -415,9 +428,12 @@ src/
 │   ├── stage.html            Confidence monitor. #top-bar (local time / REMAINING timer / VIDEO countdown),
 │   │                         #content (#media-wrap + #current-text, #next-text), #bottom-bar (#message-text).
 │   ├── stage.css             Stage monitor styles — info bars, progress track, countdown colour states, message alert.
-│   └── stage.js              Receives slide:update + stage:timer + stage:message. Video preview via CueMediaPlayer
-│                             (always baseMuted). VIDEO countdown derives remaining from transport + clip duration —
-│                             loops with the clip (never ∞), freezes on pause. Presenter countdown timer + message bar.
+│   └── stage.js              Receives slide:update + stage:timer + stage:message + stage:schedule. Video preview via
+│                             CueMediaPlayer (always baseMuted). VIDEO countdown derives remaining from transport + clip
+│                             duration — loops with the clip (never ∞), freezes on pause. Presenter countdown timer +
+│                             message bar: resolveMessage() picks immediate message (precedence) else the active
+│                             scheduled one, re-ticked every 1s against Date.now() anchors (mirrors resolveActive in
+│                             src/shared/stage-schedule.js — plain <script>, can't import; keep in sync).
 │
 └── fonts/
     ├── fonts.css             All @font-face declarations. font-display: block.
@@ -910,8 +926,11 @@ All renderer↔main communication is via `ipcRenderer.invoke` / `ipcMain.handle`
 | `countdown.show({id,mode,source,durationSec,targetClock,format,showSeconds,label,endMessage,style,target})` | void | Show a self-ticking countdown/count-up/clock. Main resolves the anchor (`endsAt` for `mode:'countdown'`, `startAt` for `'countup'`); the output template owns the per-second tick. `style` = `{time, message}`. |
 | `countdown.hide()` | void | Hide the countdown/clock. |
 | `overlay.get()` | `{nameTitle, ticker, custom, countdown}` | Current overlay snapshot. |
-| `stage.message(text)` | void | Set/clear the confidence-monitor presenter message (`''` clears). |
+| `stage.message(text)` | void | Set/clear the confidence-monitor presenter **immediate** message (`''` clears). Takes precedence over scheduled messages on the bar. |
 | `stage.timer(action, seconds?)` | void | Presenter countdown: `action` ∈ `'set'(seconds) \| 'start' \| 'pause' \| 'reset'`. |
+| `stage.getSchedule()` | `[{id, text, showAt, clearAt}]` | Current pending scheduled messages (absolute epoch-ms anchors; `clearAt:null` = no auto-clear). |
+| `stage.schedule({text, afterSeconds?, atHour?, atMinute?, clearAfter?})` | `[scheduled]` | Queue a timed message. `afterSeconds` = countdown from now; `atHour`/`atMinute` = next occurrence of that wall-clock time; `clearAfter` (seconds, falsy=never) = auto-clear. Main resolves the absolute `showAt`/`clearAt` once via `resolveAnchors` and returns the updated list. |
+| `stage.unschedule(id)` | `[scheduled]` | Remove a pending scheduled message; returns the updated list. |
 | `channels.list()` | `[output_channel rows]` | — |
 | `channels.create(data)` | `channel` | NDI channels open a BrowserWindow immediately; screen channels wait for monitor assignment. `data.ndi_audio_muted` / `data.show_program` / `data.show_graphics` (all default 1). |
 | `channels.update(id, data)` | `channel` | A change to **only** `show_program`/`show_graphics` is applied at runtime (`setChannelContentMode` → `content:mode`, no window recreate); any other field rebuilds via `syncChannel`. Emits `output:state-changed`. |
@@ -1139,6 +1158,7 @@ Subscribe to main→renderer events. Returns an unsubscribe function — call it
 - `output:ndi-unavailable` — fired if grandiose is not installed
 - `shortcut:next` / `shortcut:prev` — reserved for future hardware remote
 - `remote:command` — a network-control command `{action, itemId?, slideIdx?}` (action: go/clear/logo/next/prev/live/select). OperatorView dispatches it to the same handlers the keyboard uses, so the remote stays in sync with the UI.
+- `stage:schedule` — `{scheduled: [{id, text, showAt, clearAt}]}`, fired after any scheduled-stage-message add/remove/prune. The `StagePanel` pending list follows it; the stage output windows also receive it directly. Anchors are absolute epoch-ms (`clearAt:null` = open-ended).
 
 ---
 
@@ -1603,7 +1623,8 @@ Models auto-download to `userData/whisper-model` on first arm (nothing ships in 
 |---|---|---|
 | ~~NDI publish~~ | ~~High~~ | Implemented. See §14. |
 | `linked_channel_id` logic | Medium | Field exists, settable, never read. Sync lower-third to fullscreen channel. |
-| ~~Stage display / confidence monitor~~ | ~~High~~ | Implemented — `stage` template, StagePanel (timer + message), VIDEO countdown. |
+| ~~Stage display / confidence monitor~~ | ~~High~~ | Implemented — `stage` template, StagePanel (timer + immediate + scheduled messages), VIDEO countdown. |
+| ~~Scheduled / timed stage messages~~ | ~~Medium~~ | Implemented — queue a message to appear after a countdown or at a wall-clock time, with optional auto-clear; collisions surfaced (later-start wins). In-memory state, anchors resolved once in main, template ticks locally. `src/shared/stage-schedule.js`. |
 | ~~Tag CRUD UI~~ | ~~Medium~~ | Implemented — `TagSettings.jsx` (Settings → Tags) for create/rename/recolour/delete; plus inline tag creation in `SongEditor`. |
 | ~~Song background picker in Song Editor~~ | ~~Medium~~ | Implemented. Media picker in `SlidePreview` calls `songs:setBackground`. |
 | ~~Song import~~ | ~~Medium~~ | Implemented — OpenLyrics / ChordPro / text / EasyWorship + bundled GHS hymnal. See §16. |

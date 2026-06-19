@@ -3,6 +3,7 @@ import OperatorView from './views/OperatorView';
 import MultiviewView from './views/MultiviewView';
 import SettingsView from './views/SettingsView';
 import { injectUserFontFaces } from './utils/fonts';
+import { resolveAnchors, collides, overlapIds } from '../shared/stage-schedule.js';
 
 const platform = window.cue.platform; // 'darwin' | 'win32' | 'linux'
 const isMac    = platform === 'darwin';
@@ -273,6 +274,21 @@ function fmtSecs(s) {
   return `${String(Math.floor(s / 60)).padStart(2,'0')}:${String(s % 60).padStart(2,'0')}`;
 }
 
+// Wall-clock HH:MM for an epoch-ms scheduled anchor.
+function fmtClockShort(epoch) {
+  const d = new Date(epoch);
+  const h = d.getHours(), m = String(d.getMinutes()).padStart(2, '0');
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  return `${String(h % 12 || 12)}:${m} ${ampm}`;
+}
+
+// Compact "in 4m 32s" / "in 45s" relative label for a future epoch.
+function fmtCountdown(ms) {
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s >= 60) return `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`;
+  return `${s}s`;
+}
+
 function StagePanel() {
   const [mins, setMins]       = useState(10);
   const [secs, setSecs]       = useState(0);
@@ -280,11 +296,29 @@ function StagePanel() {
   const [running, setRunning] = useState(false);
   const [stageMsg, setStageMsg] = useState('');
 
+  // Scheduled messages — list lives in main (absolute epoch anchors); we mirror it.
+  const [schedule, setSchedule]   = useState([]);
+  const [schedMode, setSchedMode] = useState('in'); // 'in' (countdown) | 'at' (wall-clock)
+  const [schedMins, setSchedMins] = useState(0);    // 'in' mode minutes
+  const [schedSecs, setSchedSecs] = useState(30);   // 'in' mode seconds
+  const [schedTime, setSchedTime] = useState('');   // 'HH:MM' for 'at' mode
+  const [clearMins, setClearMins] = useState(0);     // auto-clear after N min (0 = never)
+  const [nowTick, setNowTick]     = useState(Date.now()); // re-render pending list ticks
+
   const tickRef      = useRef(null);
   const startedAtRef = useRef(null);
   const remAtStartRef = useRef(0);
 
   useEffect(() => () => { if (tickRef.current) clearInterval(tickRef.current); }, []);
+
+  // Load the pending schedule and stay synced with main's broadcasts.
+  useEffect(() => {
+    let alive = true;
+    window.cue.output.stage.getSchedule().then((s) => { if (alive) setSchedule(s || []); });
+    const off = window.cue.on('stage:schedule', ({ scheduled }) => setSchedule(scheduled || []));
+    const id  = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => { alive = false; off && off(); clearInterval(id); };
+  }, []);
 
   function stopTick() {
     if (tickRef.current) { clearInterval(tickRef.current); tickRef.current = null; }
@@ -350,11 +384,54 @@ function StagePanel() {
   function sendMsg() { window.cue.output.stage.message(stageMsg); }
   function clearMsg() { setStageMsg(''); window.cue.output.stage.message(''); }
 
+  async function scheduleMsg() {
+    const text = stageMsg.trim();
+    const s = buildSpec();
+    if (!text || !s) return;
+    const next = await window.cue.output.stage.schedule({ text, ...s });
+    if (next) setSchedule(next);
+    setStageMsg('');
+  }
+
+  async function unschedule(id) {
+    const next = await window.cue.output.stage.unschedule(id);
+    if (next) setSchedule(next);
+  }
+
+  const canSchedule = stageMsg.trim() &&
+    (schedMode === 'in' ? (schedMins * 60 + schedSecs) > 0 : !!schedTime);
+
+  // Build the timing spec from the current inputs (shared with the actual schedule
+  // call so the preview can't drift from what main resolves). Returns null when the
+  // inputs aren't a valid schedule yet.
+  function buildSpec() {
+    const clearAfter = clearMins > 0 ? clearMins * 60 : null;
+    if (schedMode === 'in') {
+      const after = schedMins * 60 + schedSecs;
+      if (after <= 0) return null;
+      return { afterSeconds: after, clearAfter };
+    }
+    if (!schedTime) return null;
+    const [h, m] = schedTime.split(':').map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m)) return null;
+    return { atHour: h, atMinute: m, clearAfter };
+  }
+
+  // Live preview of the exact appear/clear instants (resolved the same way main
+  // will, via the shared module) so the operator sees them before committing.
+  const spec = canSchedule ? buildSpec() : null;
+  const preview = spec ? resolveAnchors(spec, nowTick) : null;
+
+  // Collision flags from the shared logic — the stage bar shows one message at a
+  // time, so genuinely-overlapping windows are surfaced to the operator.
+  const overlaps = overlapIds(schedule);
+  const previewOverlaps = preview && schedule.some((m) => collides(preview, m));
+
   const dispColor = running ? 'text-secondary' : remaining > 0 ? 'text-on-surface' : 'text-outline-variant';
 
   return (
     <div className="absolute right-0 top-[calc(100%+6px)] w-76 bg-surface-container-low border border-outline-variant/30 rounded-xl shadow-2xl ring-1 ring-white/5 z-50 overflow-hidden" style={{ width: 296 }}>
-      <div className="px-md pt-md pb-md flex flex-col gap-md">
+      <div className="px-md pt-md pb-md flex flex-col gap-md max-h-[calc(100vh-80px)] overflow-y-auto custom-scrollbar">
 
         {/* ── Timer ── */}
         <div>
@@ -429,6 +506,123 @@ function StagePanel() {
               className="h-7 px-sm text-[10px] font-mono uppercase tracking-[0.05em] bg-surface-container-high border border-outline-variant/40 text-on-surface-variant hover:border-outline-variant hover:text-on-surface rounded transition-colors cursor-pointer">
               Clear
             </button>
+          </div>
+
+          {/* ── Schedule ── */}
+          <div className="mt-md pt-md border-t border-outline-variant/20">
+            <div className="flex items-center justify-between mb-sm">
+              <p className="text-[10px] font-mono uppercase tracking-[0.1em] text-outline">Schedule</p>
+              <div className="flex bg-surface-container-lowest border border-outline-variant/40 rounded overflow-hidden">
+                {[['in','In'],['at','At']].map(([m, lbl]) => (
+                  <button key={m} onClick={() => setSchedMode(m)}
+                    className={`px-sm h-5 text-[9px] font-mono uppercase tracking-[0.08em] transition-colors cursor-pointer ${
+                      schedMode === m ? 'bg-primary-container/70 text-primary' : 'text-on-surface-variant hover:text-on-surface'
+                    }`}>
+                    {lbl}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {schedMode === 'in' ? (
+              <div className="flex items-center gap-xs mb-sm">
+                <div className="flex flex-col items-center">
+                  <input type="number" min={0} max={99} value={schedMins}
+                    onChange={(e) => setSchedMins(Math.max(0, Math.min(99, Math.floor(+e.target.value) || 0)))}
+                    className="w-14 h-7 px-xs bg-surface-container-lowest border border-outline-variant/50 rounded text-[12px] text-on-surface text-center tabular-nums focus:border-primary outline-none" />
+                  <span className="text-[9px] font-mono uppercase tracking-[0.05em] text-outline mt-[2px]">min</span>
+                </div>
+                <span className="text-[16px] font-bold text-outline-variant pb-4">:</span>
+                <div className="flex flex-col items-center">
+                  <input type="number" min={0} max={59} value={schedSecs}
+                    onChange={(e) => setSchedSecs(Math.max(0, Math.min(59, Math.floor(+e.target.value) || 0)))}
+                    className="w-14 h-7 px-xs bg-surface-container-lowest border border-outline-variant/50 rounded text-[12px] text-on-surface text-center tabular-nums focus:border-primary outline-none" />
+                  <span className="text-[9px] font-mono uppercase tracking-[0.05em] text-outline mt-[2px]">sec</span>
+                </div>
+                <span className="text-[9px] font-mono uppercase tracking-[0.05em] text-outline ml-xs self-start mt-2">from now</span>
+              </div>
+            ) : (
+              <input type="time" value={schedTime}
+                onChange={(e) => setSchedTime(e.target.value)}
+                className="w-full h-7 px-sm mb-sm bg-surface-container-lowest border border-outline-variant/50 rounded text-[12px] text-on-surface tabular-nums focus:border-primary outline-none" />
+            )}
+
+            <div className="flex items-center gap-xs mb-sm">
+              <span className="text-[9px] font-mono uppercase tracking-[0.05em] text-outline">Auto-clear after</span>
+              <input type="number" min={0} max={999} value={clearMins}
+                onChange={(e) => setClearMins(Math.max(0, Math.min(999, +e.target.value || 0)))}
+                className="w-12 h-6 px-xs bg-surface-container-lowest border border-outline-variant/50 rounded text-[11px] text-on-surface text-center tabular-nums focus:border-primary outline-none" />
+              <span className="text-[9px] font-mono uppercase text-outline">min{clearMins === 0 ? ' (never)' : ''}</span>
+            </div>
+
+            <button onClick={scheduleMsg} disabled={!canSchedule}
+              className="w-full h-7 text-[10px] font-mono uppercase tracking-[0.05em] bg-surface-container-high border border-outline-variant/40 text-on-surface-variant hover:border-outline-variant hover:text-on-surface rounded transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed">
+              + Schedule Message
+            </button>
+
+            {/* Live preview of what the current inputs will schedule */}
+            {preview && (
+              <p className="mt-xs text-[10px] font-mono text-on-surface-variant leading-snug">
+                Appears <span className="text-primary">{fmtClockShort(preview.showAt)}</span>
+                <span className="text-outline"> · in {fmtCountdown(preview.showAt - nowTick)}</span>
+                {preview.clearAt && <span className="text-outline"> · clears {fmtClockShort(preview.clearAt)}</span>}
+                {previewOverlaps && <span className="text-secondary"> · ⚠ overlaps an existing message</span>}
+              </p>
+            )}
+
+            {/* Pending list */}
+            {schedule.length > 0 && (
+              <div className="mt-md">
+                <p className="text-[10px] font-mono uppercase tracking-[0.1em] text-outline mb-xs">
+                  Queued · {schedule.length}
+                </p>
+                {overlaps.size > 0 && (
+                  <p className="text-[9px] font-mono text-on-surface-variant mb-xs leading-snug">
+                    ⚠ Overlapping messages share the bar — the later-starting one shows while they coincide.
+                  </p>
+                )}
+                <ul className="flex flex-col gap-xs">
+                  {schedule.map((m) => {
+                    const live = nowTick >= m.showAt && (m.clearAt == null || nowTick < m.clearAt);
+                    return (
+                      <li key={m.id}
+                        className={`flex items-start gap-sm px-sm py-xs rounded border ${
+                          live ? 'bg-secondary-container/30 border-secondary/50' : 'bg-surface-container-lowest border-outline-variant/30'
+                        }`}>
+                        <span className="flex flex-col items-center gap-[2px] shrink-0 pt-[1px]">
+                          {live ? (
+                            <span className="px-[5px] py-[1px] rounded-full text-[8px] font-mono font-bold uppercase tracking-[0.08em] bg-secondary-container text-secondary leading-none flex items-center gap-[3px]">
+                              <span className="w-[5px] h-[5px] rounded-full bg-secondary animate-pulse" />ON
+                            </span>
+                          ) : (
+                            <span className="px-[5px] py-[1px] rounded-full text-[8px] font-mono uppercase tracking-[0.08em] bg-primary-container/40 text-primary leading-none">
+                              in {fmtCountdown(m.showAt - nowTick)}
+                            </span>
+                          )}
+                          {overlaps.has(m.id) && (
+                            <span title="Overlaps another scheduled message — only the later-starting one shows while they coincide"
+                              className="px-[4px] py-[1px] rounded-full text-[7px] font-mono uppercase tracking-[0.06em] border border-outline-variant/50 text-on-surface-variant leading-none">
+                              overlap
+                            </span>
+                          )}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[11px] text-on-surface truncate" title={m.text}>{m.text}</p>
+                          <p className="text-[9px] font-mono tabular-nums text-outline mt-[1px]">
+                            {fmtClockShort(m.showAt)}
+                            {m.clearAt && <> → {fmtClockShort(m.clearAt)}</>}
+                            {live && m.clearAt && <span className="text-secondary"> · {fmtCountdown(m.clearAt - nowTick)} left</span>}
+                          </p>
+                        </div>
+                        <button onClick={() => unschedule(m.id)}
+                          className="shrink-0 w-4 h-4 flex items-center justify-center text-[13px] leading-none text-outline hover:text-error cursor-pointer transition-colors"
+                          title="Remove">×</button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
           </div>
         </div>
 

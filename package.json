@@ -1,7 +1,7 @@
 {
   "name": "cue",
   "productName": "Cue",
-  "version": "23.3.0",
+  "version": "23.4.0",
   "description": "Unified graphics engine for worship presentation and broadcast overlays",
   "main": ".vite/build/index.js",
   "scripts": {
@@ -9,7 +9,7 @@
     "package": "electron-forge package",
     "make": "electron-forge make",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
-    "test": "node --experimental-detect-module src/main/scripture-detect/reference-parser.test.mjs && node --experimental-detect-module src/main/scripture-detect/match-score.test.mjs"
+    "test": "node --experimental-detect-module src/main/scripture-detect/reference-parser.test.mjs && node --experimental-detect-module src/main/scripture-detect/match-score.test.mjs && node --experimental-detect-module src/shared/stage-schedule.test.mjs"
   },
   "keywords": [],
   "author": "William Eze",

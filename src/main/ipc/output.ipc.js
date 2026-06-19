@@ -88,6 +88,9 @@ export function registerOutputIpc() {
   // ── Stage display ──────────────────────────────────────────────────────────
   ipcMain.handle('output:stage:message', (_e, text) => outputManager.setStageMessage(text));
   ipcMain.handle('output:stage:timer',   (_e, action, seconds) => outputManager.stageTimerCmd(action, seconds));
+  ipcMain.handle('output:stage:schedule:get',    ()       => outputManager.getStageSchedule());
+  ipcMain.handle('output:stage:schedule:add',    (_e, m)  => outputManager.scheduleStageMessage(m));
+  ipcMain.handle('output:stage:schedule:remove', (_e, id) => outputManager.unscheduleStageMessage(id));
 
   // ── Broadcast graphics overlay (independent of the program bus) ────────────
   ipcMain.handle('output:graphic:show', (_e, data) => outputManager.graphicShow(data));

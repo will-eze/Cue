@@ -251,7 +251,17 @@ function applyTimerCmd(cmd) {
 renderTimer();
 
 // ── Stage message ─────────────────────────────────────────────────────────────
-function setMessage(text) {
+// Two sources feed the one message bar: an immediate (manually Sent) message and
+// a list of scheduled messages carried as absolute epoch anchors. The template
+// ticks the anchors against Date.now() — main never streams per-second updates.
+// Immediate takes precedence; otherwise the latest currently-active schedule wins.
+let immediateMessage  = '';
+let scheduledMessages = [];   // [{ id, text, showAt, clearAt }]
+let renderedMessage   = null; // last text written to the DOM (avoid churn)
+
+function renderMessage(text) {
+  if (text === renderedMessage) return;
+  renderedMessage = text;
   if (text && text.trim()) {
     messageEl.className = '';
     messageEl.innerHTML = `
@@ -264,7 +274,29 @@ function setMessage(text) {
     messageEl.innerHTML = '';
   }
 }
-setMessage('');
+
+// NOTE: this mirrors `resolveActive()` in src/shared/stage-schedule.js — this is a
+// plain-DOM <script> (no ES imports), so the logic is duplicated. Keep in sync.
+// When several scheduled windows overlap, the one that STARTED most recently wins
+// (ties broken by id = scheduled-later), so the bar shows a single deterministic
+// message; the operator UI flags these overlaps.
+function resolveMessage() {
+  if (immediateMessage && immediateMessage.trim()) return immediateMessage;
+  const now = Date.now();
+  let best = null;
+  for (const m of scheduledMessages) {
+    if (now < m.showAt) continue;
+    if (m.clearAt != null && now >= m.clearAt) continue;
+    if (!best || m.showAt > best.showAt || (m.showAt === best.showAt && m.id > best.id)) best = m;
+  }
+  return best ? best.text : '';
+}
+
+function applyMessage() { renderMessage(resolveMessage()); }
+
+applyMessage();
+// Re-resolve every second so scheduled messages appear/clear on their anchors.
+setInterval(applyMessage, 1000);
 
 // ── IPC: slide updates ────────────────────────────────────────────────────────
 window.cueOutput.onSlideUpdate((payload) => {
@@ -323,7 +355,8 @@ if (window.cueOutput.onMediaTransport) {
 
 // ── IPC: stage-specific ───────────────────────────────────────────────────────
 if (window.cueOutput.onStageTimer)   window.cueOutput.onStageTimer(applyTimerCmd);
-if (window.cueOutput.onStageMessage) window.cueOutput.onStageMessage(({ text }) => setMessage(text));
+if (window.cueOutput.onStageMessage) window.cueOutput.onStageMessage(({ text }) => { immediateMessage = text || ''; applyMessage(); });
+if (window.cueOutput.onStageSchedule) window.cueOutput.onStageSchedule(({ scheduled }) => { scheduledMessages = scheduled || []; applyMessage(); });
 
 // Initial fit (in case window opens with content already set)
 fitCurrentText();
