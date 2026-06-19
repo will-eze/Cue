@@ -24,7 +24,7 @@ Unified single-process Electron app. Replaces EasyWorship/ProPresenter (worship 
 - **Never `capturePage()` on NDI windows** — 4s+ latency. NDI uses the `paint` event + `setInterval(invalidate, frameMs)`.
 - **Do not reintroduce a per-frame operator capture loop.** The live monitor renders from the payload, not screen capture.
 - **Do not recreate a channel window for a lower-third content-mode switch** — send `content:mode` IPC to the existing window; recreating drops the NDI sender.
-- **Countdown/clock graphics tick in the output template, not the operator.** Main resolves an absolute anchor (`endsAt`/`startAt`) once; `graphics-overlay.js` recomputes the digits from `Date.now()`. Never stream per-second time updates over the overlay bus.
+- **Countdown/clock graphics tick in the output template, not the operator.** Main resolves an absolute anchor (`endsAt`/`startAt`) once; `graphics-overlay.js` recomputes the digits from `Date.now()`. Never stream per-second time updates over the overlay bus. The countdown overlay slot ALSO retains its authoring spec (`source`/`targetClock`/`durationSec`) alongside the resolved anchor — `applyScene` needs it to re-resolve a FRESH anchor on Scene recall (a stored absolute anchor would be stale). Don't drop those fields as unused.
 - Display matching: always `display_bounds` JSON, never `display_index`.
 - **A song with an all-default style saves `style_json = null`** (centre align is the default). Output/monitor `applyStyle` must treat null as `{}` and default `text-align` to **centre** — never early-return on null, or default-styled lower-third lyrics render left. Applies to `lowerthird.js`, `graphics-overlay.js`, `PreviewLivePanel`.
 

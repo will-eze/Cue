@@ -973,6 +973,12 @@ export function countdownShow(data) {
     showSeconds: data.showSeconds !== false,
     style:   data.style ?? null,
     target:  data.target || 'all',
+    // Retain the authoring spec (alongside the resolved anchor below) so a Scene can
+    // re-resolve the timer to a FRESH anchor on recall (a stored absolute endsAt would
+    // be stale by the time the scene is applied). Ignored by the output template.
+    source:      data.source ?? null,
+    targetClock: data.targetClock ?? null,
+    durationSec: Number.isFinite(Number(data.durationSec)) ? Number(data.durationSec) : null,
   };
   if (data.mode === 'countdown') {
     slot.endsAt = data.source === 'target'
@@ -992,6 +998,83 @@ export function countdownHide(target) {
 
 export function getOverlay() {
   return { ...overlay };
+}
+
+// ── Scenes — one-press multi-output state recall ──────────────────────────────
+// Apply a scene (feature-roadmap #11): set every output layer the scene MANAGES to a
+// defined state, atomically, in one synchronous pass — one broadcastGraphic(), one
+// sendCurrentState(), one broadcastTransport() — so every output window converges
+// within a single frame. `scene` is the normalized shape from db/scenes.js
+// normalizeScene: { overlay, program, audioMuted }.
+//   overlay     — { nameTitle, ticker, custom, countdown }, each a { screen, ndi } slot
+//                 of re-fire data, or null = leave the overlay untouched.
+//   program     — 'none' (leave program as-is) | 'content' | 'clear' | 'logo'.
+//   audioMuted  — true | false | null (null = don't touch).
+export function applyScene(scene) {
+  if (!scene) return;
+
+  // 1) Overlay slots — restore each MANAGED slot per kind. A slot key absent from the
+  // snapshot is left running; present-but-null hides that kind. Countdowns re-resolve
+  // to a fresh anchor (see reviveSlotValue). One broadcast for the whole overlay.
+  if (scene.overlay) {
+    for (const name of ['nameTitle', 'ticker', 'custom', 'countdown']) {
+      if (!(name in scene.overlay)) continue;
+      const slot = scene.overlay[name] || {};
+      overlay[name] = {
+        screen: reviveSlotValue(name, slot.screen),
+        ndi:    reviveSlotValue(name, slot.ndi),
+      };
+    }
+    broadcastGraphic();
+  }
+
+  // 2) Program display layer — deterministic setters (NOT the clear/logo toggles), so
+  // applying the same scene twice is idempotent.
+  applyProgramAction(scene.program);
+
+  // 3) Program (audience) audio — only when a foreground clip is loaded; muting an
+  // empty transport is meaningless and a fresh GO resets it anyway.
+  if ((scene.audioMuted === true || scene.audioMuted === false) && transport.active) {
+    transport.muted = scene.audioMuted;
+    broadcastTransport();
+  }
+}
+
+// Re-fire data for one overlay slot value. Self-contained for name/title/ticker/custom
+// (re-fired verbatim). Countdowns carry a resolved anchor that would be stale on recall,
+// so re-stamp it from the retained authoring spec (see countdownShow).
+function reviveSlotValue(name, v) {
+  if (!v) return null;
+  if (name !== 'countdown') return v;
+  const s = { ...v };
+  if (s.mode === 'countup') {
+    s.startAt = Date.now();
+  } else if (s.mode === 'countdown') {
+    if (s.source === 'target' && s.targetClock) s.endsAt = nextClockTime(s.targetClock);
+    else if (Number.isFinite(s.durationSec)) s.endsAt = Date.now() + Math.max(0, s.durationSec) * 1000;
+    // else: no spec to re-resolve from — keep the stored endsAt as a best effort.
+  }
+  return s;
+}
+
+// Drive the program displayMode to a scene's target without toggling. 'none' leaves it
+// alone. 'content'/'clear' are no-ops from idle (nothing has been GO'd to show/blank).
+// 'logo' works from any mode (logo resolves from settings/channel, not livePayload).
+function applyProgramAction(action) {
+  if (!action || action === 'none') return;
+  if (action === 'logo') {
+    if (state.displayMode !== 'logo') { state.preLogoMode = state.displayMode; state.displayMode = 'logo'; }
+  } else if (action === 'clear') {
+    if (state.displayMode === 'idle') return;
+    state.displayMode = 'cleared';
+    state.preLogoMode = null;
+  } else if (action === 'content') {
+    if (state.displayMode === 'idle') return;
+    state.displayMode = 'content';
+    state.preLogoMode = null;
+  }
+  sendCurrentState();
+  notifyMainWindow('output:state-changed', getState());
 }
 
 // ── Multiview capture ────────────────────────────────────────────────────────

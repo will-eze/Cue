@@ -7,6 +7,7 @@ import SongEditor from '../components/SongEditor';
 import ContextMenu from '../components/ContextMenu';
 import ScripturePanel from './ScripturePanel';
 import GraphicsPanel from './GraphicsPanel';
+import ScenesPanel from './ScenesPanel';
 import MediaThumb from '../components/MediaThumb';
 import PresentationEditor from '../components/PresentationEditor';
 import PptxImportModal from '../components/PptxImportModal';
@@ -374,6 +375,9 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
           <LibTab active={tab === 'graphics'} onClick={() => setTab('graphics')}>
             Graphics
           </LibTab>
+          <LibTab active={tab === 'scenes'} onClick={() => setTab('scenes')}>
+            Scenes
+          </LibTab>
         </div>
 
         <div className="ml-auto flex items-center gap-md">
@@ -650,6 +654,8 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
       )}
 
       {tab === 'graphics' && <GraphicsPanel />}
+
+      {tab === 'scenes' && <ScenesPanel />}
 
       {editPresentation !== null && (
         <PresentationEditor

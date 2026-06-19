@@ -17,6 +17,7 @@ import { registerFontsIpc } from './ipc/fonts.ipc.js';
 import { registerYoutubeIpc } from './ipc/youtube.ipc.js';
 import { registerScriptureDetectIpc } from './ipc/scripture-detect.ipc.js';
 import { registerBackgroundLibraryIpc } from './ipc/background-library.ipc.js';
+import { registerScenesIpc } from './ipc/scenes.ipc.js';
 import * as scriptureDetect from './scripture-detect/manager.js';
 import * as youtube from './youtube/downloader.js';
 import { purgeYoutubeItems } from './db/services.js';
@@ -257,6 +258,7 @@ app.whenReady().then(async () => {
   registerYoutubeIpc();
   registerScriptureDetectIpc();
   registerBackgroundLibraryIpc();
+  registerScenesIpc();
 
   createMainWindow();
   outputManager.setMainWindow(mainWindow);

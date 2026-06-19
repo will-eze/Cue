@@ -85,6 +85,7 @@ src/
 │   │   │                     gzip-tar cue.db + media/. importBackup(src): extract to temp, validate staged DB
 │   │   │                     (settings+songs tables) before touching live files, swap cue.db + media/, then
 │   │   │                     rewrite absolute media_assets.path to the local media dir (portable across machines).
+│   │   ├── scenes.js         Scenes CRUD (one-press output state recall). normalizeScene(row|liveObj) is the applyScene boundary; hotkeys unique.
 │   │   ├── graphics.js       Broadcast-graphics CRUD (list/get/create/update/del/reorder). style_json + target.
 │   │   │                     presets() reads built-in designs from resources/graphics/ (*.html custom + *.json
 │   │   │                     structured), not DB rows (§7).
@@ -140,6 +141,7 @@ src/
 │   │   ├── output.ipc.js     Registers output:* handlers (incl. graphic/ticker/overlay + channel show_program/
 │   │   │                     show_graphics; content-mode-only channel updates route to setChannelContentMode).
 │   │   ├── graphics.ipc.js   Registers graphics:* CRUD handlers + graphics:presets (registerGraphicsIpc).
+│   │   ├── scenes.ipc.js     Registers scenes:* CRUD + scenes:apply→outputManager.applyScene (registerScenesIpc).
 │   │   ├── themes.ipc.js     Registers themes:* CRUD + apply handlers (registerThemesIpc); apply* await
 │   │   │                     resolveThemeBackground first when setBg (media-theme bgRef download).
 │   │   ├── background-library.ipc.js  Registers backgrounds:* (list/tagCounts/download/applyAsDefault).
@@ -277,6 +279,9 @@ src/
 │   │   │                          lower-third channel mode switcher (per-channel 3-way, runtime), Quick Ticker,
 │   │   │                          grid of live-thumbnail cards (Take/Clear per kind), Clear All. Follows
 │   │   │                          output:overlay-changed for Live badges. Hosts GraphicsEditor.
+│   │   ├── ScenesPanel.jsx        Scenes tab. Card grid (Take + hotkey chip) + capture-driven editor (Capture current
+│   │   │                          output → snapshot overlay/program/audio; program & audio segmented overrides; Test).
+│   │   │                          Dispatches a `cue:scenes-changed` window event so OperatorView reloads number-key binds.
 │   │   └── ScripturePanel.jsx     Live verse browser (Scripture tab). Translation rail (select/delete/import/appearance),
 │   │                              predictive Book→Chapter→Verse reference bar (autofocus), whole-chapter verse list,
 │   │                              ↑/↓ live nav, right-click menu, OnlineBibleModal + ScriptureEditor hosts.
@@ -512,6 +517,7 @@ src/
 | v21 | Native YouTube player: rebuilt `service_items` to add `'youtube'` to the `item_type` CHECK (v7-pattern table rebuild). A YouTube cue stores its URL in `content`, `ref_id` NULL — the downloaded file is ephemeral (never `media_assets`); see §6 *Native YouTube player* |
 | v22 | Theme packs: added `themes.builtin` (INTEGER, default 0 — seeded built-ins, protected from edit/delete, re-seedable), `themes.category` (TEXT, default `'song'` — `'song'`/`'scripture'`/`'graphic'`/`'presentation'`, pickers filter on it), `themes.sort_order` (INTEGER, default 0 — display order within a category). A built-in's CSS gradient/solid background rides inside `style_json.bgCss` (§8/§9), not a new column |
 | v23 | Repaired `songs_fts`: rebuilt as `contentless_delete=1` and replaced the three triggers so the delete idiom is `DELETE FROM songs_fts WHERE rowid=?`. The old triggers issued the FTS5 `'delete'` command with empty-string values, orphaning tokens until a `MATCH`-in-a-JOIN threw "database disk image is malformed" and song search returned nothing |
+| v24 | Scenes (one-press multi-output state recall): created `scenes` table. A scene is a declarative snapshot of the service-independent output layers — broadcast-graphics overlay + program action + program audio — applied atomically by `outputManager.applyScene` (§13). No media-asset FKs (overlay snapshots hold resolved style objects, not media ids), so no `media.findUnused()` entry and backup-safe with no path rewriting |
 
 ### All tables
 
@@ -646,6 +652,20 @@ created_at DATETIME, updated_at DATETIME
 ```
 
 `style_json` shape — **lower_third**: `{ name: <style incl. textBox + ltBar>, title: <style> }` (the `name` style's `textBox` is the draggable/resizable position box, `ltBar` is the bar background). **ticker**: a flat style + `{ bar:{color,opacity}|null, position:'bottom'|'top' }`. **custom**: `null` (raw HTML). **countdown** (v16): `{ mode:'countdown'|'countup'|'clock', source:'duration'|'target', durationSec, targetClock:'HH:MM', format:'24h'|'12h', showSeconds, endMessage, time:<style incl. textBox + ltBar>, message:<style> }` — the `text` column holds the optional label ("Service starts in").
+
+#### `scenes` (v24 — one-press multi-output state recall)
+```sql
+id INTEGER PRIMARY KEY AUTOINCREMENT
+name TEXT NOT NULL
+hotkey TEXT                    -- '1'..'9' for number-key recall in OperatorView (unique: binding frees it elsewhere), or NULL
+program TEXT NOT NULL DEFAULT 'none'  -- program-layer action: 'none'|'content'|'clear'|'logo'
+audio_muted INTEGER            -- program audio: NULL = don't touch, 0 = unmute, 1 = mute
+overlay_json TEXT              -- broadcast-graphics overlay snapshot {nameTitle,ticker,custom,countdown}, each {screen,ndi}; NULL = overlay not managed
+order_index INTEGER NOT NULL DEFAULT 0
+created_at DATETIME, updated_at DATETIME
+```
+
+A scene is a declarative snapshot of the **service-independent** output layers (never a rundown-slide reference, so scenes survive weekly service changes). The authoring flow is **capture, not hand-build**: the operator sets the live output up, then `ScenesPanel`'s editor reads `output.getState()` (`overlay`, `displayMode`, `transport.muted`) and freezes it. Recall is atomic via `outputManager.applyScene` (§13) — number key 1–9 in `OperatorView`, or the panel's Take. `overlay_json` slots hold self-contained re-fire data (the same objects the `*Show` functions accept), so recall needs no saved-graphic lookup and survives graphic deletion; an all-empty snapshot is a "hide all graphics" scene. `db/scenes.js` `normalizeScene(row|liveObj)` → `{ overlay, program, audioMuted }` is the apply boundary (parses `overlay_json`).
 
 #### `themes` (v15 — theme / template library; v22 — theme packs)
 ```sql
@@ -1018,6 +1038,18 @@ target/format, label + end message, the draggable time box (`time.textBox`/`ltBa
 
 The graphic-fire methods (`window.cue.output.graphic.show/hide`, `ticker.show/hide`, `graphic.showCustom/hideCustom`, `countdown.show/hide`) take an `id` in their `show` payload (so liveness matches by identity) and an optional `target` on `hide` (clears one destination kind; omitted = both). See the overlay-bus note in `window.cue.output`.
 
+### `window.cue.scenes` (v24 — multi-output state recall)
+
+| Method | Returns | Notes |
+|---|---|---|
+| `list()` | `[scenes rows]` | Ordered by `order_index, id`. Rows carry `overlay_json` as a string. |
+| `get(id)` | `scene row` | — |
+| `create(data)` | `id` | `data` = `{ name, hotkey, program, audio_muted, overlay }` (`overlay` object or null). Binding a `hotkey` frees it on any other scene. |
+| `update(id, data)` | void | Same shape as create. |
+| `delete(id)` | void | — |
+| `reorder(orderedIds)` | void | Single transaction. |
+| `apply(scene)` | void | Accepts a DB row OR a live-preview object; `normalizeScene` → `outputManager.applyScene` drives the live bus atomically (§13). Used by number-key recall, the panel's Take, and the editor's Test. |
+
 ### `window.cue.themes`
 
 | Method | Returns | Notes |
@@ -1382,6 +1414,7 @@ liveSlideIdx     — which section index is currently on output
 | L key | `output:logo`. |
 | S key | Focuses the song search input in LibraryPanel (the GHS number field when the GHS folder is active). |
 | Modifier+G/C/L/O | GO / Clear / Logo / Live Toggle (modifier and keys are configurable in Settings). |
+| Number key 1–9 | Recalls the scene bound to that hotkey (`window.cue.scenes.apply` → `applyScene`, §13). No modifier; only fires when a scene holds that `hotkey`. |
 | Double-click song in Library | Adds to rundown. No preview/live change. |
 
 ### Keyboard shortcuts
@@ -1390,6 +1423,7 @@ Registered as a `keydown` listener on `document` inside `OperatorView`. **Not** 
 Two ref patterns used to avoid stale closures:
 - `shortcutRef.current` — assigned on every render (not in `useEffect`) so the handler always captures the latest state
 - `shortcutsRef.current` — holds configurable key bindings loaded from settings DB; reloads on `bgRefreshTick` changes
+- `scenesRef.current` — the scene list for number-key recall; reloaded on `bgRefreshTick` and on the `cue:scenes-changed` window event the Scenes panel dispatches after a mutation
 
 **Modifier priority:** modifier+key shortcuts are checked first; if the modifier is held, bare-key shortcuts are skipped. Default modifier is `Meta` (Cmd) on macOS and `Ctrl` on Windows, matching the operator's `window.cue.platform`.
 
@@ -1453,6 +1487,9 @@ The broadcast-graphics overlay (name/title bug, ticker, custom HTML, countdown) 
 **Custom HTML designs:** a `custom` graphic renders into `#lt-custom` (a shadow root: `position:absolute; inset:0; transparent`) — arbitrary author HTML/CSS, alpha-key safe, with `.cue-in`/`.cue-out` on the `.cue-root` wrapper for enter/exit. The Graphics editor's design gallery (`GraphicsPresetModal`) offers built-in designs (§7 `graphics.presets`) as live tiles; picking one from the panel creates a graphic and opens the editor, while the editor's "Apply a design" restyles the current draft (locked to its kind). **Tickers crawl** in every preview surface too (gallery tiles, editor, live monitor, card thumbs) via the shared `@keyframes cue-ticker-crawl`, duration = `scrollWidth/speed`, mirroring the output crawl.
 
 A lower-third channel has three **content modes** from `show_program` × `show_graphics`: Lyrics + Graphics, Lyrics Only, Graphics Only. The flags reach the window as `?program=` / `?graphics=` on first load (`lowerthird.js` gates the lyric band; `graphics-overlay.js` gates the overlay). Toggling them is a **runtime** operation: `setChannelContentMode(channelId)` sends `content:mode` to the existing window — both scripts hold a mutable flag + a cached last value, so they toggle in place and restore current content without recreating the window (the NDI sender is never dropped). The Graphics panel's per-channel switcher and Settings → Output Channels both drive this.
+
+### Scenes — `applyScene` (v24)
+`outputManager.applyScene({ overlay, program, audioMuted })` recalls a multi-output state (§5 `scenes`, §7 `window.cue.scenes`) atomically in one synchronous pass — **one** `broadcastGraphic()`, **one** `sendCurrentState()`, **one** `broadcastTransport()` — so every output window converges within a frame. It runs against the live bus state in main (not by replaying renderer GO/CLEAR/LOGO), which is what makes the recall atomic. Three managed layers: (1) **overlay** — each managed slot (key present in the snapshot) is set per `{screen,ndi}` kind; a slot's `countdown` value is re-resolved to a **fresh anchor** by `reviveSlotValue` (count-up → `startAt=now`; duration → `endsAt=now+durationSec`; target-clock → next `HH:MM`), since a stored absolute anchor would be stale on recall — this is why `countdownShow` retains its authoring spec (`source`/`targetClock`/`durationSec`) on the slot alongside the resolved anchor. (2) **program** — `applyProgramAction` drives `displayMode` with deterministic setters (not the `clear`/`logo` toggles, so re-applying is idempotent); `'none'` leaves it, `'content'`/`'clear'` are no-ops from idle, `'logo'` works from any mode. (3) **audio** — sets `transport.muted` only when a clip is loaded. A null `overlay` leaves graphics untouched; an all-empty overlay hides everything.
 
 ### Confidence / stage template structure
 `stage.html` (template `'stage'`, a channel whose monitors run `stage.js`) is the presenter monitor:
@@ -1633,6 +1670,7 @@ Models auto-download to `userData/whisper-model` on first arm (nothing ships in 
 | ~~Media unused-asset cleanup~~ | ~~Low~~ | Implemented — `MediaCleanup.jsx` (Settings → Media) scans via `media.findUnused` (songs/service_items/channels/themes/settings) and bulk-deletes. |
 | ~~Auto-advance / timed loops~~ | ~~Medium~~ | Implemented — `service_items.advance_seconds/advance_loop/advance_wrap`, renderer-side scheduler in `OperatorView.handleAutoAdvance`. See §12. |
 | ~~Presentations (native slides) + PowerPoint import~~ | ~~High~~ | Implemented — multi-element slide editor + LibreOffice/pdfjs PPTX→image import. See §21. |
+| ~~Scenes — multi-output state recall~~ | ~~Low~~ | Implemented (reframed from the roadmap's "macros" proposal — recorded timed playback + event triggers deliberately dropped). `scenes` table (v24), `ScenesPanel` capture-driven editor, number-key 1–9 recall, atomic `applyScene`. See §5/§7/§13. |
 | Presentation user-saved templates | Low | `presentation_templates` table + IPC exist; only built-in layouts wired into the editor so far. |
 | Drag asset from Library onto rundown item | Medium | Background override currently only via context menu. |
 | `operator_preview_layout` setting | Low | Side-by-side monitor layout toggle. Setting key exists, no UI toggle. |

@@ -32,7 +32,7 @@ Effort key: **S** ≈ 1 sitting · **M** ≈ a few sessions · **L** ≈ a phase
 | 8 | Split one song section into **variable-size parts** | Operator productivity | **M** | **P2** |
 | 9 | Confidence monitor — **scheduled / timed messages** | Operator productivity | **M** | **P2** |
 | 10 | **Transition / animation** library (slide change, logo, clear) | Power-user polish | **M** | **P3** |
-| 11 | **Macros** — record, deploy, and trigger on actions | Power-user automation | **L** | **P3** |
+| 11 | **Scenes** — one-press multi-output state recall | Operator productivity | **M** | **P3** |
 
 ---
 
@@ -323,33 +323,84 @@ templates (`src/output/*.js`), a settings surface (likely `ThemeSettings` / `Out
 
 ---
 
-### 11. Macros — record, deploy, and trigger on actions
+### 11. Scenes — one-press multi-output state recall
 
-Let operators **record** a sequence of actions into a named macro, **deploy** it on demand, and
-**auto-trigger** macros after events — *on slide change, on clear, on logo*, etc. This is the
-most ambitious item: a new automation subsystem layered over the existing transport.
+> **Reframed from the original "Macros" proposal.** The useful kernel inside "macros" is *not*
+> recorded timed playback or event-triggered automation — both are a poor fit for live, reactive
+> worship/broadcast cueing (a baked-in `setTimeout` chain desyncs from a human leader on the first
+> run; invisible event triggers violate the rule that an operator must always know why something
+> went to air). The kernel that *does* earn its place is **atomic, instant, deterministic recall
+> of the output layers to a named state** — "make the world look like this" on one keystroke. That
+> is a **scene/snapshot**, not a macro. Timed playback and event triggers are explicitly **out of
+> scope**; if real demand surfaces, propose them separately on their own merits.
 
-**Approach:** a macro is an ordered list of the *same* operator actions the keyboard and network
-remote already invoke (GO / NEXT / PREV / SELECT / CLEAR / LOGO / stage message / graphic
-out…). Because the network remote already proves "a virtual operator forwards nav commands that
-run the SAME handlers as the keyboard" (CLAUDE.md architecture invariant), a macro is just a
-scripted virtual operator. Two halves:
-- **Record/playback:** capture actions into a `macros` table (steps + optional delays); play
-  back by dispatching through the existing `OperatorView` handlers (the remote's `remote:command`
-  path is the model). Keep payload resolution in the renderer, never in main.
-- **Triggers:** subscribe macros to lifecycle events (slide change, clear, logo). The operator
-  already emits these; expose them as trigger hooks. Guard against loops (a macro that triggers
-  on slide-change and itself changes slides) and make triggers explicitly opt-in.
+**Why it matters.** The high-pressure moments in a live service are the *transitions* — into and
+out of a break, into worship, into the sermon. Each is a multi-layer output change ("clear the
+lower-third, drop the ticker, bring up the break logo, mute the program bed") that today is 3–5
+separate keystrokes fired in sequence under time pressure — exactly when an operator fumbles.
+A **Scene** collapses that into one button (or one number key): it sets every output layer it
+manages to a defined state, atomically, in a single frame. Scenes get used every single service;
+this is the part of the original macros pitch that is genuinely load-bearing.
 
-**Considerations:** this is genuinely new surface area — schema (`macros`, `macro_steps`,
-`macro_triggers`), an editor, and a playback engine. Scope v1 to **manual record + manual
-deploy**; add **action triggers** as a fast-follow once the playback engine is proven.
+**What a Scene is (and isn't).** A scene is a **declarative snapshot of the service-independent
+output layers** — never a reference to a specific rundown slide (that would couple scenes to a
+service that changes weekly and make them fragile; the whole point of the reframe is to drop that
+coupling). The layers a scene captures and restores:
+- **Broadcast-graphics overlay** — the four slots (`nameTitle` / `ticker` / `custom` / `countdown`)
+  **per destination kind** (`{screen, ndi}`), captured verbatim from the live overlay bus. Each
+  slot's stored value is self-contained re-fire data (the same object the `*Show` functions already
+  accept), so recall needs no saved-graphic lookup and survives graphic deletion. A scene may
+  *manage* the overlay (set every slot to its snapshot — including the all-empty snapshot, which is
+  a clean "hide all graphics / to-break" scene) or *leave it untouched* (overlay not managed).
+- **Program display action** — an enum, **not** a slide: `none` (leave the program layer as-is) ·
+  `content` (ensure the live slide is showing — i.e. logo off) · `clear` (blank the text, keep the
+  background — the existing `cleared` mode) · `logo` (show the logo bug). Deterministic setters, not
+  the existing toggles, so applying a scene twice is idempotent.
+- **Program audio** — `don't touch` · `mute` · `unmute` (the single `transport.muted` flag).
 
-**Files touched:** `db/schema.js` (macro tables migration), new `db/macros.js` + IPC + preload,
-a Macros panel/editor, and a playback dispatcher in `OperatorView` reusing the
-keyboard/remote handlers; trigger hooks wired into the transport lifecycle.
+**Authoring workflow — capture, don't hand-build.** The editor is deliberately thin because the
+intended flow is *snapshot the live output*, not assemble state field-by-field: the operator sets
+the output up the way they want (fires their lower-third, ticker, logo) and presses **Capture
+current output** — the editor reads `output.getState()` (`overlay`, `displayMode`, `transport.muted`)
+and freezes it into the scene. They then name it, optionally bind a **number key (1–9)**, and choose
+per-layer overrides (manage overlay? program action? audio?). That's the whole editor.
 
-**Effort: L.**
+**Recall path — atomic, through main, no renderer payload building.** A scene is applied by a single
+new main-process function `applyScene(scene)` in `output/manager.js` that, in one synchronous pass:
+sets each managed overlay slot per kind and fires **one** `broadcastGraphic()`; applies the program
+action via a deterministic `displayMode` setter + one `sendCurrentState()`; sets `transport.muted` +
+one `broadcastTransport()`. Because it runs in main against the live bus state (not by replaying
+renderer GO/CLEAR/LOGO calls), every output window converges within one frame — that atomicity is
+the feature. Number-key recall is a plain `keydown` digit handler in `OperatorView` (suppressed in
+inputs, like every other shortcut), looking the scene up by `hotkey` and calling `scenes.apply`.
+
+**The one time-sensitivity wrinkle (countdowns).** A captured `countdown` slot stores a *resolved*
+`endsAt`/`startAt`; re-firing a stale anchor would show an expired timer. So `applyScene` re-resolves
+time anchors on recall — `countup` → `startAt = now`; duration countdown → `endsAt = now + duration`;
+clock-target countdown → re-resolve the next occurrence of its target time. This requires the
+countdown slot to also retain its **authoring spec** (`source` / `targetClock` / `durationSec`),
+a small, justified addition to `countdownShow` (the extra fields are ignored by the output template).
+
+**What stays out of v1 (and probably forever):** recorded action sequences, inter-step delays,
+timed playback, and event/lifecycle triggers. They are not a smaller version of scenes — they are a
+different, riskier feature, and the reframe exists precisely to stop smuggling them in under one name.
+
+**Data model.** New `scenes` table (migration): `{ id, name, hotkey, program ('none'|'content'|
+'clear'|'logo'), audio_muted (NULL = don't touch | 0 | 1), overlay_json (the `{nameTitle, ticker,
+custom, countdown}` per-kind snapshot, or NULL = overlay not managed), order_index, timestamps }`.
+No media-asset FKs (overlay snapshots hold resolved style objects, not media ids; logo/background
+resolve from settings at apply time), so **no `media.findUnused()` entry is needed** and the table
+rides backups with no path rewriting.
+
+**Files touched:** `db/schema.js` (scenes table migration; reset MINOR/PATCH + mirror `package.json`
+in the same commit — MAJOR auto-derives), new `db/scenes.js` (CRUD + `normalizeScene` for apply) +
+`ipc/scenes.ipc.js` + `preload.js` (`window.cue.scenes`), `output/manager.js` (`applyScene`,
+deterministic program setter, `countdownShow` spec retention), new `panels/ScenesPanel.jsx` + a
+`scenes` tab in `LibraryPanel.jsx`, and `OperatorView.jsx` (load scenes, number-key recall, refresh
+on a `cue:scenes-changed` window event).
+
+**Effort: M** (really S–M — the engine is one main-process function plus a CRUD table; the rest is a
+thin capture-and-list panel).
 
 ---
 
@@ -365,7 +416,7 @@ keyboard/remote handlers; trigger hooks wired into the transport lifecycle.
    detection (#5), then presentation detection (#6).
 4. **Operator productivity:** paste-song-list (#7) + section splitting (#8) + scheduled stage
    messages (#9) — independent, ship in any order.
-5. **Polish & automation:** transition library (#10), then macros (#11) as the closing phase.
+5. **Polish & automation:** transition library (#10), then scenes (#11) as the closing phase.
 
 Every item ships independently and leaves the app shippable.
 

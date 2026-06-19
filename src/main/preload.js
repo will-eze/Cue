@@ -106,6 +106,15 @@ contextBridge.exposeInMainWorld('cue', {
     reorder: (orderedIds) => ipcRenderer.invoke('graphics:reorder', orderedIds),
     presets: () => ipcRenderer.invoke('graphics:presets'),
   },
+  scenes: {
+    list:    ()            => ipcRenderer.invoke('scenes:list'),
+    get:     (id)          => ipcRenderer.invoke('scenes:get', id),
+    create:  (data)        => ipcRenderer.invoke('scenes:create', data),
+    update:  (id, data)    => ipcRenderer.invoke('scenes:update', id, data),
+    delete:  (id)          => ipcRenderer.invoke('scenes:delete', id),
+    reorder: (orderedIds)  => ipcRenderer.invoke('scenes:reorder', orderedIds),
+    apply:   (scene)       => ipcRenderer.invoke('scenes:apply', scene),
+  },
   media: {
     import: (filePaths) => ipcRenderer.invoke('media:import', filePaths),
     get: (id) => ipcRenderer.invoke('media:get', id),

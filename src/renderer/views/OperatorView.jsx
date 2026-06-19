@@ -259,6 +259,20 @@ export default function OperatorView({
   // Ref for imperatively focusing the library search bar (triggered by S key)
   const focusSearchRef = useRef(null);
 
+  // Scenes — one-press multi-output state recall (number keys 1–9). Kept in a ref so
+  // the always-mounted keydown listener sees the latest set without re-binding. Reload
+  // on return from Settings and whenever the Scenes panel mutates the set.
+  const scenesRef = useRef([]);
+  const loadScenes = useCallback(() => {
+    window.cue.scenes.list().then((list) => { scenesRef.current = list || []; });
+  }, []);
+  useEffect(() => { loadScenes(); }, [loadScenes, bgRefreshTick]);
+  useEffect(() => {
+    const h = () => loadScenes();
+    window.addEventListener('cue:scenes-changed', h);
+    return () => window.removeEventListener('cue:scenes-changed', h);
+  }, [loadScenes]);
+
   useEffect(() => {
     window.cue.services.list().then((list) => {
       setServices(list);
@@ -342,6 +356,13 @@ export default function OperatorView({
         if (k === sc.logo.toLowerCase())  { e.preventDefault(); h.handleLogo();        return; }
         if (k === sc.live.toLowerCase())  { e.preventDefault(); h.handleLiveToggle();  return; }
         return;
+      }
+
+      // Number keys 1–9 recall a Scene (multi-output state). Suppressed in inputs by
+      // the guard above; no modifier so it never collides with the GO/CLEAR shortcuts.
+      if (/^[1-9]$/.test(e.key)) {
+        const scene = scenesRef.current.find((s) => s.hotkey === e.key);
+        if (scene) { e.preventDefault(); window.cue.scenes.apply(scene); return; }
       }
 
       // Space always drives LIVE forward; arrow keys drive PREVIEW (auto-GOing

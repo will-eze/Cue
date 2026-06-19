@@ -665,6 +665,39 @@ const migrations = [
       END;
     `);
   },
+
+  // v24 — Scenes: one-press multi-output state recall (feature-roadmap #11).
+  // A scene is a DECLARATIVE snapshot of the service-independent output layers, NOT
+  // a reference to a rundown slide (so it survives weekly service changes):
+  //   program     — what the program layer should do: 'none' (leave as-is) | 'content'
+  //                 (show the live slide / logo off) | 'clear' (blank text, keep bg) |
+  //                 'logo' (show the logo bug). Applied via deterministic setters in
+  //                 output/manager.js applyScene, so re-applying is idempotent.
+  //   audio_muted — program (audience) audio: NULL = don't touch, 0 = unmute, 1 = mute.
+  //   overlay_json— the broadcast-graphics overlay snapshot, captured verbatim from the
+  //                 live bus as { nameTitle, ticker, custom, countdown }, each a per-kind
+  //                 { screen, ndi } slot of self-contained re-fire data. NULL = the scene
+  //                 doesn't manage the overlay (leaves graphics untouched). An all-empty
+  //                 snapshot = a "hide all graphics" / to-break scene.
+  //   hotkey      — optional number key ('1'..'9') for instant recall in OperatorView.
+  // No media-asset FKs: overlay slots hold resolved style objects (not media ids) and
+  // logo/background resolve from settings at apply time — so scenes need no
+  // media.findUnused() entry and ride backups with no path rewriting.
+  function v24(database) {
+    database.exec(`
+      CREATE TABLE scenes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        hotkey TEXT,
+        program TEXT NOT NULL DEFAULT 'none',
+        audio_muted INTEGER,
+        overlay_json TEXT,
+        order_index INTEGER NOT NULL DEFAULT 0,
+        created_at DATETIME NOT NULL DEFAULT (datetime('now')),
+        updated_at DATETIME NOT NULL DEFAULT (datetime('now'))
+      );
+    `);
+  },
 ];
 
 function runMigrations() {
