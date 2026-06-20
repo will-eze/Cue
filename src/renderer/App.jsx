@@ -234,7 +234,6 @@ export default function App() {
         {view === 'multiview' && <MultiviewView />}
         {view === 'settings' && <SettingsView
           activeServiceId={activeServiceId}
-          onClose={() => { setBgRefreshTick((t) => t + 1); setView('operator'); }}
           onRundownCleared={() => setBgRefreshTick((t) => t + 1)}
           onRundownDeleted={(deletedId) => {
             if (activeServiceId === deletedId) setActiveServiceId(null);

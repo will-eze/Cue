@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron';
 import * as services from '../db/services.js';
+import { exportRundownPdf } from '../export/rundown-pdf.js';
 
 export function registerServicesIpc() {
   ipcMain.handle('services:list', () => services.list());
@@ -19,4 +20,5 @@ export function registerServicesIpc() {
   ipcMain.handle('services:applyBackgroundToRundown', (_e, serviceId, mediaId) =>
     services.applyBackgroundToRundown(serviceId, mediaId));
   ipcMain.handle('services:clearItems', (_e, serviceId) => services.clearItems(serviceId));
+  ipcMain.handle('services:exportPdf', (_e, serviceId) => exportRundownPdf(serviceId));
 }

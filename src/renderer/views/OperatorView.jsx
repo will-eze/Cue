@@ -356,6 +356,17 @@ export default function OperatorView({
 
       if (hasModifier) {
         const k = e.key.toLowerCase();
+        // Let the OS clipboard accelerators win over the operator shortcuts when
+        // the user is genuinely copying. The shortcut modifier defaults to the
+        // same key as the system clipboard modifier (⌘ on macOS, Ctrl elsewhere),
+        // so e.g. ⌘C-for-Clear would otherwise swallow every copy. Copy/cut only
+        // matter with a live text selection — without one, fall through so ⌘C
+        // still Clears as before; ⌘A (select-all) always passes through.
+        const clipboardMod = isMac ? e.metaKey : e.ctrlKey;
+        if (clipboardMod) {
+          const hasSelection = !!window.getSelection()?.toString();
+          if (k === 'a' || ((k === 'c' || k === 'x') && hasSelection)) return;
+        }
         if (k === sc.go.toLowerCase())    { e.preventDefault(); h.handleGo();          return; }
         if (k === sc.clear.toLowerCase()) { e.preventDefault(); h.handleClear();       return; }
         if (k === sc.logo.toLowerCase())  { e.preventDefault(); h.handleLogo();        return; }

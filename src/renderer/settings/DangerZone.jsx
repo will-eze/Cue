@@ -144,7 +144,7 @@ export default function DangerZone({ activeServiceId, onRundownCleared, onRundow
             )}
           </div>
           <ConfirmButton
-            label="Clear"
+            label="Clear Rundown"
             confirmLabel="Yes, clear"
             disabled={!clearServiceId || noRundowns}
             onConfirm={handleClearRundown}
@@ -167,7 +167,7 @@ export default function DangerZone({ activeServiceId, onRundownCleared, onRundow
             )}
           </div>
           <ConfirmButton
-            label="Delete"
+            label="Delete Rundown"
             confirmLabel="Yes, delete"
             disabled={!deleteServiceId || noRundowns}
             onConfirm={handleDeleteRundown}

@@ -42,6 +42,7 @@ contextBridge.exposeInMainWorld('cue', {
     duplicateItem: (itemId) => ipcRenderer.invoke('services:duplicateItem', itemId),
     applyBackgroundToRundown: (serviceId, mediaId) => ipcRenderer.invoke('services:applyBackgroundToRundown', serviceId, mediaId),
     clearItems: (serviceId) => ipcRenderer.invoke('services:clearItems', serviceId),
+    exportPdf: (serviceId) => ipcRenderer.invoke('services:exportPdf', serviceId),
   },
   output: {
     go: (payload) => ipcRenderer.invoke('output:go', payload),

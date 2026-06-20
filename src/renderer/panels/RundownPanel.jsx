@@ -319,6 +319,7 @@ export default function RundownPanel({
   const [renamingService, setRenamingService] = useState(false);
   const [renameTitle, setRenameTitle] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [bgPickerForItem, setBgPickerForItem] = useState(null);
   const [advanceForItem, setAdvanceForItem] = useState(null);
   const [previewSong, setPreviewSong] = useState(null);
@@ -366,6 +367,23 @@ export default function RundownPanel({
   async function confirmDeleteService() {
     setConfirmDelete(false);
     await onDeleteService?.();
+  }
+
+  async function handleExportPdf() {
+    if (!activeServiceId || exporting) return;
+    if (typeof window.cue?.services?.exportPdf !== 'function') {
+      window.alert('PDF export is unavailable — restart the app to load the latest version.');
+      return;
+    }
+    setExporting(true);
+    try {
+      await window.cue.services.exportPdf(activeServiceId);
+    } catch (err) {
+      console.error('Rundown PDF export failed:', err);
+      window.alert(`Couldn't export the rundown PDF:\n${err?.message || err}`);
+    } finally {
+      setExporting(false);
+    }
   }
 
   return (
@@ -430,6 +448,14 @@ export default function RundownPanel({
             </select>
             {activeServiceId && (
               <>
+                <button
+                  onClick={handleExportPdf}
+                  disabled={exporting}
+                  title="Export lyrics as PDF"
+                  className="shrink-0 w-5 h-5 flex items-center justify-center text-on-surface-variant/40 hover:text-on-surface-variant cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-default"
+                >
+                  <span className="material-symbols-outlined text-[13px]">{exporting ? 'hourglass_empty' : 'picture_as_pdf'}</span>
+                </button>
                 <button
                   onClick={startRename}
                   title="Rename service"

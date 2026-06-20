@@ -149,7 +149,7 @@ function SettingsFooter() {
   );
 }
 
-export default function SettingsView({ onClose, activeServiceId, onRundownCleared, onRundownDeleted, onLibraryCleared }) {
+export default function SettingsView({ activeServiceId, onRundownCleared, onRundownDeleted, onLibraryCleared }) {
   const scrollRef = useRef(null);
   const sectionRefs = useRef({});
   const [active, setActive] = useState(SECTIONS[0].id);
@@ -190,18 +190,11 @@ export default function SettingsView({ onClose, activeServiceId, onRundownCleare
     <div className="flex h-full bg-background">
       {/* Section navigation */}
       <aside className="flex flex-col w-24 h-full bg-surface-container-low items-center border-r border-outline-variant/20 shrink-0">
-        <button
-          onClick={onClose}
-          title="Back to Operator"
-          className="mt-md mb-sm shrink-0 flex flex-col items-center gap-xs py-sm w-20 rounded-lg text-on-surface-variant hover:text-primary hover:bg-surface-variant transition-all active:scale-95 cursor-pointer"
-        >
-          <span className="material-symbols-outlined">arrow_back</span>
-          <span className="text-label-sm font-label-sm">Back</span>
-        </button>
-
         {/* The section list scrolls on its own so every header stays reachable on
-            short screens — without it the bottom items (Data/Danger) were clipped. */}
-        <nav className="flex flex-col items-center gap-xs w-full overflow-y-auto custom-scrollbar pb-md">
+            short screens — without it the bottom items (Data/Danger) were clipped.
+            Returning to the operator is handled by the persistent top "Operator"
+            tab, so no back button is needed here. */}
+        <nav className="flex flex-col items-center gap-xs w-full overflow-y-auto custom-scrollbar pt-md pb-md">
           {SECTIONS.map((item) => {
             const isActive = active === item.id;
             return (
