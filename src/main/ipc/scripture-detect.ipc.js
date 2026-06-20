@@ -8,10 +8,15 @@ import * as manager from '../scripture-detect/manager.js';
 export function registerScriptureDetectIpc() {
   ipcMain.handle('scriptureDetect:getConfig', () => manager.getConfig());
   ipcMain.handle('scriptureDetect:setConfig', (_e, patch) => manager.setConfig(patch));
-  ipcMain.handle('scriptureDetect:start', () => manager.start());
+  ipcMain.handle('scriptureDetect:start', (_e, engine) => manager.start(engine));
   ipcMain.handle('scriptureDetect:stop', () => manager.stop());
   ipcMain.handle('scriptureDetect:ensureAsrModel', () => manager.ensureAsrModel());
   ipcMain.handle('scriptureDetect:buildVectors', (_e, versionId) => manager.buildVectors(versionId));
+  ipcMain.handle('scriptureDetect:getGpuModelUsage', () => manager.getGpuModelUsage());
+
+  // Utterance text from the renderer's WebGPU worker (VAD + ASR ran there). Fire-and-forget
+  // like pushAudio; detection (parser/content-match) runs in main on the ingested text.
+  ipcMain.on('scriptureDetect:ingestTranscript', (_e, payload) => manager.ingestTranscript(payload));
 
   // High-rate PCM frames from the renderer's AudioWorklet. Int16 PCM arrives as a
   // transferable ArrayBuffer; wrap it back into an Int16Array for the ASR buffer.

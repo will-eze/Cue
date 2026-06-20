@@ -59,11 +59,13 @@ export function getById(id) {
 export function create(data) {
   const db = getDb();
   const { title, author, copyright, sections = [], tagIds = [] } = data;
-  const defaultBgId = getSetting('global_bg_song_id') ?? null;
+  // A new song starts with NO background of its own — it follows the live global
+  // song default (resolved at output time, §9) until one is set explicitly. Don't
+  // snapshot the global here, or the song would silently stop tracking it.
   return db.transaction(() => {
     const { lastInsertRowid } = db.prepare(
       'INSERT INTO songs (title, author, copyright, default_background_id) VALUES (?, ?, ?, ?)'
-    ).run(title, author || null, copyright || null, defaultBgId);
+    ).run(title, author || null, copyright || null, null);
     sections.forEach((s, i) =>
       db.prepare('INSERT INTO song_sections (song_id, type, order_index, content, style_json) VALUES (?, ?, ?, ?, ?)')
         .run(lastInsertRowid, s.type, i, s.content, s.style_json ?? null)
@@ -82,11 +84,10 @@ const _IMPORT_TYPES = new Set(['verse', 'chorus', 'refrain', 'bridge', 'pre-chor
 const _IMPORT_TAG_COLOUR = { GHS: '#4d8eff' };
 
 // Bulk-create songs from parsed import previews. One transaction for the whole
-// batch. Each song inherits the global song background like create() does, and
-// any `song.tags` (array of tag names) are get-or-created and assigned.
+// batch. Each song starts with no background of its own (it follows the live global
+// default, like create()), and any `song.tags` are get-or-created and assigned.
 export function importSongs(parsedSongs = []) {
   const db = getDb();
-  const defaultBgId = getSetting('global_bg_song_id') ?? null;
   const tagCache = new Map();
   const getOrCreateTag = (name) => {
     if (tagCache.has(name)) return tagCache.get(name);
@@ -102,7 +103,7 @@ export function importSongs(parsedSongs = []) {
     for (const song of parsedSongs) {
       const { lastInsertRowid } = db.prepare(
         'INSERT INTO songs (title, author, copyright, default_background_id) VALUES (?, ?, ?, ?)'
-      ).run(song.title || 'Untitled', song.author || null, song.copyright || null, defaultBgId);
+      ).run(song.title || 'Untitled', song.author || null, song.copyright || null, null);
       (song.sections || []).forEach((s, i) =>
         db.prepare('INSERT INTO song_sections (song_id, type, order_index, content, style_json) VALUES (?, ?, ?, ?, ?)')
           .run(lastInsertRowid, _IMPORT_TYPES.has(s.type) ? s.type : 'verse', i, s.content, s.style_json ?? null)
@@ -242,6 +243,16 @@ export function removeTag(songId, tagId) {
 export function setBackground(songId, mediaId) {
   getDb().prepare(`UPDATE songs SET default_background_id=?, updated_at=datetime('now') WHERE id=?`)
     .run(mediaId || null, songId);
+}
+
+// Lock/unlock a song's background. While locked the song's own
+// default_background_id is pinned at the top of the resolution cascade
+// (lock → override → song → global → black): slot overrides and the live global
+// default are ignored, and the bulk "apply background" actions skip it. Pure flag,
+// no media reference.
+export function setLock(songId, locked) {
+  getDb().prepare(`UPDATE songs SET background_locked=?, updated_at=datetime('now') WHERE id=?`)
+    .run(locked ? 1 : 0, songId);
 }
 
 // ── Paste Song List matcher ───────────────────────────────────────────────────

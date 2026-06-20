@@ -698,6 +698,21 @@ const migrations = [
       );
     `);
   },
+
+  // v25 — Per-song background lock. The background a slide shows is resolved by a
+  // single, flat cascade (see OperatorView.resolveBackground / output/manager.js):
+  //   lock → per-slot override → song's own default → live global default → black.
+  // `background_locked` is the top of that cascade: when 1, the song's own
+  // default_background_id is pinned and NOTHING below can change it — a slot
+  // override is ignored, the live global default is ignored, and the two bulk
+  // "apply background" actions (settings.applyBackgroundToAll /
+  // services.applyBackgroundToRundown) skip the song entirely. It's a protect+pin
+  // flag, not a media reference, so it needs no media.findUnused() entry.
+  function v25(database) {
+    database.exec(`
+      ALTER TABLE songs ADD COLUMN background_locked INTEGER NOT NULL DEFAULT 0;
+    `);
+  },
 ];
 
 function runMigrations() {

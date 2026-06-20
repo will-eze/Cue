@@ -16,6 +16,7 @@ export function registerSongsIpc() {
   ipcMain.handle('songs:addTag', (_e, songId, tagId) => songs.addTag(songId, tagId));
   ipcMain.handle('songs:removeTag', (_e, songId, tagId) => songs.removeTag(songId, tagId));
   ipcMain.handle('songs:setBackground', (_e, songId, mediaId) => songs.setBackground(songId, mediaId));
+  ipcMain.handle('songs:setLock', (_e, songId, locked) => songs.setLock(songId, locked));
   ipcMain.handle('songs:deleteAll', () => songs.deleteAll());
   ipcMain.handle('tags:list', () => songs.listTags());
   ipcMain.handle('tags:create', (_e, data) => songs.createTag(data));

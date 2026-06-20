@@ -762,17 +762,29 @@ function resolveLogo(channel) {
   return null;
 }
 
+// Flat background cascade: lock → slot override → song default → live global → black.
+// (Renderer OperatorView.resolveBackground is the live source of truth; this mirror
+// keeps the exported helper honest.)
 export function resolveBackground(item) {
   const db = getDb();
-  if (item.background_override_id) {
-    const a = db.prepare('SELECT * FROM media_assets WHERE id = ?').get(item.background_override_id);
+  const pathOf = (id) => {
+    if (!id) return null;
+    const a = db.prepare('SELECT * FROM media_assets WHERE id = ?').get(id);
     return a ? a.path : null;
+  };
+  // Locked song: its own default is pinned above everything (override + global ignored).
+  if (item.item_type === 'song' && item.song?.background_locked) {
+    return pathOf(item.song.default_background_id);
   }
-  if (item.item_type === 'song' && item.song && item.song.default_background_id) {
-    const a = db
-      .prepare('SELECT * FROM media_assets WHERE id = ?')
-      .get(item.song.default_background_id);
-    if (a) return a.path;
+  if (item.background_override_id) return pathOf(item.background_override_id);
+  if (item.item_type === 'song' && item.song?.default_background_id) {
+    const p = pathOf(item.song.default_background_id);
+    if (p) return p;
+    // fall through to the live global below
+  }
+  if (item.item_type === 'song') {
+    const setting = db.prepare('SELECT value FROM settings WHERE key = ?').get('global_bg_song_id');
+    if (setting) return pathOf(JSON.parse(setting.value));
   }
   return null;
 }

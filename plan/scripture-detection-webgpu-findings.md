@@ -1,7 +1,20 @@
 # Scripture Detection — WebGPU Spike Findings (2026-06-19)
 
-**Status: BLOCKED on current Electron. WebGPU ASR does not run on Electron 30 /
-Chromium 124.** This documents a spike that tested the approach in
+> **✅ RESOLVED (2026-06-19, later same day).** Electron was upgraded 30→**42.4.1
+> (Chromium ~144)** and merged to `main`. The spike was re-mounted and re-run: the
+> `subgroupMinSize` crash documented below **no longer occurs** — `whisper-small.en`
+> (fp32, the "local" transformers.js 4.2.0 / ort-web 1.26 engine) **loads and
+> benchmarks on WebGPU** on a hardware Apple adapter. JFK 11.0s clip → **median
+> 1794 ms** (RTF 0.16, passes 1753/1794/1846), warm-up 3.3s (shader compile), load
+> 7.3s incl. download; transcript verbatim-correct. The Chromium-version floor was
+> the whole story, exactly as predicted below. **Next:** the full build per
+> `scripture-detection-webgpu-plan.md`; before locking model choice, also bench
+> small.en **fp16**, **turbo**, and a short ~2s utterance (the 1794ms above is an
+> 11s clip, not directly comparable to the ~1450ms/pass CPU floor for a 2s VAD
+> utterance). Everything from here down is the **historical** as-blocked record.
+
+**Status (historical): BLOCKED on current Electron. WebGPU ASR does not run on
+Electron 30 / Chromium 124.** This documents a spike that tested the approach in
 `scripture-detection-webgpu-plan.md` *before* committing to the full build. The
 plan's architecture is still sound; it has an unmet **runtime prerequisite** the
 plan did not anticipate.

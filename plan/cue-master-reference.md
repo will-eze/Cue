@@ -503,7 +503,7 @@ src/
 
 ### Migration system
 
-`schema.js` creates `db_version` table (single integer row) on first run and applies pending migrations in order inside a transaction. **Never delete `db_version`** — it is required to exist before any user-facing build. Current version: **23**. Migrations run with foreign keys disabled, so table-rebuild migrations (v6, v7, v11, v16, v20, v21, v23) do not cascade-delete referencing rows.
+`schema.js` creates `db_version` table (single integer row) on first run and applies pending migrations in order inside a transaction. **Never delete `db_version`** — it is required to exist before any user-facing build. Current version: **25**. Migrations run with foreign keys disabled, so table-rebuild migrations (v6, v7, v11, v16, v20, v21, v23) do not cascade-delete referencing rows.
 
 | Version | Change |
 |---|---|
@@ -531,6 +531,7 @@ src/
 | v22 | Theme packs: added `themes.builtin` (INTEGER, default 0 — seeded built-ins, protected from edit/delete, re-seedable), `themes.category` (TEXT, default `'song'` — `'song'`/`'scripture'`/`'graphic'`/`'presentation'`, pickers filter on it), `themes.sort_order` (INTEGER, default 0 — display order within a category). A built-in's CSS gradient/solid background rides inside `style_json.bgCss` (§8/§9), not a new column |
 | v23 | Repaired `songs_fts`: rebuilt as `contentless_delete=1` and replaced the three triggers so the delete idiom is `DELETE FROM songs_fts WHERE rowid=?`. The old triggers issued the FTS5 `'delete'` command with empty-string values, orphaning tokens until a `MATCH`-in-a-JOIN threw "database disk image is malformed" and song search returned nothing |
 | v24 | Scenes (one-press multi-output state recall): created `scenes` table. A scene is a declarative snapshot of the service-independent output layers — broadcast-graphics overlay + program action + program audio — applied atomically by `outputManager.applyScene` (§13). No media-asset FKs (overlay snapshots hold resolved style objects, not media ids), so no `media.findUnused()` entry and backup-safe with no path rewriting |
+| v25 | Per-song background lock: added `songs.background_locked` (INTEGER NOT NULL DEFAULT 0). Top of the background resolution cascade (§9) — a locked song's `default_background_id` is pinned above the per-slot override and the live global default, and the bulk apply actions skip it. A protect+pin flag, not a media reference, so no `media.findUnused()` entry |
 
 ### All tables
 
@@ -541,6 +542,7 @@ title TEXT NOT NULL
 author TEXT
 copyright TEXT
 default_background_id INTEGER REFERENCES media_assets(id) ON DELETE SET NULL
+background_locked INTEGER NOT NULL DEFAULT 0   -- v25: pin this song's bg at the top of the resolution cascade
 created_at DATETIME DEFAULT (datetime('now'))
 updated_at DATETIME DEFAULT (datetime('now'))
 ```
@@ -889,6 +891,7 @@ All renderer↔main communication is via `ipcRenderer.invoke` / `ipcMain.handle`
 | `addTag(songId, tagId)` | void | — |
 | `removeTag(songId, tagId)` | void | — |
 | `setBackground(songId, mediaId\|null)` | void | Sets songs.default_background_id. |
+| `setLock(songId, locked)` | void | Sets songs.background_locked (0/1). Pins the song's bg at the top of the resolution cascade (§9); bulk apply + per-slot override writes skip a locked song. |
 | `deleteAll()` | void | Deletes all songs, their sections, taggables, and all song-type service_items. Irreversible. |
 | `importParse(filePaths)` | `[{ok, file, format, title, author, copyright, sections, tags?, error?}]` | Parses song files (no DB write). Auto-detects OpenLyrics XML / ChordPro / text / EasyWorship SQLite (one .db → many rows). Per-file failures returned as `{ok:false, error}`. |
 | `importGhs()` | same row shape, all `format:'GHS'`, `tags:['GHS']`, with `existing:bool` | Parses the bundled GHS hymnal; flags rows already in the DB. |
@@ -922,13 +925,13 @@ All renderer↔main communication is via `ipcRenderer.invoke` / `ipcMain.handle`
 | `setItemAdvance(itemId, seconds, loop, wrap)` | void | Auto-advance config. `seconds>0` sets the interval (falsy clears it → manual, and NULLs `advance_loop`); `loop` = `'item'`\|`'rundown'`; `wrap` (bool, rundown mode) wraps to the first item at the end vs stops. |
 | `duplicateItem(itemId)` | `id` | Appends copy at end of rundown (carries advance config). |
 | `clearItems(serviceId)` | void | Removes all items from a rundown; keeps the service row. Used by Danger Zone. |
-| `applyBackgroundToRundown(serviceId, mediaId)` | `count` | Sets background_override_id on every song slot AND updates each song's default_background_id. |
+| `applyBackgroundToRundown(serviceId, mediaId)` | `count` | Sets background_override_id on every unlocked song slot AND updates each unlocked song's default_background_id. Locked songs skipped. |
 
 **`resolveItem()` shape** — what `services:get` returns per item:
 ```js
 {
   // All service_items columns (id, service_id, item_type, ref_id, order_index, notes, content, background_override_id)
-  song: { id, title, author, copyright, default_background_id,
+  song: { id, title, author, copyright, default_background_id, background_locked,
           tags: [{ id, name, colour }],   // rendered as chips on the rundown sublabel line
           default_background: { id, path, filename, type } | null },
   sections: [{ id, song_id, type, order_index, content, style_json }],
@@ -1124,7 +1127,7 @@ The downloaded file is **ephemeral** — never a `media_assets` row (see §6 *Na
 | `set(key, value)` | JSON-encodes value, upserts. |
 | `setGlobalLogo(mediaId\|null)` | Sets `global_logo_id`. |
 | `setGlobalBackground(type, mediaId\|null)` | type: `'song'`, `'scripture'`, or `'slide'`. |
-| `applyBackgroundToAll(type, mediaId)` | Bulk-updates all songs.default_background_id (song type only). |
+| `applyBackgroundToAll(type, mediaId)` | Song type only: sets default_background_id AND clears the per-slot override on every **unlocked** song (locked songs skipped). |
 | `getDiskUsage()` | Delegates to media.getDiskUsage(). |
 | `getDataPath()` | Returns app.getPath('userData'). |
 | `openDataFolder()` | Opens userData in Finder/Explorer. |
@@ -1248,16 +1251,22 @@ Subscribe to main→renderer events. Returns an unsubscribe function — call it
 
 ## 9. Background Resolution Order
 
-When building the output payload, `resolveBackground(item)` in `OperatorView.jsx` follows this priority:
+When building the output payload, `resolveBackground(item)` in `OperatorView.jsx` follows a single flat cascade — **lock → override → song → live global → black**:
 
 ```
-1. item.background_override.path        — per-rundown-slot override (set via context menu)
-2. item.song.default_background.path    — per-song default (set via songs:setBackground or song editor)
-3. globalBgSong.path / globalBgSlide.path — global type default (from settings)
-4. null → black screen
+1. song.background_locked → item.song.default_background.path  — LOCKED song's pinned bg
+                                                                  (ignores override AND global below)
+2. item.background_override.path        — per-rundown-slot override (set via context menu)
+3. item.song.default_background.path    — per-song default (songs:setBackground / song editor)
+4. songGlobalBgPath / scriptureBgPath / slideBgPath  — LIVE global type default (from settings)
+5. null → black screen
 ```
 
-`globalBgSong` / `globalBgSlide` are loaded in `OperatorView` on mount using `window.cue.media.get(id)` (fetches by ID, works regardless of folder). The resolved `backgroundPath` is an absolute filesystem path passed in the output payload. Output windows convert it to `cue-media://` via their inline `pathToUrl()`.
+The global default is read **live** for songs, scripture and slides alike: changing it applies immediately to every unlocked item still on the default — no per-entity snapshot. `songGlobalBgPath`/`scriptureBgPath`/`slideBgPath` are loaded by `OperatorView.loadScriptureDefaults()` via `window.cue.media.get(id)`, refreshed on `bgRefreshTick`, after `ScriptureEditor` saves (`onScriptureStyleSaved`), and after a Media-tab "Set as Global … Background" (`onBackgroundDefaultChanged` → wired from `LibraryPanel.handleSetBackground`). The resolved `backgroundPath` is an absolute filesystem path passed in the output payload; output windows convert it to `cue-media://` via their inline `pathToUrl()`.
+
+A **locked song** (`songs.background_locked = 1`) pins its own `default_background_id` at the top of the cascade — the per-slot override and the live global are both ignored, and the two bulk apply actions skip it. The lock is toggled per song in `SongEditor` (`window.cue.songs.setLock`), beside a source badge (`Locked` / `Song` / `Global` / `None`) that shows where the shown background comes from. `output/manager.js resolveBackground()` mirrors the same cascade (it is an exported helper; the renderer copy is the live source of truth).
+
+The **rundown row thumbnail** (`RundownPanel` `SortableItem`) resolves through the exact same cascade: `OperatorView` passes `resolveItemBg={resolveBackground}` down so the row preview matches what GO will send (including the live global fallback), not just the song's own stored background.
 
 Custom slides use `global_bg_slide_id`; songs use `global_bg_song_id`.
 
@@ -1271,10 +1280,11 @@ Custom slides use `global_bg_slide_id`; songs use `global_bg_song_id`.
 
 ### Background write-through (cross-rundown persistence)
 
-Setting a background on a rundown slot via "Set Background Override" **also writes to the song's own `default_background_id`**. This means the background follows the song into any new rundown it is later added to. Two code paths both do this:
+Setting a background on a rundown slot via "Set Background Override" **also writes to the song's own `default_background_id`**. This means the background follows the song into any new rundown it is later added to. Code paths:
 
-- `services.setItemBackground(itemId, mediaId)` — DB function; writes `service_items.background_override_id` AND `songs.default_background_id` when the item is a song.
-- `services.applyBackgroundToRundown(serviceId, mediaId)` — DB function; sets override on all song slots AND updates each distinct song's `default_background_id`.
+- `services.setItemBackground(itemId, mediaId)` — DB function; writes `service_items.background_override_id` AND `songs.default_background_id` when the item is a song. **Skips a locked song entirely** (writes nothing) so the lock holds end-to-end.
+- `services.applyBackgroundToRundown(serviceId, mediaId)` — DB function; for every **unlocked** song in the rundown sets the per-slot override AND the song's `default_background_id`; locked songs are skipped. Returns the affected-song count.
+- `settings.applyBackgroundToAll('song', mediaId)` — "Write to all songs in library": for every **unlocked** song sets `default_background_id` AND **clears its `service_items.background_override_id`** (so even slot-overridden songs flip — the override sits below the song level in the cascade and must be cleared to show). Locked songs are skipped.
 
 The renderer's `RundownPanel` also calls `window.cue.songs.setBackground` after the picker resolves, as a belt-and-suspenders measure.
 

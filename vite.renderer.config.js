@@ -17,8 +17,8 @@ function gitCommitCount() {
 // MAJOR = current DB schema version, derived from the highest migration (vN) in
 // schema.js so it can never drift from the schema. Bump MINOR/PATCH by hand per the
 // convention in CLAUDE.md (MINOR = features w/o migration; PATCH = fixes/docs/chores).
-const VERSION_MINOR = 2;
-const VERSION_PATCH = 1;
+const VERSION_MINOR = 0;
+const VERSION_PATCH = 0;
 
 function schemaVersion() {
   try {
@@ -38,4 +38,13 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(APP_VERSION),
     __BUILD_NUMBER__: JSON.stringify(gitCommitCount()),
   },
+  // WebGPU ASR (renderer worker, whisper-worker.web.js): keep transformers.js out of
+  // Vite's dep pre-bundle — its onnxruntime-web wasm/WebGPU assets choke esbuild's
+  // optimizer, and the worker dynamic-imports it. ORT-web wasm is served locally via the
+  // worker's `?url` imports (no CDN). See plan/scripture-detection-webgpu-plan.md.
+  optimizeDeps: { exclude: ['@huggingface/transformers'] },
+  // The ASR worker dynamic-imports transformers.js → code-splitting, which Vite's default
+  // `iife` worker format can't do (only shows in the production build, not `npm start`).
+  // ES-module workers support it; Vite then instantiates with `new Worker(url, {type:'module'})`.
+  worker: { format: 'es' },
 });

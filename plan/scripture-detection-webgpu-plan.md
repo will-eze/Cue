@@ -1,10 +1,19 @@
 # Scripture Detection — WebGPU ASR Plan (deferred)
 
-> **⚠ 2026-06-19 update — BLOCKED. See `scripture-detection-webgpu-findings.md`.**
+> **✅ 2026-06-19 (later) — UNBLOCKED & spike re-validated.** Cue is now on
+> **Electron 42.4.1 / Chromium ~144** (merged to `main`). The spike re-ran clean:
+> `whisper-small.en` (fp32) **loads + benchmarks on WebGPU** — no `subgroupMinSize`
+> crash. JFK 11.0s clip → **median 1794 ms** (RTF 0.16), transcript verbatim-correct,
+> hardware Apple adapter. This is the green light; the architecture below can now be
+> built. Still to measure before model choice: fp16 / turbo / a short ~2s utterance.
+>
+> <details><summary>Original 2026-06-19 BLOCKED banner (historical)</summary>
+>
 > A spike proved WebGPU ASR **crashes on load** on Electron 30 / Chromium 124
 > (`subgroupMinSize` — ORT-web's WebGPU init needs Chromium ~128+, across all
 > transformers.js versions tested). The architecture below is still valid, but its
 > hard prerequisite is an **Electron upgrade** before any of this work can run.
+> </details>
 
 Status: **scoped, not started.** The shipped feature uses the CPU path
 (onnxruntime-node, `whisper-small.en` INT8). This document is the full plan for

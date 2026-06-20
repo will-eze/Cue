@@ -1,0 +1,223 @@
+// VAD-segmented transcription core — shared by the CPU backend (main, asr.js) and the
+// WebGPU backend (renderer worker, whisper-worker.web.js).
+//
+// This is the VAD state machine + interim/commit ORCHESTRATION lifted verbatim from the
+// original asr.js, with the model engine factored OUT behind two injected functions:
+//   transcribeCommit(float32)  → Promise<string|null>   (authoritative, required)
+//   transcribeInterim(float32) → Promise<string|null>   (fast partial, optional)
+// Nothing here imports a model runtime, Node, or transformers — it is env-free so the
+// same logic runs in main (onnxruntime-node) and in a renderer Web Worker (WebGPU).
+//
+// The semantics are unchanged and MUST stay that way (CLAUDE.md / master reference §17):
+// authoritative model = segment incoming audio into UTTERANCES with a lightweight energy
+// VAD (onset → buffer → pause), transcribe that one complete silence-trimmed utterance,
+// hand its FULL text to detection (onCommitted). Latency layer = while the VAD says speech
+// is ACTIVE, also decode the accumulated SPEECH-ONLY buffer at a coarse cadence (and on a
+// soft intra-phrase pause) and emit an interim (onInterim) — NEVER over silence (that is
+// the banned fixed-window-over-silence scheme). Interims are latest-wins, defer entirely
+// while a commit is decoding/queued, and only ever stage a Preview. This file is a
+// RELOCATION of that logic, not a cleanup — do not simplify the interim/commit guards.
+
+const SAMPLE_RATE = 16000;
+const FRAME_MS = 250;            // each pushed frame ≈ 4000 samples @ 16 kHz
+const MIN_SPEECH_MS = 350;       // ignore blips shorter than this (clicks, coughs)
+const MAX_UTTERANCE_MS = 18000;  // hard cap: force-flush a run-on so latency is bounded
+const PREROLL_FRAMES = 2;        // ~500 ms kept before onset (don't clip the first word)
+const ABS_FLOOR = 0.005;         // absolute RMS speech floor (normalized −1..1)
+const ONSET_RATIO = 3.0;         // onset threshold = max(ABS_FLOOR, noiseFloor*ratio)
+const RELEASE_RATIO = 0.55;      // hysteresis: stay "in speech" while above onset*this
+const MAX_QUEUE = 4;             // cap the backlog of utterances awaiting transcription
+
+// Tunable defaults (overridable per-instance from the manager config / presets).
+const DEFAULTS = {
+  endSilenceMs: 380,   // trailing silence that CLOSES an utterance (lower = snappier)
+  interimEnabled: true,
+  interimCadenceMs: 1000, // min gap between interim decodes while speech is active
+  softPauseMs: 280,    // a short intra-phrase pause triggers an immediate interim
+};
+
+// Env-free debug: `process` is undefined in a Web Worker → silent there; in main it
+// respects CUE_SCRIPTURE_DEBUG exactly as before.
+const DBG = typeof process !== 'undefined' && process.env?.CUE_SCRIPTURE_DEBUG !== '0';
+function dbg(...a) { if (DBG) console.log('[scripture-detect][vad]', ...a); }
+
+function toFloat32(int16) {
+  const f = new Float32Array(int16.length);
+  for (let i = 0; i < int16.length; i++) f[i] = int16[i] / 32768;
+  return f;
+}
+
+function rmsOf(int16) {
+  let s = 0;
+  for (let i = 0; i < int16.length; i++) { const v = int16[i] / 32768; s += v * v; }
+  return Math.sqrt(s / (int16.length || 1));
+}
+
+function concat(frames) {
+  let n = 0; for (const f of frames) n += f.length;
+  const out = new Int16Array(n);
+  let o = 0; for (const f of frames) { out.set(f, o); o += f.length; }
+  return out;
+}
+
+// transcribeCommit / transcribeInterim are injected (see file header). transcribeInterim
+// may be null/absent (or interimEnabled false) → no interim layer, commit path only.
+export function createAsrCore({
+  transcribeCommit, transcribeInterim, onTranscript, onCommitted, onInterim, onError, config = {},
+} = {}) {
+  const cfg = { ...DEFAULTS, ...config };
+  // Interims run only when enabled AND a transcribe fn is supplied. The CPU adapter may
+  // point this at a separate fast model (tiny.en) or at the commit model (one serialized
+  // pipe); the WebGPU worker reuses the single GPU model. Either way the core just needs
+  // a function — model selection lives in the adapter.
+  const canInterim = cfg.interimEnabled && typeof transcribeInterim === 'function';
+
+  let running = false;
+  let transcribing = false;
+  let noiseFloor = ABS_FLOOR;      // adaptive background-energy estimate
+  let inSpeech = false;
+  let speechMs = 0, silenceMs = 0;
+  let utter = [];                  // frames of the active utterance (incl. pre-roll)
+  let preroll = [];                // recent pre-onset frames (ring of PREROLL_FRAMES)
+  let queue = [];                  // utterances awaiting transcription (commit path)
+  let idleFrames = 0;
+  let uttSeq = 0;                  // monotonic id per utterance (Phase 0 timing)
+  let uttId = 0;                   // id of the active utterance
+  let onsetAt = 0;                 // t_onset of the active utterance
+
+  // ── interim decode (latest-wins, never blocks the commit) ───────────────────
+  let interimBusy = false;
+  let interimPending = null;       // { frames, id, onsetAt } latest waiting decode
+  let lastInterimAt = 0;           // wall clock of the last interim decode kick
+  let softPauseFired = false;      // one soft-pause interim per pause stretch
+
+  async function runInterim(job) {
+    // The authoritative commit always wins: defer ANY interim — even one on a separate
+    // model — while a commit is decoding or queued. A concurrent interim would otherwise
+    // steal compute and slow the result that goes to air. The deferred job is re-kicked
+    // from the commit's drain() once the queue clears (and dropped by flush() if its
+    // utterance has since ended).
+    if (transcribing || queue.length) { interimPending = job; return; }
+    if (interimBusy) { interimPending = job; return; } // latest-wins: keep only newest
+    interimBusy = true;
+    try {
+      const text = await transcribeInterim(toFloat32(concat(job.frames)));
+      if (text) {
+        onInterim?.({ text, id: job.id, interim: true, onsetAt: job.onsetAt });
+      }
+    } catch (e) {
+      // Interims are best-effort; never surface as a hard error.
+      dbg('interim decode error:', e?.message);
+    } finally {
+      interimBusy = false;
+      if (interimPending) { const next = interimPending; interimPending = null; runInterim(next); }
+    }
+  }
+
+  function kickInterim() {
+    if (!canInterim || !utter.length) return;
+    lastInterimAt = Date.now();
+    runInterim({ frames: utter.slice(), id: uttId, onsetAt });
+  }
+
+  // Transcribe queued utterances one at a time (commit path is single-file). Draining
+  // sequentially preserves order and never blocks the audio callback.
+  async function drain() {
+    if (transcribing) return;
+    const job = queue.shift();
+    if (!job) return;
+    transcribing = true;
+    const tFlush = job.flushAt;
+    try {
+      const text = await transcribeCommit(toFloat32(concat(job.frames)));
+      if (text != null) {                 // null = model still loading → just skip
+        const tDone = Date.now();
+        dbg(`utterance #${job.id} →`, JSON.stringify(text),
+          `(onset→transcribed ${tDone - job.onsetAt}ms, asr ${tDone - tFlush}ms)`);
+        onTranscript?.({ committed: text, tail: '', full: text });
+        if (text) onCommitted?.(text, text, { id: job.id, onsetAt: job.onsetAt, transcribedAt: tDone });
+      }
+    } catch (e) {
+      onError?.(e.message);
+    } finally {
+      transcribing = false;
+      if (queue.length) drain();          // process the next queued utterance
+      else if (interimPending) { const next = interimPending; interimPending = null; runInterim(next); }
+    }
+  }
+
+  function flush(reason) {
+    const frames = utter; const sp = speechMs; const id = uttId; const onset = onsetAt;
+    utter = []; inSpeech = false; speechMs = 0; silenceMs = 0; softPauseFired = false;
+    interimPending = null;               // the utterance is over — drop stale interims
+    if (!frames.length || sp < MIN_SPEECH_MS) return;
+    dbg(`flush #${id} (${reason}): ${sp}ms speech, ${frames.length} frames`);
+    queue.push({ frames, id, onsetAt: onset, flushAt: Date.now() });
+    if (queue.length > MAX_QUEUE) queue.shift(); // drop oldest if we fall behind
+    drain();
+  }
+
+  function onFrame(int16) {
+    if (!int16 || !int16.length) return;
+    const e = rmsOf(int16);
+    const onset = Math.max(ABS_FLOOR, noiseFloor * ONSET_RATIO);
+
+    if (!inSpeech) {
+      // Idle: adapt the noise floor and keep a short pre-roll so onset isn't clipped.
+      noiseFloor = 0.97 * noiseFloor + 0.03 * e;
+      preroll.push(int16);
+      if (preroll.length > PREROLL_FRAMES) preroll.shift();
+      if (++idleFrames % 40 === 0) dbg(`idle: rms=${e.toFixed(4)} floor=${noiseFloor.toFixed(4)} onset=${onset.toFixed(4)}`);
+      if (e > onset) {
+        inSpeech = true; speechMs = 0; silenceMs = 0; idleFrames = 0;
+        uttId = ++uttSeq; onsetAt = Date.now(); softPauseFired = false; lastInterimAt = onsetAt;
+        utter = preroll.slice(); preroll = [];
+        utter.push(int16); speechMs += FRAME_MS;
+        dbg(`speech start #${uttId}: rms=${e.toFixed(4)} onset=${onset.toFixed(4)}`);
+      }
+      return;
+    }
+
+    // In speech: accumulate until the speaker pauses (or we hit the hard cap).
+    utter.push(int16);
+    const voiced = e > onset * RELEASE_RATIO;
+    if (voiced) { speechMs += FRAME_MS; silenceMs = 0; softPauseFired = false; }
+    else { silenceMs += FRAME_MS; }
+
+    if (silenceMs >= cfg.endSilenceMs) { flush('pause'); return; }
+    if (speechMs + silenceMs >= MAX_UTTERANCE_MS) { flush('maxlen'); return; }
+
+    // Interim triggers (only while we have enough real speech to be worth decoding):
+    if (canInterim && speechMs >= MIN_SPEECH_MS) {
+      const now = Date.now();
+      // Soft intra-phrase pause → decode once, immediately (catches the end of a
+      // clause before the full stop closes the utterance).
+      if (!voiced && silenceMs >= cfg.softPauseMs && !softPauseFired) {
+        softPauseFired = true; kickInterim();
+      } else if (voiced && now - lastInterimAt >= cfg.interimCadenceMs) {
+        // Coarse cadence during continuous speech (a long read with no pause).
+        kickInterim();
+      }
+    }
+  }
+
+  return {
+    pushAudio(int16) { if (running) onFrame(int16); },
+    start() {
+      running = true;
+      noiseFloor = ABS_FLOOR; inSpeech = false;
+      utter = []; preroll = []; queue = [];
+      speechMs = 0; silenceMs = 0; idleFrames = 0;
+      interimBusy = false; interimPending = null; softPauseFired = false;
+    },
+    stop() {
+      running = false; inSpeech = false;
+      utter = []; preroll = []; queue = [];
+      speechMs = 0; silenceMs = 0;
+      interimPending = null;
+    },
+    isRunning() { return running; },
+  };
+}
+
+export { SAMPLE_RATE, FRAME_MS };

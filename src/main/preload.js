@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('cue', {
     addTag: (songId, tagId) => ipcRenderer.invoke('songs:addTag', songId, tagId),
     removeTag: (songId, tagId) => ipcRenderer.invoke('songs:removeTag', songId, tagId),
     setBackground: (songId, mediaId) => ipcRenderer.invoke('songs:setBackground', songId, mediaId),
+    setLock: (songId, locked) => ipcRenderer.invoke('songs:setLock', songId, locked),
     deleteAll: () => ipcRenderer.invoke('songs:deleteAll'),
     importParse: (filePaths) => ipcRenderer.invoke('songs:importParse', filePaths),
     importGhs: () => ipcRenderer.invoke('songs:importGhs'),
@@ -188,12 +189,15 @@ contextBridge.exposeInMainWorld('cue', {
   scriptureDetect: {
     getConfig:       () => ipcRenderer.invoke('scriptureDetect:getConfig'),
     setConfig:       (patch) => ipcRenderer.invoke('scriptureDetect:setConfig', patch),
-    start:           () => ipcRenderer.invoke('scriptureDetect:start'),
+    start:           (engine) => ipcRenderer.invoke('scriptureDetect:start', engine),
     stop:            () => ipcRenderer.invoke('scriptureDetect:stop'),
     ensureAsrModel:  () => ipcRenderer.invoke('scriptureDetect:ensureAsrModel'),
     buildVectors:    (versionId) => ipcRenderer.invoke('scriptureDetect:buildVectors', versionId),
+    getGpuModelUsage:() => ipcRenderer.invoke('scriptureDetect:getGpuModelUsage'),
     // High-rate PCM frames — fire-and-forget send (no reply); transfer the buffer.
     pushAudio:       (int16) => ipcRenderer.send('scriptureDetect:pushAudio', int16.buffer),
+    // Utterance text from the WebGPU worker (CPU path uses pushAudio instead).
+    ingestTranscript:(payload) => ipcRenderer.send('scriptureDetect:ingestTranscript', payload),
   },
   openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
   remote: {

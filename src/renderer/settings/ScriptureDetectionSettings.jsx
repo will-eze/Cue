@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { GPU_MODELS, downloadGpuModel, removeGpuModel, clearGpuModels } from '../audio/gpuModelStore';
 
 // Scripture detection — listen to the service audio and surface the relevant verse
 // automatically (spoken references + quoted/paraphrased content). Fully local: an
@@ -110,7 +111,7 @@ export default function ScriptureDetectionSettings() {
           </select>
         </Row>
 
-        <Row label="Speech Model" hint="Larger = more accurate, more CPU">
+        <Row label="CPU Model" hint="On-device Whisper for the CPU engine (fallback)">
           <div className="flex items-center gap-sm">
             <select value={cfg.asrModel} onChange={(e) => apply({ asrModel: e.target.value })} className={SELECT}>
               {MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
@@ -118,6 +119,8 @@ export default function ScriptureDetectionSettings() {
             <StatusChip ok={ready.asr?.model} okText="Ready" pendingText="Download" onClick={downloadAsr} disabled={busy} />
           </div>
         </Row>
+
+        <GpuEngineSettings cfg={cfg} apply={apply} busy={busy} />
 
         <Row label="Responsiveness" hint="How quickly to present vs how sure to be">
           <div className="flex items-center gap-xs">
@@ -384,6 +387,150 @@ function ConfidenceBar({ floorPct, previewPct, livePct, autoLive, disabled, onCo
         </button>
       ))}
     </div>
+  );
+}
+
+// WebGPU engine selector + opt-in GPU model store. The GPU path is strictly additive:
+// pref Auto/WebGPU/CPU, and the GPU models are downloaded explicitly here (never on arm).
+// A hardware (non-fallback) navigator.gpu adapter is required for WebGPU to be usable.
+const ENGINE_OPTS = [
+  ['auto', 'Auto', 'WebGPU when a GPU + downloaded model are present, else CPU'],
+  ['webgpu', 'WebGPU', 'Force the GPU engine (needs a downloaded GPU model)'],
+  ['cpu', 'CPU', 'Force the CPU engine'],
+];
+function fmtMB(bytes) {
+  if (!bytes) return '0 MB';
+  return bytes >= 1e9 ? `${(bytes / 1e9).toFixed(2)} GB` : `${Math.round(bytes / 1e6)} MB`;
+}
+
+function GpuEngineSettings({ cfg, apply, busy }) {
+  const [hw, setHw] = useState(undefined);   // undefined = probing · null = none · { label }
+  const [usage, setUsage] = useState(0);
+  const [dl, setDl] = useState(null);        // { id, pct } while downloading
+  const [err, setErr] = useState(null);
+
+  const refreshUsage = useCallback(() => {
+    window.cue.scriptureDetect.getGpuModelUsage().then(setUsage).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        if (!navigator.gpu) { if (!cancelled) setHw(null); return; }
+        const adapter = await navigator.gpu.requestAdapter();
+        if (cancelled) return;
+        if (!adapter || adapter.isFallbackAdapter) { setHw(null); return; }
+        const info = adapter.info || {};
+        setHw({ label: [info.vendor, info.architecture || info.description].filter(Boolean).join(' ') || 'GPU' });
+      } catch { if (!cancelled) setHw(null); }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+  useEffect(() => { refreshUsage(); }, [refreshUsage]);
+
+  const engine = cfg.asrEngine || 'auto';
+  const gpuModel = cfg.gpuModel || 'small.en';
+  const downloaded = cfg.gpuModels || {};
+
+  const onDownload = async (id) => {
+    setErr(null); setDl({ id, pct: 0 });
+    try {
+      await downloadGpuModel(id, (pct) => setDl({ id, pct }));
+      await apply({ gpuModels: { ...downloaded, [id]: true } });
+      refreshUsage();
+    } catch (e) { setErr(`${id}: ${e.message || 'download failed'}`); }
+    finally { setDl(null); }
+  };
+  const onRemove = async (id) => {
+    await removeGpuModel(id);
+    const next = { ...downloaded }; delete next[id];
+    await apply({ gpuModels: next });
+    refreshUsage();
+  };
+  const onClear = async () => {
+    await clearGpuModels();
+    await apply({ gpuModels: {} });
+    refreshUsage();
+  };
+
+  return (
+    <>
+      <Row label="Engine" hint="WebGPU is faster + more accurate where a GPU is available">
+        <div className="flex flex-col items-end gap-xs">
+          <div className="flex items-center gap-xs">
+            {ENGINE_OPTS.map(([v, lbl, tip]) => (
+              <button
+                key={v}
+                title={tip}
+                onClick={() => apply({ asrEngine: v })}
+                disabled={busy || (v !== 'cpu' && hw === null)}
+                className={`px-sm h-8 rounded-lg text-label-sm font-mono uppercase tracking-[0.05em] border transition-colors cursor-pointer disabled:opacity-40 ${
+                  engine === v
+                    ? 'bg-primary/15 border-primary/50 text-primary'
+                    : 'bg-surface-container-high border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
+                }`}
+              >
+                {lbl}
+              </button>
+            ))}
+          </div>
+          <span className="text-[11px] font-mono text-on-surface-variant">
+            {hw === undefined ? 'Detecting GPU…' : hw ? `GPU: ${hw.label}` : 'No hardware GPU — CPU only'}
+          </span>
+        </div>
+      </Row>
+
+      {engine !== 'cpu' && hw && (
+        <div className="px-md py-sm border-b border-outline-variant/20 space-y-sm">
+          <p className="text-[11px] text-on-surface-variant">
+            GPU models are downloaded on demand — nothing ships pre-installed. Pick one to use as the active model.
+          </p>
+          {GPU_MODELS.map((m) => {
+            const isDownloaded = !!downloaded[m.id];
+            const isActive = gpuModel === m.id;
+            const downloading = dl?.id === m.id;
+            return (
+              <div key={m.id} className="flex items-center gap-sm">
+                <button
+                  onClick={() => apply({ gpuModel: m.id })}
+                  disabled={busy}
+                  className={`flex-1 text-left px-sm py-xs rounded-lg border transition-colors cursor-pointer ${
+                    isActive ? 'bg-primary/10 border-primary/50' : 'bg-surface-container-high border-outline-variant/40 hover:border-on-surface-variant/60'
+                  }`}
+                >
+                  <span className={`text-label-sm font-mono ${isActive ? 'text-primary' : 'text-on-surface'}`}>{m.label}</span>
+                  <span className="block text-[10px] text-on-surface-variant">{m.sub} · ~{m.approxMB} MB</span>
+                </button>
+                {downloading ? (
+                  <span className="text-label-sm font-mono text-primary w-20 text-right animate-pulse">{dl.pct}%</span>
+                ) : isDownloaded ? (
+                  <div className="flex items-center gap-xs w-20 justify-end">
+                    <span className="material-symbols-outlined text-[15px] text-tertiary">check_circle</span>
+                    <button onClick={() => onRemove(m.id)} disabled={busy} title="Remove" className="material-symbols-outlined text-[15px] text-on-surface-variant hover:text-error cursor-pointer">delete</button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => onDownload(m.id)}
+                    disabled={busy || !!dl}
+                    className="flex items-center gap-xs px-sm h-8 rounded-lg border border-outline-variant/40 bg-surface-container-high text-on-surface-variant text-label-sm font-mono uppercase tracking-[0.05em] hover:text-primary hover:border-primary/50 transition-colors cursor-pointer disabled:opacity-40"
+                  >
+                    <span className="material-symbols-outlined text-[15px]">download</span>Get
+                  </button>
+                )}
+              </div>
+            );
+          })}
+          {err && <p className="text-[11px] font-mono text-error">{err}</p>}
+          <div className="flex items-center justify-between pt-xs">
+            <span className="text-[11px] font-mono text-on-surface-variant">Downloaded GPU models: {fmtMB(usage)}</span>
+            {usage > 0 && (
+              <button onClick={onClear} disabled={busy} className="text-[11px] font-mono text-on-surface-variant hover:text-error transition-colors cursor-pointer disabled:opacity-40">Clear all</button>
+            )}
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

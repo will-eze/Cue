@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 // Import the worklet as raw source and load it via a Blob URL. A bundled `?url`
 // gets inlined to a `data:` URL in packaged builds (file:// origin), which
 // audioWorklet.addModule() handles unreliably; a Blob URL is same-origin and
@@ -11,10 +11,17 @@ import workletSource from './captureWorklet.js?raw';
 // fine. Browser DSP (echo cancel / noise suppression / AGC) is DISABLED — it
 // harms ASR on a clean line feed.
 //
+// `pushFrame(int16)` is the sink for each 16 kHz Int16 frame — supplied by
+// useScriptureAsr so frames route to the WebGPU worker or the main-process CPU path
+// depending on the active engine. Defaults to the CPU IPC path. Kept in a ref so an
+// engine switch is picked up without tearing down the AudioContext / re-prompting the mic.
+//
 // Returns { active, error }. Runs only while `enabled` is true.
-export function useScriptureCapture(enabled, deviceId) {
+export function useScriptureCapture(enabled, deviceId, pushFrame) {
   const [active, setActive] = useState(false);
   const [error, setError] = useState(null);
+  const sinkRef = useRef(pushFrame);
+  sinkRef.current = pushFrame || ((int16) => window.cue.scriptureDetect.pushAudio(int16));
 
   useEffect(() => {
     if (!enabled) return undefined;
@@ -41,7 +48,7 @@ export function useScriptureCapture(enabled, deviceId) {
         if (cancelled) { ctx.close(); stream.getTracks().forEach((t) => t.stop()); return; }
         const source = ctx.createMediaStreamSource(stream);
         node = new AudioWorkletNode(ctx, 'cue-capture');
-        node.port.onmessage = (e) => { window.cue.scriptureDetect.pushAudio(new Int16Array(e.data)); };
+        node.port.onmessage = (e) => { sinkRef.current(new Int16Array(e.data)); };
         source.connect(node);
         // Keep the worklet pulling without routing mic audio to the speakers.
         const sink = ctx.createGain(); sink.gain.value = 0;

@@ -14,7 +14,7 @@ import SongEditor from '../components/SongEditor';
 import PresentationEditor from '../components/PresentationEditor';
 import MediaThumb from '../components/MediaThumb';
 
-function SortableItem({ item, index, isPreview, isLive, onClick, onDoubleClick, onContextMenu }) {
+function SortableItem({ item, index, bgPath, isPreview, isLive, onClick, onDoubleClick, onContextMenu }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: item.id });
 
@@ -94,17 +94,22 @@ function SortableItem({ item, index, isPreview, isLive, onClick, onDoubleClick, 
 
       {/* Icon / background thumbnail */}
       {(() => {
-        const bgAsset = item.background_override || item.song?.default_background
-          || (item.item_type === 'media' ? item.asset : null);
+        // Mirror the live output cascade (lock → override → song → global → black)
+        // via the resolver OperatorView passes down; fall back to the item's own
+        // assets if no resolver is wired (so the thumbnail never goes blank).
+        const thumbPath = bgPath
+          ?? (item.background_override || item.song?.default_background
+            || (item.item_type === 'media' ? item.asset : null))?.path
+          ?? null;
         return (
           <div className={`w-12 h-8 bg-black rounded overflow-hidden shrink-0 relative flex items-center justify-center ${
             isLive ? 'border border-secondary/30' : isPreview ? 'border border-primary/30' : ''
           }`}>
-            {bgAsset && (
-              <MediaThumb path={bgAsset.path} className="absolute inset-0 w-full h-full object-cover opacity-70" />
+            {thumbPath && (
+              <MediaThumb path={thumbPath} className="absolute inset-0 w-full h-full object-cover opacity-70" />
             )}
             <span
-              className={`relative material-symbols-outlined text-[18px] ${bgAsset ? 'opacity-0' : ''} ${
+              className={`relative material-symbols-outlined text-[18px] ${thumbPath ? 'opacity-0' : ''} ${
                 isLive ? 'text-secondary' : isPreview ? 'text-primary' : 'text-outline-variant'
               }`}
               style={isLive ? { fontVariationSettings: "'FILL' 1" } : {}}
@@ -306,7 +311,7 @@ function AutoAdvanceModal({ item, onApply, onClose }) {
 export default function RundownPanel({
   services, activeServiceId, serviceData, previewItemId, liveItemId,
   onSelectService, onClickItem, onDoubleClickItem, onReorder, onRemoveItem, onDuplicate,
-  onAddService, onRenameService, onDeleteService, onRefresh, onSongEdited,
+  onAddService, onRenameService, onDeleteService, onRefresh, onSongEdited, resolveItemBg,
 }) {
   const [contextMenu, setContextMenu] = useState(null);
   const [showNewService, setShowNewService] = useState(false);
@@ -502,6 +507,7 @@ export default function RundownPanel({
                   key={item.id}
                   item={item}
                   index={index}
+                  bgPath={resolveItemBg ? resolveItemBg(item) : null}
                   isPreview={item.id === previewItemId}
                   isLive={item.id === liveItemId}
                   onClick={() => onClickItem(item)}

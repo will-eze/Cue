@@ -158,7 +158,7 @@ function MediaGrid({ assets, onDelete, onSetBackground, onAddToRundown }) {
   );
 }
 
-export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAddScripture, onScriptureLive, onScriptureStyleSaved, onAddMedia, onAddYouTube, onAddPresentation, onSongSave, refreshTick = 0, focusSearchRef, detectArmed, detectActive, detectDownloadPct, onToggleDetect }) {
+export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAddScripture, onScriptureLive, onScriptureStyleSaved, onBackgroundDefaultChanged, onAddMedia, onAddYouTube, onAddPresentation, onSongSave, refreshTick = 0, focusSearchRef, detectArmed, detectActive, detectDownloadPct, onToggleDetect }) {
   const [tab, setTab] = useState('songs');
   const [searchQuery, setSearchQuery] = useState('');
   const [songs, setSongs] = useState([]);
@@ -352,6 +352,9 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
 
   async function handleSetBackground(type, asset) {
     await window.cue.settings.setGlobalBackground(type, asset.id);
+    // Songs/scripture/slides read the global default live — tell OperatorView to
+    // re-read it so the change shows on the rundown and output without a reload.
+    onBackgroundDefaultChanged?.();
   }
 
   return (

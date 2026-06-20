@@ -70,7 +70,7 @@ function resolveItems(db, items) {
   const songMap = new Map();
   if (songIds.length) {
     const ph = songIds.map(() => '?').join(',');
-    for (const s of db.prepare(`SELECT id, title, author, copyright, default_background_id FROM songs WHERE id IN (${ph})`).all(...songIds)) {
+    for (const s of db.prepare(`SELECT id, title, author, copyright, default_background_id, background_locked FROM songs WHERE id IN (${ph})`).all(...songIds)) {
       songMap.set(s.id, s);
       if (s.default_background_id) mediaIds.add(s.default_background_id);
     }
@@ -262,8 +262,15 @@ export function purgeYoutubeItems() {
 
 export function setItemBackground(itemId, mediaId) {
   const db = getDb();
-  db.prepare('UPDATE service_items SET background_override_id=? WHERE id=?').run(mediaId || null, itemId);
   const item = db.prepare('SELECT item_type, ref_id FROM service_items WHERE id=?').get(itemId);
+  // A locked song's background is pinned — a per-slot override must not change what
+  // shows. Resolution already puts lock above the slot override, but skip writing the
+  // override (and the song default) entirely so the lock is honoured end to end.
+  if (item?.item_type === 'song' && item.ref_id) {
+    const song = db.prepare('SELECT background_locked FROM songs WHERE id=?').get(item.ref_id);
+    if (song?.background_locked) return;
+  }
+  db.prepare('UPDATE service_items SET background_override_id=? WHERE id=?').run(mediaId || null, itemId);
   if (item?.item_type === 'song' && item.ref_id) {
     db.prepare(`UPDATE songs SET default_background_id=?, updated_at=datetime('now') WHERE id=?`).run(mediaId || null, item.ref_id);
   }
@@ -287,20 +294,30 @@ export function setItemAdvance(itemId, seconds, loop, wrap = true) {
     .run(v, v ? mode : null, wrap ? 1 : 0, itemId);
 }
 
+// Push `mediaId` onto every song in a rundown. Locked songs (background_locked=1)
+// are skipped entirely — their pinned background is the whole point of the lock.
+// For the rest the song's own default AND the per-slot override are set, so the
+// new background shows regardless of any prior slot override.
 export function applyBackgroundToRundown(serviceId, mediaId) {
   const db = getDb();
   const songItems = db
-    .prepare(`SELECT DISTINCT ref_id FROM service_items WHERE service_id=? AND item_type='song' AND ref_id IS NOT NULL`)
+    .prepare(`
+      SELECT DISTINCT si.ref_id
+      FROM service_items si JOIN songs s ON s.id = si.ref_id
+      WHERE si.service_id=? AND si.item_type='song' AND si.ref_id IS NOT NULL
+        AND s.background_locked = 0
+    `)
     .all(serviceId);
 
   if (!songItems.length) return 0;
 
-  db.prepare(`UPDATE service_items SET background_override_id=? WHERE service_id=? AND item_type='song'`)
-    .run(mediaId || null, serviceId);
-
+  const setOverride = db.prepare(`UPDATE service_items SET background_override_id=? WHERE service_id=? AND item_type='song' AND ref_id=?`);
   const updateSong = db.prepare(`UPDATE songs SET default_background_id=?, updated_at=datetime('now') WHERE id=?`);
   db.transaction(() => {
-    songItems.forEach(({ ref_id }) => updateSong.run(mediaId || null, ref_id));
+    songItems.forEach(({ ref_id }) => {
+      setOverride.run(mediaId || null, serviceId, ref_id);
+      updateSong.run(mediaId || null, ref_id);
+    });
   })();
 
   return songItems.length;

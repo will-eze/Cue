@@ -106,7 +106,7 @@ export default function BackgroundSettings({ activeServiceId }) {
     const id = await window.cue.settings.get('global_bg_song_id');
     if (!id) { alert('Set a global song background first.'); return; }
     const svc = services.find((s) => s.id === selectedServiceId);
-    if (!confirm(`Override the background for all songs in "${svc?.title || 'this rundown'}"?\nThis replaces any per-slot background overrides.`)) return;
+    if (!confirm(`Override the background for all songs in "${svc?.title || 'this rundown'}"?\nThis replaces any per-slot background overrides. Locked songs are skipped.`)) return;
     const count = await window.cue.services.applyBackgroundToRundown(selectedServiceId, id);
     if (!count) { alert('No song items found in this rundown. Make sure songs are added first.'); return; }
     showFeedback(`Applied to ${count} song${count !== 1 ? 's' : ''} in rundown`);
@@ -115,7 +115,7 @@ export default function BackgroundSettings({ activeServiceId }) {
   async function handleApplyToAllSongs() {
     const id = await window.cue.settings.get('global_bg_song_id');
     if (!id) { alert('Set a global song background first.'); return; }
-    if (!confirm("Write this background to every song in the library?\nThis sets each song's own default. Per-slot rundown overrides are not affected.")) return;
+    if (!confirm("Write this background to every song in the library?\nThis sets each song's own default and clears their slot overrides. Locked songs are skipped.")) return;
     await window.cue.settings.applyBackgroundToAll('song', id);
     showFeedback('Written to all songs in library');
   }
@@ -132,7 +132,8 @@ export default function BackgroundSettings({ activeServiceId }) {
         <div>
           <h3 className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em]">Global Defaults</h3>
           <p className="text-body-sm text-on-surface-variant/70 mt-xs">
-            Fallback shown on output when an item has no per-song or per-slot background set. Supports images and videos.
+            The live fallback shown whenever an item has no background of its own. Changing it applies instantly to every
+            song, verse and slide still on the default (locked songs keep their pinned background). Supports images and videos.
           </p>
         </div>
         <div className="flex gap-md">
@@ -147,7 +148,8 @@ export default function BackgroundSettings({ activeServiceId }) {
         <div className="px-lg py-md border-b border-outline-variant/20">
           <h3 className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em]">Bulk Apply — Song Background</h3>
           <p className="text-body-sm text-on-surface-variant/70 mt-xs">
-            Push the current global song background into specific records. The global default applies automatically — use these only to hardcode it.
+            The global default already applies to songs automatically — use these only to hardcode it onto each song so it
+            survives a later change to the global. Locked songs are always skipped.
           </p>
         </div>
 
@@ -156,7 +158,7 @@ export default function BackgroundSettings({ activeServiceId }) {
           <div className="flex-1 min-w-0">
             <p className="text-body-sm font-semibold text-on-surface">Override all songs in a rundown</p>
             <p className="text-body-sm text-on-surface-variant/70 mt-[2px]">
-              Sets a hard background override on every song slot in the selected rundown, replacing any existing slot overrides.
+              Hardcodes this background onto every song in the selected rundown, replacing any existing slot overrides. Locked songs are skipped.
             </p>
           </div>
           <div className="flex items-center gap-sm shrink-0">
@@ -188,7 +190,7 @@ export default function BackgroundSettings({ activeServiceId }) {
           <div className="flex-1 min-w-0">
             <p className="text-body-sm font-semibold text-on-surface">Write to all songs in library</p>
             <p className="text-body-sm text-on-surface-variant/70 mt-[2px]">
-              Sets every song's own default background. Songs with no per-song background will then show this instead of the global fallback.
+              Hardcodes this background onto every song in the library and clears their slot overrides, so the choice sticks even if you change the global later. Locked songs are skipped.
             </p>
           </div>
           <button

@@ -14,6 +14,24 @@ export function exe(name) { return process.platform === 'win32' ? `${name}.exe` 
 // userData/<sub> — where auto-downloaded assets live (kept across runs).
 export function userDir(sub) { return path.join(app.getPath('userData'), sub); }
 
+// The transformers.js WEB build (WebGPU ASR) caches model weights via Chromium's Cache
+// API, which lands here — NOT in a userData/<sub> dir we control. Used to report the GPU
+// model footprint in Settings. (Clearing is done from the renderer via the Cache API; we
+// never delete this dir from main while Chromium holds it.)
+export function gpuModelCacheDir() { return path.join(app.getPath('userData'), 'Service Worker', 'CacheStorage'); }
+
+// Recursive byte size of a directory (0 if absent). Read-only — safe while the app runs.
+export function dirSizeBytes(dir) {
+  let total = 0;
+  try {
+    for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, ent.name);
+      try { total += ent.isDirectory() ? dirSizeBytes(p) : fs.statSync(p).size; } catch {}
+    }
+  } catch {}
+  return total;
+}
+
 // Dev-only bundled copy under resources/<sub> (present in a checkout, never packaged).
 export function bundledDir(sub) {
   return app.isPackaged

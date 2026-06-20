@@ -4,6 +4,7 @@ import PreviewLivePanel from '../panels/PreviewLivePanel';
 import LibraryPanel from '../panels/LibraryPanel';
 import ScriptureDetectionPanel from '../panels/ScriptureDetectionPanel';
 import { useScriptureCapture } from '../audio/useScriptureCapture';
+import { useScriptureAsr } from '../audio/useScriptureAsr';
 import { sectionLabelAt, expandSongSections } from '../utils/sectionLabels';
 
 const isMac = window.cue.platform === 'darwin';
@@ -117,6 +118,7 @@ export default function OperatorView({
   const [scriptureRefStyle, setScriptureRefStyle] = useState(null); // reference style_json | null
   const [scriptureBgPath, setScriptureBgPath] = useState(null);   // resolved media path | null
   const [slideBgPath, setSlideBgPath] = useState(null);           // global presentation/slide bg | null
+  const [songGlobalBgPath, setSongGlobalBgPath] = useState(null); // live global song default bg | null
 
   const loadScriptureDefaults = useCallback(async () => {
     const styleJson = await window.cue.settings.get('scripture_style_json');
@@ -129,6 +131,11 @@ export default function OperatorView({
     const slideBgId = await window.cue.settings.get('global_bg_slide_id');
     const slideBg = slideBgId ? await window.cue.media.get(slideBgId) : null;
     setSlideBgPath(slideBg?.path || null);
+    // Songs now read the global default LIVE (like scripture/slides) instead of
+    // snapshotting it at creation — changing it applies to every unlocked song.
+    const songBgId = await window.cue.settings.get('global_bg_song_id');
+    const songBg = songBgId ? await window.cue.media.get(songBgId) : null;
+    setSongGlobalBgPath(songBg?.path || null);
   }, []);
   useEffect(() => { loadScriptureDefaults(); }, [loadScriptureDefaults, bgRefreshTick]);
 
@@ -144,18 +151,14 @@ export default function OperatorView({
   // candidateId currently staged into preview by detection — gates re-staging so a
   // commit confirming an interim doesn't flicker the preview monitor.
   const previewCandidateRef = useRef(null);
-  const { active: captureActive, error: captureError } = useScriptureCapture(detectArmed, detectCfg?.deviceId);
+  // useScriptureAsr picks the engine (WebGPU worker vs main-process CPU) and owns the
+  // engine-aware start/stop; useScriptureCapture feeds each frame to its pushFrame sink.
+  const { engine: detectEngine, pushFrame: detectPushFrame } = useScriptureAsr(detectArmed, detectCfg);
+  const { active: captureActive, error: captureError } = useScriptureCapture(detectArmed, detectCfg?.deviceId, detectPushFrame);
 
   useEffect(() => {
     window.cue.scriptureDetect.getConfig().then(setDetectCfg);
   }, [bgRefreshTick]);
-
-  // Arm/disarm drives the main-process ASR loop (capture is driven by the hook).
-  useEffect(() => {
-    if (!detectCfg?.enabled) return;
-    if (detectArmed) window.cue.scriptureDetect.start();
-    else window.cue.scriptureDetect.stop();
-  }, [detectArmed, detectCfg?.enabled]);
 
   // Disarm if the feature is turned off in Settings.
   useEffect(() => { if (detectCfg && !detectCfg.enabled) setDetectArmed(false); }, [detectCfg?.enabled]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -166,11 +169,9 @@ export default function OperatorView({
     if (detectArmed) { setDetectArmed(false); return; }
     let c = detectCfg;
     if (!c?.enabled) { c = await window.cue.scriptureDetect.setConfig({ enabled: true }); setDetectCfg(c); }
-    // Always ensure the model is loaded — the `ready.asr.model` flag is the on-disk
-    // marker, not whether the resident pipeline is live in main (it isn't, on a
-    // fresh launch). ensureAsrModel is single-flight + idempotent. start() also
-    // ensures, so this is belt-and-suspenders that additionally surfaces download %.
-    window.cue.scriptureDetect.ensureAsrModel();
+    // Arm; the engine-aware start() (driven by useScriptureAsr) provisions the CPU model
+    // only when the CPU engine is actually chosen. GPU models are opt-in (downloaded from
+    // Settings) and never auto-fetched here — so we don't call ensureAsrModel on arm.
     setDetectArmed(true);
   }, [detectArmed, detectCfg]);
   const detectDownloadPct = detectCfg?.download?.kind === 'asr' && detectCfg.download.percent != null
@@ -567,11 +568,16 @@ export default function OperatorView({
     // Foreground media shows the asset itself in the preview/live monitors.
     if (item.item_type === 'media' && item.asset?.path) return item.asset.path;
     if (item.item_type === 'youtube') return item.youtube?.status === 'ready' ? item.youtube.path : null;
+    // A locked song pins its own background at the top of the cascade — it ignores
+    // the per-slot override and the live global default below.
+    if (item.song?.background_locked) return item.song.default_background?.path || null;
     if (item.background_override?.path) return item.background_override.path;
     if (item.item_type === 'scripture') return scriptureBgPath;
     // Presentation: per-slide background → global slide default.
     if (item.item_type === 'presentation') return slide?.background_path || slideBgPath || null;
+    // Song: own default → live global default → black.
     if (item.song?.default_background?.path) return item.song.default_background.path;
+    if (item.item_type === 'song') return songGlobalBgPath || null;
     return null;
   }
 
@@ -1100,6 +1106,7 @@ export default function OperatorView({
             onDeleteService={handleDeleteService}
             onRefresh={refreshService}
             onSongEdited={() => setSongEditTick((t) => t + 1)}
+            resolveItemBg={resolveBackground}
           />
         </div>
 
@@ -1166,6 +1173,7 @@ export default function OperatorView({
           onAddScripture={handleAddScripture}
           onScriptureLive={handleScriptureLive}
           onScriptureStyleSaved={loadScriptureDefaults}
+          onBackgroundDefaultChanged={loadScriptureDefaults}
           detectArmed={detectArmed}
           detectActive={captureActive}
           detectDownloadPct={detectDownloadPct}

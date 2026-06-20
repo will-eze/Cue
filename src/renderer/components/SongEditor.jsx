@@ -1063,6 +1063,8 @@ export default function SongEditor({ song, onClose, onSave }) {
   const [previewContent, setPreviewContent] = useState({ text: '', runs: [] });
   const [previewPart, setPreviewPart]       = useState(0); // which split part the preview shows
   const [songBackground, setSongBackground] = useState(null);
+  const [bgLocked, setBgLocked]             = useState(false); // pin this song's bg above override + global
+  const [globalBg, setGlobalBg]             = useState(null);  // live global song default (preview/badge fallback)
   const [showBgPicker, setShowBgPicker]     = useState(false);
   const [showThemePicker, setShowThemePicker] = useState(false);
   const [bgLoading, setBgLoading]           = useState(false); // media-theme bg downloading
@@ -1123,6 +1125,15 @@ export default function SongEditor({ song, onClose, onSave }) {
       .catch(() => {});
   }, []);
 
+  // The live global song background — shown as the preview fallback (and badged
+  // "Global") when this song has no background of its own and isn't locked.
+  useEffect(() => {
+    window.cue.settings.get('global_bg_song_id')
+      .then((id) => (id ? window.cue.media.get(id) : null))
+      .then((bg) => setGlobalBg(bg ? { id: bg.id, path: bg.path } : null))
+      .catch(() => {});
+  }, []);
+
   async function handleLoadTheme(themeId) {
     const theme = themeList.find((t) => t.id === Number(themeId));
     if (!theme) return;
@@ -1161,6 +1172,7 @@ export default function SongEditor({ song, onClose, onSave }) {
         if (s.default_background_id && s.background_path) {
           setSongBackground({ id: s.default_background_id, path: s.background_path, filename: s.background_filename });
         }
+        setBgLocked(!!s.background_locked);
         const firstStyled = (s.sections || []).find((sec) => sec.style_json);
         if (firstStyled) {
           const { runs: _r, ...base } = JSON.parse(firstStyled.style_json);
@@ -1379,6 +1391,7 @@ export default function SongEditor({ song, onClose, onSave }) {
         savedId = await window.cue.songs.create(data);
         if (songBackground?.id != null) await window.cue.songs.setBackground(savedId, songBackground.id);
       }
+      await window.cue.songs.setLock(savedId, bgLocked);
       onSave(savedId);
     } catch (err) {
       console.error('[SongEditor] save failed:', err);
@@ -1391,6 +1404,22 @@ export default function SongEditor({ song, onClose, onSave }) {
   const inputCls  = 'w-full bg-surface-container-lowest text-on-surface text-body-sm rounded-lg px-md py-1.5 border border-outline-variant/50 outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors';
   const labelCls  = 'block text-[9px] font-mono text-on-surface-variant/60 mb-0.5 uppercase tracking-[0.05em]';
   const activeSection = sections.find((s) => s._key === activeSectionKey);
+
+  // Where this song's background comes from, mirroring the live cascade
+  // (lock → override → song → global → black). The editor never sees a rundown
+  // slot, so "override" can't show here; that's resolved per-slot at output.
+  const bgSource = bgLocked ? 'Locked' : songBackground ? 'Song' : globalBg ? 'Global' : 'None';
+  // The picture actually shown: a locked song is pinned to its own bg (no global
+  // fallback); otherwise the live global fills in when the song has none.
+  const effectiveBgPath = bgLocked
+    ? (songBackground?.path ?? null)
+    : (songBackground?.path ?? globalBg?.path ?? null);
+  const BG_SOURCE_STYLE = {
+    Locked: 'text-secondary border-secondary/40 bg-secondary/10',
+    Song:   'text-primary border-primary/40 bg-primary/10',
+    Global: 'text-on-surface-variant border-outline-variant/40 bg-surface-container',
+    None:   'text-on-surface-variant/60 border-outline-variant/30 bg-surface-container',
+  };
 
   // The active section's display parts (split on the ⁂ marker). The preview shows
   // one part at a time so the operator never sees a slide with a marker in it.
@@ -1458,14 +1487,28 @@ export default function SongEditor({ song, onClose, onSave }) {
               {/* Background thumbnail */}
               <div className="col-span-2 flex items-end gap-sm">
                 <div>
-                  <label className={labelCls}>Background</label>
+                  <div className="flex items-center gap-xs mb-0.5">
+                    <label className={`${labelCls} mb-0`}>Background</label>
+                    {/* Source badge — where the shown background comes from. */}
+                    <span
+                      className={`text-[8px] font-mono px-[5px] py-[1px] rounded-full border uppercase tracking-[0.05em] ${BG_SOURCE_STYLE[bgSource]}`}
+                      title={
+                        bgSource === 'Locked' ? 'Locked: this background is pinned and ignores rundown overrides and the global default.'
+                        : bgSource === 'Song' ? "This song's own background."
+                        : bgSource === 'Global' ? 'Falling back to the global song background (changes when you change the global).'
+                        : 'No background — output shows black.'
+                      }
+                    >
+                      {bgSource}
+                    </span>
+                  </div>
                   <div className="flex items-center gap-sm">
                     <div className="w-16 aspect-video rounded border border-outline-variant/30 bg-surface-container overflow-hidden cursor-pointer group relative flex-shrink-0"
                       onClick={() => setShowBgPicker(true)}>
-                      {songBackground ? (
-                        /\.(mp4|webm|mov)$/i.test(songBackground.path)
-                          ? <video src={mediaUrl(songBackground.path)} className="w-full h-full object-cover" muted />
-                          : <img src={mediaUrl(songBackground.path)} className="w-full h-full object-cover" alt="" />
+                      {effectiveBgPath ? (
+                        /\.(mp4|webm|mov)$/i.test(effectiveBgPath)
+                          ? <video src={mediaUrl(effectiveBgPath)} className="w-full h-full object-cover" muted />
+                          : <img src={mediaUrl(effectiveBgPath)} className="w-full h-full object-cover" alt="" />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
                           <span className="material-symbols-outlined text-outline-variant text-base">wallpaper</span>
@@ -1475,6 +1518,26 @@ export default function SongEditor({ song, onClose, onSave }) {
                         <span className="material-symbols-outlined text-white text-xs">edit</span>
                       </div>
                     </div>
+                    {/* Lock toggle — pins this song's background above overrides + global.
+                        Locking while only the global fallback is showing captures it onto
+                        the song, so the lock freezes the image you actually see (not black). */}
+                    <button
+                      onClick={() => setBgLocked((v) => {
+                        const next = !v;
+                        if (next && !songBackground && globalBg) setSongBackground({ ...globalBg });
+                        return next;
+                      })}
+                      title={bgLocked
+                        ? 'Background locked — pinned above rundown overrides and the global default. Click to unlock.'
+                        : 'Lock this background so rundown overrides, the global default, and "apply to all" can\'t change it.'}
+                      className={`flex items-center gap-[3px] text-[9px] font-mono px-sm py-[3px] rounded border uppercase tracking-[0.05em] cursor-pointer transition-colors
+                        ${bgLocked
+                          ? 'text-secondary border-secondary/50 bg-secondary/10 hover:bg-secondary/20'
+                          : 'text-on-surface-variant border-outline-variant/40 hover:border-outline-variant hover:text-on-surface'}`}
+                    >
+                      <span className="material-symbols-outlined text-[12px]">{bgLocked ? 'lock' : 'lock_open'}</span>
+                      {bgLocked ? 'Locked' : 'Lock'}
+                    </button>
                     {songBackground && (
                       <button onClick={() => setSongBackground(null)}
                         className="text-[9px] font-mono text-error/60 hover:text-error cursor-pointer uppercase tracking-[0.05em]">Clear</button>
@@ -1647,7 +1710,7 @@ export default function SongEditor({ song, onClose, onSave }) {
                           text={activePart.text}
                           runs={activePart.runs}
                           style={style}
-                          backgroundPath={songBackground?.path ?? null}
+                          backgroundPath={effectiveBgPath}
                           copyright={copyright || undefined}
                           onTextBoxChange={(box) => setStyle((s) => ({ ...s, textBox: box }))}
                         />
@@ -1677,7 +1740,7 @@ export default function SongEditor({ song, onClose, onSave }) {
                           {previewTemplate === 'lowerthird' ? (
                             <LowerThirdPreview text={part.text} runs={part.runs} style={style} />
                           ) : (
-                            <SlidePreview text={part.text} runs={part.runs} style={style} backgroundPath={songBackground?.path ?? null} />
+                            <SlidePreview text={part.text} runs={part.runs} style={style} backgroundPath={effectiveBgPath} />
                           )}
                           <span className="absolute top-0.5 left-0.5 text-[8px] font-mono bg-black/60 text-white rounded px-1 tabular-nums leading-tight">
                             {i + 1}

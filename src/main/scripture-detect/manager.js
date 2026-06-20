@@ -13,6 +13,7 @@ import * as contentMatch from './content-match.js';
 import * as lexicalIndex from './lexical-index.js';
 import * as whisperBin from './whisper-bin.js';
 import * as embedBin from './embed-bin.js';
+import { gpuModelCacheDir, dirSizeBytes } from './provision.js';
 
 const CONFIG_KEY = 'scriptureDetect';
 const REF_COOLDOWN_MS = 8000;       // don't re-fire the same ref while still spoken
@@ -40,6 +41,15 @@ function defaults() {
     enabled: false,
     deviceId: null,
     asrModel: whisperBin.autoModel(),
+    // ASR backend (feature: WebGPU). 'auto' = WebGPU when a hardware GPU adapter + a
+    // downloaded GPU model are present, else CPU; 'cpu'/'webgpu' force it. The engine is
+    // RESOLVED in the renderer (only it can probe navigator.gpu) and passed to start().
+    // gpuModel = the selected WebGPU model; gpuModels = which GPU models the user has
+    // explicitly downloaded (opt-in — nothing auto-downloads). These drive Settings; the
+    // CPU asrModel path is unchanged.
+    asrEngine: 'auto',
+    gpuModel: 'small.en',
+    gpuModels: {},
     matchVersionId: null,
     // Responsiveness preset (see PRESETS). Changing it re-bundles the knobs below.
     responsiveness: 'balanced',
@@ -71,7 +81,9 @@ function defaults() {
 
 let cfg = defaults();
 let mainWindow = null;
-let asr = null;
+let asr = null;                     // CPU-engine VAD/ASR (null on the WebGPU path)
+let activeEngine = 'cpu';           // resolved engine the renderer asked us to run
+let gpuRunning = false;             // WebGPU path armed (transcripts arrive via ingestTranscript)
 let vectorBuild = { building: false, progress: null };
 
 // rolling state
@@ -118,7 +130,7 @@ function readiness() {
 }
 
 export function getConfig() {
-  return { ...cfg, running: !!asr?.isRunning(), ready: readiness() };
+  return { ...cfg, running: !!asr?.isRunning() || gpuRunning, engine: activeEngine, ready: readiness() };
 }
 
 export function setConfig(patch = {}) {
@@ -157,6 +169,13 @@ export async function init() {
     content: { ...d.content, ...(saved?.content || {}) },
     thresholds: { ...d.thresholds, ...(saved?.thresholds || {}) },
   };
+  // Migrate the early GPU model id (the fp16 dtype was a broken export — see
+  // whisper-worker.web.js): 'small.en-fp16' → 'small.en'.
+  if (cfg.gpuModel === 'small.en-fp16') cfg.gpuModel = 'small.en';
+  if (cfg.gpuModels && cfg.gpuModels['small.en-fp16']) {
+    cfg.gpuModels = { ...cfg.gpuModels, 'small.en': true };
+    delete cfg.gpuModels['small.en-fp16'];
+  }
   // Re-bundle the active responsiveness preset over the saved config so latency tuning
   // shipped in an update (endSilenceMs, interim cadence, lexical gates) reaches existing
   // users — these are preset-derived, with no manual UI, so re-applying them never
@@ -180,7 +199,30 @@ export function pushAudio(int16) {
   asr.pushAudio(int16);
 }
 
-export function start() {
+// Warm the lexical verse index off the hot path so the first interim content match
+// doesn't pay the one-time ~31k-verse build mid-service. Engine-agnostic.
+function warmLexicalIndex() {
+  if (!cfg.content.enabled) return;
+  const vid = cfg.matchVersionId ?? firstVersionId();
+  if (vid != null) setImmediate(() => { try { lexicalIndex.build(vid); } catch {} });
+}
+
+// engine: 'cpu' (default) runs the main-process VAD/ASR; 'webgpu' means the renderer
+// worker does VAD + ASR and feeds text via ingestTranscript() — so main must NOT load the
+// CPU model or arm the CPU loop. The renderer resolves the engine (it owns the GPU probe).
+export function start(engine = 'cpu') {
+  if (engine === 'webgpu') {
+    stopCpu();                 // ensure no CPU loop is running from a prior arm
+    activeEngine = 'webgpu';
+    gpuRunning = true;
+    recentWords = []; interimRef = null; interimContentRef = null; interimContentAt = 0;
+    warmLexicalIndex();        // detection (parser/content) still runs in main on ingested text
+    dbg('start: WebGPU engine — VAD/ASR in renderer worker, detection in main');
+    pushStatus();
+    return { ok: true };
+  }
+  activeEngine = 'cpu';
+  gpuRunning = false;
   if (asr?.isRunning()) return { ok: true };
   // Ensure the resident ASR pipeline is loaded. The disk marker only tells us the
   // weights are present — it does NOT mean the model is loaded in memory, which it
@@ -202,12 +244,7 @@ export function start() {
     whisperBin.ensureModel(interimModel, undefined, { intraOpNumThreads: whisperBin.interimThreads() }).then(() => pushStatus());
   }
   dbg('start: arming VAD/ASR, model =', cfg.asrModel, 'interim =', interimModel || 'off');
-  // Warm the lexical verse index off the hot path so the first interim content match
-  // doesn't pay the one-time ~31k-verse build mid-service.
-  if (cfg.content.enabled) {
-    const vid = cfg.matchVersionId ?? firstVersionId();
-    if (vid != null) setImmediate(() => { try { lexicalIndex.build(vid); } catch {} });
-  }
+  warmLexicalIndex();
   audioFrames = 0; audioSamples = 0;
   asr = createAsr({
     modelName: cfg.asrModel,
@@ -228,14 +265,32 @@ export function start() {
   return { ok: true };
 }
 
-export function stop() {
+function stopCpu() {
   asr?.stop();
   asr = null;
+}
+
+export function stop() {
+  stopCpu();
+  gpuRunning = false;
   recentWords = [];
   interimRef = null;
   interimContentRef = null; interimContentAt = 0;
   pushStatus();
   return { ok: true };
+}
+
+// Transcript from the renderer's WebGPU worker (the VAD + ASR ran there). Routes to the
+// SAME detection path as the CPU asr callbacks — parser + content-match stay in main.
+// { text, interim, onsetAt }. Ignored unless the WebGPU engine is armed.
+export function ingestTranscript({ text, interim, onsetAt } = {}) {
+  if (!gpuRunning || !text) return;
+  if (interim) {
+    onInterim({ text, onsetAt });
+  } else {
+    send('scripture:transcript', { committed: text, tail: '', full: text });
+    onCommitted(text, text, { onsetAt, transcribedAt: Date.now() });
+  }
 }
 
 // Authoritative end-of-utterance commit (Whisper on the closed clip). This is the
@@ -380,6 +435,10 @@ export async function ensureAsrModel() {
   pushStatus(); // clears the download field + reflects new model readiness
   return r;
 }
+
+// Total on-disk bytes of downloaded WebGPU model weights (Chromium Cache API store).
+// Shown in Settings; the Clear button clears the cache from the renderer.
+export function getGpuModelUsage() { return dirSizeBytes(gpuModelCacheDir()); }
 
 export async function buildVectors(versionId) {
   const vid = versionId ?? cfg.matchVersionId ?? firstVersionId();
