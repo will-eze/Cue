@@ -713,6 +713,48 @@ const migrations = [
       ALTER TABLE songs ADD COLUMN background_locked INTEGER NOT NULL DEFAULT 0;
     `);
   },
+
+  // v26 — Make song search apostrophe-insensitive so missing punctuation never harms
+  // results. The default unicode61 tokenizer splits an apostrophe, so "God's" indexes
+  // as the two tokens "god" + "s" and a query for "Gods" (token "gods") never matches
+  // it. Normalizing only the query can't fix that — the INDEX has to lose the
+  // apostrophe too. So we STRIP apostrophes (straight ', curly ' ', modifier ʼ — by
+  // codepoint via char() to keep this file ASCII) from title/author/content as they
+  // enter songs_fts, then reindex existing rows. The query side strips the same set
+  // (songs.js search() + _norm), so both collapse "God's" → "gods" and line up.
+  // Hyphens/other punctuation are already word separators on both sides, so they
+  // need no special handling — only apostrophes join letters inside a word.
+  function v26(database) {
+    const strip = (c) =>
+      `replace(replace(replace(replace(${c},char(39),''),char(8217),''),char(8216),''),char(700),'')`;
+    database.exec(`
+      DROP TRIGGER IF EXISTS songs_fts_insert;
+      DROP TRIGGER IF EXISTS songs_fts_update;
+      DROP TRIGGER IF EXISTS songs_fts_delete;
+
+      INSERT INTO songs_fts(songs_fts) VALUES('delete-all');
+      INSERT INTO songs_fts(rowid, title, author, content)
+        SELECT ss.id, ${strip('s.title')}, ${strip('s.author')}, ${strip('ss.content')}
+        FROM song_sections ss JOIN songs s ON s.id = ss.song_id;
+
+      CREATE TRIGGER songs_fts_insert AFTER INSERT ON song_sections BEGIN
+        INSERT INTO songs_fts(rowid, title, author, content)
+        SELECT NEW.id, ${strip('s.title')}, ${strip('s.author')}, ${strip('NEW.content')}
+        FROM songs s WHERE s.id = NEW.song_id;
+      END;
+
+      CREATE TRIGGER songs_fts_update AFTER UPDATE ON song_sections BEGIN
+        DELETE FROM songs_fts WHERE rowid = OLD.id;
+        INSERT INTO songs_fts(rowid, title, author, content)
+        SELECT NEW.id, ${strip('s.title')}, ${strip('s.author')}, ${strip('NEW.content')}
+        FROM songs s WHERE s.id = NEW.song_id;
+      END;
+
+      CREATE TRIGGER songs_fts_delete AFTER DELETE ON song_sections BEGIN
+        DELETE FROM songs_fts WHERE rowid = OLD.id;
+      END;
+    `);
+  },
 ];
 
 function runMigrations() {

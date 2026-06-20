@@ -12,10 +12,20 @@ export function search(query) {
     return db.prepare('SELECT id, title, author FROM songs ORDER BY title COLLATE NOCASE').all()
       .map((s) => ({ ...s, tags: tagsStmt.all(s.id) }));
   }
-  const escaped = query.trim().replace(/['"*]/g, ' ').trim();
+  // Strip apostrophes (straight + curly + modifier) so the query collapses "God's" →
+  // "gods" and matches the apostrophe-stripped FTS index (schema v26); replace FTS
+  // operator chars with spaces. Missing apostrophes no longer harm strict results.
+  const escaped = query.trim()
+    .replace(/['’‘ʼ´`]/g, '')
+    .replace(/["*]/g, ' ')
+    .trim();
   if (!escaped) return [];
+
+  // Strict AND-prefix search — every word must be present (last token a prefix). This
+  // is the primary, unchanged behaviour; its hits always rank first by FTS rank.
+  let rows = [];
   try {
-    const rows = db.prepare(`
+    rows = db.prepare(`
       SELECT DISTINCT s.id, s.title, s.author
       FROM songs_fts f
       JOIN song_sections ss ON ss.id = f.rowid
@@ -23,8 +33,41 @@ export function search(query) {
       WHERE songs_fts MATCH ?
       ORDER BY rank
     `).all(escaped + '*');
-    return rows.map((s) => ({ ...s, tags: tagsStmt.all(s.id) }));
-  } catch { return []; }
+  } catch { rows = []; }
+
+  // Lyric-tolerant fallback: the strict AND query returns nothing when a pasted/typed
+  // lyric line carries one misremembered or extra word. It ALWAYS runs (regardless of
+  // how many strict hits came in) as long as the query has ≥1 word and ≥1 distinctive
+  // token, OR-recalls the distinctive tokens, phrase-ranks them, and APPENDS any NEW
+  // songs strictly BELOW the strict hits (which stay on top, untouched). De-dupe keeps
+  // it from repeating a strict hit, so on an exact query it adds nothing.
+  if (_words(escaped).length >= 1 && _distinctive(escaped).length >= 1) {
+    const expr = _ftsQuery(escaped);
+    if (expr) {
+      try {
+        const ftsRows = db.prepare(`
+          SELECT ss.song_id AS id, s.title, s.author, bm25(songs_fts, 8.0, 1.0, 4.0) AS bm
+          FROM songs_fts f
+          JOIN song_sections ss ON ss.id = f.rowid
+          JOIN songs s ON s.id = ss.song_id
+          WHERE songs_fts MATCH ?
+          ORDER BY bm
+          LIMIT 60
+        `).all(expr);
+        const sectionsStmt = db.prepare('SELECT content FROM song_sections WHERE song_id = ?');
+        const have = new Set(rows.map((r) => r.id));
+        // Already best-first; keep only plausible matches and append in order so the
+        // OR-recall block always sits beneath the strict AND results.
+        for (const c of _rankByOverlap(escaped, escaped, ftsRows, sectionsStmt)) {
+          if (have.has(c.id) || !(c.phrase >= 2 || c.cov >= 0.34)) continue;
+          rows.push({ id: c.id, title: c.title, author: c.author });
+          have.add(c.id);
+        }
+      } catch { /* FTS5 syntax fallthrough — strict results stand */ }
+    }
+  }
+
+  return rows.map((s) => ({ id: s.id, title: s.title, author: s.author, tags: tagsStmt.all(s.id) }));
 }
 
 const _listAllSongsStmt = () => getDb().prepare(
@@ -192,9 +235,12 @@ export function update(id, data) {
       // rowid — the contentless_delete=1 idiom — never the 'delete' command with
       // empty values, which leaves orphaned tokens and corrupts the index.
       const del = db.prepare('DELETE FROM songs_fts WHERE rowid = ?');
+      // Strip apostrophes on the way in, mirroring the songs_fts triggers (schema v26)
+      // so a title/author-only edit keeps the index apostrophe-insensitive.
+      const _strip = (c) => `replace(replace(replace(replace(${c},char(39),''),char(8217),''),char(8216),''),char(700),'')`;
       const ins = db.prepare(`
         INSERT INTO songs_fts(rowid, title, author, content)
-        SELECT ss.id, s.title, s.author, ss.content
+        SELECT ss.id, ${_strip('s.title')}, ${_strip('s.author')}, ${_strip('ss.content')}
         FROM song_sections ss JOIN songs s ON s.id = ss.song_id
         WHERE ss.id = ?
       `);
@@ -266,10 +312,17 @@ export function setLock(songId, locked) {
 // lyrics actually contain. Title equality is still the top tier when it happens.
 
 function _norm(s) {
-  // Replace (not delete) punctuation with spaces so "holy.What" → "holy what",
-  // and collapse runs — including Unicode separators (NBSP, word-joiner) that
-  // pasted lists are full of — to single ASCII spaces.
-  return (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+  // Apostrophes are STRIPPED first (not spaced) so "God's" → "gods" and matches an
+  // input that dropped the apostrophe ("Gods"), instead of splitting into "god" + "s"
+  // (where "s" is then dropped as sub-3-char noise and the words never line up).
+  // Covers straight + curly + modifier-letter apostrophes that pasted lyrics mix.
+  // THEN replace remaining punctuation with spaces so "holy.What" → "holy what", and
+  // collapse runs — including Unicode separators (NBSP, word-joiner) pasted lists are
+  // full of — to single ASCII spaces.
+  return (s || '').toLowerCase()
+    .replace(/['’‘ʼ´`]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ').trim();
 }
 
 // Function words that say nothing about WHICH song this is. Kept out of the FTS
@@ -422,6 +475,35 @@ function _longestPhrase(query, songNorm) {
   return best;
 }
 
+// Rank songs by how well their title+lyrics overlap a free-text snippet. Shared by
+// the paste-list matcher (matchTitles) and the lyric-tolerant fallback in search().
+// `rows` are per-section FTS hits with { id, title, author, bm }; collapse to the best
+// (lowest bm25) row per song, then score the strongest handful against full lyrics. The
+// longest verbatim phrase run dominates; lyric + title word coverage fill in. Returns
+// [{ id, title, author, cov, titleCov, phrase, score }] best-first. `label` is the
+// title-oriented query (the paste-list title); pass query for both when there's no
+// separate title (a pure lyric search).
+function _rankByOverlap(query, label, rows, sectionsStmt) {
+  const bySong = new Map();
+  for (const r of rows) { const p = bySong.get(r.id); if (!p || r.bm < p.bm) bySong.set(r.id, r); }
+  const top8 = [...bySong.values()].sort((a, b) => a.bm - b.bm).slice(0, 8);
+
+  const qWords = new Set(_distinctive(query || label));
+  const qTitleWords = new Set(_distinctive(label));
+  const scored = top8.map((r) => {
+    const songNorm = _norm(`${r.title}\n${sectionsStmt.all(r.id).map((x) => x.content).join('\n')}`);
+    const songWords = new Set(songNorm.split(' ').filter(Boolean));
+    const cov = qWords.size ? [...qWords].filter((w) => songWords.has(w)).length / qWords.size : 0;
+    const titleCov = qTitleWords.size ? [...qTitleWords].filter((w) => songWords.has(w)).length / qTitleWords.size : 0;
+    const phrase = _longestPhrase(query || label, songNorm);
+    // Phrase run dominates; lyric coverage and title overlap fill in.
+    const score = Math.max(cov, titleCov) + (phrase >= 4 ? 0.4 : phrase >= 3 ? 0.25 : phrase >= 2 ? 0.1 : 0);
+    return { id: r.id, title: r.title, author: r.author, cov, titleCov, phrase, score };
+  });
+  scored.sort((a, b) => b.score - a.score || a.id - b.id);
+  return scored;
+}
+
 export function matchTitles(rawText) {
   const db = getDb();
   const entries = _parsePastedList(rawText);
@@ -453,25 +535,9 @@ export function matchTitles(rawText) {
       try { rows = ftsStmt.all(expr); } catch { rows = []; }
       if (!rows.length) return { input: label, match: null, alternates: [], confidence: 'none' };
 
-      // FTS is per-section: collapse to the best (lowest bm25) row per song, then
-      // coverage-score the strongest handful against their full lyrics.
-      const bySong = new Map();
-      for (const r of rows) { const p = bySong.get(r.id); if (!p || r.bm < p.bm) bySong.set(r.id, r); }
-      const top8 = [...bySong.values()].sort((a, b) => a.bm - b.bm).slice(0, 8);
-
-      const qWords = new Set(_distinctive(query || label));
-      const qTitleWords = new Set(_distinctive(label));
-      const scored = top8.map((r) => {
-        const songNorm = _norm(`${r.title}\n${sectionsStmt.all(r.id).map((x) => x.content).join('\n')}`);
-        const songWords = new Set(songNorm.split(' ').filter(Boolean));
-        const cov = qWords.size ? [...qWords].filter((w) => songWords.has(w)).length / qWords.size : 0;
-        const titleCov = qTitleWords.size ? [...qTitleWords].filter((w) => songWords.has(w)).length / qTitleWords.size : 0;
-        const phrase = _longestPhrase(query || label, songNorm);
-        // Phrase run dominates; lyric coverage and title overlap fill in.
-        const score = Math.max(cov, titleCov) + (phrase >= 4 ? 0.4 : phrase >= 3 ? 0.25 : phrase >= 2 ? 0.1 : 0);
-        return { ...slim(r), cov, titleCov, phrase, score };
-      });
-      scored.sort((a, b) => b.score - a.score || a.id - b.id);
+      // Collapse per-section hits to the best row per song, then phrase/coverage-rank
+      // the strongest handful against full lyrics (shared with search()'s fallback).
+      const scored = _rankByOverlap(query || label, label, rows, sectionsStmt);
 
       const top = scored[0];
       const second = scored[1];

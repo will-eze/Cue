@@ -26,7 +26,7 @@ Effort key: **S** ≈ 1 sitting · **M** ≈ a few sessions · **L** ≈ a phase
 | 2 | Song list full-height fix | Quick win | **S** | **P0** |
 | 3 | Surface output **screen names** in channel/output pickers | Quick win | **S** | **P0** |
 | 4 | Scripture detection — confidence-threshold **auto-live** tier | Detection | **M** | **P1** |
-| 5 | **Song** detection (live song not in the rundown → suggest matches) | Detection | **L** | **P1** |
+| 5 | ~~**Song** detection (live song not in the rundown → suggest matches)~~ | Detection | **L** | **Deprioritized** |
 | 6 | **Presentation** detection ("Point 2…" → that slide) | Detection | **L** | **P1** |
 | 7 | Paste a **song-title list** → auto-match & add to rundown | Operator productivity | **M** | **P2** |
 | 8 | Split one song section into **variable-size parts** | Operator productivity | **M** | **P2** |
@@ -156,7 +156,31 @@ settings schema, `ScriptureDetectionSettings.jsx`, `OperatorView` `scripture:det
 
 ---
 
-### 5. Song detection — live song not in the rundown → suggest matches
+### 5. Song detection — live song not in the rundown → suggest matches  — **DEPRIORITIZED**
+
+> **Deprioritized (2026-06-20) — accuracy ceiling too low to be useful, not an engineering limit.**
+> The pipeline is programmable (reuse capture + ASR + a song matcher beside `content-match.js`),
+> but three structural problems cap real-world accuracy below the bar where it saves an operator
+> any time:
+> 1. **The whole pipeline's ceiling is ASR quality, and the input is sung choir audio.** Whisper
+>    `tiny.en`/`small.en` are trained on *spoken* speech; sustained vowels, melisma, instrumental
+>    backing, and simultaneous harmony voices push word-error-rate far higher than a preaching
+>    voice. Every downstream stage consumes that transcript — a model-domain mismatch, not a
+>    tunable threshold.
+> 2. **Songs have no analog of the reference-parse path** that makes scripture detection good.
+>    Scripture's reliable, auto-live-eligible tier is `bestReference()` on an *explicit announcement*
+>    ("Matthew five, verse three"); content-match is only its weak fallback. A choir just *starts
+>    singing* — so song detection is the weak path **only**, fed by the worst audio.
+> 3. **Lyrics are far less distinctive than verses** (recycled "praise the Lord / hallelujah",
+>    repeated choruses), forcing *stricter* gating — which on bad ASR input mostly fires nothing or
+>    fires wrong. And manual song search is already instant (`songs_fts`), so even a correct late
+>    match saves nothing.
+>
+> Net: content-match-only, on the worst possible audio, to replace a manual step that's already
+> fast. The reliable way to serve the same need ("a song not in the rundown is happening, get it in
+> fast") is a **typed/pasted-lyric → match** affordance — keyboard-driven, no ASR — built on the
+> already-shipped `songs.matchTitles` machinery (#7). Note #6 (presentation detection) is **not**
+> deprioritized: it keys off clearly *spoken* ordinal cues, so its input quality is sound.
 
 During live production a choir may sing a song that isn't in the rundown. If Cue can *hear* it
 and surface likely matches from the song library, the operator finds it in seconds instead of
