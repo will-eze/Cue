@@ -134,6 +134,14 @@ src/
 │   │                         a .ppt/.pptx runs `soffice --headless --convert-to pdf` in an isolated -env:UserInstallation
 │   │                         profile (avoids the "instance already open" lock) and returns the PDF bytes.
 │   │
+│   ├── export/
+│   │   └── rundown-pdf.js    Rundown → printable lyrics PDF. exportRundownPdf(serviceId): resolve via services.getById,
+│   │                         build a print-styled HTML doc (songs → numbered section labels + lyrics, scripture →
+│   │                         superscript verses, slides → text; media/presentation/youtube → one labelled placeholder
+│   │                         line so order is intact), native Save dialog, render via a hidden BrowserWindow's
+│   │                         webContents.printToPDF (Chromium — NO LibreOffice), write to the chosen path. Strips the
+│   │                         ⁂ slide-break marker (literal, not a renderer-util import). Returns {canceled}|{path}.
+│   │
 │   ├── ipc/
 │   │   ├── songs.ipc.js      Registers songs:*, tags:* handlers (incl. importParse/importGhs/importCommit).
 │   │   ├── services.ipc.js   Registers services:* handlers.
@@ -935,6 +943,7 @@ All renderer↔main communication is via `ipcRenderer.invoke` / `ipcMain.handle`
 | `duplicateItem(itemId)` | `id` | Appends copy at end of rundown (carries advance config). |
 | `clearItems(serviceId)` | void | Removes all items from a rundown; keeps the service row. Used by Danger Zone. |
 | `applyBackgroundToRundown(serviceId, mediaId)` | `count` | Sets background_override_id on every unlocked song slot AND updates each unlocked song's default_background_id. Locked songs skipped. |
+| `exportPdf(serviceId)` | `{canceled}` \| `{canceled:false, path}` | Exports the rundown's lyrics as a printable PDF. Opens a native Save dialog, then renders the resolved rundown to PDF. No file is written unless the user picks a path. See §4 `export/rundown-pdf.js`. |
 
 **`resolveItem()` shape** — what `services:get` returns per item:
 ```js
@@ -1474,6 +1483,8 @@ Two ref patterns used to avoid stale closures:
 - `scenesRef.current` — the scene list for number-key recall; reloaded on `bgRefreshTick` and on the `cue:scenes-changed` window event the Scenes panel dispatches after a mutation
 
 **Modifier priority:** modifier+key shortcuts are checked first; if the modifier is held, bare-key shortcuts are skipped. Default modifier is `Meta` (Cmd) on macOS and `Ctrl` on Windows, matching the operator's `window.cue.platform`.
+
+**Clipboard-accelerator passthrough.** The default shortcut modifier is the same key as the OS clipboard modifier (⌘ on macOS, Ctrl elsewhere), so the default Clear binding (`c`) collides with copy. Inside the modifier branch, before dispatching any operator shortcut, the handler checks the real clipboard modifier (`isMac ? metaKey : ctrlKey`): if it is held and the key is **copy/cut with a live text selection** (`window.getSelection()` non-empty) or **select-all** (`a`), it returns without `preventDefault`, letting Chromium perform the native clipboard op. So ⌘C/Ctrl+C copies when text is selected and still triggers Clear when nothing is selected. This is independent of the configured shortcut modifier (Alt-bound shortcuts never collided).
 
 **Do not use `globalShortcut`** — it captures at OS level and prevents typing G, L, Space in any input field system-wide.
 

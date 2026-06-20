@@ -36,6 +36,7 @@ Unified single-process Electron app. Replaces EasyWorship/ProPresenter (worship 
 
 ### Shortcuts
 - **Do not use `globalShortcut`** — captures at OS level, breaks typing. Shortcuts are `keydown` on `document`, suppressed when an `INPUT`/`TEXTAREA`/`contenteditable` has focus.
+- **Don't hijack the OS clipboard accelerators in the operator keydown handler.** The default shortcut modifier IS the clipboard modifier (⌘ on macOS, Ctrl elsewhere) and Clear defaults to `c`, so `OperatorView` must let ⌘C/⌘X (copy/cut) through when there's a text selection and ⌘A (select-all) always — `return` before `preventDefault`, keyed on the real clipboard modifier (`isMac ? metaKey : ctrlKey`). Otherwise ⌘C-for-Clear swallows every copy app-wide. Don't "simplify" this guard away.
 
 ### Dependencies
 - **Keep `pdfjs-dist` on v4** (PowerPoint import rasteriser). v5/v6 call native `Promise.try`, which Electron 30's Chromium (~124) lacks — the worker throws and the import hangs forever. Load the worker via Vite `?worker` + `GlobalWorkerOptions.workerPort`, never a `?url` `workerSrc` (silent main-thread fake worker = unusably slow). pdfjs stays renderer-only (needs a DOM canvas); the PPTX→PDF step is `soffice` in main.
