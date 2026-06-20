@@ -158,7 +158,9 @@ function MediaGrid({ assets, onDelete, onSetBackground, onAddToRundown }) {
   );
 }
 
-export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAddScripture, onScriptureLive, onScriptureStyleSaved, onBackgroundDefaultChanged, onAddMedia, onAddYouTube, onAddPresentation, onSongSave, refreshTick = 0, focusSearchRef, detectArmed, detectActive, detectDownloadPct, onToggleDetect }) {
+const TAB_ORDER = ['songs', 'media', 'scripture', 'presentations', 'graphics', 'scenes'];
+
+export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAddScripture, onScriptureLive, onScriptureStyleSaved, onBackgroundDefaultChanged, onAddMedia, onAddYouTube, onAddPresentation, onSongSave, refreshTick = 0, focusSearchRef, cycleTabRef, detectArmed, detectActive, detectDownloadPct, onToggleDetect }) {
   const [tab, setTab] = useState('songs');
   const [searchQuery, setSearchQuery] = useState('');
   const [songs, setSongs] = useState([]);
@@ -188,6 +190,19 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
       };
     }
   }, [focusSearchRef]);
+
+  // Imperative tab cycler driven by the operator's Tab / Shift+Tab shortcut.
+  useEffect(() => {
+    if (cycleTabRef) {
+      cycleTabRef.current = (dir = 1) => {
+        setTab((cur) => {
+          const i = TAB_ORDER.indexOf(cur);
+          return TAB_ORDER[(i + dir + TAB_ORDER.length) % TAB_ORDER.length];
+        });
+      };
+    }
+  }, [cycleTabRef]);
+
   const [mediaAssets, setMediaAssets] = useState([]);
   const [folderTree, setFolderTree] = useState([]);
   const [activeFolderId, setActiveFolderId] = useState(null);
@@ -558,10 +573,15 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
           {/* Song list */}
           <div ref={containerRef} className="flex-1 min-w-0 overflow-hidden">
             {displaySongs.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full gap-sm text-outline-variant">
-                <span className="material-symbols-outlined text-4xl">music_note</span>
+              <div className="flex flex-col items-center justify-center h-full gap-xs text-outline-variant px-lg text-center">
+                <span className="material-symbols-outlined text-4xl">{searchQuery || ghsQuery ? 'search_off' : 'library_music'}</span>
                 <span className="text-label-sm font-label-sm uppercase tracking-widest">
                   {searchQuery || ghsQuery ? 'No Songs Found' : 'No Songs Yet'}
+                </span>
+                <span className="text-[11px] text-on-surface-variant/60 max-w-[240px] leading-snug">
+                  {searchQuery || ghsQuery
+                    ? 'Try a different search, or clear it to see your whole library.'
+                    : 'Use Import above to bring in EasyWorship / OpenLyrics / ChordPro files or the bundled GHS hymnal, or + to write a new song.'}
                 </span>
               </div>
             ) : (

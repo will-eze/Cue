@@ -85,6 +85,8 @@ src/
 │   │   │                     gzip-tar cue.db + media/. importBackup(src): extract to temp, validate staged DB
 │   │   │                     (settings+songs tables) before touching live files, swap cue.db + media/, then
 │   │   │                     rewrite absolute media_assets.path to the local media dir (portable across machines).
+│   │   │                     autoSnapshot(): synchronous DB-only copy to userData/backups/cue-<stamp>.db on every
+│   │   │                     quit (will-quit, before closeAll), keeps newest 5, try/caught so it never blocks quit.
 │   │   ├── scenes.js         Scenes CRUD (one-press output state recall). normalizeScene(row|liveObj) is the applyScene boundary; hotkeys unique.
 │   │   ├── graphics.js       Broadcast-graphics CRUD (list/get/create/update/del/reorder). style_json + target.
 │   │   │                     presets() reads built-in designs from resources/graphics/ (*.html custom + *.json
@@ -171,6 +173,8 @@ src/
 │   │   │                       getState + onCommand (decoupled from manager/window). ACTIONS = go/clear/logo/next/prev/
 │   │   │                       live/select; GET /api/<action> or POST /api/command. STATE via GET /api/state + GET
 │   │   │                       /api/stream (SSE). setNavState() holds the renderer-pushed rundown (items + slides).
+│   │   │                       128-bit token (crypto.randomBytes(16)) compared with timingSafeEqual; Referrer-Policy:
+│   │   │                       no-referrer on every response so the ?token= can't leak via Referer.
 │   │   └── control-page.js     CONTROL_PAGE: self-contained dark HTML control surface served at GET / (phone remote).
 │   │                           Token from ?token= → localStorage. SSE-driven (single source of truth, no stale renders).
 │   │                           Accordion rundown — expand a song to its numbered slides, tap a verse to jump live.
@@ -300,6 +304,10 @@ src/
 │   │                              ↑/↓ live nav, right-click menu, OnlineBibleModal + ScriptureEditor hosts.
 │   │
 │   ├── components/
+│   │   ├── Toast.jsx              ToastProvider + useToast() — the one transient-notification system (success/error/info + action button for Undo). Mounted at root in main.jsx.
+│   │   ├── ErrorBoundary.jsx      Per-view error boundary (App.jsx wraps each view) with a recoverable "Reload UI" fallback; outputs keep running.
+│   │   ├── CommandPalette.jsx     ⌘K cross-category launcher (songs/scripture/scenes/presentations/media → add-to-rundown or apply-scene).
+│   │   ├── ShortcutsOverlay.jsx   ? cheatsheet modal; reads the live shortcut settings. Also opened by Settings → Shortcuts "View All".
 │   │   ├── SongEditor.jsx         Full-screen song CRUD modal (createPortal). Sections sidebar with DnD reorder.
 │   │   │                          Two-tab preview: Fullscreen (1920×1080 scaled SlidePreview) + Lower Third (LowerThirdPreview).
 │   │   │                          FormattingToolbar: Row 1 (font/size/color/B/I/U/AA/H-align/V-align/Reset).
@@ -757,6 +765,7 @@ Known keys:
 | `keyboard_clear` | string | Key char for Clear shortcut (default: 'c') |
 | `keyboard_logo` | string | Key char for Logo shortcut (default: 'l') |
 | `keyboard_live` | string | Key char for Live Toggle shortcut (default: 'o') |
+| `shortcut_arm_bare` | boolean | Whether the bare `G`/`Esc` keys are armed (single-press fires). Default true; disarmed → those bare keys are ignored (modifier shortcuts unaffected) |
 | `ghs_seeded` | boolean | Set true after the bundled GHS hymnal is imported on first run; gates re-seeding so deletions stick |
 | `seeded_theme_keys` | array | Names of built-in themes already seeded (`seedBundledThemes`); lets new built-ins add on upgrade without resurrecting user-deleted ones. Supersedes the legacy boolean `themes_seeded` |
 | `themes_seeded` | boolean | Legacy all-or-nothing seed flag; migrated into `seeded_theme_keys` on first v22+ run |
@@ -802,6 +811,7 @@ protocol.registerSchemesAsPrivileged([
 - Receives `cue-media://localhost/absolute/path/to/file`
 - Extracts `pathname` via `new URL(request.url).pathname`
 - Decodes it: `decodeURIComponent(pathname)` → absolute filesystem path
+- **Path containment:** before any fs access, the decoded path is checked by `isUnderUserData(p)` (`path.resolve(p)` must sit under `app.getPath('userData')`); anything outside (a crafted `cue-media://localhost/etc/passwd` or a `../` traversal) returns `403`. Every file these protocols legitimately serve — media, thumbnails + their source, user fonts, yt-cache, bin — lives under userData, so the guard is non-breaking. Applies to both `cue-media://` and `cue-thumb://`.
 - Supports HTTP range requests (for video seeking), serving a `206` with `Content-Range`
 - **Bodies are streamed, never buffered.** Both the ranged (`206`) and full responses are `fs.createReadStream(...)` piped through `Readable.toWeb(stream)`. A `<video>` opens playback with an open-ended `bytes=0-`; reading that into a single `Buffer` froze the main process and spiked memory on multi-GB clips (a one-hour YouTube download), and a fixed-size chunk cap starved the player of the multi-MB `moov` index so the clip only looped its first few seconds. A lazy stream serves any range with bounded memory and lets Chromium read/seek/cancel freely — it cancels the open-ended request and re-asks for specific windows, so the whole file is never read.
 - Returns `Response` with correct MIME type and `Cache-Control: public, max-age=31536000, immutable` — Chromium serves from disk cache after first load so repeated media displays do not re-read from disk
@@ -833,6 +843,10 @@ On Windows, `new URL('cue-media://localhost/C:/Users/...').pathname` returns `/C
 ```js
 if (process.platform === 'win32' && /^\/[A-Za-z]:\//.test(filePath)) filePath = filePath.slice(1);
 ```
+
+### Content-Security-Policy (packaged only)
+
+`main/index.js` sets a CSP via `session.defaultSession.webRequest.onHeadersReceived`, gated to `app.isPackaged` — dev is skipped so Vite HMR (inline/eval + `ws:`) keeps working. The policy allows the app's real remote dependencies — **Google Fonts** (`fonts.googleapis.com`/`fonts.gstatic.com`, for Material Symbols) and **HuggingFace** (`connect-src`, for the WebGPU ASR model fetch; ORT-web WASM is served locally so only `'wasm-unsafe-eval'` + `blob:` workers are needed) — while blocking inline/remote scripts, `<object>`, and locking `base-uri`/`frame-src`. For `script-src 'self'` to hold, `vite.renderer.config.js` sets `build.modulePreload.polyfill = false` (Electron's Chromium supports modulepreload natively), removing the only inline `<script>` from the built HTML. Adding a renderer feature that fetches a new remote origin requires widening the matching CSP directive.
 
 ### Media import flow
 
@@ -1117,6 +1131,7 @@ Browsable pool of curated 16:9 worship backgrounds shipped only as a manifest (`
 | `import(filePaths)` | `[{id, filename, path, type}]` | Copies files to userData/media/. |
 | `get(id)` | `media_asset \| null` | Single asset by ID. |
 | `list(folderId?)` | `[media_asset]` | `null`/`undefined` → root (folder_id IS NULL). Pass folder id for subfolder. |
+| `listAll()` | `[media_asset]` | Flat list of every asset across all folders. Used by the command palette's media search (`list` only returns one folder). |
 | `delete(id)` | void | Removes DB row and deletes file. |
 | `deleteMany(ids)` | `number` | Bulk-delete (rows + files); returns count removed. Used by the unused-media cleanup. |
 | `deleteAll()` | `number` | Wipes the whole media library (rows + folders + files) and resets the global media settings keys. Returns assets removed. Danger Zone "Clear media library". |
@@ -1412,6 +1427,8 @@ Oswald is reserved for output window templates only. Do not use in operator UI.
 - **Tally bars:** `border-l-4` coloured left edge on rundown items.
 - **Modals:** `fixed inset-0 bg-background/80 backdrop-blur-sm`. Container: `bg-surface-container-low rounded-xl border border-outline-variant/30 shadow-2xl ring-1 ring-white/5`.
 - **Inputs:** `bg-surface-container-lowest border border-outline-variant/50 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary/30`.
+- **Toasts:** the one transient-notification system is `components/Toast.jsx` — a `ToastProvider` mounted once at the root (`main.jsx`) exposing `useToast()` with `success`/`error`/`info`/`show`. `show({ message, kind, duration, action: { label, onClick } })` supports an action button (used for Undo). Settings pages and the operator use it; do **not** reintroduce per-page inline toast `<div>`s. The rundown remove/clear undo and the operator's add-confirmations route through it.
+- **Error boundaries:** `components/ErrorBoundary.jsx` wraps each top-level view in `App.jsx` separately, so a render throw in one view shows a recoverable fallback ("Reload UI") instead of blanking the operator — output windows are separate processes and keep running. `main.jsx` also installs `window.onerror`/`unhandledrejection` loggers.
 
 ---
 
@@ -1430,7 +1447,7 @@ Oswald is reserved for output window templates only. Do not use in operator UI.
 │                                                                   │
 ├─── horizontal resize ─────────────────────────────────────────────┤  ← 3px drag
 │  ┌─── Library (full width) ──────────────────────────────────────┐ │
-│  │  [Songs tab] [Media tab]                                      │ │
+│  │  [Songs][Media][Scripture][Presentations][Graphics][Scenes]   │ │  ← ⌘. / ⌘, cycle tabs
 │  └───────────────────────────────────────────────────────────────┘ │
 └───────────────────────────────────────────────────────────────────┘
 ```
@@ -1463,15 +1480,18 @@ liveSlideIdx     — which section index is currently on output
 | Single-click in Preview Slides list | Updates `previewSlideIdx`. Preview monitor only. |
 | Double-click in Preview Slides list | Sends that slide to live. |
 | Single-click in Live Slides list | Sends that slide to live immediately. |
-| GO button / G key | Sends `previewItem[previewSlideIdx]` to live. |
+| GO button / bare G key | Sends `previewItem[previewSlideIdx]` to live. The bare `G` fires only when the keys are **armed** (see below); disarmed it's ignored. |
 | Space | Advances **live** forward (`handleNextLiveSlide`): next live slide, rolling into the next rundown item at the boundary (also loads it into preview). If nothing is live, GOes the current preview. |
 | ↓ arrow | `previewSlideIdx++`. Auto-GOes to live if `previewItemId === liveItemId`. At last slide → loads next rundown item. |
 | ↑ arrow | `previewSlideIdx--`. Auto-GOes to live if `previewItemId === liveItemId`. At first slide → loads previous rundown item at its last slide. |
-| Escape | `output:clear`. Sets `liveItemId=null`. |
+| Escape (bare) | `output:clear`, sets `liveItemId=null`. Fires only when armed; disarmed it's ignored (and flashes a "disarmed" notice). |
 | L key | `output:logo`. |
 | S key | Focuses the song search input in LibraryPanel (the GHS number field when the GHS folder is active). |
-| Modifier+G/C/L/O | GO / Clear / Logo / Live Toggle (modifier and keys are configurable in Settings). |
+| Modifier+G/C/L/O | GO / Clear / Logo / Live Toggle (modifier and keys are configurable in Settings). Always instant, regardless of arm state. |
 | Number key 1–9 | Recalls the scene bound to that hotkey (`window.cue.scenes.apply` → `applyScene`, §13). No modifier; only fires when a scene holds that `hotkey`. |
+| ⌘K / Ctrl+K | Toggles the command palette (`CommandPalette.jsx`) — works from anywhere, even mid-typing. |
+| ⌘. / ⌘, (Ctrl on non-mac) | Next / previous Library tab (`LibraryPanel` cycles via an imperative `cycleTabRef`). |
+| ? | Toggles the keyboard-shortcut overlay (`ShortcutsOverlay.jsx`). |
 | Double-click song in Library | Adds to rundown. No preview/live change. |
 
 ### Keyboard shortcuts
@@ -1479,10 +1499,17 @@ Registered as a `keydown` listener on `document` inside `OperatorView`. **Not** 
 
 Two ref patterns used to avoid stale closures:
 - `shortcutRef.current` — assigned on every render (not in `useEffect`) so the handler always captures the latest state
-- `shortcutsRef.current` — holds configurable key bindings loaded from settings DB; reloads on `bgRefreshTick` changes
+- `shortcutsRef.current` — holds configurable key bindings loaded from settings DB (incl. `armBare`); reloads on `bgRefreshTick` changes
 - `scenesRef.current` — the scene list for number-key recall; reloaded on `bgRefreshTick` and on the `cue:scenes-changed` window event the Scenes panel dispatches after a mutation
+- `overlayOpenRef.current` — set on every render to `helpOpen || paletteOpen`; while an overlay is open the handler returns early so operator shortcuts don't fire underneath it (the overlay owns Esc/arrows).
+
+**OS-modifier globals first.** `⌘K`/`Ctrl+K` (command palette) and `⌘.`/`⌘,` (Library tab nav) are handled at the very top of the keydown using the OS modifier (`isMac ? metaKey : ctrlKey`), *before* the input guard and the configurable-modifier branch — so they work regardless of the chosen shortcut modifier and even while typing. `⌘K` is checked before the overlay guard (so it can toggle the palette closed); the tab-nav keys after it.
 
 **Modifier priority:** modifier+key shortcuts are checked first; if the modifier is held, bare-key shortcuts are skipped. Default modifier is `Meta` (Cmd) on macOS and `Ctrl` on Windows, matching the operator's `window.cue.platform`.
+
+**Arm bare GO / Clear (`shortcut_arm_bare`, default true).** When armed, the bare `G` (GO) and `Esc` (Clear) fire on a single press. When disarmed, those two bare keys are ignored — a stray keystroke can't reach air — and the operator shows a brief "disarmed" pill; the operator still uses the configurable `⌘`-shortcuts or the on-screen buttons. The modifier shortcuts are never gated. Toggle lives in Settings → Shortcuts. (Earlier double-press arming was replaced by this on/off arm switch.)
+
+**Command palette & cheatsheet.** `CommandPalette.jsx` (⌘K) is a cross-category launcher: one query searches Songs (`songs.search`), Scripture (`bible.resolve` on a typed ref like "John 3:16"), Scenes, Presentations and Media; Enter runs the result's primary action (add to rundown, or apply a scene) reusing the operator's existing `handleAdd*` handlers, then closes. `ShortcutsOverlay.jsx` (`?`, also opened by Settings → Shortcuts "View All") renders the live keymap from the configured shortcut settings.
 
 **Clipboard-accelerator passthrough.** The default shortcut modifier is the same key as the OS clipboard modifier (⌘ on macOS, Ctrl elsewhere), so the default Clear binding (`c`) collides with copy. Inside the modifier branch, before dispatching any operator shortcut, the handler checks the real clipboard modifier (`isMac ? metaKey : ctrlKey`): if it is held and the key is **copy/cut with a live text selection** (`window.getSelection()` non-empty) or **select-all** (`a`), it returns without `preventDefault`, letting Chromium perform the native clipboard op. So ⌘C/Ctrl+C copies when text is selected and still triggers Clear when nothing is selected. This is independent of the configured shortcut modifier (Alt-bound shortcuts never collided).
 

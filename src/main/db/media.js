@@ -84,6 +84,12 @@ export function list(folderId) {
   return db.prepare('SELECT * FROM media_assets WHERE folder_id=? ORDER BY filename COLLATE NOCASE').all(folderId);
 }
 
+// Flat list of every asset regardless of folder — used by the command palette's
+// media search (the foldered `list` only returns one folder at a time).
+export function listAll() {
+  return getDb().prepare('SELECT * FROM media_assets ORDER BY filename COLLATE NOCASE').all();
+}
+
 export function del(id) {
   const db = getDb();
   const asset = db.prepare('SELECT * FROM media_assets WHERE id=?').get(id);

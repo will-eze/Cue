@@ -124,6 +124,7 @@ contextBridge.exposeInMainWorld('cue', {
     import: (filePaths) => ipcRenderer.invoke('media:import', filePaths),
     get: (id) => ipcRenderer.invoke('media:get', id),
     list: (folderId) => ipcRenderer.invoke('media:list', folderId),
+    listAll: () => ipcRenderer.invoke('media:listAll'),
     delete: (id) => ipcRenderer.invoke('media:delete', id),
     deleteMany: (ids) => ipcRenderer.invoke('media:deleteMany', ids),
     deleteAll: () => ipcRenderer.invoke('media:deleteAll'),

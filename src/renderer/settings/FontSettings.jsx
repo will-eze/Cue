@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
+import { useToast } from '../components/Toast';
 import { injectUserFontFaces } from '../utils/fonts';
 
 const BUNDLED = window.cue.fonts.list;
 const SAMPLE = 'The quick brown fox 0123';
 
 export default function FontSettings() {
+  const toast = useToast();
   const [userFonts, setUserFonts] = useState([]);
   const [busy, setBusy] = useState(false);
-  const [feedback, setFeedback] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
 
   function load() {
@@ -15,10 +16,7 @@ export default function FontSettings() {
   }
   useEffect(() => { load(); }, []);
 
-  function showFeedback(msg) {
-    setFeedback(msg);
-    setTimeout(() => setFeedback(null), 2800);
-  }
+  function showFeedback(msg) { toast.success(msg); }
 
   async function handleImport() {
     setBusy(true);
@@ -122,13 +120,6 @@ export default function FontSettings() {
           ))}
         </div>
       </div>
-
-      {feedback && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-sm bg-surface-container-high border border-tertiary/40 rounded-xl px-lg py-sm text-on-surface text-body-sm shadow-2xl ring-1 ring-tertiary/10 pointer-events-none">
-          <span className="material-symbols-outlined text-tertiary text-[16px]" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-          {feedback}
-        </div>
-      )}
     </section>
   );
 }

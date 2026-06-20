@@ -514,16 +514,24 @@ export default function RundownPanel({
       {/* Items list */}
       <div className="flex-1 overflow-y-auto">
         {!serviceData ? (
-          <div className="flex flex-col items-center justify-center h-full gap-sm text-outline-variant">
+          <div className="flex flex-col items-center justify-center h-full gap-xs text-outline-variant px-lg text-center">
             <span className="material-symbols-outlined text-4xl">calendar_today</span>
             <span className="text-label-sm font-label-sm uppercase tracking-widest">
-              {services.length === 0 ? 'No Service' : 'Select a Service'}
+              {services.length === 0 ? 'No Service Yet' : 'Select a Service'}
+            </span>
+            <span className="text-[11px] text-on-surface-variant/60 max-w-[220px] leading-snug">
+              {services.length === 0
+                ? 'Create a service with the + above, then add songs, scripture and media to build your rundown.'
+                : 'Pick a service from the dropdown above to load its rundown.'}
             </span>
           </div>
         ) : items.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full gap-sm text-outline-variant">
-            <span className="material-symbols-outlined text-4xl">music_note</span>
-            <span className="text-label-sm font-label-sm uppercase tracking-widest">Add Songs Below</span>
+          <div className="flex flex-col items-center justify-center h-full gap-xs text-outline-variant px-lg text-center">
+            <span className="material-symbols-outlined text-4xl">playlist_add</span>
+            <span className="text-label-sm font-label-sm uppercase tracking-widest">Empty Rundown</span>
+            <span className="text-[11px] text-on-surface-variant/60 max-w-[240px] leading-snug">
+              Search and add songs from the Library below, or press <span className="font-mono text-on-surface-variant">⌘K</span> (Ctrl+K) to find songs, scripture, scenes &amp; media.
+            </span>
           </div>
         ) : (
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>

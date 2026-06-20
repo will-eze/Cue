@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useToast } from '../components/Toast';
 import { mediaUrl } from '../utils/mediaUrl';
 import BackgroundLibrary from './BackgroundLibrary.jsx';
 
@@ -79,9 +80,9 @@ function BackgroundPicker({ label, settingKey }) {
 }
 
 export default function BackgroundSettings({ activeServiceId }) {
+  const toast = useToast();
   const [services, setServices] = useState([]);
   const [selectedServiceId, setSelectedServiceId] = useState(null);
-  const [feedback, setFeedback] = useState(null);
 
   useEffect(() => {
     window.cue.services.list().then((list) => {
@@ -96,10 +97,7 @@ export default function BackgroundSettings({ activeServiceId }) {
     if (activeServiceId != null) setSelectedServiceId(activeServiceId);
   }, [activeServiceId]);
 
-  function showFeedback(msg) {
-    setFeedback(msg);
-    setTimeout(() => setFeedback(null), 2500);
-  }
+  function showFeedback(msg) { toast.success(msg); }
 
   async function handleApplyToRundown() {
     if (!selectedServiceId) { alert('No rundown selected.'); return; }
@@ -204,20 +202,6 @@ export default function BackgroundSettings({ activeServiceId }) {
 
       {/* Curated library */}
       <BackgroundLibrary />
-
-      {/* Feedback toast */}
-      {feedback && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-sm bg-surface-container-high border border-tertiary/40 rounded-xl px-lg py-sm text-on-surface text-body-sm shadow-2xl ring-1 ring-tertiary/10 pointer-events-none">
-          <span
-            className="material-symbols-outlined text-tertiary text-[16px]"
-            style={{ fontVariationSettings: "'FILL' 1" }}
-          >
-            check_circle
-          </span>
-          {feedback}
-        </div>
-      )}
-
     </section>
   );
 }

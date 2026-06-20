@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import ShortcutsOverlay from '../components/ShortcutsOverlay';
 
 const isMac = window.cue.platform === 'darwin';
 
@@ -18,19 +19,26 @@ const FIXED_SHORTCUTS = [
   { keys: ['S'],          desc: 'Search — focus the song search bar' },
   { keys: ['↓', 'Space'], desc: 'Next slide (or next rundown item at end of song)' },
   { keys: ['↑'],          desc: 'Previous slide (or previous rundown item at start)' },
+  { keys: [isMac ? '⌘.' : 'Ctrl+.', isMac ? '⌘,' : 'Ctrl+,'], desc: 'Next / previous Library tab' },
+  { keys: [isMac ? '⌘K' : 'Ctrl+K'], desc: 'Command palette — find & add anything' },
+  { keys: ['?'],          desc: 'Show the keyboard-shortcut overlay' },
 ];
 
 export default function ShortcutSettings() {
   const [modifier, setModifier] = useState(DEFAULTS.modifier);
   const [keys, setKeys] = useState({ keyboard_go: 'g', keyboard_clear: 'c', keyboard_logo: 'l', keyboard_live: 'o' });
+  const [armBare, setArmBare] = useState(true);
   const [saved, setSaved] = useState(false);
+  const [showAll, setShowAll] = useState(false);
 
   useEffect(() => {
     Promise.all([
       window.cue.settings.get('keyboard_modifier'),
+      window.cue.settings.get('shortcut_arm_bare'),
       ...ACTIONS.map((a) => window.cue.settings.get(a.key)),
-    ]).then(([mod, ...vals]) => {
+    ]).then(([mod, arm, ...vals]) => {
       if (mod) setModifier(mod);
+      setArmBare(arm !== false); // default armed when unset
       const loaded = {};
       ACTIONS.forEach((a, i) => { loaded[a.key] = vals[i] ?? DEFAULTS[a.key.replace('keyboard_', '')]; });
       setKeys(loaded);
@@ -39,6 +47,7 @@ export default function ShortcutSettings() {
 
   async function handleSave() {
     await window.cue.settings.set('keyboard_modifier', modifier);
+    await window.cue.settings.set('shortcut_arm_bare', armBare);
     await Promise.all(ACTIONS.map((a) => window.cue.settings.set(a.key, keys[a.key])));
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -56,7 +65,9 @@ export default function ShortcutSettings() {
 
   return (
     <section className="space-y-md">
-      <div>
+      {showAll && <ShortcutsOverlay onClose={() => setShowAll(false)} />}
+      <div className="flex items-start justify-between gap-md">
+        <div>
         <h2 className="text-headline-md font-semibold text-on-surface flex items-center gap-sm">
           <span className="material-symbols-outlined text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>keyboard</span>
           Keyboard Shortcuts
@@ -64,6 +75,14 @@ export default function ShortcutSettings() {
         <p className="text-body-sm text-on-surface-variant mt-xs">
           Modifier shortcuts work even when switching between views. Single-key shortcuts (below) are always active when no text field is focused.
         </p>
+        </div>
+        <button
+          onClick={() => setShowAll(true)}
+          className="shrink-0 mt-xs px-md py-xs text-label-sm font-label-sm font-bold uppercase tracking-[0.05em] text-primary border border-primary/40 rounded-lg hover:bg-primary-container/20 active:scale-95 transition-all cursor-pointer flex items-center gap-xs"
+        >
+          <span className="material-symbols-outlined text-[16px]">visibility</span>
+          View All
+        </button>
       </div>
 
       {/* Modifier + configurable shortcuts */}
@@ -135,6 +154,26 @@ export default function ShortcutSettings() {
             <span className="text-body-sm text-on-surface-variant">{row.desc}</span>
           </div>
         ))}
+      </div>
+
+      {/* Safety: arm the bare GO / Clear keys (the modifier shortcuts stay instant). */}
+      <div className="bg-surface-container-low border border-outline-variant/30 rounded-xl px-md py-sm flex items-center gap-lg">
+        <button
+          onClick={() => setArmBare((v) => !v)}
+          role="switch"
+          aria-checked={armBare}
+          className={`relative w-10 h-6 rounded-full shrink-0 transition-colors cursor-pointer ${armBare ? 'bg-tertiary-container' : 'bg-surface-container-highest'}`}
+        >
+          <span className={`absolute top-[3px] w-[18px] h-[18px] rounded-full bg-on-surface transition-all ${armBare ? 'left-[19px]' : 'left-[3px]'}`} />
+        </button>
+        <div className="flex-1">
+          <p className="text-label-sm font-label-sm text-on-surface uppercase tracking-[0.05em]">Arm bare GO / Clear</p>
+          <p className="text-[11px] text-on-surface-variant mt-[2px]">
+            When armed, a single press of <span className="font-mono">G</span> (GO) or <span className="font-mono">Esc</span> (Clear)
+            goes straight to air. Disarm to lock those bare keys — a stray press is ignored, and you use the
+            {' '}{modSymbol}-shortcuts or the on-screen buttons instead.
+          </p>
+        </div>
       </div>
 
       <div className="flex items-center justify-between">

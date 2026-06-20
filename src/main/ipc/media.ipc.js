@@ -5,6 +5,7 @@ export function registerMediaIpc() {
   ipcMain.handle('media:import', (_e, filePaths) => media.importFiles(filePaths));
   ipcMain.handle('media:get', (_e, id) => media.getById(id));
   ipcMain.handle('media:list', (_e, folderId) => media.list(folderId));
+  ipcMain.handle('media:listAll', () => media.listAll());
   ipcMain.handle('media:delete', (_e, id) => media.del(id));
   ipcMain.handle('media:deleteMany', (_e, ids) => media.deleteMany(ids));
   ipcMain.handle('media:deleteAll', () => media.deleteAllMedia());

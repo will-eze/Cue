@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, screen, protocol, nativeImage } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, screen, protocol, nativeImage, session } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { Readable } from 'node:stream';
@@ -21,6 +21,7 @@ import { registerScenesIpc } from './ipc/scenes.ipc.js';
 import * as scriptureDetect from './scripture-detect/manager.js';
 import * as youtube from './youtube/downloader.js';
 import { purgeYoutubeItems } from './db/services.js';
+import { autoSnapshot } from './db/backup.js';
 import * as remoteServer from './remote/server.js';
 import { seedBundledBibles } from './db/bible.js';
 import { seedGhsHymnal } from './db/songs.js';
@@ -50,6 +51,17 @@ const MEDIA_MIME = {
 };
 
 let mainWindow;
+
+// Containment guard for the cue-media:// / cue-thumb:// protocols. Every file they
+// serve (media, thumbnails + their source, user fonts, yt-cache, bin) lives under
+// userData, so a decoded path that resolves OUTSIDE userData is a traversal attempt
+// (e.g. cue-media://localhost/etc/passwd) — reject it. path.resolve normalises any
+// `..` segments, so this can't be walked around.
+function isUnderUserData(p) {
+  const root = path.resolve(app.getPath('userData'));
+  const resolved = path.resolve(p);
+  return resolved === root || resolved.startsWith(root + path.sep);
+}
 
 function createMainWindow() {
   const isMac = process.platform === 'darwin';
@@ -122,6 +134,10 @@ app.whenReady().then(async () => {
     if (process.platform === 'win32' && /^\/[A-Za-z]:\//.test(filePath)) {
       filePath = filePath.slice(1);
     }
+    if (!isUnderUserData(filePath)) {
+      console.error('[cue-media] Blocked out-of-bounds path:', filePath);
+      return new Response('Forbidden', { status: 403 });
+    }
     try {
       const stat = await fs.promises.stat(filePath);
       const ext = path.extname(filePath).slice(1).toLowerCase();
@@ -188,6 +204,10 @@ app.whenReady().then(async () => {
     const { pathname } = new URL(request.url);
     let srcPath = decodeURIComponent(pathname);
     if (process.platform === 'win32' && /^\/[A-Za-z]:\//.test(srcPath)) srcPath = srcPath.slice(1);
+    if (!isUnderUserData(srcPath)) {
+      console.error('[cue-thumb] Blocked out-of-bounds path:', srcPath);
+      return new Response('Forbidden', { status: 403 });
+    }
     // Thumbnails are derived from immutable UUID-named files — cache forever.
     const cacheHeaders = { 'Cache-Control': 'public, max-age=31536000, immutable' };
     const cachePath = thumbCachePath(srcPath);
@@ -232,6 +252,31 @@ app.whenReady().then(async () => {
     }
     return new Response('No thumbnail', { status: 404 });
   });
+
+  // Content-Security-Policy (packaged only). In dev, Vite's HMR needs inline/eval +
+  // ws:, so skip it there. The policy allows the app's real remote deps: Google Fonts
+  // (Material Symbols) and HuggingFace (WebGPU ASR model fetch, allowRemoteModels:true);
+  // ORT-web WASM is served locally, needing only 'wasm-unsafe-eval' + blob workers. The
+  // hardening that matters: scripts can't be inline or arbitrary-remote, no <object>,
+  // locked base-uri/frames.
+  if (app.isPackaged) {
+    const CSP = [
+      "default-src 'self'",
+      "script-src 'self' 'wasm-unsafe-eval' blob:",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "font-src 'self' https://fonts.gstatic.com cue-media: data:",
+      "img-src 'self' cue-media: cue-thumb: data: blob:",
+      "media-src 'self' cue-media: blob:",
+      "connect-src 'self' cue-media: cue-thumb: https://huggingface.co https://*.huggingface.co https://*.hf.co https://cdn-lfs.huggingface.co data: blob:",
+      "worker-src 'self' blob:",
+      "object-src 'none'",
+      "base-uri 'self'",
+      "frame-src 'none'",
+    ].join('; ');
+    session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+      callback({ responseHeaders: { ...details.responseHeaders, 'Content-Security-Policy': [CSP] } });
+    });
+  }
 
   initDb();
   seedBundledBibles();
@@ -297,6 +342,8 @@ app.on('window-all-closed', () => {
 });
 
 app.on('will-quit', () => {
+  // Auto-backup FIRST, while the cue.db handle is still open (it checkpoints the WAL).
+  autoSnapshot();
   outputManager.closeAll();
   remoteServer.stop();
   scriptureDetect.dispose();

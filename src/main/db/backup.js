@@ -12,6 +12,41 @@ import { getDb, closeDb } from './schema.js';
 // complete, portable snapshot. tar (node-tar) handles both create and extract and
 // is already on disk as a dependency.
 
+// Fast, DB-only snapshot taken automatically on quit. We copy ONLY cue.db (not media)
+// because (a) it must run synchronously during will-quit without hanging shutdown on a
+// multi-GB media tar, and (b) cue.db is the irreplaceable state — media are re-importable
+// originals. Keeps the newest MAX_AUTO snapshots in userData/backups and prunes the rest.
+// Wrapped so a failure (e.g. disk full) can never block the app from quitting.
+const MAX_AUTO = 5;
+
+export function autoSnapshot() {
+  try {
+    const userData = app.getPath('userData');
+    const dbPath = path.join(userData, 'cue.db');
+    if (!fs.existsSync(dbPath)) return { ok: false, error: 'no database' };
+
+    // Flush WAL into cue.db so the copy is a complete, self-contained snapshot.
+    try { getDb()?.pragma('wal_checkpoint(TRUNCATE)'); } catch {}
+
+    const dir = path.join(userData, 'backups');
+    fs.mkdirSync(dir, { recursive: true });
+
+    const d = new Date();
+    const p = (n) => String(n).padStart(2, '0');
+    const stamp = `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+    fs.copyFileSync(dbPath, path.join(dir, `cue-${stamp}.db`));
+
+    // Prune to the newest MAX_AUTO by name (timestamped names sort chronologically).
+    const snaps = fs.readdirSync(dir).filter((f) => /^cue-\d{8}-\d{6}\.db$/.test(f)).sort();
+    for (const f of snaps.slice(0, Math.max(0, snaps.length - MAX_AUTO))) {
+      try { fs.rmSync(path.join(dir, f), { force: true }); } catch {}
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message || String(e) };
+  }
+}
+
 export async function exportBackup(destPath) {
   const userData = app.getPath('userData');
 

@@ -6,6 +6,9 @@ import ScriptureDetectionPanel from '../panels/ScriptureDetectionPanel';
 import { useScriptureCapture } from '../audio/useScriptureCapture';
 import { useScriptureAsr } from '../audio/useScriptureAsr';
 import { sectionLabelAt, expandSongSections } from '../utils/sectionLabels';
+import { useToast } from '../components/Toast';
+import ShortcutsOverlay from '../components/ShortcutsOverlay';
+import CommandPalette from '../components/CommandPalette';
 
 const isMac = window.cue.platform === 'darwin';
 
@@ -22,25 +25,6 @@ function labelForSlide(item, slides, idx) {
 function presentationSlideText(slide) {
   const el = (slide?.elements || []).find((e) => e?.type === 'text' && e.text);
   return el ? el.text : '';
-}
-
-function UndoToast({ message, onUndo, onDismiss }) {
-  return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-md bg-surface-container-high border border-outline-variant/40 rounded-xl shadow-2xl px-lg py-sm ring-1 ring-white/5 pointer-events-auto">
-      <span className="material-symbols-outlined text-[16px] text-on-surface-variant">undo</span>
-      <span className="text-body-sm text-on-surface truncate max-w-[280px]">{message}</span>
-      <button
-        onClick={onUndo}
-        className="text-label-sm font-mono text-primary hover:text-primary/80 uppercase tracking-[0.05em] cursor-pointer transition-colors ml-sm flex-shrink-0"
-      >Undo</button>
-      <button
-        onClick={onDismiss}
-        className="text-on-surface-variant/50 hover:text-on-surface-variant cursor-pointer ml-xs flex-shrink-0"
-      >
-        <span className="material-symbols-outlined text-[16px]">close</span>
-      </button>
-    </div>
-  );
 }
 
 function useResizeH(containerRef, storageKey, defaultPct = 40) {
@@ -97,6 +81,9 @@ export default function OperatorView({
   transportRef, onStateChange, displayMode = 'idle', liveMediaStartAt = null, bgRefreshTick = 0,
   activeServiceId, onServiceChange, onToggleLive,
 }) {
+  const toast = useToast();
+  const [helpOpen, setHelpOpen] = useState(false);       // ? keyboard-shortcut overlay
+  const [paletteOpen, setPaletteOpen] = useState(false); // ⌘K command palette
   const [services, setServices] = useState([]);
   const [serviceData, setServiceData] = useState(null);
   const [songEditTick, setSongEditTick] = useState(0); // bumped when a song is edited from the rundown, to refresh the library
@@ -238,11 +225,12 @@ export default function OperatorView({
   // Selecting any rundown item for preview clears a staged detected verse.
   useEffect(() => { if (previewItemId) setPreviewScripture(null); }, [previewItemId]);
 
-  const [undoStack, setUndoStack] = useState(null);
-  const undoTimerRef = useRef(null);
 
   // Shortcut config — loaded from settings, reloaded when bgRefreshTick changes (i.e. on return from Settings)
-  const shortcutsRef = useRef({ modifier: isMac ? 'meta' : 'ctrl', go: 'g', clear: 'c', logo: 'l', live: 'o' });
+  // armBare = the bare G/Esc keys are ARMED (hot): a single press goes straight to air.
+  // Disarmed, those bare keys are ignored (the operator uses the ⌘ shortcuts or the
+  // on-screen buttons instead) so a stray keystroke can't air. Default armed.
+  const shortcutsRef = useRef({ modifier: isMac ? 'meta' : 'ctrl', go: 'g', clear: 'c', logo: 'l', live: 'o', armBare: true });
   useEffect(() => {
     Promise.all([
       window.cue.settings.get('keyboard_modifier'),
@@ -250,19 +238,33 @@ export default function OperatorView({
       window.cue.settings.get('keyboard_clear'),
       window.cue.settings.get('keyboard_logo'),
       window.cue.settings.get('keyboard_live'),
-    ]).then(([mod, go, clear, logo, live]) => {
+      window.cue.settings.get('shortcut_arm_bare'),
+    ]).then(([mod, go, clear, logo, live, armBare]) => {
       shortcutsRef.current = {
         modifier: mod  ?? (isMac ? 'meta' : 'ctrl'),
         go:       go   ?? 'g',
         clear:    clear ?? 'c',
         logo:     logo  ?? 'l',
         live:     live  ?? 'o',
+        armBare:  armBare !== false, // default armed when unset
       };
     });
   }, [bgRefreshTick]);
 
+  // Brief on-screen notice when a DISARMED bare key is pressed, so the no-op isn't silent.
+  const noticeTimerRef = useRef(null);
+  const [armNotice, setArmNotice] = useState(null); // 'go' | 'clear' | null
+  const flashDisarmed = useCallback((kind) => {
+    if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+    setArmNotice(kind);
+    noticeTimerRef.current = setTimeout(() => setArmNotice(null), 1800);
+  }, []);
+  useEffect(() => () => { if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current); }, []);
+
   // Ref for imperatively focusing the library search bar (triggered by S key)
   const focusSearchRef = useRef(null);
+  // Imperative cycler for the Library tabs (⌘. forward / ⌘, back).
+  const cycleLibraryTabRef = useRef(null);
 
   // Scenes — one-press multi-output state recall (number keys 1–9). Kept in a ref so
   // the always-mounted keydown listener sees the latest set without re-binding. Reload
@@ -340,6 +342,11 @@ export default function OperatorView({
     transportRef.current = { go: handleGo, clear: handleClear, logo: handleLogo };
   }
 
+  // Mirror overlay state into a ref so the always-mounted keydown listener (deps: [])
+  // sees current values without re-binding.
+  const overlayOpenRef = useRef(false);
+  overlayOpenRef.current = helpOpen || paletteOpen;
+
   useEffect(() => {
     const hasPreview = !!(serviceData?.items?.find((i) => i.id === previewItemId));
     onStateChange?.({ isLive: !!liveItemId || !!liveScripture, canGo: hasPreview });
@@ -347,8 +354,27 @@ export default function OperatorView({
 
   useEffect(() => {
     function onKeyDown(e) {
+      // Command palette — toggled from anywhere, even mid-typing. Uses the OS modifier
+      // (⌘ on macOS, Ctrl elsewhere) regardless of the configurable shortcut modifier.
+      if ((isMac ? e.metaKey : e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'k') {
+        e.preventDefault(); setPaletteOpen((v) => !v); return;
+      }
+      // While the palette / help overlay is open it owns the keyboard (it handles its
+      // own Esc/arrows); don't let operator shortcuts fire underneath it.
+      if (overlayOpenRef.current) return;
+
+      // Library tab navigation: ⌘. forward, ⌘, backward (Ctrl on non-mac). Uses the OS
+      // modifier, so it works regardless of the configurable shortcut modifier.
+      if ((isMac ? e.metaKey : e.ctrlKey) && !e.altKey && !e.shiftKey && (e.key === '.' || e.key === ',')) {
+        e.preventDefault(); cycleLibraryTabRef.current?.(e.key === '.' ? 1 : -1); return;
+      }
+
       const el = document.activeElement;
       if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
+
+      // `?` opens the shortcut cheatsheet (Shift+/). After the input guard so it can
+      // still be typed into text fields.
+      if (e.key === '?') { e.preventDefault(); setHelpOpen((v) => !v); return; }
 
       const h = shortcutRef.current;
       const sc = shortcutsRef.current;
@@ -386,8 +412,10 @@ export default function OperatorView({
       if (e.key === ' ')                          { e.preventDefault(); h.handleNextLiveSlide(); }
       else if (e.key === 'ArrowDown')             { e.preventDefault(); h.handleNextSlide(); }
       else if (e.key === 'ArrowUp')               { e.preventDefault(); h.handlePrevSlide(); }
-      else if (e.key === 'Escape')                { h.handleClear(); }
-      else if (e.key === 'g' || e.key === 'G')    { h.handleGo(); }
+      // Bare Esc/G fire on a single press only when ARMED; disarmed, they're ignored
+      // (a stray press can't air) and just flash a notice.
+      else if (e.key === 'Escape')                { if (sc.armBare) h.handleClear(); else flashDisarmed('clear'); }
+      else if (e.key === 'g' || e.key === 'G')    { if (sc.armBare) h.handleGo(); else flashDisarmed('go'); }
       else if (e.key === 'l' || e.key === 'L')    { h.handleLogo(); }
       else if (e.key === 's' || e.key === 'S')    { e.preventDefault(); focusSearchRef.current?.(); }
     }
@@ -905,31 +933,31 @@ export default function OperatorView({
     if (liveItemId === itemId) setLiveItemId(null);
     refreshService();
 
-    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
     const remainingIds = items.filter((i) => i.id !== itemId).map((i) => i.id);
     const label = item?.song?.title || item?.asset?.filename || item?.scripture?.reference || item?.youtube?.title || 'Item';
     const serviceIdAtRemoval = activeServiceId;
 
-    undoTimerRef.current = setTimeout(() => setUndoStack(null), 5000);
-    setUndoStack({
+    toast.show({
       message: `"${label}" removed from rundown`,
-      undo: async () => {
-        clearTimeout(undoTimerRef.current);
-        setUndoStack(null);
-        const newItemId = await window.cue.services.addItem(serviceIdAtRemoval, {
-          item_type: item.item_type,
-          ref_id: item.ref_id,
-          notes: item.notes,
-          content: item.content,
-          background_override_id: item.background_override_id ?? null,
-        });
-        const reordered = [
-          ...remainingIds.slice(0, idx),
-          newItemId,
-          ...remainingIds.slice(idx),
-        ];
-        await window.cue.services.reorderItems(serviceIdAtRemoval, reordered);
-        refreshService();
+      duration: 6000,
+      action: {
+        label: 'Undo',
+        onClick: async () => {
+          const newItemId = await window.cue.services.addItem(serviceIdAtRemoval, {
+            item_type: item.item_type,
+            ref_id: item.ref_id,
+            notes: item.notes,
+            content: item.content,
+            background_override_id: item.background_override_id ?? null,
+          });
+          const reordered = [
+            ...remainingIds.slice(0, idx),
+            newItemId,
+            ...remainingIds.slice(idx),
+          ];
+          await window.cue.services.reorderItems(serviceIdAtRemoval, reordered);
+          refreshService();
+        },
       },
     });
   }
@@ -1101,6 +1129,14 @@ export default function OperatorView({
 
   return (
     <div ref={containerRef} className="flex flex-col h-full bg-background">
+      {/* Notice when a DISARMED bare key is pressed — the bare G/Esc do nothing while
+          disarmed (toggle in Settings → Shortcuts); use the ⌘ shortcut or the buttons. */}
+      {armNotice && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-sm px-lg py-sm rounded-full border border-outline-variant/50 bg-surface-container-high pointer-events-none text-label-sm font-bold uppercase tracking-[0.06em] text-on-surface-variant">
+          <span className="material-symbols-outlined text-[16px]">lock</span>
+          Bare {armNotice === 'go' ? 'GO' : 'Clear'} is disarmed — arm it in Settings
+        </div>
+      )}
       {/* Top work area */}
       <div style={{ height: `${vPct}%` }} className="flex shrink-0 min-h-0 p-gutter gap-gutter">
         <div style={{ width: `${hPct}%` }} className="shrink-0 min-w-0 overflow-hidden">
@@ -1200,14 +1236,19 @@ export default function OperatorView({
           onSongSave={refreshService}
           refreshTick={bgRefreshTick + songEditTick}
           focusSearchRef={focusSearchRef}
+          cycleTabRef={cycleLibraryTabRef}
         />
       </div>
 
-      {undoStack && (
-        <UndoToast
-          message={undoStack.message}
-          onUndo={undoStack.undo}
-          onDismiss={() => { clearTimeout(undoTimerRef.current); setUndoStack(null); }}
+      {helpOpen && <ShortcutsOverlay onClose={() => setHelpOpen(false)} />}
+      {paletteOpen && (
+        <CommandPalette
+          onClose={() => setPaletteOpen(false)}
+          onAddSong={handleAddToRundown}
+          onAddScripture={handleAddScripture}
+          onAddMedia={handleAddMedia}
+          onAddPresentation={handleAddPresentation}
+          onApplyScene={(scene) => window.cue.scenes.apply(scene)}
         />
       )}
     </div>

@@ -17,7 +17,7 @@ function gitCommitCount() {
 // MAJOR = current DB schema version, derived from the highest migration (vN) in
 // schema.js so it can never drift from the schema. Bump MINOR/PATCH by hand per the
 // convention in CLAUDE.md (MINOR = features w/o migration; PATCH = fixes/docs/chores).
-const VERSION_MINOR = 2;
+const VERSION_MINOR = 3;
 const VERSION_PATCH = 0;
 
 function schemaVersion() {
@@ -43,6 +43,11 @@ export default defineConfig({
   // optimizer, and the worker dynamic-imports it. ORT-web wasm is served locally via the
   // worker's `?url` imports (no CDN).
   optimizeDeps: { exclude: ['@huggingface/transformers'] },
+  // Electron's Chromium supports <link rel="modulepreload"> natively, so drop Vite's inline
+  // polyfill script — it's the only inline <script> in the built HTML, and the packaged
+  // Content-Security-Policy (src/main/index.js) sets script-src 'self' with no 'unsafe-inline'.
+  // Without this, that inline script would be CSP-blocked.
+  build: { modulePreload: { polyfill: false } },
   // The ASR worker dynamic-imports transformers.js → code-splitting, which Vite's default
   // `iife` worker format can't do (only shows in the production build, not `npm start`).
   // ES-module workers support it; Vite then instantiates with `new Worker(url, {type:'module'})`.

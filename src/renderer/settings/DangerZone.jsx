@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useToast } from '../components/Toast';
 
 function ConfirmButton({ label, confirmLabel = 'Yes, delete', disabled = false, onConfirm }) {
   const [confirming, setConfirming] = useState(false);
@@ -43,10 +44,10 @@ function ConfirmButton({ label, confirmLabel = 'Yes, delete', disabled = false, 
 }
 
 export default function DangerZone({ activeServiceId, onRundownCleared, onRundownDeleted, onLibraryCleared, onMediaCleared }) {
+  const toast = useToast();
   const [services, setServices] = useState([]);
   const [clearServiceId, setClearServiceId] = useState(null);
   const [deleteServiceId, setDeleteServiceId] = useState(null);
-  const [feedback, setFeedback] = useState(null);
 
   function loadServices() {
     window.cue.services.list().then((list) => {
@@ -66,21 +67,28 @@ export default function DangerZone({ activeServiceId, onRundownCleared, onRundow
     }
   }, [activeServiceId]);
 
-  function showFeedback(msg) {
-    setFeedback(msg);
-    setTimeout(() => setFeedback(null), 2500);
-  }
-
   async function handleClearRundown() {
     if (!clearServiceId) return;
-    const service = await window.cue.services.get(clearServiceId);
+    const serviceId = clearServiceId;
+    const service = await window.cue.services.get(serviceId);
     const items = service?.items || [];
-    for (const item of items) {
-      await window.cue.services.removeItem(item.id);
-    }
-    onRundownCleared?.(clearServiceId);
-    const name = services.find((s) => s.id === clearServiceId)?.title || 'Rundown';
-    showFeedback(`"${name}" cleared`);
+    const name = services.find((s) => s.id === serviceId)?.title || 'Rundown';
+    if (!items.length) { toast.info(`"${name}" is already empty`); return; }
+    // Snapshot (in order) so the clear can be undone by re-adding every item.
+    const snapshot = items.map((it) => ({
+      item_type: it.item_type, ref_id: it.ref_id ?? null, notes: it.notes ?? null,
+      content: it.content ?? null, background_override_id: it.background_override_id ?? null,
+    }));
+    for (const item of items) await window.cue.services.removeItem(item.id);
+    onRundownCleared?.(serviceId);
+    toast.show({
+      message: `"${name}" cleared (${snapshot.length} items)`,
+      duration: 6000,
+      action: {
+        label: 'Undo',
+        onClick: async () => { await window.cue.services.addItems(serviceId, snapshot); onRundownCleared?.(serviceId); },
+      },
+    });
   }
 
   async function handleDeleteRundown() {
@@ -90,19 +98,19 @@ export default function DangerZone({ activeServiceId, onRundownCleared, onRundow
     await window.cue.services.delete(deletedId);
     onRundownDeleted?.(deletedId);
     loadServices();
-    showFeedback(`"${name}" deleted`);
+    toast.success(`"${name}" deleted`);
   }
 
   async function handleClearLibrary() {
     await window.cue.songs.deleteAll();
     onLibraryCleared?.();
-    showFeedback('Song library cleared');
+    toast.success('Song library cleared');
   }
 
   async function handleClearMedia() {
     const removed = await window.cue.media.deleteAll();
     onMediaCleared?.();
-    showFeedback(removed ? `${removed} media file${removed === 1 ? '' : 's'} deleted` : 'Media library already empty');
+    toast.success(removed ? `${removed} media file${removed === 1 ? '' : 's'} deleted` : 'Media library already empty');
   }
 
   async function handleFactoryReset() {
@@ -223,18 +231,6 @@ export default function DangerZone({ activeServiceId, onRundownCleared, onRundow
           />
         </div>
       </div>
-
-      {feedback && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-sm bg-surface-container-high border border-tertiary/40 rounded-xl px-lg py-sm text-on-surface text-body-sm shadow-2xl ring-1 ring-tertiary/10 pointer-events-none">
-          <span
-            className="material-symbols-outlined text-tertiary text-[16px]"
-            style={{ fontVariationSettings: "'FILL' 1" }}
-          >
-            check_circle
-          </span>
-          {feedback}
-        </div>
-      )}
     </section>
   );
 }

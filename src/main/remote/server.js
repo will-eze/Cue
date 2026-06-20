@@ -120,6 +120,9 @@ function handleRequest(req, res) {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const path = url.pathname;
 
+  // The control page carries the pairing token in its URL; keep it out of the Referer
+  // header so navigations/sub-requests can't leak it to another origin.
+  res.setHeader('Referrer-Policy', 'no-referrer');
   // CORS so a browser-based controller on another origin can drive the surface.
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Cue-Token');

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import OperatorView from './views/OperatorView';
 import MultiviewView from './views/MultiviewView';
 import SettingsView from './views/SettingsView';
+import ErrorBoundary from './components/ErrorBoundary';
 import { injectUserFontFaces } from './utils/fonts';
 import { resolveAnchors, collides, overlapIds } from '../shared/stage-schedule.js';
 
@@ -219,20 +220,22 @@ export default function App() {
       <div className="flex-1 overflow-hidden">
         {/* OperatorView always mounted — CSS-hidden when inactive so preview/live state survives tab switches */}
         <div style={{ display: view === 'operator' ? 'flex' : 'none', height: '100%', flexDirection: 'column' }}>
-          <OperatorView
-            transportRef={transportRef}
-            onStateChange={setHeaderState}
-            displayMode={displayMode}
-            liveMediaStartAt={liveMediaStartAt}
-            bgRefreshTick={bgRefreshTick}
-            activeServiceId={activeServiceId}
-            onServiceChange={setActiveServiceId}
-            outputsEnabled={outputsEnabled}
-            onToggleLive={() => window.cue.output.setLive(!outputsEnabled)}
-          />
+          <ErrorBoundary label="Operator">
+            <OperatorView
+              transportRef={transportRef}
+              onStateChange={setHeaderState}
+              displayMode={displayMode}
+              liveMediaStartAt={liveMediaStartAt}
+              bgRefreshTick={bgRefreshTick}
+              activeServiceId={activeServiceId}
+              onServiceChange={setActiveServiceId}
+              outputsEnabled={outputsEnabled}
+              onToggleLive={() => window.cue.output.setLive(!outputsEnabled)}
+            />
+          </ErrorBoundary>
         </div>
-        {view === 'multiview' && <MultiviewView />}
-        {view === 'settings' && <SettingsView
+        {view === 'multiview' && <ErrorBoundary label="Multiview"><MultiviewView /></ErrorBoundary>}
+        {view === 'settings' && <ErrorBoundary label="Settings"><SettingsView
           activeServiceId={activeServiceId}
           onRundownCleared={() => setBgRefreshTick((t) => t + 1)}
           onRundownDeleted={(deletedId) => {
@@ -240,7 +243,7 @@ export default function App() {
             setBgRefreshTick((t) => t + 1);
           }}
           onLibraryCleared={() => setBgRefreshTick((t) => t + 1)}
-        />}
+        /></ErrorBoundary>}
       </div>
     </div>
   );

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useToast } from '../components/Toast';
 
 function formatBytes(bytes) {
   if (bytes == null) return '—';
@@ -12,16 +13,15 @@ function formatBytes(bytes) {
 // (cue.db + every media asset). Restore is destructive — it replaces the live
 // database and media, then relaunches — so it sits behind a confirm step.
 export default function DataSettings() {
+  const toast = useToast();
   const [diskUsage, setDiskUsage] = useState(null);
   const [busy, setBusy] = useState(null);   // 'export' | 'restore'
   const [confirming, setConfirming] = useState(false);
-  const [feedback, setFeedback] = useState(null);
 
   useEffect(() => { window.cue.settings.getDiskUsage().then(setDiskUsage); }, []);
 
   function showFeedback(msg, kind = 'ok') {
-    setFeedback({ msg, kind });
-    setTimeout(() => setFeedback(null), 3000);
+    if (kind === 'error') toast.error(msg); else toast.success(msg);
   }
 
   async function handleExport() {
@@ -118,18 +118,6 @@ export default function DataSettings() {
           )}
         </div>
       </div>
-
-      {feedback && (
-        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-sm bg-surface-container-high border rounded-xl px-lg py-sm text-on-surface text-body-sm shadow-2xl pointer-events-none ${feedback.kind === 'error' ? 'border-error/40 ring-1 ring-error/10' : 'border-tertiary/40 ring-1 ring-tertiary/10'}`}>
-          <span
-            className={`material-symbols-outlined text-[16px] ${feedback.kind === 'error' ? 'text-error' : 'text-tertiary'}`}
-            style={{ fontVariationSettings: "'FILL' 1" }}
-          >
-            {feedback.kind === 'error' ? 'error' : 'check_circle'}
-          </span>
-          {feedback.msg}
-        </div>
-      )}
     </section>
   );
 }
