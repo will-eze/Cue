@@ -4,6 +4,7 @@ import fs from 'fs';
 import * as settings from '../db/settings.js';
 import * as backup from '../db/backup.js';
 import { closeDb } from '../db/schema.js';
+import { checkForUpdate, downloadAndInstall } from '../update/updater.js';
 
 export function registerSettingsIpc() {
   ipcMain.handle('settings:get', (_e, key) => settings.get(key));
@@ -14,6 +15,11 @@ export function registerSettingsIpc() {
   ipcMain.handle('settings:getDiskUsage', () => settings.getDiskUsage());
   ipcMain.handle('settings:getDataPath', () => settings.getDataPath());
   ipcMain.handle('settings:openDataFolder', () => settings.openDataFolder());
+
+  // In-app updater (Option A). Anonymous GitHub Releases query + manual install.
+  ipcMain.handle('settings:checkForUpdate', () => checkForUpdate());
+  ipcMain.handle('settings:downloadUpdate', (e, asset) =>
+    downloadAndInstall(asset, BrowserWindow.fromWebContents(e.sender)));
 
   // Backup / restore — a single .cuebackup bundle of cue.db + media/.
   ipcMain.handle('settings:exportBackup', async (e) => {

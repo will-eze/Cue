@@ -19,6 +19,10 @@ The only thing free distribution *can't* give you is a clean **browser-download*
 experience on macOS — that requires Apple's $99/yr notarization. Via file
 transfer, free covers you completely.
 
+> To let the app **pull its own updates** instead of hand-carrying installers, see
+> **`auto-update-handoff.md`** — options, the macOS-signing constraint that decides
+> between them, and an implementation sketch for an in-app "Check for Updates" button.
+
 | | macOS | Windows |
 |---|---|---|
 | Build | `.dmg` (`maker-dmg`) | `.exe` installer (`maker-squirrel`) |

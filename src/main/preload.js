@@ -221,6 +221,8 @@ contextBridge.exposeInMainWorld('cue', {
     exportBackup: () => ipcRenderer.invoke('settings:exportBackup'),
     importBackup: () => ipcRenderer.invoke('settings:importBackup'),
     factoryReset: () => ipcRenderer.invoke('settings:factoryReset'),
+    checkForUpdate: () => ipcRenderer.invoke('settings:checkForUpdate'),
+    downloadUpdate: (asset) => ipcRenderer.invoke('settings:downloadUpdate', asset),
   },
   dialog: {
     openFile: (options) => ipcRenderer.invoke('dialog:openFile', options),
@@ -251,6 +253,7 @@ contextBridge.exposeInMainWorld('cue', {
       'remote:command',
       'youtube:status',
       'scripture:detected', 'scripture:transcript', 'scripture:status',
+      'update:progress',
     ];
     if (!allowed.includes(channel)) return () => {};
     const wrapper = (_event, ...args) => callback(...args);

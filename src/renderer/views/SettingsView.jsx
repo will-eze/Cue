@@ -42,6 +42,67 @@ function formatBytes(bytes) {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
+// Manual "Check for Updates" — queries GitHub Releases, and on a newer version
+// downloads + launches the installer. Public repo, no auth. See updater.js.
+function UpdateChecker() {
+  const [status, setStatus] = useState('idle'); // idle | checking | uptodate | available | downloading | error
+  const [info, setInfo] = useState(null);        // { current, latest, asset, error }
+  const [pct, setPct] = useState(0);
+
+  useEffect(() => {
+    return window.cue.on('update:progress', ({ received, total }) => {
+      setPct(total ? Math.round((received / total) * 100) : 0);
+    });
+  }, []);
+
+  async function check() {
+    setStatus('checking');
+    const res = await window.cue.settings.checkForUpdate();
+    setInfo(res);
+    if (!res.ok) setStatus('error');
+    else if (res.isNewer) setStatus('available');
+    else setStatus('uptodate');
+  }
+
+  async function install() {
+    setStatus('downloading');
+    setPct(0);
+    const res = await window.cue.settings.downloadUpdate(info.asset);
+    if (!res.ok) { setInfo({ ...info, error: res.error }); setStatus('error'); }
+    // on success the app quits as the installer launches.
+  }
+
+  return (
+    <div className="flex flex-col gap-xs">
+      <span className="text-label-sm font-label-sm text-on-surface">Updates</span>
+      {status === 'available' ? (
+        <button
+          onClick={install}
+          className="bg-primary text-on-primary px-lg py-sm rounded text-label-sm font-label-sm hover:opacity-90 transition-all cursor-pointer"
+        >
+          Update to v{info.latest}
+        </button>
+      ) : status === 'downloading' ? (
+        <span className="text-label-sm font-label-sm text-primary tabular-nums">Downloading… {pct}%</span>
+      ) : (
+        <button
+          onClick={check}
+          disabled={status === 'checking'}
+          className="bg-surface-container text-on-surface px-lg py-sm rounded text-label-sm font-label-sm hover:bg-surface-container-high transition-all cursor-pointer disabled:opacity-50"
+        >
+          {status === 'checking' ? 'Checking…'
+            : status === 'uptodate' ? 'Up to date ✓'
+            : status === 'error' ? 'Retry'
+            : 'Check for Updates'}
+        </button>
+      )}
+      {status === 'error' && info?.error && (
+        <span className="text-[10px] font-label-sm text-error truncate max-w-48">{info.error}</span>
+      )}
+    </div>
+  );
+}
+
 function SettingsFooter() {
   const [dataPath, setDataPath] = useState('');
   const [diskUsage, setDiskUsage] = useState(null);
@@ -75,12 +136,15 @@ function SettingsFooter() {
           </>
         )}
       </div>
-      <button
-        onClick={() => window.cue.settings.openDataFolder()}
-        className="bg-surface-container text-on-surface px-lg py-sm rounded text-label-sm font-label-sm hover:bg-surface-container-high transition-all cursor-pointer"
-      >
-        Open Data Folder
-      </button>
+      <div className="flex items-center gap-md">
+        <UpdateChecker />
+        <button
+          onClick={() => window.cue.settings.openDataFolder()}
+          className="bg-surface-container text-on-surface px-lg py-sm rounded text-label-sm font-label-sm hover:bg-surface-container-high transition-all cursor-pointer"
+        >
+          Open Data Folder
+        </button>
+      </div>
     </footer>
   );
 }

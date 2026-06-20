@@ -27,7 +27,7 @@ Effort key: **S** ≈ 1 sitting · **M** ≈ a few sessions · **L** ≈ a phase
 | 3 | Surface output **screen names** in channel/output pickers | Quick win | **S** | **P0** |
 | 4 | Scripture detection — confidence-threshold **auto-live** tier | Detection | **M** | **P1** |
 | 5 | ~~**Song** detection (live song not in the rundown → suggest matches)~~ | Detection | **L** | **Deprioritized** |
-| 6 | **Presentation** detection ("Point 2…" → that slide) | Detection | **L** | **P1** |
+| 6 | ~~**Presentation** detection ("Point 2…" → that slide)~~ | Detection | **L** | **Deprioritized** |
 | 7 | Paste a **song-title list** → auto-match & add to rundown | Operator productivity | **M** | **P2** |
 | 8 | Split one song section into **variable-size parts** | Operator productivity | **M** | **P2** |
 | 9 | Confidence monitor — **scheduled / timed messages** | Operator productivity | **M** | **P2** |
@@ -211,7 +211,30 @@ toggle in `ScriptureDetectionSettings.jsx`.
 
 ---
 
-### 6. Presentation detection — "Point 2…" → that slide live
+### 6. Presentation detection — "Point 2…" → that slide live  — **DEPRIORITIZED**
+
+> **Deprioritized (2026-06-20) — value proposition too thin, not an engineering limit.**
+> The pipeline is feasible and *cheaper* than this doc's "L" implies — almost everything exists:
+> per-slide text is already extracted (`getSlides` maps each presentation slide to
+> `{ content: presentationSlideText(s) }`), the live-jump transport already exists
+> (`handleRemoteSelect(itemId, slideIdx)` jumps to slide N and goes live), and ordinal parsing
+> already works (`wordsToNumbers` in `numbers.js` turns "point two" → "point 2"). The blocker is
+> **usefulness, not buildability**:
+> 1. **It only helps when the speaker explicitly enumerates** ("point two"). Many sermons and many
+>    decks aren't numbered points at all, so the cue vocabulary it keys off often never occurs.
+> 2. **The common case — advancing in order — is already one keystroke** (space/arrow). Detection
+>    can't beat a keypress, and a mis-fire to *air* is strictly worse than pressing a key. The only
+>    genuine win over NEXT/PREV is a *non-sequential* jump ("go back to point one") — the rarer phrasing.
+> 3. **Auto-live mis-fires are costly and likely.** "Two thousand people", "point taken", "to point
+>    out" can all trip a naive ordinal match into sending the wrong slide live mid-sermon. That forces
+>    suggest-only / heavy gating, which erodes the little time it would have saved.
+> 4. **The semantic path is the weakest part** (most of the "L" cost): slide text is terse
+>    titles/bullets, a poor embedding target, so paraphrase matching is noisy and high-false-positive.
+>
+> Net: spoken-input quality is sound (unlike #5's sung audio), but the feature replaces a fast,
+> already-easy keystroke and its safe sweet spot (non-sequential jumps in enumerated decks) is narrow.
+> If revived, build the **lexical-ordinal path only**, **suggest/preview by default** (auto-live only
+> behind opt-in on an exact ordinal match), **skip the semantic path**, and re-rate it **S–M**.
 
 When a minister says "Point two…", Cue sends slide/point 2 of the live presentation to air.
 This is detection scoped to the **active presentation deck**, combining lexical cues (ordinals:
@@ -237,10 +260,10 @@ event in `preload.js`, `OperatorView` handler driving `SELECT`, settings toggle.
 
 **Effort: L.**
 
-> **Sequencing note for #4–#6:** factor the matchers behind a common "active-context matcher"
-> shape so scripture / song / presentation matching share the embed worker, the FTS prefilter,
-> the lexical-anchor guard, and the confidence-band router (#4). Build #4 first (it generalises
-> the band logic everyone else reuses), then #5, then #6.
+> **Sequencing note:** with #5 and #6 deprioritized, the detection track is just **#4** —
+> the confidence-band/auto-live refactor. The "common active-context matcher" shape it was meant
+> to seed for song/presentation matching is no longer load-bearing; build #4 on its own merits
+> (band router + auto-live tier) without pre-generalising for consumers that aren't being built.
 
 ---
 
@@ -435,9 +458,9 @@ thin capture-and-list panel).
 2. **Flagship track (parallel, design-led):** prebuilt theme packs + curated media library (#1).
    The engineering is small; start the design/curation/licensing work early since it's the long
    pole and the main selling point.
-3. **Detection expansion (#4 → #5 → #6):** ship the confidence-band/auto-live refactor (#4)
-   first because #5 and #6 reuse its band router and the shared matcher shape; then song
-   detection (#5), then presentation detection (#6).
+3. **Detection expansion (#4):** ship the confidence-band/auto-live refactor (#4). Song detection
+   (#5) and presentation detection (#6) are both deprioritized — see their sections for why — so
+   the detection track no longer needs the shared-matcher generalisation that was meant to precede them.
 4. **Operator productivity:** paste-song-list (#7) + section splitting (#8) + scheduled stage
    messages (#9) — independent, ship in any order.
 5. **Polish & automation:** transition library (#10), then scenes (#11) as the closing phase.
