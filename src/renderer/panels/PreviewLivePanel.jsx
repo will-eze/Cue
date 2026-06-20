@@ -254,7 +254,7 @@ function StageMonitor({ slide, item, slides, slideIdx, copyrightText, copyrightR
   }, []);
 
   const barCol     = { flex: '1 1 0', minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 2%', gap: 8 };
-  const barLabel   = { fontFamily: '"JetBrains Mono", ui-monospace, monospace', fontSize: 13, fontWeight: 500, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#424754' };
+  const barLabel   = { fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, sans-serif', fontSize: 13, fontWeight: 500, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#424754' };
   const barValue   = { fontSize: 48, fontWeight: 700, lineHeight: 1, fontVariantNumeric: 'tabular-nums' };
   const barDivider = { flexShrink: 0, width: 1, background: 'rgba(255,255,255,0.07)', margin: '2% 0' };
 
@@ -294,7 +294,7 @@ function StageMonitor({ slide, item, slides, slideIdx, copyrightText, copyrightR
           ) : !hideText && (
             <>
               {refText && (
-                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: '1.5% 6% 0', textAlign: 'center', fontFamily: '"JetBrains Mono", ui-monospace, monospace', fontSize: 34, fontWeight: 600, letterSpacing: '0.04em', color: '#adc6ff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: '1.5% 6% 0', textAlign: 'center', fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, sans-serif', fontSize: 34, fontWeight: 600, letterSpacing: '0.04em', color: '#adc6ff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {refText}
                 </div>
               )}
@@ -306,14 +306,14 @@ function StageMonitor({ slide, item, slides, slideIdx, copyrightText, copyrightR
         </div>
         <div style={{ flexShrink: 0, height: 1, background: 'rgba(255,255,255,0.08)' }} />
         <div style={{ flex: '0 0 auto', maxHeight: '20%', overflow: 'hidden', display: 'flex', alignItems: 'baseline', gap: '1.5%', padding: '1.2% 6%' }}>
-          <span style={{ flexShrink: 0, fontFamily: '"JetBrains Mono", ui-monospace, monospace', fontSize: 13, fontWeight: 500, letterSpacing: '0.18em', textTransform: 'uppercase', color: '#4d8eff', whiteSpace: 'nowrap' }}>COMING NEXT</span>
+          <span style={{ flexShrink: 0, fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, sans-serif', fontSize: 13, fontWeight: 500, letterSpacing: '0.18em', textTransform: 'uppercase', color: '#4d8eff', whiteSpace: 'nowrap' }}>COMING NEXT</span>
           <span style={{ fontSize: 26, fontWeight: 400, lineHeight: 1.3, color: 'rgba(255,255,255,0.4)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflow: 'hidden' }}>{nextText || '—'}</span>
         </div>
       </div>
 
       {/* Bottom message bar */}
       <div style={{ flex: '0 0 10%', minHeight: 0, background: '#1a1c20', borderTop: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', padding: '0 4%' }}>
-        <div style={{ fontFamily: '"JetBrains Mono", ui-monospace, monospace', fontSize: 14, fontWeight: 500, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(140,144,159,0.25)' }}>NO MESSAGES</div>
+        <div style={{ fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, sans-serif', fontSize: 14, fontWeight: 500, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(140,144,159,0.25)' }}>NO MESSAGES</div>
       </div>
     </div>
   );
@@ -398,7 +398,7 @@ function PresentationCanvas({ elements, backgroundPath, hideText }) {
   );
 }
 
-function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroundPath, displayMode, channelTemplate, transport, overlay, hideProgram }) {
+function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroundPath, displayMode, channelTemplate, ltFontScale = 1, transport, overlay, hideProgram }) {
   const wrapRef = useRef(null);
   const [scale, setScale] = useState(0.5);
 
@@ -437,10 +437,14 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
     : (isLT ? '0 2px 8px rgba(0,0,0,0.6)' : '0 2px 16px rgba(0,0,0,0.8), 0 0 40px rgba(0,0,0,0.6)');
   const stroke = style?.textStroke;
 
-  // Text styles at native 1920×1080 resolution — no scaling needed, CSS transform handles it
+  // Text styles at native 1920×1080 resolution — no scaling needed, CSS transform handles it.
+  // Lower-third lyric size mirrors output/lowerthird.js exactly: base = authored size or
+  // the FULLSCREEN default (72px), then × the global L3 font scale. Fullscreen is unscaled.
+  const ltScale = isLT ? (Number(ltFontScale) > 0 ? Number(ltFontScale) : 1) : 1;
+  const baseFontPx = isLT ? (Number(style?.fontSize) || 72) * ltScale : (style?.fontSize ?? 72);
   const textStyle = {
     fontFamily:       style?.fontFamily || undefined,
-    fontSize:         (style?.fontSize ?? (isLT ? 48 : 72)) + 'px',
+    fontSize:         baseFontPx + 'px',
     textAlign:        style?.align || 'center',
     fontWeight:       style?.bold ? 700 : 400,
     fontStyle:        style?.italic ? 'italic' : 'normal',
@@ -525,7 +529,7 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
                     minHeight: 160,
                     display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
                   }}>
-                    <p style={textStyle} dangerouslySetInnerHTML={{ __html: renderWithRuns(slide.content, style?.runs) }} />
+                    <p style={textStyle} dangerouslySetInnerHTML={{ __html: renderWithRuns(slide.content, style?.runs, ltScale) }} />
                     {copyrightText && (
                       <div style={{ fontSize: 18, color: 'rgba(255,255,255,0.7)', marginTop: 4, ...copyrightCss(copyrightStyle, copyrightRight ? 'right' : 'left', false), paddingLeft: undefined, paddingRight: undefined }}>
                         {copyrightText}
@@ -610,6 +614,7 @@ export default function PreviewLivePanel({
   displayMode, getSlides, previewBgPath, liveBgPath,
   onSelectPreviewSlide, onGoAtPreviewSlide, onSelectLiveSlide,
   channelTemplate,
+  ltFontScale = 1,
   allChannels = [], liveChannelIdx = 0, onSetLiveChannelIdx,
 }) {
   const previewSlides = previewItem ? getSlides(previewItem) : [];
@@ -717,6 +722,7 @@ export default function PreviewLivePanel({
             isLive={false}
             backgroundPath={previewBgPath}
             channelTemplate={channelTemplate}
+            ltFontScale={ltFontScale}
           />
           <div className="flex-1 overflow-y-auto pr-xs">
             {previewSlides.length > 0 ? (
@@ -746,6 +752,7 @@ export default function PreviewLivePanel({
             backgroundPath={liveBgPath}
             displayMode={displayMode}
             channelTemplate={selectedTemplate}
+            ltFontScale={ltFontScale}
             transport={transport}
             overlay={monitorOverlay}
             hideProgram={hideProgram}

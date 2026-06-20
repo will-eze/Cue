@@ -365,6 +365,8 @@ src/
 │   │   │                          (window.cue.backgrounds.*); hover actions set the global default bg per surface.
 │   │   ├── TransitionSettings.jsx Settings → Motion. Per trigger (slide/logo/clear): style picker (§13 library) +
 │   │   │                          duration slider + easing + click-to-play NOW→NEXT preview. Persists `output_transitions`.
+│   │   ├── LowerthirdSettings.jsx Settings → Lower Third. Global L3 font scale (1–150%, slider + presets) as a % of the
+│   │   │                          fullscreen size; persists `lowerthird_font_scale` via output.lowerthird.setFontScale (live).
 │   │   ├── BibleSettings.jsx     Installed translations list (delete) + Import (file/online) menu.
 │   │   │                          Accepts only activeServiceId prop. No DangerZone or footer inside.
 │   │   ├── TagSettings.jsx       Tag CRUD: create (name + preset colour palette), inline rename, recolour, delete
@@ -734,6 +736,7 @@ Known keys:
 | `global_bg_slide_id` | number\|null | Global default background for slides |
 | `scripture_style_json` | object\|null | Global style_json applied to every scripture verse; `null` = template defaults |
 | `scripture_ref_style_json` | object\|null | Global style_json for the scripture reference line; optional `pos:{x,y}` free-positions it; `null` = default right-aligned bottom |
+| `lowerthird_font_scale` | number | Global lower-third font scale, percent (1–150, default 100). Lower-third font size = `(authored size or 72) × pct/100`; rides every content payload as `ltFontScale` (a fraction). Set via Settings → Lower Third / `output.lowerthird.setFontScale`. Fullscreen unaffected |
 | `operator_preview_layout` | 'stacked'\|'sidebyside' | Unused in current UI — reserved |
 | `keyboard_modifier` | 'meta'\|'ctrl'\|'alt' | Modifier key for transport shortcuts (default: 'meta' on macOS, 'ctrl' on Windows) |
 | `keyboard_go` | string | Key char for GO shortcut (default: 'g') |
@@ -967,6 +970,7 @@ All renderer↔main communication is via `ipcRenderer.invoke` / `ipcMain.handle`
 | `stage.getSchedule()` | `[{id, text, showAt, clearAt}]` | Current pending scheduled messages (absolute epoch-ms anchors; `clearAt:null` = no auto-clear). |
 | `stage.schedule({text, afterSeconds?, atHour?, atMinute?, clearAfter?})` | `[scheduled]` | Queue a timed message. `afterSeconds` = countdown from now; `atHour`/`atMinute` = next occurrence of that wall-clock time; `clearAfter` (seconds, falsy=never) = auto-clear. Main resolves the absolute `showAt`/`clearAt` once via `resolveAnchors` and returns the updated list. |
 | `stage.unschedule(id)` | `[scheduled]` | Remove a pending scheduled message; returns the updated list. |
+| `lowerthird.setFontScale(pct)` | `number` | Set the **global lower-third font scale** (percent, clamped 1–150). Persists the `lowerthird_font_scale` setting and re-broadcasts the live slide so on-air lower-thirds restyle instantly. Returns the clamped value. Only the lower-third output is affected; fullscreen ignores it. |
 | `channels.list()` | `[output_channel rows]` | — |
 | `channels.create(data)` | `channel` | NDI channels open a BrowserWindow immediately; screen channels wait for monitor assignment. `data.ndi_audio_muted` / `data.show_program` / `data.show_graphics` (all default 1). |
 | `channels.update(id, data)` | `channel` | A change to **only** `show_program`/`show_graphics` is applied at runtime (`setChannelContentMode` → `content:mode`, no window recreate); any other field rebuilds via `syncChannel`. Emits `output:state-changed`. |
@@ -993,6 +997,7 @@ All renderer↔main communication is via `ipcRenderer.invoke` / `ipcMain.handle`
   media: { path, type: 'video'|'audio'|'image', loop: bool } | undefined,  // foreground media item
   transport: { active, startAt, pausedAt, loop, muted } | undefined,       // snapshot for media items
   elements: [ ...presentationElements ] | undefined,  // presentation slide — multi-element canvas (see §21)
+  ltFontScale: number | undefined,  // global lower-third font scale as a FRACTION (e.g. 0.7); fullscreen.js ignores it, lowerthird.js multiplies its font size by it. Default 1 when absent.
 }
 ```
 
@@ -1342,10 +1347,10 @@ Mission-control broadcast engineering: dark, precise, information-dense. Not a c
 | `text-headline-md` | Inter | 20px / 28px | 600 | — |
 | `text-display-lg` | Inter | 32px / 40px | 700 | tracking -0.02em |
 | `text-body-md` | Inter | 14px / 20px | 400 | — |
-| `text-label-sm` | JetBrains Mono | 12px / 16px | 500 | uppercase tracking-[0.05em] |
-| `font-label-sm` | JetBrains Mono | — | — | Pairs with `text-label-sm` |
+| `text-label-sm` | Inter | 12px / 16px | 500 | uppercase tracking-[0.05em] |
+| `font-label-sm` | Inter | — | — | Pairs with `text-label-sm` |
 
-JetBrains Mono is NOT bundled in `src/fonts/`. It falls back to `ui-monospace`. Used for all labels, chips, badges, buttons.
+Typography is **Inter everywhere** — body, headlines, and all labels/chips/badges/buttons/timecodes. The `mono`, `label-sm`, and `timecode-lg` Tailwind font-family tokens all resolve to Inter (the token names are retained for the many existing `font-mono` usages, but they are NOT a monospace face); apply the `tabular-nums` utility where digits must align. Inter is bundled in `src/fonts/` (`fonts.css`, loaded in the operator and every output window), so it always resolves. No monospace face is used for UI chrome. Operator UI, `index.css` (`.section-chip`, `.kbd-hint`), the stage template (`stage.css`), and the `PreviewLivePanel` monitor labels all use Inter.
 
 Oswald is reserved for output window templates only. Do not use in operator UI.
 
@@ -1508,6 +1513,8 @@ The program-output templates animate slide changes via `transitions.js` (`window
 `lowerthird.html` uses `#lowerthird` (bottom-anchored, full-width) containing `#text` and `#copyright` — the **lyric band** (program slide) only, handled by `lowerthird.js`. Background is always `transparent` by default — JS sets it from `ltBar` via `buildBarBg()`. The `applyStyle(el, s)` function applies all style properties including the bar background. Clear and logo events explicitly reset `ltDiv.style.background = 'transparent'`. The broadcast-graphics overlay is a separate, shared layer (`graphics-overlay.js`).
 
 **Default alignment is CENTRE.** A song whose style is all-default saves `style_json = null` (because `align:'center'` is itself the default — see `styleIsDefault`), so the output receives `styleJson: null`. `applyStyle` therefore treats a missing style as `{}` and defaults `text-align` to `center` (and `#text` is `width:100%`, `lowerthird.css` also defaults centre) — it must **not** early-return on null, or centred lyrics render left (fullscreen never hit this because `fullscreen.css #text` already defaults centre). The same `style?.align || 'center'` default lives in the operator monitor (`PreviewLivePanel.MonitorFrame`) and the broadcast name/title bug (`graphics-overlay.js`, width:100%). Explicit left/right makes the style non-default → saved → applied normally.
+
+**Lower-third font scale (global).** A single `lowerthird_font_scale` setting (percent, 1–150, default 100) lets the operator run a smaller relative font on the lower-third than on the screen. Main attaches it to every content payload as `ltFontScale` (a fraction); `lowerthird.js applyStyle(el, s, scale)` and `renderWithRuns(text, runs, scale)` multiply the font size by it, computing the base as `(Number(s.fontSize) || 72) * scale` — the **72px base mirrors the fullscreen default**, so at 100% the lower-third matches the screen and the operator dials it down. Fullscreen ignores `ltFontScale`. The operator preview mirrors this exactly: `PreviewLivePanel.MonitorFrame` takes an `ltFontScale` prop (only applied when `isLT`) using the same `(fontSize||72)*scale` formula, and passes the scale into the shared `renderWithRuns(text, runs, scale)` (in `SongEditor.jsx`, default `scale=1` so the editor/fullscreen are unaffected). `OperatorView` loads the scale in `loadScriptureDefaults` (so the preview refreshes on return from Settings, like every other global default); the real NDI/screen output updates **live** because `setLowerthirdFontScale` re-broadcasts the current slide. Authored in Settings → **Lower Third** (`LowerthirdSettings.jsx`).
 
 ### Broadcast-graphics overlay + lower-third content modes
 The broadcast-graphics overlay (name/title bug, ticker, custom HTML, countdown) renders on **every non-stage output window** (fullscreen + lower-third) via the shared `src/output/graphics-overlay.js`, so an In-Room graphic overlays the auditorium program and an Online graphic overlays the NDI feed. It injects its own `#cue-gfx` DOM (high z-index, `pointer-events:none`) and listens for `graphic:update`. Each window receives `overlayForKind(kind)` — its own destination-kind occupant of each `{screen,ndi}` slot (`getGraphicsWindowInfos` classifies by windows-map key: numeric = screen/in-room, `ndi-*` = online) — so a different graphic can run In-Room vs Online (§7 overlay-bus note). The output templates take a single occupant per slot, unchanged in shape.

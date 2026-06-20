@@ -77,6 +77,9 @@ contextBridge.exposeInMainWorld('cue', {
       schedule:    (msg)        => ipcRenderer.invoke('output:stage:schedule:add', msg),
       unschedule:  (id)         => ipcRenderer.invoke('output:stage:schedule:remove', id),
     },
+    lowerthird: {
+      setFontScale: (pct) => ipcRenderer.invoke('output:lowerthird:set-font-scale', pct),
+    },
     graphic: {
       show: (data) => ipcRenderer.invoke('output:graphic:show', data),
       hide: (target) => ipcRenderer.invoke('output:graphic:hide', target),

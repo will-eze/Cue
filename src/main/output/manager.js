@@ -20,6 +20,25 @@ let multiviewInterval = null;
 let multiviewRefCount = 0;
 let outputsEnabled = true;
 
+// Lower-third font scale — a GLOBAL percentage of the authored (fullscreen) font
+// size, applied ONLY to the lower-third output so the L3 band can run a smaller
+// relative font than the screen. Lazy-loaded from settings and cached; it rides
+// every content payload as `ltFontScale` (a fraction). fullscreen.js ignores the
+// field; lowerthird.js multiplies its effective font size by it. Default 100 (=
+// same size as the screen, which is the neutral baseline).
+let lowerthirdFontScale = null; // percent | null until first read
+function getLtFontScalePct() {
+  if (lowerthirdFontScale == null) {
+    try {
+      const row = getDb().prepare('SELECT value FROM settings WHERE key = ?').get('lowerthird_font_scale');
+      lowerthirdFontScale = row ? Number(JSON.parse(row.value)) : 100;
+    } catch { lowerthirdFontScale = 100; }
+    if (!isFinite(lowerthirdFontScale) || lowerthirdFontScale <= 0) lowerthirdFontScale = 100;
+  }
+  return lowerthirdFontScale;
+}
+function ltFontScaleFraction() { return getLtFontScalePct() / 100; }
+
 // Stage display state — persisted so newly opened stage windows can be synced.
 // `scheduled` holds timed messages as ABSOLUTE epoch-ms anchors ({ showAt, clearAt });
 // main resolves the anchors once and the stage template ticks them against Date.now()
@@ -489,7 +508,7 @@ function sendStateToWindow(win, channel) {
   }
 
   // content
-  win.webContents.send('slide:update', { ...state.livePayload, type: 'content', transport: { ...transport } });
+  win.webContents.send('slide:update', { ...state.livePayload, type: 'content', transport: { ...transport }, ltFontScale: ltFontScaleFraction() });
 }
 
 function sendCurrentState() {
@@ -548,7 +567,7 @@ function sendCurrentState() {
 
   // displayMode === 'content'
   for (const win of getAllOutputWindows()) {
-    win.webContents.send('slide:update', { ...state.livePayload, type: 'content', transport: { ...transport }, transition });
+    win.webContents.send('slide:update', { ...state.livePayload, type: 'content', transport: { ...transport }, transition, ltFontScale: ltFontScaleFraction() });
   }
 }
 
@@ -865,6 +884,31 @@ export function setStageMessage(text) {
   for (const win of getAllStageWindows()) {
     win.webContents.send('stage:message', { text: stageState.message });
   }
+}
+
+// Persist the global lower-third font scale (percent) and push it live so any
+// on-air lower-third updates immediately with no reload. fullscreen output is
+// unaffected (it ignores `ltFontScale`).
+export function setLowerthirdFontScale(pct) {
+  const n = Math.max(1, Math.min(150, Math.round(Number(pct) || 100)));
+  lowerthirdFontScale = n;
+  try {
+    getDb().prepare(
+      'INSERT INTO settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value'
+    ).run('lowerthird_font_scale', JSON.stringify(n));
+  } catch {}
+  // Re-broadcast the current slide (no transition) so live L3 windows re-style now.
+  if (state.displayMode === 'content' && state.livePayload) {
+    for (const win of getAllOutputWindows()) {
+      if (win.isDestroyed()) continue;
+      win.webContents.send('slide:update', {
+        ...state.livePayload, type: 'content',
+        transport: { ...transport }, transition: { type: 'none' },
+        ltFontScale: ltFontScaleFraction(),
+      });
+    }
+  }
+  return n;
 }
 
 export function stageTimerCmd(action, seconds) {

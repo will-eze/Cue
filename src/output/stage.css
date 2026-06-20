@@ -50,7 +50,7 @@ html, body, #app {
   display: flex;
   align-items: center;
   gap: 0.6vmin;
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: 1.1vmin;
   font-weight: 500;
   letter-spacing: 0.2em;
@@ -162,7 +162,7 @@ html, body, #app {
   top: 0; left: 0; right: 0;
   padding: 1.5% 6% 0;
   text-align: center;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: clamp(16px, 2.4vw, 34px);
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -208,7 +208,7 @@ html, body, #app {
 
 #next-caption {
   flex-shrink: 0;
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: 1.1vmin;
   font-weight: 500;
   letter-spacing: 0.18em;
@@ -244,7 +244,7 @@ html, body, #app {
 #message-text { width: 100%; overflow: hidden; }
 
 .msg-empty {
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: 1.2vmin;
   font-weight: 500;
   letter-spacing: 0.14em;

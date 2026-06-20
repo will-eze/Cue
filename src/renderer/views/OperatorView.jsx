@@ -119,6 +119,7 @@ export default function OperatorView({
   const [scriptureBgPath, setScriptureBgPath] = useState(null);   // resolved media path | null
   const [slideBgPath, setSlideBgPath] = useState(null);           // global presentation/slide bg | null
   const [songGlobalBgPath, setSongGlobalBgPath] = useState(null); // live global song default bg | null
+  const [ltFontScale, setLtFontScale] = useState(1);              // global lower-third font scale (fraction)
 
   const loadScriptureDefaults = useCallback(async () => {
     const styleJson = await window.cue.settings.get('scripture_style_json');
@@ -136,6 +137,9 @@ export default function OperatorView({
     const songBgId = await window.cue.settings.get('global_bg_song_id');
     const songBg = songBgId ? await window.cue.media.get(songBgId) : null;
     setSongGlobalBgPath(songBg?.path || null);
+    // Global lower-third font scale (percent → fraction); mirrors output/lowerthird.js.
+    const ltPct = Number(await window.cue.settings.get('lowerthird_font_scale'));
+    setLtFontScale(isFinite(ltPct) && ltPct > 0 ? ltPct / 100 : 1);
   }, []);
   useEffect(() => { loadScriptureDefaults(); }, [loadScriptureDefaults, bgRefreshTick]);
 
@@ -1135,6 +1139,7 @@ export default function OperatorView({
             onGoAtPreviewSlide={handleGoAtPreviewSlide}
             onSelectLiveSlide={handleSelectLiveSlide}
             channelTemplate={channelTemplate}
+            ltFontScale={ltFontScale}
             allChannels={channels}
             liveChannelIdx={liveChannelIdx}
             onSetLiveChannelIdx={setLiveChannelIdx}

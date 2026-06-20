@@ -92,6 +92,9 @@ export function registerOutputIpc() {
   ipcMain.handle('output:stage:schedule:add',    (_e, m)  => outputManager.scheduleStageMessage(m));
   ipcMain.handle('output:stage:schedule:remove', (_e, id) => outputManager.unscheduleStageMessage(id));
 
+  // ── Lower-third appearance ─────────────────────────────────────────────────
+  ipcMain.handle('output:lowerthird:set-font-scale', (_e, pct) => outputManager.setLowerthirdFontScale(pct));
+
   // ── Broadcast graphics overlay (independent of the program bus) ────────────
   ipcMain.handle('output:graphic:show', (_e, data) => outputManager.graphicShow(data));
   ipcMain.handle('output:graphic:hide', (_e, target) => outputManager.graphicHide(target));

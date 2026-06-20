@@ -60,7 +60,7 @@ Semantic colours:
 - **Green (`tertiary`)** = GO / success / active output
 - **Error** = destructive actions
 
-Typography: Inter for body/headlines. Labels/chips/badges/buttons: `"JetBrains Mono", ui-monospace, monospace` (NOT bundled — always include fallback). **Oswald is output templates only**, never the operator UI.
+Typography: **Inter everywhere** — body, headlines, AND labels/chips/badges/buttons/timecodes (the `mono`/`label-sm`/`timecode-lg` tokens all map to Inter; use the `tabular-nums` utility where digits must align). Inter is bundled (`src/fonts/fonts.css`, loaded in the operator + every output window) so it always resolves; keep a sans fallback. Do NOT reintroduce JetBrains Mono or any monospace face for UI chrome. **Oswald is output templates only**, never the operator UI.
 
 ---
 

@@ -14,7 +14,7 @@ function esc(str) {
   return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function renderWithRuns(text, runs) {
+function renderWithRuns(text, runs, scale = 1) {
   if (!text) return '';
   if (!runs || runs.length === 0) return esc(text).replace(/\n/g, '<br>');
   const sorted = [...runs].sort((a, b) => a.start - b.start);
@@ -29,7 +29,9 @@ function renderWithRuns(text, runs) {
     if (run.underline)  st.push('text-decoration:underline');
     if (run.color)      st.push('color:' + run.color);
     if (run.fontFamily) st.push("font-family:" + String(run.fontFamily).replace(/"/g, "'"));
-    if (run.fontSize)   st.push('font-size:' + Number(run.fontSize) + 'px');
+    // Inline run sizes scale with the global L3 font scale too, so a styled span
+    // stays proportional to the surrounding lyric.
+    if (run.fontSize)   st.push('font-size:' + (Number(run.fontSize) * scale) + 'px');
     const inner = esc(text.slice(s, e)).replace(/\n/g, '<br>');
     html += st.length ? '<span style="' + st.join(';') + '">' + inner + '</span>' : inner;
     pos = e;
@@ -58,7 +60,7 @@ function buildBarBg(ltBar) {
   return `linear-gradient(to top, rgba(${r},${g},${b},${op}) 0%, rgba(${r},${g},${b},${(op * 0.7).toFixed(2)}) 70%, transparent 100%)`;
 }
 
-function applyStyle(el, s) {
+function applyStyle(el, s, scale = 1) {
   // Treat a missing style_json as the app default rather than bailing out: a song
   // whose style is all-default saves style_json = null, and the default alignment
   // is CENTRE. The old early-return left #text on the CSS default (left), so
@@ -74,7 +76,10 @@ function applyStyle(el, s) {
   el.style.fontWeight      = s.bold         ? '700' : '400';
   el.style.fontStyle       = s.italic       ? 'italic' : 'normal';
   el.style.textDecoration  = s.underline    ? 'underline' : 'none';
-  el.style.fontSize        = s.fontSize     ? s.fontSize + 'px' : '';
+  // L3 font size = the authored size × the global L3 scale. The base mirrors the
+  // FULLSCREEN default (72px in fullscreen.css) when the style sets none, so at
+  // 100% the lower-third matches the screen and the operator can dial it smaller.
+  el.style.fontSize        = (Number(s.fontSize) || 72) * scale + 'px';
   el.style.color           = s.color        || '';
   el.style.lineHeight      = s.lineSpacing  ? String(s.lineSpacing) : '';
   el.style.letterSpacing   = s.letterSpacing ? s.letterSpacing + 'em' : '';
@@ -111,9 +116,13 @@ function renderProgram(payload) {
   // band (a presentation is a full-canvas item with no lyric band in v1).
   if (type === 'clear' || type === 'logo' || payload.media || payload.elements) { clearBand(); return; }
 
+  // Global lower-third font scale (fraction of the authored/fullscreen size). Main
+  // attaches it to every content payload; default to 1 when absent.
+  const scale = (Number(payload.ltFontScale) > 0) ? Number(payload.ltFontScale) : 1;
+
   textEl.className = '';
-  applyStyle(textEl, styleJson);
-  textEl.innerHTML = renderWithRuns(text || '', styleJson?.runs);
+  applyStyle(textEl, styleJson, scale);
+  textEl.innerHTML = renderWithRuns(text || '', styleJson?.runs, scale);
   copyright.textContent = copy || '';
   // Scripture attribution ("John 1:1 (KJV)") right-aligned + stylable; song copyright inherits.
   applyCopyrightStyle(copyright, payload.copyrightStyle, payload.copyrightAlign === 'right' ? 'right' : '');

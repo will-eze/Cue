@@ -44,10 +44,13 @@ module.exports = {
       },
       fontFamily: {
         sans:          ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
-        mono:          ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+        // Labels/chips/badges/buttons/timecodes use Inter (with `tabular-nums` where
+        // numbers must align). The `mono` token name is retained for the many
+        // `font-mono` usages, but maps to Inter — not a monospace face.
+        mono:          ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
         // Named type-scale aliases matching the Stitch design system
-        'label-sm':    ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
-        'timecode-lg': ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+        'label-sm':    ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+        'timecode-lg': ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
         'headline-md': ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
         'display-lg':  ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
       },

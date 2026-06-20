@@ -72,7 +72,9 @@ function esc(str) {
   return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-export function renderWithRuns(text, runs) {
+// `scale` (default 1) multiplies inline run font sizes — used by the lower-third
+// preview to mirror the global L3 font scale; all other callers leave it at 1.
+export function renderWithRuns(text, runs, scale = 1) {
   if (!text) return '';
   if (!runs || runs.length === 0) return esc(text).replace(/\n/g, '<br>');
   const sorted = [...runs].sort((a, b) => a.start - b.start);
@@ -87,7 +89,7 @@ export function renderWithRuns(text, runs) {
     if (run.underline)  st.push('text-decoration:underline');
     if (run.color)      st.push(`color:${run.color}`);
     if (run.fontFamily) st.push(`font-family:${String(run.fontFamily).replace(/"/g, "'")}`);
-    if (run.fontSize)   st.push(`font-size:${Number(run.fontSize)}px`);
+    if (run.fontSize)   st.push(`font-size:${Number(run.fontSize) * scale}px`);
     const inner = esc(text.slice(s, e)).replace(/\n/g, '<br>');
     html += st.length ? `<span style="${st.join(';')}">${inner}</span>` : inner;
     pos = e;
