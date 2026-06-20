@@ -175,6 +175,11 @@ src/
 │   │                         with faststart + concurrent-fragments → ready); in-memory entries Map keyed by video id;
 │   │                         getStatus/getReadyPath/cancel; wipeCache() (quit + startup). Emits youtube:status.
 │   │
+│   ├── update/
+│   │   └── updater.js        In-app updater (Option A). Anonymous GitHub Releases API (public repo). checkForUpdate()
+│   │                         takes /releases[0] (prerelease-aware), picks asset by extension; downloadUpdate() streams
+│   │                         to temp w/ update:progress, strips macOS quarantine xattr, opens installer, quits.
+│   │
 │   └── output/
 │       ├── manager.js        Output window registry. go/clear/logo dispatch. No operator capture loop —
 │       │                     the operator live monitor renders from payload, not capturePage.
@@ -1140,6 +1145,19 @@ The downloaded file is **ephemeral** — never a `media_assets` row (see §6 *Na
 | `exportBackup()` | No args — shows a native save dialog (`Cue <date>.cuebackup`), then writes a gzipped tar of `cue.db` + `media/`. Returns `{ok, path, size}` or `{ok:false, canceled}`. |
 | `importBackup()` | No args — shows an open dialog, validates the archive, swaps `cue.db` + `media/` + `fonts/` on disk (media + user-font paths rewritten to this install), then relaunches the app (~400ms after the IPC reply). Returns `{ok}`, `{ok:false, canceled}`, or `{ok:false, error}` (validation/extract failure leaves the install untouched). |
 | `factoryReset()` | No args — closes the DB, deletes `cue.db` (+wal/shm), `media/` and `fonts/`, then relaunches as a fresh install (DB + bibles + GHS re-seed on boot). Returns `{ok:true}`. Danger Zone "Reset app to defaults". |
+| `checkForUpdate()` | Queries the GitHub Releases API for `will-eze/Cue` (public repo, anonymous HTTPS — no token/`gh`). Returns `{ok, current, latest, isNewer, asset:{name,url,size}, notes}` when a newer version exists, `{ok, current, latest, upToDate:true}` when current, or `{ok:false, current, error}`. |
+| `downloadUpdate(asset)` | Streams the asset to `temp/`, emits `update:progress`, strips the macOS quarantine xattr, opens the installer, then quits (~1.2s later). Returns `{ok, path}` or `{ok:false, error}`. |
+
+### In-app updater (`src/main/update/updater.js`)
+
+Manual "Check for Updates" button in the SettingsView footer (`UpdateChecker`). Pulls Cue's own updates across an owned fleet with **no auth, token, `gh` CLI, or Apple Developer ID** — the repo is public, so the GitHub Releases API and asset downloads are anonymous HTTPS, like a browser.
+
+- **Takes `/releases[0]`, never `/releases/latest`** — CI publishes *prereleases*, and `/latest` skips them, so `/latest` would always report "up to date". Index 0 is the newest release including prereleases.
+- **Asset chosen by file extension** (`.dmg` on darwin, `…Setup.exe` on win32), never a name template — real asset names are `Cue.dmg` and `Cue-<ver>.Setup.exe` (no arch/version pattern on the dmg). No `RELEASES`/`.nupkg` are uploaded.
+- Version compare is `semver` against `app.getVersion()`. Tag `v26.1.0` → `26.1.0`.
+- Download follows GitHub's redirect to the asset host (Node's `https.get` does **not** auto-follow), streams to disk (never buffers), reports `{received,total}`.
+- **Strips `com.apple.quarantine`** after download: a quarantine xattr on the ad-hoc-signed app is a Gatekeeper hard-block. (Programmatic Node downloads usually aren't quarantined — unlike browser downloads — so this is belt-and-braces, verified working on macOS.)
+- This is "Option A" (manual one-click). True silent auto-update ("Option B", Electron `autoUpdater`) is blocked on macOS by ad-hoc signing (needs a $99 Apple Developer ID + notarization); Windows could do it but the squirrel `RELEASES`/`.nupkg` artifacts aren't published. See `deployment-handoff.md` for signing.
 
 ### `window.cue.bible`
 
@@ -1213,6 +1231,7 @@ Subscribe to main→renderer events. Returns an unsubscribe function — call it
 - `shortcut:next` / `shortcut:prev` — reserved for future hardware remote
 - `remote:command` — a network-control command `{action, itemId?, slideIdx?}` (action: go/clear/logo/next/prev/live/select). OperatorView dispatches it to the same handlers the keyboard uses, so the remote stays in sync with the UI.
 - `stage:schedule` — `{scheduled: [{id, text, showAt, clearAt}]}`, fired after any scheduled-stage-message add/remove/prune. The `StagePanel` pending list follows it; the stage output windows also receive it directly. Anchors are absolute epoch-ms (`clearAt:null` = open-ended).
+- `update:progress` — `{received, total}` during an in-app update download. The SettingsView `UpdateChecker` shows it as a percentage. See §7 *In-app updater*.
 
 ---
 
