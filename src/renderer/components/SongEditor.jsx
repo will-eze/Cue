@@ -261,6 +261,11 @@ function parseSong(rawText) {
     new RegExp('^\\[(.{1,40}?)\\]\\s*:?\\s*$'),
     new RegExp(`^(${KW})\\s*\\d*\\s*:$`, 'i'),
     new RegExp(`^(${KW})\\s*\\d*$`, 'i'),
+    // Keyword + optional number + optional voice-part words, then a directive
+    // separator — "Verse 1 Solo- Devine", "Chorus- Unison", "Chorus (Men)".
+    // The voice-part words ([A-Za-z] only, no punctuation) sit BETWEEN the number
+    // and the separator, so a real lyric line ("I lay it all down, …") can't match.
+    new RegExp(`^(${KW})\\s*\\d*(?:\\s+[A-Za-z][A-Za-z'’]*){0,4}\\s*[-–—:/(].*$`, 'i'),
   ];
   const TYPE_MAP = {
     verse:'verse',v:'verse',chorus:'chorus',ch:'chorus',refrain:'refrain',
