@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { FormattingToolbar, DEFAULT_STYLE, styleIsDefault } from './SongEditor';
+import UndoRedoButtons from './UndoRedoButtons';
+import useEditHistory, { useUndoRedoKeys } from '../utils/useEditHistory';
 import { useFonts } from '../utils/fonts';
 
 function esc(s) {
@@ -626,7 +628,10 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
   const isEdit = !!graphic?.id;
   const fonts = useFonts();
 
-  const [draft, setDraft] = useState(() => {
+  // The whole working graphic is one `draft` object — routed through the shared
+  // undo/redo history. Edits coalesce per field (see `set`/`setCd` below) so a
+  // typing run or slider drag is a single undo step; preset application is one step.
+  const initialDraft = useMemo(() => {
     let parsed = {};
     try { parsed = graphic?.style_json ? (typeof graphic.style_json === 'string' ? JSON.parse(graphic.style_json) : graphic.style_json) : {}; } catch {}
     return {
@@ -647,7 +652,11 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
       timeStyle: { ...freshTimeStyle(), ...(parsed.time    || {}) },
       msgStyle:  { ...freshMsgStyle(),  ...(parsed.message || {}) },
     };
-  });
+  }, [graphic]);
+  const docH = useEditHistory(initialDraft);
+  const draft = docH.state;
+  const setDraft = (updater) => docH.set(updater);
+  useUndoRedoKeys(docH.undo, docH.redo);
   const [target, setTarget] = useState('name'); // editing target — LT: 'name'|'title'; countdown: 'time'|'message'
   const [replayKey, setReplayKey] = useState(0);
   const [showGallery, setShowGallery] = useState(false);
@@ -680,8 +689,10 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const set = (patch) => setDraft((d) => ({ ...d, ...patch }));
-  const setCd = (patch) => setDraft((d) => ({ ...d, cd: { ...d.cd, ...patch } }));
+  // Coalesce edits by the field(s) touched, so a typing run / slider drag on one
+  // field collapses to a single undo step but switching fields starts a new one.
+  const set = (patch) => docH.set((d) => ({ ...d, ...patch }), Object.keys(patch).sort().join(','));
+  const setCd = (patch) => docH.set((d) => ({ ...d, cd: { ...d.cd, ...patch } }), 'cd:' + Object.keys(patch).sort().join(','));
   const isLT = draft.kind === 'lower_third';
   const isTK = draft.kind === 'ticker';
   const isCD = draft.kind === 'countdown';
@@ -751,9 +762,12 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
               </button>
             ))}
           </div>
-          <button onClick={onClose} className="text-on-surface-variant hover:text-on-surface cursor-pointer">
-            <span className="material-symbols-outlined">close</span>
-          </button>
+          <div className="flex items-center gap-sm">
+            <UndoRedoButtons undo={docH.undo} redo={docH.redo} canUndo={docH.canUndo} canRedo={docH.canRedo} />
+            <button onClick={onClose} className="text-on-surface-variant hover:text-on-surface cursor-pointer">
+              <span className="material-symbols-outlined">close</span>
+            </button>
+          </div>
         </div>
 
         {/* Styling toolbar (lower third + ticker + countdown) */}

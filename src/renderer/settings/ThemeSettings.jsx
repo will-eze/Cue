@@ -7,6 +7,7 @@ import {
   DEFAULT_STYLE,
 } from '../components/SongEditor';
 import MediaPickerModal from '../components/MediaPickerModal';
+import { useToast } from '../components/Toast';
 import BackgroundLibrary from './BackgroundLibrary.jsx';
 import { themeKind } from '../utils/themeSort';
 import { mediaUrl } from '../utils/mediaUrl';
@@ -393,6 +394,7 @@ function ThemeEditorModal({ theme, initialCategory, onClose, onSaved }) {
 // ─── Theme Card ────────────────────────────────────────────────────────────
 
 function ThemeCard({ theme, services, onEdit, onDelete, onApplied, bgThumb, songApply = true }) {
+  const toast = useToast();
   const [selectedServiceId, setSelectedServiceId] = useState(services[0]?.id ?? null);
   const [applyBg, setApplyBg] = useState(true);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -425,18 +427,37 @@ function ThemeCard({ theme, services, onEdit, onDelete, onApplied, bgThumb, song
     onApplied?.();
   }
 
+  // A media theme downloads its background on first apply, so wrap the apply in a
+  // spinner toast (debounced — gradient/local-media/text themes finish instantly
+  // and never flash one). The success count comes from the resolved value.
   async function handleApplyToRundown() {
     if (!selectedServiceId) return;
-    const count = await window.cue.themes.applyToRundown(theme.id, selectedServiceId, applyBg);
-    showFeedback(`Applied to ${count} song${count !== 1 ? 's' : ''} in rundown`);
-    onApplied?.();
+    try {
+      await toast.promise(
+        window.cue.themes.applyToRundown(theme.id, selectedServiceId, applyBg),
+        {
+          pending: `Applying “${theme.name}” to rundown…`,
+          success: (count) => `Applied to ${count} song${count !== 1 ? 's' : ''} in rundown`,
+          error: `Couldn't apply “${theme.name}”`,
+        },
+      );
+      onApplied?.();
+    } catch { /* error toast already shown */ }
   }
 
   async function handleApplyToAllSongs() {
     if (!confirm(`Apply theme "${theme.name}" to every song in the library?\nThis overwrites each song's style while preserving inline text formatting.`)) return;
-    const count = await window.cue.themes.applyToAllSongs(theme.id, applyBg);
-    showFeedback(`Applied to ${count} song${count !== 1 ? 's' : ''}`);
-    onApplied?.();
+    try {
+      await toast.promise(
+        window.cue.themes.applyToAllSongs(theme.id, applyBg),
+        {
+          pending: `Applying “${theme.name}” to all songs…`,
+          success: (count) => `Applied to ${count} song${count !== 1 ? 's' : ''}`,
+          error: `Couldn't apply “${theme.name}”`,
+        },
+      );
+      onApplied?.();
+    } catch { /* error toast already shown */ }
   }
 
   return (

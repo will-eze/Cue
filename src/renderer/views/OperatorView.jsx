@@ -12,6 +12,14 @@ import CommandPalette from '../components/CommandPalette';
 
 const isMac = window.cue.platform === 'darwin';
 
+// Positional verse/slide jump keys. Pressing the Nth key airs slide N of the
+// current LIVE item (Q = slide 1, W = slide 2, …). The set is fixed and
+// positional so the muscle memory is the same every service; it deliberately
+// skips the bare operator keys (S = search, G = GO, L = Logo) and never overlaps
+// the 1–9 Scene keys. Armed via Settings (off by default — bare letters can fire
+// mid-task). Lowercase for matching; rendered uppercase in the slide legend.
+const JUMP_KEYS = ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', 'a', 'd', 'f', 'h', 'j', 'k'];
+
 // Display label for a slide. Songs get numbered section labels (Verse 1/Verse 2);
 // scripture/media slides keep their own label (the reference / type).
 function labelForSlide(item, slides, idx) {
@@ -92,6 +100,11 @@ export default function OperatorView({
 
   const [previewItemId, setPreviewItemId] = useState(null);
   const [previewSlideIdx, setPreviewSlideIdx] = useState(0);
+  // Multi-select set for bulk operations (Ctrl/Cmd-click, Shift-range, marquee).
+  // Distinct from previewItemId/liveItemId — selection drives bulk delete/background,
+  // not what's on air. The anchor seeds Shift-range selection.
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const selectionAnchorRef = useRef(null);
   const [liveItemId, setLiveItemId] = useState(null);
   const [liveSlideIdx, setLiveSlideIdx] = useState(0);
   // Scripture sent live directly from the Scriptures tab — a synthetic live source
@@ -230,7 +243,10 @@ export default function OperatorView({
   // armBare = the bare G/Esc keys are ARMED (hot): a single press goes straight to air.
   // Disarmed, those bare keys are ignored (the operator uses the ⌘ shortcuts or the
   // on-screen buttons instead) so a stray keystroke can't air. Default armed.
-  const shortcutsRef = useRef({ modifier: isMac ? 'meta' : 'ctrl', go: 'g', clear: 'c', logo: 'l', live: 'o', armBare: true });
+  // armJump mirrors armBare but for the positional verse-jump keys (Q W E …). Off
+  // by default — kept as state too so the SlideList legend can show/hide the hints.
+  const [jumpArmed, setJumpArmed] = useState(false);
+  const shortcutsRef = useRef({ modifier: isMac ? 'meta' : 'ctrl', go: 'g', clear: 'c', logo: 'l', live: 'o', armBare: true, armJump: false });
   useEffect(() => {
     Promise.all([
       window.cue.settings.get('keyboard_modifier'),
@@ -239,7 +255,8 @@ export default function OperatorView({
       window.cue.settings.get('keyboard_logo'),
       window.cue.settings.get('keyboard_live'),
       window.cue.settings.get('shortcut_arm_bare'),
-    ]).then(([mod, go, clear, logo, live, armBare]) => {
+      window.cue.settings.get('shortcut_arm_jump'),
+    ]).then(([mod, go, clear, logo, live, armBare, armJump]) => {
       shortcutsRef.current = {
         modifier: mod  ?? (isMac ? 'meta' : 'ctrl'),
         go:       go   ?? 'g',
@@ -247,7 +264,9 @@ export default function OperatorView({
         logo:     logo  ?? 'l',
         live:     live  ?? 'o',
         armBare:  armBare !== false, // default armed when unset
+        armJump:  armJump === true,  // default disarmed when unset
       };
+      setJumpArmed(armJump === true);
     });
   }, [bgRefreshTick]);
 
@@ -336,7 +355,7 @@ export default function OperatorView({
   }, [serviceData]);
 
   const shortcutRef = useRef({});
-  shortcutRef.current = { handleNextSlide, handlePrevSlide, handleNextLiveSlide, handlePrevLiveSlide, handleGo, handleClear, handleLogo, handleLiveToggle, handleRemoteSelect, handleAutoAdvance };
+  shortcutRef.current = { handleNextSlide, handlePrevSlide, handleNextLiveSlide, handlePrevLiveSlide, handleGo, handleClear, handleLogo, handleLiveToggle, handleRemoteSelect, handleAutoAdvance, handleJumpLiveSlide, handleSelectAll, handleEscape };
 
   if (transportRef) {
     transportRef.current = { go: handleGo, clear: handleClear, logo: handleLogo };
@@ -376,6 +395,15 @@ export default function OperatorView({
       // still be typed into text fields.
       if (e.key === '?') { e.preventDefault(); setHelpOpen((v) => !v); return; }
 
+      // ⌘A / Ctrl+A → select all rundown items. Keyed on the OS clipboard modifier
+      // (independent of the configurable shortcut modifier), and only when nothing is
+      // text-selected — the input guard above already excludes text fields, and an
+      // active text selection defers to the native select-all (clipboard rule).
+      if ((isMac ? e.metaKey : e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'a') {
+        if (window.getSelection()?.toString()) return;
+        e.preventDefault(); shortcutRef.current.handleSelectAll(); return;
+      }
+
       const h = shortcutRef.current;
       const sc = shortcutsRef.current;
       const hasModifier = sc.modifier === 'meta' ? e.metaKey : sc.modifier === 'alt' ? e.altKey : e.ctrlKey;
@@ -407,6 +435,14 @@ export default function OperatorView({
         if (scene) { e.preventDefault(); window.cue.scenes.apply(scene); return; }
       }
 
+      // Positional verse/slide jump (Q W E R …) — only when armed. Jumps the LIVE
+      // item straight to slide N and airs it (direct on-air navigation). The key
+      // set excludes S/G/L so it never shadows the bare keys.
+      if (sc.armJump) {
+        const jIdx = JUMP_KEYS.indexOf(e.key.toLowerCase());
+        if (jIdx >= 0) { e.preventDefault(); h.handleJumpLiveSlide(jIdx); return; }
+      }
+
       // Space always drives LIVE forward; arrow keys drive PREVIEW (auto-GOing
       // when preview and live are the same item).
       if (e.key === ' ')                          { e.preventDefault(); h.handleNextLiveSlide(); }
@@ -414,7 +450,7 @@ export default function OperatorView({
       else if (e.key === 'ArrowUp')               { e.preventDefault(); h.handlePrevSlide(); }
       // Bare Esc/G fire on a single press only when ARMED; disarmed, they're ignored
       // (a stray press can't air) and just flash a notice.
-      else if (e.key === 'Escape')                { if (sc.armBare) h.handleClear(); else flashDisarmed('clear'); }
+      else if (e.key === 'Escape')                { h.handleEscape(); }
       else if (e.key === 'g' || e.key === 'G')    { if (sc.armBare) h.handleGo(); else flashDisarmed('go'); }
       else if (e.key === 'l' || e.key === 'L')    { h.handleLogo(); }
       else if (e.key === 's' || e.key === 'S')    { e.preventDefault(); focusSearchRef.current?.(); }
@@ -627,6 +663,71 @@ export default function OperatorView({
   function handleClickItem(item) {
     setPreviewItemId(item.id);
     setPreviewSlideIdx(0);
+    // A plain click resets multi-selection and reseeds the range anchor.
+    setSelectedIds(new Set());
+    selectionAnchorRef.current = item.id;
+  }
+
+  // Ctrl/Cmd-click toggles one item in the selection (and moves the range anchor).
+  function handleToggleSelect(itemId) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemId)) next.delete(itemId); else next.add(itemId);
+      return next;
+    });
+    selectionAnchorRef.current = itemId;
+  }
+
+  // Shift-click selects the contiguous range from the anchor to the clicked item.
+  function handleRangeSelect(itemId) {
+    const items = serviceData?.items || [];
+    const anchor = selectionAnchorRef.current ?? previewItemId ?? items[0]?.id;
+    const a = items.findIndex((i) => i.id === anchor);
+    const b = items.findIndex((i) => i.id === itemId);
+    if (a < 0 || b < 0) { handleToggleSelect(itemId); return; }
+    const [lo, hi] = a < b ? [a, b] : [b, a];
+    setSelectedIds(new Set(items.slice(lo, hi + 1).map((i) => i.id)));
+  }
+
+  // Marquee drag → replace the selection with the dragged-over ids.
+  function handleSetSelection(ids) { setSelectedIds(new Set(ids)); }
+  function handleClearSelection() { setSelectedIds(new Set()); }
+
+  // ⌘A / Ctrl+A → select every rundown item.
+  function handleSelectAll() {
+    const items = serviceData?.items || [];
+    if (!items.length) return;
+    setSelectedIds(new Set(items.map((i) => i.id)));
+  }
+
+  // Bulk delete every selected item (one confirm lives in the bulk-action bar).
+  async function handleBulkDelete() {
+    const ids = [...selectedIds];
+    if (!ids.length) return;
+    for (const id of ids) await window.cue.services.removeItem(id);
+    if (selectedIds.has(previewItemId)) setPreviewItemId(null);
+    if (selectedIds.has(liveItemId)) setLiveItemId(null);
+    setSelectedIds(new Set());
+    refreshService();
+    toast.show({ message: `${ids.length} item${ids.length !== 1 ? 's' : ''} removed from rundown`, duration: 4000 });
+  }
+
+  // Bulk apply a background to the selected song/scripture items. Locked songs and
+  // non-song/scripture items are skipped (per the cascade rules); the count is reported.
+  async function handleBulkSetBackground(mediaId) {
+    const items = (serviceData?.items || []).filter((i) => selectedIds.has(i.id));
+    let applied = 0, skipped = 0;
+    for (const it of items) {
+      const eligible = (it.item_type === 'song' && !it.song?.background_locked) || it.item_type === 'scripture';
+      if (!eligible) { skipped++; continue; }
+      await window.cue.services.setItemBackground(it.id, mediaId);
+      applied++;
+    }
+    refreshService();
+    toast.show({
+      message: `Background set for ${applied} item${applied !== 1 ? 's' : ''}${skipped ? ` · ${skipped} skipped` : ''}`,
+      duration: 5000,
+    });
   }
 
   function handleDoubleClickItem(item) {
@@ -643,6 +744,22 @@ export default function OperatorView({
   }
 
   function handleSelectPreviewSlide(idx) { setPreviewSlideIdx(idx); }
+
+  // Verse/slide jump (positional Q W E … keys). Jumps the LIVE item straight to
+  // slide `idx` and airs it — direct on-air navigation, the way Space/arrows step
+  // but to an arbitrary verse. Keeps preview in sync when it's the same item.
+  // Out-of-range presses (a key past the last slide) are a no-op.
+  function handleJumpLiveSlide(idx) {
+    if (!liveItem) return;
+    const slides = getSlides(liveItem);
+    if (idx < 0 || idx >= slides.length) return;
+    const payload = buildPayload(liveItem, idx);
+    if (payload) {
+      window.cue.output.go(payload);
+      setLiveSlideIdx(idx);
+      if (liveItemId === previewItemId) setPreviewSlideIdx(idx);
+    }
+  }
 
   function handleGoAtPreviewSlide(idx) {
     if (!previewItem) return;
@@ -729,6 +846,13 @@ export default function OperatorView({
   function handleClear() {
     window.cue.output.clear();
     setLiveScripture(null);
+  }
+
+  // Esc: cancel a multi-selection first (a UI "escape"); only when nothing is
+  // selected does Esc fall through to its Clear-output behaviour (armed/flash gate).
+  function handleEscape() {
+    if (selectedIds.size > 0) { setSelectedIds(new Set()); return; }
+    if (shortcutsRef.current.armBare) handleClear(); else flashDisarmed('clear');
   }
 
   function handleLogo() { window.cue.output.logo(); }
@@ -1026,6 +1150,39 @@ export default function OperatorView({
     }
   }
 
+  // Double-click a media asset → set it as the background of the currently
+  // previewed song/scripture item (a per-slot override, resolved through the
+  // background cascade so the row thumbnail + output update together). Locked songs
+  // are skipped with a notice; the confirmation toast carries an Undo that restores
+  // the prior override.
+  async function handleSetPreviewBackground(assetId) {
+    const item = serviceData?.items?.find((i) => i.id === previewItemId);
+    if (!item) { toast.show({ message: 'Select a song to preview first', duration: 3000 }); return; }
+    if (item.item_type !== 'song' && item.item_type !== 'scripture') {
+      toast.show({ message: 'Backgrounds apply to songs and scripture only', duration: 3000 });
+      return;
+    }
+    const label = item.song?.title || item.scripture?.reference || item.title || 'item';
+    if (item.song?.background_locked) {
+      toast.show({ message: `“${label}” background is locked`, duration: 4000 });
+      return;
+    }
+    const prevOverrideId = item.background_override?.id ?? null;
+    await window.cue.services.setItemBackground(item.id, assetId);
+    refreshService();
+    toast.show({
+      message: `Background set for “${label}”`,
+      duration: 6000,
+      action: {
+        label: 'Undo',
+        onClick: async () => {
+          await window.cue.services.setItemBackground(item.id, prevOverrideId);
+          refreshService();
+        },
+      },
+    });
+  }
+
   async function handleAddMedia(assetId) {
     const item = { item_type: 'media', ref_id: assetId };
     if (!activeServiceId) {
@@ -1146,8 +1303,15 @@ export default function OperatorView({
             serviceData={serviceData}
             previewItemId={previewItemId}
             liveItemId={liveItemId}
+            selectedIds={selectedIds}
             onSelectService={onServiceChange}
             onClickItem={handleClickItem}
+            onToggleSelect={handleToggleSelect}
+            onRangeSelect={handleRangeSelect}
+            onSetSelection={handleSetSelection}
+            onClearSelection={handleClearSelection}
+            onBulkDelete={handleBulkDelete}
+            onBulkSetBackground={handleBulkSetBackground}
             onDoubleClickItem={handleDoubleClickItem}
             onReorder={handleReorder}
             onRemoveItem={handleRemoveItem}
@@ -1190,6 +1354,7 @@ export default function OperatorView({
             allChannels={channels}
             liveChannelIdx={liveChannelIdx}
             onSetLiveChannelIdx={setLiveChannelIdx}
+            jumpKeys={jumpArmed ? JUMP_KEYS : null}
           />
         </div>
       </div>
@@ -1231,6 +1396,7 @@ export default function OperatorView({
           detectDownloadPct={detectDownloadPct}
           onToggleDetect={onToggleDetect}
           onAddMedia={handleAddMedia}
+          onSetPreviewBackground={handleSetPreviewBackground}
           onAddYouTube={handleAddYouTube}
           onAddPresentation={handleAddPresentation}
           onSongSave={refreshService}

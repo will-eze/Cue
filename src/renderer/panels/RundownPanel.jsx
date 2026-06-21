@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
@@ -8,13 +8,14 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import ContextMenu from '../components/ContextMenu';
+import { useToast } from '../components/Toast';
 import MediaPickerModal from '../components/MediaPickerModal';
 import SongPreviewModal from '../components/SongPreviewModal';
 import SongEditor from '../components/SongEditor';
 import PresentationEditor from '../components/PresentationEditor';
 import MediaThumb from '../components/MediaThumb';
 
-function SortableItem({ item, index, bgPath, isPreview, isLive, onClick, onDoubleClick, onContextMenu }) {
+function SortableItem({ item, index, bgPath, isPreview, isLive, isSelected, onClick, onDoubleClick, onContextMenu }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: item.id });
 
@@ -68,13 +69,14 @@ function SortableItem({ item, index, bgPath, isPreview, isLive, onClick, onDoubl
   return (
     <div
       ref={setNodeRef}
+      data-item-id={item.id}
       style={{ ...dndStyle, minHeight: 44 }}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
       className={`flex items-center gap-sm px-sm cursor-pointer border-b border-outline-variant/20 group ${
         isLive ? 'tally-live' : isPreview ? 'tally-preview' : 'tally-idle hover:bg-surface-variant'
-      }`}
+      } ${isSelected ? 'ring-1 ring-inset ring-primary/70 bg-primary/5' : ''}`}
     >
       {/* Drag handle */}
       <button
@@ -310,10 +312,20 @@ function AutoAdvanceModal({ item, onApply, onClose }) {
 
 export default function RundownPanel({
   services, activeServiceId, serviceData, previewItemId, liveItemId,
-  onSelectService, onClickItem, onDoubleClickItem, onReorder, onRemoveItem, onDuplicate,
+  selectedIds = new Set(),
+  onSelectService, onClickItem, onToggleSelect, onRangeSelect, onSetSelection, onClearSelection,
+  onBulkDelete, onBulkSetBackground,
+  onDoubleClickItem, onReorder, onRemoveItem, onDuplicate,
   onAddService, onRenameService, onDeleteService, onRefresh, onSongEdited, resolveItemBg,
 }) {
+  const toast = useToast();
   const [contextMenu, setContextMenu] = useState(null);
+  const [marquee, setMarquee] = useState(null);          // {x0,y0,x1,y1} viewport coords while dragging
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [bulkBgPicker, setBulkBgPicker] = useState(false);
+  const listRef = useRef(null);
+  const panelRef = useRef(null);
+  const suppressClickRef = useRef(false); // set after a marquee so the trailing click doesn't reset selection
   const [showNewService, setShowNewService] = useState(false);
   const [newServiceTitle, setNewServiceTitle] = useState('');
   const [renamingService, setRenamingService] = useState(false);
@@ -334,6 +346,22 @@ export default function RundownPanel({
       .catch(() => {});
   }, [serviceData?.id]);
 
+  // When the selection clears (e.g. after a bulk delete), drop the inline confirm.
+  useEffect(() => { if (selectedIds.size < 2) setConfirmBulkDelete(false); }, [selectedIds]);
+
+  // Click outside the rundown panel deselects. Disabled while the bulk background
+  // picker is open (it's a portal'd modal that operates ON the selection, so clicking
+  // it must not wipe what it's about to apply to). Row/marquee/bar clicks are inside
+  // the panel and so never trigger it.
+  useEffect(() => {
+    if (selectedIds.size === 0 || bulkBgPicker) return;
+    const onDown = (e) => {
+      if (panelRef.current && !panelRef.current.contains(e.target)) onClearSelection?.();
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [selectedIds, bulkBgPicker, onClearSelection]);
+
   const items = serviceData?.items || [];
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -342,6 +370,49 @@ export default function RundownPanel({
     const oldIdx = items.findIndex((i) => i.id === active.id);
     const newIdx = items.findIndex((i) => i.id === over.id);
     onReorder(arrayMove(items, oldIdx, newIdx).map((i) => i.id));
+  }
+
+  // Modifier-aware row click: Ctrl/Cmd toggles, Shift selects a range, plain click
+  // previews (and clears selection). Suppressed right after a marquee drag so the
+  // trailing click doesn't wipe the freshly-dragged selection.
+  function handleRowClick(item, e) {
+    if (suppressClickRef.current) return;
+    if (e.metaKey || e.ctrlKey) onToggleSelect?.(item.id);
+    else if (e.shiftKey) onRangeSelect?.(item.id);
+    else onClickItem(item);
+  }
+
+  // Marquee select — a drag starting on empty list space (never on a drag handle,
+  // which dnd-kit owns). Tracks in viewport coords and hit-tests each row's rect;
+  // dnd-kit reorder is unaffected because its listeners live only on the handle.
+  function handleListMouseDown(e) {
+    if (e.button !== 0 || e.target.closest('.drag-handle')) return;
+    const startX = e.clientX, startY = e.clientY;
+    let started = false;
+    const onMove = (ev) => {
+      if (!started && Math.abs(ev.clientX - startX) + Math.abs(ev.clientY - startY) < 6) return;
+      started = true;
+      const box = { x0: startX, y0: startY, x1: ev.clientX, y1: ev.clientY };
+      setMarquee(box);
+      const lo = Math.min(box.y0, box.y1), hi = Math.max(box.y0, box.y1);
+      const ids = [];
+      listRef.current?.querySelectorAll('[data-item-id]').forEach((el) => {
+        const r = el.getBoundingClientRect();
+        if (r.bottom >= lo && r.top <= hi) {
+          const id = Number(el.getAttribute('data-item-id'));
+          if (!Number.isNaN(id)) ids.push(id);
+        }
+      });
+      onSetSelection?.(ids);
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      if (started) { suppressClickRef.current = true; setTimeout(() => { suppressClickRef.current = false; }, 0); }
+      setMarquee(null);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
   }
 
   async function handleCreateService() {
@@ -387,7 +458,7 @@ export default function RundownPanel({
   }
 
   return (
-    <div className="flex flex-col h-full bg-surface-container-low rounded-lg border border-outline-variant/30 overflow-hidden">
+    <div ref={panelRef} className="flex flex-col h-full bg-surface-container-low rounded-lg border border-outline-variant/30 overflow-hidden">
       {/* Panel header */}
       <div className="px-md py-sm bg-surface-container-high border-b border-outline-variant/30 shrink-0">
         <h2 className="text-label-sm font-label-sm uppercase tracking-widest text-on-surface-variant mb-1">Rundown</h2>
@@ -511,8 +582,56 @@ export default function RundownPanel({
         </div>
       )}
 
+      {/* Bulk-action bar — appears when 2+ items are selected (Ctrl/Shift-click or marquee) */}
+      {selectedIds.size >= 2 && (
+        <div className="flex items-center gap-sm px-sm py-xs bg-primary-container/10 border-b border-primary/30 shrink-0">
+          <span className="text-[10px] font-label-sm uppercase tracking-[0.05em] text-primary shrink-0">
+            {selectedIds.size} selected
+          </span>
+          <div className="flex-1" />
+          {confirmBulkDelete ? (
+            <>
+              <span className="text-[10px] font-mono text-error uppercase tracking-[0.04em] shrink-0">Delete {selectedIds.size}?</span>
+              <button
+                onClick={() => { setConfirmBulkDelete(false); onBulkDelete?.(); }}
+                className="text-[10px] font-mono text-error hover:text-error/70 cursor-pointer uppercase tracking-[0.04em] border border-error/40 px-sm py-[2px] rounded transition-colors"
+              >Yes</button>
+              <button
+                onClick={() => setConfirmBulkDelete(false)}
+                className="text-[10px] font-mono text-on-surface-variant hover:text-on-surface cursor-pointer uppercase tracking-[0.04em] transition-colors"
+              >No</button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => setBulkBgPicker(true)}
+                title="Set the same background on all selected songs/scripture"
+                className="flex items-center gap-xs text-[10px] font-label-sm uppercase tracking-[0.05em] text-on-surface-variant hover:text-on-surface border border-outline-variant/40 hover:border-outline-variant rounded px-sm py-[2px] cursor-pointer transition-colors"
+              >
+                <span className="material-symbols-outlined text-[13px]">wallpaper</span>
+                Background
+              </button>
+              <button
+                onClick={() => setConfirmBulkDelete(true)}
+                className="flex items-center gap-xs text-[10px] font-label-sm uppercase tracking-[0.05em] text-error/80 hover:text-error border border-error/40 hover:border-error rounded px-sm py-[2px] cursor-pointer transition-colors"
+              >
+                <span className="material-symbols-outlined text-[13px]">delete</span>
+                Delete
+              </button>
+              <button
+                onClick={() => onClearSelection?.()}
+                title="Clear selection"
+                className="w-5 h-5 flex items-center justify-center text-on-surface-variant/60 hover:text-on-surface cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[14px]">close</span>
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Items list */}
-      <div className="flex-1 overflow-y-auto">
+      <div ref={listRef} onMouseDown={handleListMouseDown} className="flex-1 overflow-y-auto relative">
         {!serviceData ? (
           <div className="flex flex-col items-center justify-center h-full gap-xs text-outline-variant px-lg text-center">
             <span className="material-symbols-outlined text-4xl">calendar_today</span>
@@ -544,7 +663,8 @@ export default function RundownPanel({
                   bgPath={resolveItemBg ? resolveItemBg(item) : null}
                   isPreview={item.id === previewItemId}
                   isLive={item.id === liveItemId}
-                  onClick={() => onClickItem(item)}
+                  isSelected={selectedIds.has(item.id)}
+                  onClick={(e) => handleRowClick(item, e)}
                   onDoubleClick={() => onDoubleClickItem(item)}
                   onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, item }); }}
                 />
@@ -609,9 +729,22 @@ export default function RundownPanel({
                     onClick: async () => {
                       // setBg:true — a media or CSS-gradient theme applies its background;
                       // a text-only theme leaves backgrounds untouched (handled in db/themes.js).
-                      await window.cue.themes.applyToSong(t.id, contextMenu.item.song.id, true);
-                      onRefresh?.();
+                      // A media theme downloads its background on first apply, so wrap in a
+                      // spinner toast (debounced — instant gradient/local themes don't flash).
+                      const songName = contextMenu.item.song?.title || 'song';
+                      const songId = contextMenu.item.song.id;
                       setContextMenu(null);
+                      try {
+                        await toast.promise(
+                          window.cue.themes.applyToSong(t.id, songId, true),
+                          {
+                            pending: `Applying “${t.name}” to ${songName}…`,
+                            success: `Applied “${t.name}” to ${songName}`,
+                            error: `Couldn't apply “${t.name}”`,
+                          },
+                        );
+                        onRefresh?.();
+                      } catch { /* error toast already shown */ }
                     },
                   })),
                 },
@@ -727,6 +860,31 @@ export default function RundownPanel({
           presentationId={editPresentation.id || null}
           onClose={() => setEditPresentation(null)}
           onSave={() => { setEditPresentation(null); onRefresh?.(); }}
+        />
+      )}
+
+      {/* Bulk background picker — applies to every selected song/scripture (locked skipped) */}
+      {bulkBgPicker && (
+        <MediaPickerModal
+          initialId={null}
+          onSelect={async (asset) => {
+            await onBulkSetBackground?.(asset?.id ?? null);
+            setBulkBgPicker(false);
+          }}
+          onClose={() => setBulkBgPicker(false)}
+        />
+      )}
+
+      {/* Marquee selection rectangle (viewport-fixed while dragging) */}
+      {marquee && (
+        <div
+          className="fixed z-[70] border border-primary/70 bg-primary/10 pointer-events-none rounded-sm"
+          style={{
+            left: Math.min(marquee.x0, marquee.x1),
+            top: Math.min(marquee.y0, marquee.y1),
+            width: Math.abs(marquee.x1 - marquee.x0),
+            height: Math.abs(marquee.y1 - marquee.y0),
+          }}
         />
       )}
     </div>

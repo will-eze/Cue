@@ -17,7 +17,8 @@ import DangerZone from '../settings/DangerZone';
 
 // Each section is an anchor in the scrollable settings column. Clicking a nav
 // item smooth-scrolls to it; the active item is tracked as the user scrolls.
-const SECTIONS = [
+// Exported so the top bar can offer each subsection as a pinnable deep-link tab.
+export const SECTIONS = [
   { id: 'channels',   icon: 'cast',            label: 'Channels' },
   { id: 'logo',       icon: 'image',           label: 'Logo' },
   { id: 'background', icon: 'wallpaper',       label: 'Background' },
@@ -149,10 +150,10 @@ function SettingsFooter() {
   );
 }
 
-export default function SettingsView({ activeServiceId, onRundownCleared, onRundownDeleted, onLibraryCleared }) {
+export default function SettingsView({ activeServiceId, onRundownCleared, onRundownDeleted, onLibraryCleared, initialSection = null, sectionNonce = 0 }) {
   const scrollRef = useRef(null);
   const sectionRefs = useRef({});
-  const [active, setActive] = useState(SECTIONS[0].id);
+  const [active, setActive] = useState(initialSection || SECTIONS[0].id);
 
   function scrollTo(id) {
     const el = sectionRefs.current[id];
@@ -166,6 +167,14 @@ export default function SettingsView({ activeServiceId, onRundownCleared, onRund
     root.scrollTo({ top, behavior: 'smooth' });
     setActive(id);
   }
+
+  // Deep-link: when a pinned top-bar subsection tab routes here, jump to that
+  // section. The nonce re-fires the scroll even when the same section is re-picked.
+  useEffect(() => {
+    if (!initialSection) return;
+    const id = requestAnimationFrame(() => scrollTo(initialSection));
+    return () => cancelAnimationFrame(id);
+  }, [initialSection, sectionNonce]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Highlight the section currently in view as the operator scrolls.
   useEffect(() => {

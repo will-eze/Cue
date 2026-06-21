@@ -89,7 +89,9 @@ export default function ShortcutsOverlay({ onClose }) {
           <Group title="Navigation">
             <Row keys={['↓']} desc="Next preview slide / item" />
             <Row keys={['↑']} desc="Previous preview slide / item" />
+            <Row keys={['Q', 'W', 'E', '…']} desc="Jump LIVE to slide 1, 2, 3 … (when armed)" />
             <Row keys={['S']} desc="Focus the song search bar" />
+            <Row keys={[`${isMac ? '⌘' : 'Ctrl'}+A`]} desc="Select all rundown items" />
             <Row keys={[`${isMac ? '⌘' : 'Ctrl'}+.`, `${isMac ? '⌘' : 'Ctrl'}+,`]} desc="Next / previous Library tab" />
           </Group>
           <Group title="Scenes">

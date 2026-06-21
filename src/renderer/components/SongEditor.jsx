@@ -2,6 +2,9 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import MediaPickerModal from './MediaPickerModal';
 import ThemePickerModal from './ThemePickerModal';
+import UndoRedoButtons from './UndoRedoButtons';
+import useEditHistory, { useUndoRedoKeys } from '../utils/useEditHistory';
+import { useToast } from './Toast';
 import { mediaUrl } from '../utils/mediaUrl';
 import { sectionOrdinals, SLIDE_BREAK } from '../utils/sectionLabels';
 import { useFonts } from '../utils/fonts';
@@ -1057,20 +1060,38 @@ function PasteView({ onParse, onCancel }) {
 // ─── Main editor ──────────────────────────────────────────────────────────
 
 export default function SongEditor({ song, onClose, onSave }) {
-  const [title, setTitle]         = useState('');
-  const [author, setAuthor]       = useState('');
-  const [copyright, setCopyright] = useState('');
-  const [sections, setSections]   = useState([]);
+  const toast = useToast();
+  // Undoable working document: the song fields, sections, style, background, lock
+  // and tag selection. Ephemeral UI (active section, preview, modals, saving) stays
+  // in plain useState below. Lyric edits flush into `sections` via history (coalesced
+  // per section) on input; undo/redo then re-renders the contentEditable DOM.
+  const doc = useEditHistory({
+    title: '', author: '', copyright: '', sections: [],
+    style: { ...DEFAULT_STYLE }, songBackground: null, bgLocked: false, selectedTagIds: [],
+  });
+  const { title, author, copyright, sections, style, songBackground, bgLocked, selectedTagIds } = doc.state;
+  const field = (name, coalesce) => (updater) =>
+    doc.set((d) => ({ ...d, [name]: typeof updater === 'function' ? updater(d[name]) : updater }), coalesce);
+  const setTitle        = field('title', 'title');
+  const setAuthor       = field('author', 'author');
+  const setCopyright    = field('copyright', 'copyright');
+  const setStyle        = field('style', 'style');
+  const setSongBackground = field('songBackground');
+  const setBgLocked     = field('bgLocked');
+  const setSelectedTagIds = field('selectedTagIds');
+  const setSections = (updater, coalesce) =>
+    doc.set((d) => ({ ...d, sections: typeof updater === 'function' ? updater(d.sections) : updater }), coalesce);
+  const [domSyncTick, setDomSyncTick] = useState(0); // bumped on undo/redo to re-render the active section's DOM
+  const handleUndo = useCallback(() => { doc.undo(); setDomSyncTick((t) => t + 1); }, [doc.undo]);
+  const handleRedo = useCallback(() => { doc.redo(); setDomSyncTick((t) => t + 1); }, [doc.redo]);
+  useUndoRedoKeys(handleUndo, handleRedo);
+
   const [allTags, setAllTags]     = useState([]);
-  const [selectedTagIds, setSelectedTagIds] = useState([]);
   const [addingTag, setAddingTag] = useState(false);
   const [newTagName, setNewTagName] = useState('');
-  const [style, setStyle]         = useState({ ...DEFAULT_STYLE });
   const [activeSectionKey, setActiveSectionKey] = useState(null);
   const [previewContent, setPreviewContent] = useState({ text: '', runs: [] });
   const [previewPart, setPreviewPart]       = useState(0); // which split part the preview shows
-  const [songBackground, setSongBackground] = useState(null);
-  const [bgLocked, setBgLocked]             = useState(false); // pin this song's bg above override + global
   const [globalBg, setGlobalBg]             = useState(null);  // live global song default (preview/badge fallback)
   const [showBgPicker, setShowBgPicker]     = useState(false);
   const [showThemePicker, setShowThemePicker] = useState(false);
@@ -1146,23 +1167,32 @@ export default function SongEditor({ song, onClose, onSave }) {
     if (!theme) return;
     try {
       const themeStyle = theme.style_json ? JSON.parse(theme.style_json) : null;
-      if (themeStyle) setStyle({ ...DEFAULT_STYLE, ...themeStyle });
-      // Loading a theme is explicit — its background replaces the current one.
+      if (!themeStyle) return;
+      const nextStyle = { ...DEFAULT_STYLE, ...themeStyle };
+      // Loading a theme is explicit and ONE undo step — its background replaces the
+      // current one. (A bgRef download applies the style now and the bg after fetch.)
       if (theme.background_id && theme.background_path) {
-        setSongBackground({ id: theme.background_id, path: theme.background_path, filename: theme.background_filename });
-      } else if (themeStyle?.bgRef) {
+        doc.set((d) => ({ ...d, style: nextStyle, songBackground: { id: theme.background_id, path: theme.background_path, filename: theme.background_filename } }));
+      } else if (themeStyle.bgRef) {
         // Media theme whose background isn't downloaded yet — resolve the
         // background-library item (download → media asset), same as applyTo*.
+        doc.set((d) => ({ ...d, style: nextStyle }));
         setBgLoading(true);
         try {
           const asset = await window.cue.backgrounds.download(themeStyle.bgRef);
           setSongBackground({ id: asset.id, path: asset.path, filename: asset.filename });
-        } catch { /* leave the current background on failure */ }
+        } catch {
+          // Style applied, but the background couldn't be fetched — surface it
+          // instead of silently leaving the old background in place.
+          toast.error(`Couldn't download “${theme.name}” background`);
+        }
         finally { setBgLoading(false); }
-      } else if (themeStyle?.bgCss) {
+      } else if (themeStyle.bgCss) {
         // A CSS-gradient theme carries its background in the style; clear any media
         // background so the gradient (style.bgCss) actually shows.
-        setSongBackground(null);
+        doc.set((d) => ({ ...d, style: nextStyle, songBackground: null }));
+      } else {
+        doc.set((d) => ({ ...d, style: nextStyle }));
       }
     } catch {}
   }
@@ -1172,24 +1202,25 @@ export default function SongEditor({ song, onClose, onSave }) {
     window.cue.tags.list().then(setAllTags);
     if (song?.id) {
       window.cue.songs.get(song.id).then((s) => {
-        setTitle(s.title);
-        setAuthor(s.author || '');
-        setCopyright(s.copyright || '');
-        setSelectedTagIds((s.tags || []).map((t) => t.id));
-        if (s.default_background_id && s.background_path) {
-          setSongBackground({ id: s.default_background_id, path: s.background_path, filename: s.background_filename });
-        }
-        setBgLocked(!!s.background_locked);
         const firstStyled = (s.sections || []).find((sec) => sec.style_json);
+        let st = { ...DEFAULT_STYLE };
         if (firstStyled) {
           const { runs: _r, ...base } = JSON.parse(firstStyled.style_json);
-          setStyle({ ...DEFAULT_STYLE, ...base });
+          st = { ...DEFAULT_STYLE, ...base };
         }
         const mapped = (s.sections || []).map((sec) => {
           const parsed = sec.style_json ? JSON.parse(sec.style_json) : {};
           return { ...sec, _key: String(sec.id), content: sec.content || '', runs: parsed.runs || [] };
         });
-        setSections(mapped);
+        // Seed via reset() so the DB hydrate is the baseline, not an undo step.
+        doc.reset({
+          title: s.title, author: s.author || '', copyright: s.copyright || '',
+          sections: mapped, style: st,
+          songBackground: (s.default_background_id && s.background_path)
+            ? { id: s.default_background_id, path: s.background_path, filename: s.background_filename } : null,
+          bgLocked: !!s.background_locked,
+          selectedTagIds: (s.tags || []).map((t) => t.id),
+        });
         if (mapped.length) {
           setActiveSectionKey(mapped[0]._key);
           setPreviewContent({ text: mapped[0].content, runs: mapped[0].runs });
@@ -1198,16 +1229,18 @@ export default function SongEditor({ song, onClose, onSave }) {
     } else {
       // New song — optionally seed title/lyrics from a prefill (e.g. the Paste
       // Song List modal creating a song it couldn't find in the library).
-      if (song?.prefillTitle) setTitle(song.prefillTitle);
       const seeded = (song?.prefillSections || []).filter((s) => (s.content || '').trim());
       const mapped = seeded.length
         ? seeded.map((s) => ({ _key: newKey(), type: s.type || 'verse', content: s.content, runs: [] }))
         : [{ _key: newKey(), type: 'verse', content: '', runs: [] }];
-      setSections(mapped);
+      doc.reset({
+        title: song?.prefillTitle || '', author: '', copyright: '',
+        sections: mapped, style: { ...DEFAULT_STYLE }, songBackground: null, bgLocked: false, selectedTagIds: [],
+      });
       setActiveSectionKey(mapped[0]._key);
       setPreviewContent({ text: mapped[0].content, runs: mapped[0].runs });
     }
-  }, [song?.id]);
+  }, [song?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Escape to close
   useEffect(() => {
@@ -1227,11 +1260,35 @@ export default function SongEditor({ song, onClose, onSave }) {
     }
   }, [activeSectionKey]);
 
+  // Undo / redo restores `sections` but the contentEditable is uncontrolled, so its
+  // DOM must be re-rendered from the (restored) active section. Bumped only by
+  // handleUndo/handleRedo. If the active section was removed by the undo, fall back
+  // to the first remaining section.
+  useEffect(() => {
+    if (domSyncTick === 0 || !editorRef.current) return;
+    // Read from this render's closure (post-undo `sections`/`activeSectionKey`), not
+    // refs, so it never depends on effect ordering.
+    let sec = sections.find((s) => s._key === activeSectionKey);
+    if (!sec) {
+      sec = sections[0];
+      if (sec) setActiveSectionKey(sec._key);
+    }
+    if (sec) {
+      editorRef.current.innerHTML = renderEditorHtml(sec.content || '', sec.runs || []);
+      setPreviewContent({ text: sec.content || '', runs: sec.runs || [] });
+      setPreviewPart(0);
+    }
+  }, [domSyncTick]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Flush active section to sections array ──────────────────────────────
+  // Skips when the DOM matches the stored section, so a structural action that
+  // flushes first doesn't push a spurious (no-change) undo step.
   const flushActiveSection = useCallback(() => {
     const key = activeKeyRef.current;
     if (!key || !editorRef.current) return;
     const { text, runs } = extractContentAndRuns(editorRef.current);
+    const cur = sectionsRef.current.find((s) => s._key === key);
+    if (cur && cur.content === text && JSON.stringify(cur.runs || []) === JSON.stringify(runs || [])) return;
     setSections((prev) => prev.map((s) => s._key === key ? { ...s, content: text, runs } : s));
   }, []);
 
@@ -1244,10 +1301,15 @@ export default function SongEditor({ song, onClose, onSave }) {
   }
 
   // ── Editor input handler ────────────────────────────────────────────────
+  // Updates the live preview AND flushes into `sections` through history, coalesced
+  // per section so a typing run is one undo step. The contentEditable is uncontrolled
+  // (innerHTML set imperatively), so this state update never disturbs the caret.
   function handleEditorInput() {
     if (!editorRef.current) return;
     const { text, runs } = extractContentAndRuns(editorRef.current);
     setPreviewContent({ text, runs });
+    const key = activeKeyRef.current;
+    if (key) setSections((prev) => prev.map((s) => s._key === key ? { ...s, content: text, runs } : s), `lyrics:${key}`);
   }
 
   function handleEditorPaste(e) {
@@ -1314,19 +1376,18 @@ export default function SongEditor({ song, onClose, onSave }) {
   }
 
   function deleteSection(key) {
-    setSections((prev) => {
-      const next = prev.filter((s) => s._key !== key);
-      if (key === activeKeyRef.current && next.length) {
-        const idx = Math.max(0, prev.findIndex((s) => s._key === key) - 1);
-        const newActive = next[Math.min(idx, next.length - 1)];
-        setActiveSectionKey(newActive._key);
-        setPreviewContent({ text: newActive.content, runs: newActive.runs });
-      } else if (!next.length) {
-        setActiveSectionKey(null);
-        setPreviewContent({ text: '', runs: [] });
-      }
-      return next;
-    });
+    const prev = sections;
+    const next = prev.filter((s) => s._key !== key);
+    setSections(next);
+    if (key === activeKeyRef.current && next.length) {
+      const idx = Math.max(0, prev.findIndex((s) => s._key === key) - 1);
+      const newActive = next[Math.min(idx, next.length - 1)];
+      setActiveSectionKey(newActive._key);
+      setPreviewContent({ text: newActive.content, runs: newActive.runs });
+    } else if (!next.length) {
+      setActiveSectionKey(null);
+      setPreviewContent({ text: '', runs: [] });
+    }
   }
 
   function handleDragEnd({ active, over }) {
@@ -1452,6 +1513,8 @@ export default function SongEditor({ song, onClose, onSave }) {
 
           <div className="flex-1" />
 
+          <UndoRedoButtons undo={handleUndo} redo={handleRedo} canUndo={doc.canUndo} canRedo={doc.canRedo} />
+
           {themeList.length > 0 && (
             <button
               onClick={() => setShowThemePicker(true)}
@@ -1529,10 +1592,11 @@ export default function SongEditor({ song, onClose, onSave }) {
                         Locking while only the global fallback is showing captures it onto
                         the song, so the lock freezes the image you actually see (not black). */}
                     <button
-                      onClick={() => setBgLocked((v) => {
-                        const next = !v;
-                        if (next && !songBackground && globalBg) setSongBackground({ ...globalBg });
-                        return next;
+                      onClick={() => doc.set((d) => {
+                        // Lock + (capture global onto the song) is one undo step.
+                        const next = !d.bgLocked;
+                        const songBackground = (next && !d.songBackground && globalBg) ? { ...globalBg } : d.songBackground;
+                        return { ...d, bgLocked: next, songBackground };
                       })}
                       title={bgLocked
                         ? 'Background locked — pinned above rundown overrides and the global default. Click to unlock.'

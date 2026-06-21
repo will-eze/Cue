@@ -616,6 +616,7 @@ export default function PreviewLivePanel({
   channelTemplate,
   ltFontScale = 1,
   allChannels = [], liveChannelIdx = 0, onSetLiveChannelIdx,
+  jumpKeys = null,
 }) {
   const previewSlides = previewItem ? getSlides(previewItem) : [];
   const liveSlides    = liveItem    ? getSlides(liveItem)    : [];
@@ -871,6 +872,7 @@ export default function PreviewLivePanel({
                 activeIdx={liveSlideIdx}
                 onSelect={onSelectLiveSlide}
                 variant="live"
+                jumpKeys={jumpKeys}
               />
             ) : (
               <div className="flex items-center justify-center h-full text-label-sm font-label-sm text-outline-variant uppercase tracking-widest">

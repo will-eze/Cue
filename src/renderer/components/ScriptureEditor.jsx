@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import MediaPickerModal from './MediaPickerModal';
 import ThemePickerModal from './ThemePickerModal';
+import UndoRedoButtons from './UndoRedoButtons';
+import useEditHistory, { useUndoRedoKeys } from '../utils/useEditHistory';
+import { useToast } from './Toast';
 import { mediaUrl } from '../utils/mediaUrl';
 import { useFonts } from '../utils/fonts';
 import {
@@ -21,10 +24,24 @@ const SAMPLE_TEXT =
 const SAMPLE_REF = 'John 3:16';
 
 export default function ScriptureEditor({ onClose, onSave }) {
-  const [style, setStyle] = useState({ ...DEFAULT_STYLE });        // verse text style
-  const [refStyle, setRefStyle] = useState({ ...DEFAULT_STYLE, align: 'right' }); // reference line style
+  const toast = useToast();
+  // Undoable working document: verse style, reference style, default background.
+  // The target toggle / preview template / modals below are ephemeral UI, not history.
+  const doc = useEditHistory({
+    style: { ...DEFAULT_STYLE },
+    refStyle: { ...DEFAULT_STYLE, align: 'right' },
+    background: null,
+  });
+  const { style, refStyle, background } = doc.state;
+  const setStyle = (updater) =>
+    doc.set((d) => ({ ...d, style: typeof updater === 'function' ? updater(d.style) : updater }), 'sc:style');
+  const setRefStyle = (updater) =>
+    doc.set((d) => ({ ...d, refStyle: typeof updater === 'function' ? updater(d.refStyle) : updater }), 'sc:refStyle');
+  const setBackground = (value) =>
+    doc.set((d) => ({ ...d, background: typeof value === 'function' ? value(d.background) : value }));
+  useUndoRedoKeys(doc.undo, doc.redo);
+
   const [target, setTarget] = useState('verse');                  // 'verse' | 'reference'
-  const [background, setBackground] = useState(null); // { id, path, filename } | null
   const [previewTemplate, setPreviewTemplate] = useState('fullscreen');
   const [showBgPicker, setShowBgPicker] = useState(false);
   const [showThemePicker, setShowThemePicker] = useState(false);
@@ -35,21 +52,22 @@ export default function ScriptureEditor({ onClose, onSave }) {
 
   const fonts = useFonts();
 
-  // Load saved scripture verse style, reference style + background.
+  // Load saved scripture verse style, reference style + background. Seeded via
+  // reset() so the async hydrate is the baseline, not the first undo step.
   useEffect(() => {
     (async () => {
       const styleJson = await window.cue.settings.get('scripture_style_json');
-      if (styleJson) setStyle({ ...DEFAULT_STYLE, ...styleJson });
       const refJson = await window.cue.settings.get('scripture_ref_style_json');
-      if (refJson) setRefStyle({ ...DEFAULT_STYLE, align: 'right', ...refJson });
       const bgId = await window.cue.settings.get('global_bg_scripture_id');
-      if (bgId) {
-        const asset = await window.cue.media.get(bgId);
-        if (asset) setBackground(asset);
-      }
+      const asset = bgId ? await window.cue.media.get(bgId) : null;
+      doc.reset({
+        style: styleJson ? { ...DEFAULT_STYLE, ...styleJson } : { ...DEFAULT_STYLE },
+        refStyle: refJson ? { ...DEFAULT_STYLE, align: 'right', ...refJson } : { ...DEFAULT_STYLE, align: 'right' },
+        background: asset || null,
+      });
       setLoaded(true);
     })();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const activeStyle = target === 'verse' ? style : refStyle;
   const setActiveStyle = target === 'verse' ? setStyle : setRefStyle;
@@ -61,8 +79,12 @@ export default function ScriptureEditor({ onClose, onSave }) {
       const ts = theme.style_json ? JSON.parse(theme.style_json) : null;
       if (!ts) return;
       const { refStyle: refS, ...verse } = ts;
-      setStyle({ ...DEFAULT_STYLE, ...verse });
-      if (refS) setRefStyle({ ...DEFAULT_STYLE, align: 'right', ...refS });
+      // Apply verse + reference style as ONE undo step (a theme is one action).
+      doc.set((d) => ({
+        ...d,
+        style: { ...DEFAULT_STYLE, ...verse },
+        refStyle: refS ? { ...DEFAULT_STYLE, align: 'right', ...refS } : d.refStyle,
+      }));
       if (theme.background_id && theme.background_path) {
         setBackground({ id: theme.background_id, path: theme.background_path, filename: theme.background_filename });
       } else if (ts.bgRef) {
@@ -70,7 +92,10 @@ export default function ScriptureEditor({ onClose, onSave }) {
         try {
           const asset = await window.cue.backgrounds.download(ts.bgRef);
           setBackground({ id: asset.id, path: asset.path, filename: asset.filename });
-        } catch { /* keep current background on failure */ }
+        } catch {
+          // Style applied, but the background couldn't be fetched — surface it.
+          toast.error(`Couldn't download “${theme.name}” background`);
+        }
         finally { setBgLoading(false); }
       }
     } catch {}
@@ -121,6 +146,7 @@ export default function ScriptureEditor({ onClose, onSave }) {
             </div>
           </div>
           <div className="flex-1" />
+          <UndoRedoButtons undo={doc.undo} redo={doc.redo} canUndo={doc.canUndo} canRedo={doc.canRedo} />
           <button onClick={() => setShowThemePicker(true)}
             className="flex items-center gap-xs bg-surface-container text-on-surface-variant text-[10px] font-mono rounded-lg px-sm h-7 border border-outline-variant/30 hover:border-outline-variant hover:text-on-surface cursor-pointer uppercase tracking-[0.05em] transition-colors">
             <span className="material-symbols-outlined text-[15px]">style</span>

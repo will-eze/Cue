@@ -100,8 +100,21 @@ function SongRow({ index, style, data }) {
   );
 }
 
-function MediaGrid({ assets, onDelete, onSetBackground, onAddToRundown }) {
+function MediaGrid({ assets, onDelete, onSetBackground, onAddToRundown, onSetPreviewBackground }) {
   const [contextMenu, setContextMenu] = useState(null);
+  // Single-click adds to the rundown; double-click sets the previewed song's
+  // background. A short timer disambiguates: the single-click action waits, and a
+  // double-click cancels it before it fires.
+  const clickTimer = useRef(null);
+  useEffect(() => () => { if (clickTimer.current) clearTimeout(clickTimer.current); }, []);
+  function handleSingleClick(id) {
+    if (clickTimer.current) clearTimeout(clickTimer.current);
+    clickTimer.current = setTimeout(() => { clickTimer.current = null; onAddToRundown?.(id); }, 220);
+  }
+  function handleDoubleClick(id) {
+    if (clickTimer.current) { clearTimeout(clickTimer.current); clickTimer.current = null; }
+    onSetPreviewBackground?.(id);
+  }
 
   return (
     <div className="flex-1 overflow-y-auto p-md">
@@ -116,8 +129,9 @@ function MediaGrid({ assets, onDelete, onSetBackground, onAddToRundown }) {
             <div
               key={asset.id}
               className="group cursor-pointer"
-              title="Double-click to add to rundown"
-              onDoubleClick={() => onAddToRundown?.(asset.id)}
+              title="Click to add to rundown · double-click to set the previewed song's background"
+              onClick={() => handleSingleClick(asset.id)}
+              onDoubleClick={() => handleDoubleClick(asset.id)}
               onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, asset }); }}
             >
               <div className="aspect-video rounded bg-black border border-outline-variant overflow-hidden mb-xs relative">
@@ -160,7 +174,7 @@ function MediaGrid({ assets, onDelete, onSetBackground, onAddToRundown }) {
 
 const TAB_ORDER = ['songs', 'media', 'scripture', 'presentations', 'graphics', 'scenes'];
 
-export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAddScripture, onScriptureLive, onScriptureStyleSaved, onBackgroundDefaultChanged, onAddMedia, onAddYouTube, onAddPresentation, onSongSave, refreshTick = 0, focusSearchRef, cycleTabRef, detectArmed, detectActive, detectDownloadPct, onToggleDetect }) {
+export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAddScripture, onScriptureLive, onScriptureStyleSaved, onBackgroundDefaultChanged, onAddMedia, onSetPreviewBackground, onAddYouTube, onAddPresentation, onSongSave, refreshTick = 0, focusSearchRef, cycleTabRef, detectArmed, detectActive, detectDownloadPct, onToggleDetect }) {
   const [tab, setTab] = useState('songs');
   const [searchQuery, setSearchQuery] = useState('');
   const [songs, setSongs] = useState([]);
@@ -626,7 +640,7 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
               ))}
             </ul>
           </div>
-          <MediaGrid assets={mediaAssets} onDelete={handleDeleteMedia} onSetBackground={handleSetBackground} onAddToRundown={onAddMedia} />
+          <MediaGrid assets={mediaAssets} onDelete={handleDeleteMedia} onSetBackground={handleSetBackground} onAddToRundown={onAddMedia} onSetPreviewBackground={onSetPreviewBackground} />
         </div>
       )}
 

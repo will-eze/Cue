@@ -21,6 +21,8 @@ const FIXED_SHORTCUTS = [
   { keys: ['↑'],          desc: 'Previous slide (or previous rundown item at start)' },
   { keys: [isMac ? '⌘.' : 'Ctrl+.', isMac ? '⌘,' : 'Ctrl+,'], desc: 'Next / previous Library tab' },
   { keys: [isMac ? '⌘K' : 'Ctrl+K'], desc: 'Command palette — find & add anything' },
+  { keys: [isMac ? '⌘A' : 'Ctrl+A'], desc: 'Select all rundown items (then bulk delete / set background)' },
+  { keys: ['Q', 'W', 'E', '…'], desc: 'Jump LIVE to slide 1, 2, 3 … (when verse-jump is armed)' },
   { keys: ['?'],          desc: 'Show the keyboard-shortcut overlay' },
 ];
 
@@ -28,6 +30,7 @@ export default function ShortcutSettings() {
   const [modifier, setModifier] = useState(DEFAULTS.modifier);
   const [keys, setKeys] = useState({ keyboard_go: 'g', keyboard_clear: 'c', keyboard_logo: 'l', keyboard_live: 'o' });
   const [armBare, setArmBare] = useState(true);
+  const [armJump, setArmJump] = useState(false);
   const [saved, setSaved] = useState(false);
   const [showAll, setShowAll] = useState(false);
 
@@ -35,10 +38,12 @@ export default function ShortcutSettings() {
     Promise.all([
       window.cue.settings.get('keyboard_modifier'),
       window.cue.settings.get('shortcut_arm_bare'),
+      window.cue.settings.get('shortcut_arm_jump'),
       ...ACTIONS.map((a) => window.cue.settings.get(a.key)),
-    ]).then(([mod, arm, ...vals]) => {
+    ]).then(([mod, arm, armJ, ...vals]) => {
       if (mod) setModifier(mod);
       setArmBare(arm !== false); // default armed when unset
+      setArmJump(armJ === true); // default disarmed when unset
       const loaded = {};
       ACTIONS.forEach((a, i) => { loaded[a.key] = vals[i] ?? DEFAULTS[a.key.replace('keyboard_', '')]; });
       setKeys(loaded);
@@ -48,6 +53,7 @@ export default function ShortcutSettings() {
   async function handleSave() {
     await window.cue.settings.set('keyboard_modifier', modifier);
     await window.cue.settings.set('shortcut_arm_bare', armBare);
+    await window.cue.settings.set('shortcut_arm_jump', armJump);
     await Promise.all(ACTIONS.map((a) => window.cue.settings.set(a.key, keys[a.key])));
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -172,6 +178,26 @@ export default function ShortcutSettings() {
             When armed, a single press of <span className="font-mono">G</span> (GO) or <span className="font-mono">Esc</span> (Clear)
             goes straight to air. Disarm to lock those bare keys — a stray press is ignored, and you use the
             {' '}{modSymbol}-shortcuts or the on-screen buttons instead.
+          </p>
+        </div>
+      </div>
+
+      {/* Arm the positional verse-jump keys (Q W E …). Off by default — bare letters could fire mid-task. */}
+      <div className="bg-surface-container-low border border-outline-variant/30 rounded-xl px-md py-sm flex items-center gap-lg">
+        <button
+          onClick={() => setArmJump((v) => !v)}
+          role="switch"
+          aria-checked={armJump}
+          className={`relative w-10 h-6 rounded-full shrink-0 transition-colors cursor-pointer ${armJump ? 'bg-tertiary-container' : 'bg-surface-container-highest'}`}
+        >
+          <span className={`absolute top-[3px] w-[18px] h-[18px] rounded-full bg-on-surface transition-all ${armJump ? 'left-[19px]' : 'left-[3px]'}`} />
+        </button>
+        <div className="flex-1">
+          <p className="text-label-sm font-label-sm text-on-surface uppercase tracking-[0.05em]">Arm verse-jump keys</p>
+          <p className="text-[11px] text-on-surface-variant mt-[2px]">
+            When armed, the positional keys <span className="font-mono">Q W E R …</span> jump the
+            LIVE item straight to slide 1, 2, 3 … and air it — direct on-air navigation instead of
+            stepping with arrows. Each live slide shows its letter. Disarm to free those letters for other use.
           </p>
         </div>
       </div>

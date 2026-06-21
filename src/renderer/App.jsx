@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import OperatorView from './views/OperatorView';
 import MultiviewView from './views/MultiviewView';
 import SettingsView from './views/SettingsView';
+import TopBarTabs from './components/TopBarTabs';
 import ErrorBoundary from './components/ErrorBoundary';
 import { injectUserFontFaces } from './utils/fonts';
 import { resolveAnchors, collides, overlapIds } from '../shared/stage-schedule.js';
@@ -12,6 +13,14 @@ const isWin    = platform === 'win32';
 
 export default function App() {
   const [view, setView] = useState('operator');
+  // Deep-link into a Settings subsection (set when a pinned subsection tab is used);
+  // the nonce re-fires the scroll even when the same tab is re-clicked.
+  const [settingsSection, setSettingsSection] = useState(null);
+  const [settingsNonce, setSettingsNonce] = useState(0);
+  // Operator-customised extra top-bar tabs (pinned Settings subsections, ordered).
+  // Persisted in settings under `topbar_tabs`. Base Operator/Multiview/Settings tabs
+  // are always shown and live outside this list.
+  const [extraTabs, setExtraTabs] = useState([]);
   const [bgRefreshTick, setBgRefreshTick] = useState(0);
   const [activeServiceId, setActiveServiceId] = useState(null);
   const [ndiWarning, setNdiWarning] = useState(false);
@@ -61,6 +70,40 @@ export default function App() {
     return () => clearInterval(id);
   }, []);
 
+  // Load the persisted custom top-bar tabs once.
+  useEffect(() => {
+    window.cue.settings.get('topbar_tabs').then((list) => {
+      if (Array.isArray(list)) setExtraTabs(list.filter((t) => typeof t === 'string'));
+    });
+  }, []);
+
+  function persistTabs(next) {
+    setExtraTabs(next);
+    window.cue.settings.set('topbar_tabs', next);
+  }
+
+  // Single entry point for top-bar navigation. Routes base views and `settings:<id>`
+  // deep-links, and preserves the existing "refresh operator state when leaving
+  // Settings" behaviour (so background/shortcut edits take effect on return).
+  function navigateTo(tabId) {
+    const leavingSettings = view === 'settings';
+    if (tabId === 'operator' || tabId === 'multiview') {
+      if (leavingSettings) setBgRefreshTick((t) => t + 1);
+      setView(tabId);
+      return;
+    }
+    const section = tabId.startsWith('settings:') ? tabId.slice('settings:'.length) : null;
+    setSettingsSection(section);
+    setSettingsNonce((n) => n + 1);
+    setView('settings');
+  }
+
+  // The currently-active tab id, so exactly one tab highlights (a pinned subsection
+  // wins over the base Settings tab when its section is the deep-link target).
+  const activeTabId = view === 'settings'
+    ? (settingsSection ? `settings:${settingsSection}` : 'settings')
+    : view;
+
   return (
     <div className="h-screen flex flex-col select-none overflow-hidden bg-background text-on-surface">
 
@@ -79,12 +122,18 @@ export default function App() {
         >
           <span className="font-bold text-headline-md text-primary tracking-tight">Cue</span>
           <nav className="flex gap-xs h-full items-center">
-            <NavTab label="Operator" active={view === 'operator'} onClick={() => {
-              if (view === 'settings') setBgRefreshTick((t) => t + 1);
-              setView('operator');
-            }} />
-            <NavTab label="Multiview" active={view === 'multiview'} onClick={() => setView('multiview')} />
-            <NavTab label="Settings" active={view === 'settings'} onClick={() => setView('settings')} />
+            <NavTab label="Operator" active={activeTabId === 'operator'} onClick={() => navigateTo('operator')} />
+            <NavTab label="Multiview" active={activeTabId === 'multiview'} onClick={() => navigateTo('multiview')} />
+            <NavTab label="Settings" active={activeTabId === 'settings'} onClick={() => navigateTo('settings')} />
+            <TopBarTabs
+              extraTabs={extraTabs}
+              activeTabId={activeTabId}
+              onNavigate={navigateTo}
+              onReorder={persistTabs}
+              onRemove={(id) => persistTabs(extraTabs.filter((t) => t !== id))}
+              onAdd={(id) => { if (!extraTabs.includes(id)) persistTabs([...extraTabs, id]); }}
+              onReset={() => persistTabs([])}
+            />
           </nav>
         </div>
 
@@ -237,6 +286,8 @@ export default function App() {
         {view === 'multiview' && <ErrorBoundary label="Multiview"><MultiviewView /></ErrorBoundary>}
         {view === 'settings' && <ErrorBoundary label="Settings"><SettingsView
           activeServiceId={activeServiceId}
+          initialSection={settingsSection}
+          sectionNonce={settingsNonce}
           onRundownCleared={() => setBgRefreshTick((t) => t + 1)}
           onRundownDeleted={(deletedId) => {
             if (activeServiceId === deletedId) setActiveServiceId(null);

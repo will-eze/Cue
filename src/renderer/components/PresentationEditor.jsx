@@ -9,6 +9,8 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { FormattingToolbar } from './SongEditor';
 import MediaPickerModal from './MediaPickerModal';
+import UndoRedoButtons from './UndoRedoButtons';
+import useEditHistory, { useUndoRedoKeys } from '../utils/useEditHistory';
 import { useFonts } from '../utils/fonts';
 import { mediaUrl } from '../utils/mediaUrl';
 import { StaticSlide } from './SlideElements';
@@ -179,8 +181,19 @@ function SlideThumb({ slide, idx, active, onClick, onContext }) {
 
 export default function PresentationEditor({ presentationId, onClose, onSave }) {
   const fonts = useFonts();
-  const [title, setTitle] = useState('Untitled Presentation');
-  const [slides, setSlides] = useState([{ _key: newId(), label: null, background_id: null, background_path: null, elements: [] }]);
+  // Undoable working document: title + the slides array (each slide's elements).
+  // Slide selection (cur) and element selection (selId) are ephemeral UI, kept out
+  // of history. setTitle coalesces typing; setSlides is per-call (structural edits
+  // are discrete steps, continuous element drags coalesce via patchElement's tag).
+  const doc = useEditHistory({
+    title: 'Untitled Presentation',
+    slides: [{ _key: newId(), label: null, background_id: null, background_path: null, elements: [] }],
+  });
+  const { title, slides } = doc.state;
+  const setTitle = (value) => doc.set((d) => ({ ...d, title: value }), 'title');
+  const setSlides = (updater, coalesce) =>
+    doc.set((d) => ({ ...d, slides: typeof updater === 'function' ? updater(d.slides) : updater }), coalesce);
+  useUndoRedoKeys(doc.undo, doc.redo);
   const [cur, setCur] = useState(0);
   const [selId, setSelId] = useState(null);
   const [picker, setPicker] = useState(null); // 'element' | 'background'
@@ -196,13 +209,16 @@ export default function PresentationEditor({ presentationId, onClose, onSave }) 
     if (!presentationId) return;
     window.cue.presentations.get(presentationId).then((p) => {
       if (!p) return;
-      setTitle(p.title);
-      setSlides((p.slides && p.slides.length ? p.slides : [{ elements: [] }]).map((s) => ({
-        _key: newId(), label: s.label || null, background_id: s.background_id || null,
-        background_path: s.background_path || null, elements: s.elements || [],
-      })));
+      // Seed via reset() so the DB hydrate is the baseline, not the first undo step.
+      doc.reset({
+        title: p.title,
+        slides: (p.slides && p.slides.length ? p.slides : [{ elements: [] }]).map((s) => ({
+          _key: newId(), label: s.label || null, background_id: s.background_id || null,
+          background_path: s.background_path || null, elements: s.elements || [],
+        })),
+      });
     });
-  }, [presentationId]);
+  }, [presentationId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -213,14 +229,20 @@ export default function PresentationEditor({ presentationId, onClose, onSave }) 
     return () => ro.disconnect();
   }, []);
 
-  const slide = slides[cur];
+  // Clamp current-slide index — an undo/redo that changes the slide count must not
+  // leave `cur` dangling past the end (slides[cur] would be undefined).
+  const curClamped = Math.min(cur, slides.length - 1);
+  if (curClamped !== cur) setCur(curClamped);
+  const slide = slides[curClamped];
   const selected = slide?.elements.find((e) => e.id === selId) || null;
 
-  function patchSlide(patch) {
-    setSlides((arr) => arr.map((s, i) => (i === cur ? { ...s, ...patch } : s)));
+  function patchSlide(patch, coalesce) {
+    setSlides((arr) => arr.map((s, i) => (i === curClamped ? { ...s, ...patch } : s)), coalesce);
   }
+  // Element edits coalesce by element id so a continuous canvas drag/resize collapses
+  // to a single undo step (the move-end), not one per mousemove frame.
   function patchElement(next) {
-    patchSlide({ elements: slide.elements.map((e) => (e.id === next.id ? next : e)) });
+    patchSlide({ elements: slide.elements.map((e) => (e.id === next.id ? next : e)) }, `el:${next.id}`);
   }
   function addElement(el) {
     patchSlide({ elements: [...slide.elements, el] });
@@ -319,6 +341,7 @@ export default function PresentationEditor({ presentationId, onClose, onSave }) 
       <div className="shrink-0 bg-surface-container-high border-b border-outline-variant/30">
         <div className="titlebar-drag flex items-center justify-end gap-sm h-10 px-lg">
           <div className="titlebar-nodrag flex items-center gap-sm">
+            <UndoRedoButtons undo={doc.undo} redo={doc.redo} canUndo={doc.canUndo} canRedo={doc.canRedo} />
             <button onClick={onClose} className="px-md py-xs rounded text-label-sm font-label-sm text-on-surface-variant hover:bg-surface-variant transition-colors">Cancel</button>
             <button onClick={save} disabled={saving}
               className="bg-tertiary-container text-on-tertiary px-lg py-xs rounded text-label-sm font-label-sm font-bold hover:brightness-110 active:scale-95 transition-all disabled:opacity-50">
