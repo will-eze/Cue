@@ -308,6 +308,8 @@ src/
 │   │   ├── ErrorBoundary.jsx      Per-view error boundary (App.jsx wraps each view) with a recoverable "Reload UI" fallback; outputs keep running.
 │   │   ├── CommandPalette.jsx     ⌘K cross-category launcher (songs/scripture/scenes/presentations/media → add-to-rundown or apply-scene).
 │   │   ├── ShortcutsOverlay.jsx   ? cheatsheet modal; reads the live shortcut settings. Also opened by Settings → Shortcuts "View All".
+│   │   ├── TopBarTabs.jsx         Customisable top-nav extras: pinnable Settings-subsection deep-link tabs (dnd reorder, ×-unpin, + picker, Reset). Persisted in the `topbar_tabs` setting.
+│   │   ├── UndoRedoButtons.jsx    Shared editor-toolbar Undo/Redo pair, driven by a useEditHistory instance.
 │   │   ├── SongEditor.jsx         Full-screen song CRUD modal (createPortal). Sections sidebar with DnD reorder.
 │   │   │                          Two-tab preview: Fullscreen (1920×1080 scaled SlidePreview) + Lower Third (LowerThirdPreview).
 │   │   │                          FormattingToolbar: Row 1 (font/size/color/B/I/U/AA/H-align/V-align/Reset).
@@ -412,6 +414,7 @@ src/
 │   │                              on success). Shows current media disk usage. Toast feedback.
 │   │
 │   └── utils/
+│       ├── useEditHistory.js     Shared editor undo/redo: useEditHistory(initial) → {state,set,reset,undo,redo,canUndo,canRedo} (bounded past/present/future, coalesced by tag) + useUndoRedoKeys (⌘Z/⌘⇧Z capture-phase). Reducer stays pure (StrictMode).
 │       ├── mediaUrl.js           mediaUrl(absPath) → cue-media://localhost/encoded/path
 │       ├── fonts.js              useFonts() hook → merged [bundled…, user…] font list for the editors (user fonts
 │       │                         load async, grouped as category 'custom'). injectUserFontFaces() injects the user
@@ -766,6 +769,8 @@ Known keys:
 | `keyboard_logo` | string | Key char for Logo shortcut (default: 'l') |
 | `keyboard_live` | string | Key char for Live Toggle shortcut (default: 'o') |
 | `shortcut_arm_bare` | boolean | Whether the bare `G`/`Esc` keys are armed (single-press fires). Default true; disarmed → those bare keys are ignored (modifier shortcuts unaffected) |
+| `shortcut_arm_jump` | boolean | Whether the positional verse/slide-jump keys (`Q W E …` → air slide N of the live item) are armed. Default false |
+| `topbar_tabs` | array | Operator-pinned extra top-bar tabs (ordered `settings:<section>` deep-link ids), capped at 6. Drives the customisable nav in `App.jsx`/`TopBarTabs.jsx` |
 | `ghs_seeded` | boolean | Set true after the bundled GHS hymnal is imported on first run; gates re-seeding so deletions stick |
 | `seeded_theme_keys` | array | Names of built-in themes already seeded (`seedBundledThemes`); lets new built-ins add on upgrade without resurrecting user-deleted ones. Supersedes the legacy boolean `themes_seeded` |
 | `themes_seeded` | boolean | Legacy all-or-nothing seed flag; migrated into `seeded_theme_keys` on first v22+ run |
@@ -1469,13 +1474,21 @@ previewItemId    — service_items.id currently loaded in preview
 previewSlideIdx  — which section index is highlighted in preview
 liveItemId       — service_items.id currently on output
 liveSlideIdx     — which section index is currently on output
+selectedIds      — Set of service_items.id for bulk operations (multi-select),
+                   independent of preview/live; selectionAnchorRef seeds Shift-range
 ```
 
 ### Interaction table
 
 | Action | Result |
 |---|---|
-| Single-click rundown item | Sets `previewItemId`, resets `previewSlideIdx=0`. No live change. |
+| Single-click rundown item | Sets `previewItemId`, resets `previewSlideIdx=0`, **clears the multi-select set** and reseeds the range anchor. No live change. |
+| Ctrl/Cmd-click rundown item | Toggles it in `selectedIds` (multi-select); moves the range anchor. Does not change preview/live. |
+| Shift-click rundown item | Selects the contiguous range from the anchor to the clicked item. |
+| Drag on the rundown list (not the drag handle) | Marquee-select: hit-tests each row's rect, replacing `selectedIds`. dnd-kit reorder is unaffected (its listeners live only on the `.drag-handle`). |
+| ⌘A / Ctrl+A | Selects **all** rundown items. Keyed on the OS clipboard modifier; defers to native select-all only when text is selected (clipboard rule). |
+| Esc (with a selection) | Clears `selectedIds` first; only with nothing selected does Esc fall through to Clear-output (armed/flash gate). |
+| Click outside the rundown panel | Clears `selectedIds` (disabled while the bulk-background picker — a portal'd modal operating on the selection — is open). |
 | Double-click rundown item | Sets `previewItemId`, sends slide 0 to live. |
 | Single-click in Preview Slides list | Updates `previewSlideIdx`. Preview monitor only. |
 | Double-click in Preview Slides list | Sends that slide to live. |
@@ -1491,8 +1504,11 @@ liveSlideIdx     — which section index is currently on output
 | Number key 1–9 | Recalls the scene bound to that hotkey (`window.cue.scenes.apply` → `applyScene`, §13). No modifier; only fires when a scene holds that `hotkey`. |
 | ⌘K / Ctrl+K | Toggles the command palette (`CommandPalette.jsx`) — works from anywhere, even mid-typing. |
 | ⌘. / ⌘, (Ctrl on non-mac) | Next / previous Library tab (`LibraryPanel` cycles via an imperative `cycleTabRef`). |
+| Q W E R T Y U I O P A D F H J K (armed) | Positional verse/slide jump — airs slide N of the **live** item (`handleJumpLiveSlide`). Armed via `shortcut_arm_jump` (default off); the set skips S/G/L and the 1–9 scene keys. The live `SlideList` shows each slide's letter. |
 | ? | Toggles the keyboard-shortcut overlay (`ShortcutsOverlay.jsx`). |
 | Double-click song in Library | Adds to rundown. No preview/live change. |
+| Single-click media (Media tab) | Adds to rundown (after a short timer that a double-click cancels). |
+| Double-click media (Media tab) | Sets the **previewed** song/scripture item's background — a per-slot override via `services.setItemBackground`, with an Undo toast. Locked songs / non-song-scripture items are skipped with a notice. |
 
 ### Keyboard shortcuts
 Registered as a `keydown` listener on `document` inside `OperatorView`. **Not** `globalShortcut`. The listener checks `document.activeElement` — suppressed when an `INPUT`, `TEXTAREA`, or `contenteditable` has focus.
@@ -1511,7 +1527,11 @@ Two ref patterns used to avoid stale closures:
 
 **Command palette & cheatsheet.** `CommandPalette.jsx` (⌘K) is a cross-category launcher: one query searches Songs (`songs.search`), Scripture (`bible.resolve` on a typed ref like "John 3:16"), Scenes, Presentations and Media; Enter runs the result's primary action (add to rundown, or apply a scene) reusing the operator's existing `handleAdd*` handlers, then closes. `ShortcutsOverlay.jsx` (`?`, also opened by Settings → Shortcuts "View All") renders the live keymap from the configured shortcut settings.
 
-**Clipboard-accelerator passthrough.** The default shortcut modifier is the same key as the OS clipboard modifier (⌘ on macOS, Ctrl elsewhere), so the default Clear binding (`c`) collides with copy. Inside the modifier branch, before dispatching any operator shortcut, the handler checks the real clipboard modifier (`isMac ? metaKey : ctrlKey`): if it is held and the key is **copy/cut with a live text selection** (`window.getSelection()` non-empty) or **select-all** (`a`), it returns without `preventDefault`, letting Chromium perform the native clipboard op. So ⌘C/Ctrl+C copies when text is selected and still triggers Clear when nothing is selected. This is independent of the configured shortcut modifier (Alt-bound shortcuts never collided).
+**Clipboard-accelerator passthrough.** The default shortcut modifier is the same key as the OS clipboard modifier (⌘ on macOS, Ctrl elsewhere), so the default Clear binding (`c`) collides with copy. Inside the modifier branch, before dispatching any operator shortcut, the handler checks the real clipboard modifier (`isMac ? metaKey : ctrlKey`): if it is held and the key is **copy/cut with a live text selection** (`window.getSelection()` non-empty), it returns without `preventDefault`, letting Chromium perform the native clipboard op. So ⌘C/Ctrl+C copies when text is selected and still triggers Clear when nothing is selected. This is independent of the configured shortcut modifier (Alt-bound shortcuts never collided).
+
+**⌘A / Ctrl+A → select-all rundown items.** Handled near the top of the keydown (after the input guard, keyed on the OS clipboard modifier so it is independent of the configured shortcut modifier) — it `preventDefault`s and selects every rundown item via `handleSelectAll`, **unless** there is an active text selection, in which case it returns to let native select-all win. The input guard already excludes text fields, so ⌘A in an input is native.
+
+**Verse/slide jump keys (`shortcut_arm_jump`, default off).** When armed, the positional set `Q W E R T Y U I O P A D F H J K` airs slide 1, 2, 3 … of the **live** item (`handleJumpLiveSlide`) — direct on-air navigation, not stepping. The set is fixed and positional (same muscle memory every service) and deliberately skips the bare operator keys (S/G/L) and the 1–9 scene keys; out-of-range presses are no-ops. The live-column `SlideList` renders each slide's assigned letter when armed. Toggle in Settings → Shortcuts.
 
 **Do not use `globalShortcut`** — it captures at OS level and prevents typing G, L, Space in any input field system-wide.
 
@@ -1523,6 +1543,15 @@ A rundown item can carry a per-slide auto-advance interval (`service_items.advan
 
 ### Network remote integration
 `OperatorView` listens for `remote:command` and routes go/clear/logo/next/prev/live/select to the same handlers as the keyboard (the remote is a "virtual operator", so UI state stays in sync — it is always mounted, CSS-hidden when off-view). `handlePrevLiveSlide` mirrors the space-driven `handleNextLiveSlide` backwards; `handleRemoteSelect(itemId, slideIdx?)` jumps live to an item (or a specific slide). A `useEffect` pushes the rundown (`slidesForRemote` per item) + selection to the server via `window.cue.remote.pushNavState` whenever it changes.
+
+### Rundown multi-select & bulk operations
+`OperatorView` owns `selectedIds` (a Set) and the bulk handlers; `RundownPanel` renders the interactions and bar. Selection is built by Ctrl/Cmd-click (toggle), Shift-click (range from `selectionAnchorRef`), marquee drag (viewport-coord rectangle hit-testing each row's `data-item-id` rect), and ⌘A (all). A marquee sets `suppressClickRef` so the trailing click doesn't reset the selection; it starts on any list mousedown **except** the `.drag-handle` (dnd-kit's only drag source), so reorder and marquee never conflict. Selected rows get a blue inset ring (distinct from preview's left-tally and live's red). A **bulk-action bar** appears at 2+ selected: *Background* (reuses `MediaPickerModal` → `handleBulkSetBackground`, applying `services.setItemBackground` per item, **skipping locked songs and non-song/scripture**, reporting the skipped count) and *Delete* (inline two-step confirm → `handleBulkDelete`). Selection clears on Esc, on a click outside the panel root (disabled while the bulk picker is open), or after a bulk delete. There is deliberately **no bare-key bulk delete** (live-show safety) — deletion is only via the bar's confirm.
+
+### Editor undo/redo (`utils/useEditHistory.js`)
+All four editors (`SongEditor`, `ScriptureEditor`, `GraphicsEditor`, `PresentationEditor`) share `useEditHistory(initial)` → `{ state, set, reset, undo, redo, canUndo, canRedo }`: a bounded (50-deep) past/present/future stack holding the editor's working document, committed to the DB only on Save (session-local, no IPC). `set(updater, coalesceTag)` merges a rapid run of same-tag edits (typing, slider drags) into one undo step; `reset()` seeds the initial DB load without recording a step. **The reducer must stay pure — coalesce bookkeeping happens in the `set`/`undo`/`redo` function bodies, never inside the `setHist` updater, because React StrictMode double-invokes the updater in dev and a ref mutation there clobbers the first snapshot** (the bug that made coalesced lyric typing record no undo step). `useUndoRedoKeys(undo, redo)` binds ⌘Z / ⌘⇧Z at the document capture phase (`stopPropagation`, Z only — never ⌘C/⌘X/⌘A) so it beats both the operator keydown and native text undo. `UndoRedoButtons.jsx` is the shared toolbar pair. SongEditor's contentEditable is uncontrolled: lyric input flushes into `sections` through history (coalesced per section), and undo/redo bump a `domSyncTick` that re-renders the active section's DOM from the restored state.
+
+### Customisable top bar (`App.jsx` + `TopBarTabs.jsx`)
+The top nav is data-driven: fixed Operator/Multiview/Settings tabs plus operator-pinned **extra** tabs (deep-links to Settings subsections, `settings:<id>`), persisted in the `topbar_tabs` settings key (capped at 6). `TopBarTabs` renders the extras (dnd-kit horizontal reorder, 5px activation so a click still navigates; ×-to-unpin) and a `+` picker of unpinned `SECTIONS` (exported from `SettingsView`) with a Reset-to-default. `navigateTo(tabId)` routes base views and `settings:<section>` deep-links (preserving the leave-Settings `bgRefreshTick` bump); `SettingsView` accepts `initialSection` + a `sectionNonce` and smooth-scrolls to that section (the nonce re-fires the scroll on re-click).
 
 ---
 
