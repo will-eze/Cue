@@ -54,6 +54,7 @@ contextBridge.exposeInMainWorld('cue', {
       control: (action) => ipcRenderer.invoke('output:media:control', action),
       seek: (pos) => ipcRenderer.invoke('output:media:seek', pos),
       setMuted: (muted) => ipcRenderer.invoke('output:media:set-muted', muted),
+      setLoop: (loop) => ipcRenderer.invoke('output:media:set-loop', loop),
       setRate: (rate) => ipcRenderer.invoke('output:media:set-rate', rate),
     },
     channels: {
@@ -187,6 +188,7 @@ contextBridge.exposeInMainWorld('cue', {
   },
   youtube: {
     prefetch: (url) => ipcRenderer.invoke('youtube:prefetch', url),
+    readClipboard: () => ipcRenderer.invoke('clipboard:readText'),
     status:   (url) => ipcRenderer.invoke('youtube:status', url),
     cancel:   (url) => ipcRenderer.invoke('youtube:cancel', url),
     detect:   ()    => ipcRenderer.invoke('youtube:detect'),

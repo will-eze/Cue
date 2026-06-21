@@ -42,7 +42,7 @@
   function attach(el, opts) {
     if (activePlayer) activePlayer.destroy();
     opts = opts || {};
-    const loop      = !!opts.loop;
+    let loop        = !!opts.loop; // reactive: follows transport.loop so a live loop toggle applies without re-GO
     const baseMuted = !!opts.baseMuted;
 
     el.loop = loop;
@@ -107,7 +107,12 @@
     };
 
     const controller = {
-      _apply(t) { transport = t; tick(); },   // react immediately to control events
+      _apply(t) {
+        transport = t;
+        // Live loop toggle: the operator flipped loop while this clip is on air.
+        if (t && typeof t.loop === 'boolean' && t.loop !== loop) { loop = t.loop; el.loop = loop; }
+        tick();
+      },   // react immediately to control events
       get transport() { return transport; },
       get element() { return el; },
       destroy() {

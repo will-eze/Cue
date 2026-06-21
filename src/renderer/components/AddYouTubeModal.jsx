@@ -1,36 +1,40 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-
-// Client-side gate for the Confirm button + speculative fetch. Main does the
-// authoritative parse (downloader.parseVideoId); this just avoids firing on
-// obviously-non-YouTube input.
-function looksLikeYouTube(s) {
-  if (!s) return false;
-  const t = s.trim();
-  if (/^[A-Za-z0-9_-]{11}$/.test(t)) return true;
-  try {
-    const u = new URL(t);
-    const h = u.hostname.replace(/^www\./, '');
-    if (h === 'youtu.be') return /^[A-Za-z0-9_-]{11}/.test(u.pathname.slice(1));
-    if (h === 'youtube.com' || h === 'm.youtube.com' || h === 'music.youtube.com') {
-      return !!u.searchParams.get('v') || /^\/(shorts|embed|v|live)\/[A-Za-z0-9_-]{11}/.test(u.pathname);
-    }
-  } catch {}
-  return false;
-}
+import { looksLikeYouTube } from '../utils/youtube';
 
 // Paste a YouTube URL → speculative download starts immediately (before Confirm) to
 // steal lead time. Confirm adds the cue; if the URL was edited between paste and
 // Confirm, the speculative download is abandoned and the submitted URL fetched
 // instead. Closing without confirming cancels the speculative download.
-export default function AddYouTubeModal({ onClose, onConfirm }) {
+// `initialUrl` pre-fills the field (e.g. a link detected in the clipboard) and kicks
+// the speculative resolve immediately — editing it cancels-and-switches like a paste.
+export default function AddYouTubeModal({ onClose, onConfirm, initialUrl = '' }) {
   const [url, setUrl] = useState('');
   const [status, setStatus] = useState(null); // latest youtube:status snapshot for the prefetched URL
+  const [cookieBrowser, setCookieBrowser] = useState(''); // '' = login off, else 'chrome'|'firefox'|…
   const inputRef = useRef(null);
   const prefetchedRef = useRef(null);   // URL we kicked a speculative download for
   const confirmedRef = useRef(false);   // don't cancel on unmount once confirmed
   const debounceRef = useRef(null);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
+
+  // Restore the operator's browser-login preference.
+  useEffect(() => {
+    window.cue.settings.get('youtube_cookies_browser').then((b) => { if (b) setCookieBrowser(b); });
+  }, []);
+
+  // Browser-login preference feeds the main-process client cascade (cookies tier).
+  // Persist it immediately and restart the in-flight prefetch so the change applies.
+  function changeCookieBrowser(browser) {
+    setCookieBrowser(browser);
+    window.cue.settings.set('youtube_cookies_browser', browser || null);
+    const u = prefetchedRef.current;
+    if (u) {
+      window.cue.youtube.cancel(u);
+      setStatus({ url: u, status: 'resolving', percent: 0 });
+      window.cue.youtube.prefetch(u);
+    }
+  }
 
   // Cancel the speculative download if the modal closes without confirming.
   useEffect(() => () => {
@@ -59,6 +63,15 @@ export default function AddYouTubeModal({ onClose, onConfirm }) {
     setStatus({ url: trimmed, status: 'resolving', percent: 0 });
     window.cue.youtube.prefetch(trimmed);
   }, []);
+
+  // Pre-filled from the clipboard chip: show it and start resolving right away. Any
+  // later edit/paste goes through startSpeculative, which cancels this resolve first.
+  useEffect(() => {
+    if (initialUrl && looksLikeYouTube(initialUrl)) {
+      setUrl(initialUrl);
+      startSpeculative(initialUrl);
+    }
+  }, [initialUrl, startSpeculative]);
 
   function handleChange(e) {
     const next = e.target.value;
@@ -118,6 +131,40 @@ export default function AddYouTubeModal({ onClose, onConfirm }) {
           placeholder="https://www.youtube.com/watch?v=…"
           className="bg-surface-container-lowest border border-outline-variant/40 rounded px-md py-sm text-body-md text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 w-full"
         />
+
+        {/* Browser login — feeds the cookies tier of the download cascade for videos
+            YouTube blocks with a "sign in to confirm you're not a bot" wall. */}
+        <div className="flex flex-col gap-xs">
+          <label className="flex items-center gap-sm cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={!!cookieBrowser}
+              onChange={(e) => changeCookieBrowser(e.target.checked ? (cookieBrowser || 'chrome') : '')}
+              className="accent-primary w-4 h-4 cursor-pointer"
+            />
+            <span className="text-label-sm font-label-sm text-on-surface normal-case tracking-normal">
+              Use my browser’s YouTube login <span className="text-outline-variant">— for videos YouTube blocks</span>
+            </span>
+          </label>
+          {cookieBrowser && (
+            <div className="flex items-center gap-sm pl-[26px]">
+              <select
+                value={cookieBrowser}
+                onChange={(e) => changeCookieBrowser(e.target.value)}
+                className="bg-surface-container-lowest border border-outline-variant/40 rounded px-sm py-[3px] text-label-sm font-label-sm text-on-surface normal-case tracking-normal focus:outline-none focus:border-primary cursor-pointer"
+              >
+                <option value="chrome">Chrome</option>
+                <option value="edge">Edge</option>
+                <option value="firefox">Firefox</option>
+                <option value="brave">Brave</option>
+                <option value="safari">Safari</option>
+              </select>
+              <span className="text-[11px] text-outline-variant normal-case tracking-normal leading-snug">
+                Sign in to YouTube in that browser first. macOS may ask for Keychain access.
+              </span>
+            </div>
+          )}
+        </div>
 
         {/* Live status line */}
         <div className="h-6 flex items-center gap-sm text-label-sm font-label-sm">

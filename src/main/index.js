@@ -151,6 +151,15 @@ app.whenReady().then(async () => {
         const match = /bytes=(\d*)-(\d*)/.exec(rangeHeader);
         const start = match[1] ? parseInt(match[1], 10) : 0;
         const end   = match[2] ? parseInt(match[2], 10) : stat.size - 1;
+        // Defensive: a range whose start is at/past EOF (e.g. a file being written, or
+        // a malformed request) must not hand fs.createReadStream an invalid window.
+        // Answer 416 so Chromium backs off cleanly instead of hanging on a bad stream.
+        if (start >= stat.size) {
+          return new Response(null, {
+            status: 416,
+            headers: { 'Content-Range': `bytes */${stat.size}`, 'Accept-Ranges': 'bytes' },
+          });
+        }
         const chunkSize = end - start + 1;
         // STREAM the requested range — never buffer it. A media element opens
         // playback with `bytes=0-` (the whole remaining file); reading that into one

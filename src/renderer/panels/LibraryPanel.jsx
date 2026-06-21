@@ -13,6 +13,7 @@ import PresentationEditor from '../components/PresentationEditor';
 import PptxImportModal from '../components/PptxImportModal';
 import AddYouTubeModal from '../components/AddYouTubeModal';
 import { mediaUrl } from '../utils/mediaUrl';
+import { looksLikeYouTube } from '../utils/youtube';
 
 function SongRow({ index, style, data }) {
   const { songs, selectedId, onSelect, onDoubleClick, onContextMenu } = data;
@@ -230,10 +231,39 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
   const [presContext, setPresContext] = useState(null);
   const [pptxImport, setPptxImport] = useState(false);
   const [ytModal, setYtModal] = useState(false);
+  const [ytInitialUrl, setYtInitialUrl] = useState('');     // pre-fill for the modal (clipboard chip)
+  const [clipboardYt, setClipboardYt] = useState(null);     // YouTube link detected in the clipboard
+  const clipboardSeenRef = useRef(null);                    // last clipboard link we already offered/dismissed
   const [songListModal, setSongListModal] = useState(false);
 
   useEffect(() => { loadSongs(); window.cue.tags.list().then(setTags); }, [refreshTick]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (tab === 'media') loadMedia(); }, [tab, activeFolderId]);
+
+  // On entering the Media library, peek at the clipboard (silent, no prompt — Electron's
+  // main-process clipboard). If it holds a YouTube link, offer a one-click "add it" chip.
+  // Read on tab-entry only (never polled); only acted on for a YouTube match; surfaced
+  // once per distinct link (dismiss/add marks it seen) so re-entering doesn't re-nag.
+  useEffect(() => {
+    if (tab !== 'media' || ytModal) return;
+    let cancelled = false;
+    window.cue.youtube.readClipboard().then((text) => {
+      if (cancelled) return;
+      const link = (text || '').trim();
+      if (looksLikeYouTube(link) && link !== clipboardSeenRef.current) setClipboardYt(link);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function openYouTube(url = '') {
+    setYtInitialUrl(url);
+    setYtModal(true);
+    if (clipboardYt) { clipboardSeenRef.current = clipboardYt; setClipboardYt(null); }
+  }
+
+  function dismissClipboardYt() {
+    clipboardSeenRef.current = clipboardYt;
+    setClipboardYt(null);
+  }
   useEffect(() => { if (tab === 'presentations') loadPresentations(); }, [tab]);
 
   function loadPresentations() { window.cue.presentations.list().then(setPresentations); }
@@ -507,9 +537,28 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
               New Song
             </button>
           )}
+          {tab === 'media' && clipboardYt && (
+            <div className="flex items-center gap-xs bg-primary/10 border border-primary/40 rounded pl-sm pr-xs py-[3px]">
+              <button
+                onClick={() => openYouTube(clipboardYt)}
+                title={clipboardYt}
+                className="flex items-center gap-xs text-label-sm font-label-sm text-primary hover:brightness-110 cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[14px]">content_paste</span>
+                Add YouTube link from clipboard
+              </button>
+              <button
+                onClick={dismissClipboardYt}
+                title="Dismiss"
+                className="flex items-center justify-center w-4 h-4 rounded text-primary/70 hover:text-primary hover:bg-primary/15 cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[13px]">close</span>
+              </button>
+            </div>
+          )}
           {tab === 'media' && (
             <button
-              onClick={() => setYtModal(true)}
+              onClick={() => openYouTube()}
               title="Add a YouTube video (downloaded for this session only)"
               className="bg-surface-container border border-outline-variant/40 text-on-surface px-md py-xs rounded text-label-sm font-label-sm hover:bg-surface-container-high active:scale-95 transition-all cursor-pointer flex items-center gap-xs"
             >
@@ -709,7 +758,8 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
       )}
       {ytModal && (
         <AddYouTubeModal
-          onClose={() => setYtModal(false)}
+          initialUrl={ytInitialUrl}
+          onClose={() => { setYtModal(false); setYtInitialUrl(''); }}
           onConfirm={(url) => onAddYouTube?.(url)}
         />
       )}

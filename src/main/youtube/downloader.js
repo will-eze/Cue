@@ -16,6 +16,7 @@ import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import { ytDlpPath, ffmpegPath, ensureBinaries, refreshYtDlp, isReady } from './bin.js';
+import * as settings from '../db/settings.js';
 
 // id → { id, url, status, percent, title, durationMs, path, error, child }
 //   status: 'resolving' | 'downloading' | 'processing' | 'ready' | 'error'
@@ -72,11 +73,11 @@ function setStatus(e, patch) {
 // Resolve title/duration up front: validates availability (age-gated / private /
 // region-locked videos fail here, fast) and gives the cue something to display
 // while the bytes download.
-function resolveMetadata(id, url) {
+function resolveMetadata(id, url, extra = []) {
   return new Promise((resolve) => {
     const args = [
       url, '--no-playlist', '--skip-download', '--no-warnings',
-      '--socket-timeout', '30',
+      '--socket-timeout', '30', ...extra,
       '--print', '%(title)s\t%(duration)s',
     ];
     let stdout = '';
@@ -112,13 +113,83 @@ function looksLikeExtractorFailure(err) {
   return !!err && /unable to extract|signature|nsig|jsinterp|player|precondition check failed|http error 403|requested format is not available|sign in to confirm|not a bot/i.test(err);
 }
 
-function download(e) {
+// A YouTube anti-bot / sign-in wall — escalating to another client (web_embedded) or
+// supplying browser cookies is what gets past these, not a yt-dlp refresh. YouTube
+// phrases this several ways ("Sign in to confirm you're not a bot", a bare "Please
+// sign in", age-confirmation, an explicit --cookies hint), so match "sign in" broadly.
+function looksLikeBotWall(err) {
+  return !!err && /sign in|not a bot|confirm your age|login required|use --cookies|cookies-from-browser/i.test(err);
+}
+
+// Errors no client strategy OR account login can fix — surface immediately instead of
+// burning the whole cascade. NB: "private"/"members-only" are deliberately NOT here —
+// those are auth-gated and the right browser cookies can unlock them, so they must be
+// allowed to flow through to the cookies tier.
+function isFatalError(err) {
+  return !!err && /been removed|has been deleted|does not exist|account.*terminated|copyright grounds|removed for violating|not available in your country/i.test(err);
+}
+
+// ── Client cascade ───────────────────────────────────────────────────────────
+// Ordered strategies tried against YouTube's anti-bot. Each tier is extra yt-dlp
+// args. The cookies tier only exists when the operator has opted into using a
+// browser's YouTube login (Settings/modal → `youtube_cookies_browser`). Cookies are
+// read by yt-dlp directly from the browser store and never persisted by us.
+function clientTiers() {
+  const tiers = [
+    { name: 'default', extra: [] },
+    // Impersonate the embeddable IFrame player — no login, no PO token, but only
+    // serves videos whose uploader allows embedding.
+    { name: 'web_embedded', extra: ['--extractor-args', 'youtube:player_client=web_embedded'] },
+  ];
+  const browser = settings.get('youtube_cookies_browser');
+  // yt-dlp picks a cookie-compatible client automatically when cookies are present.
+  if (browser) tiers.push({ name: 'cookies', extra: ['--cookies-from-browser', browser] });
+  return tiers;
+}
+
+export function cookieBrowser() { return settings.get('youtube_cookies_browser') || null; }
+
+// Run `attempt(extra)` across the client tiers, escalating on a bot-wall / non-fatal
+// failure and refreshing yt-dlp once on a stale-extractor failure. `attempt` returns
+// { ok, error, cancelled, ... }. Returns the first ok result (with tierIdx) or the
+// last failure. `startIdx` lets a later stage resume at the tier metadata settled on.
+async function withClientCascade(e, id, attempt, onTier, startIdx = 0) {
+  const tiers = clientTiers();
+  let refreshed = false;
+  let botWallSeen = false; // tracked across tiers — the last error may differ from the wall
+  let last = { ok: false, error: 'No client strategy available' };
+  for (let i = Math.min(startIdx, tiers.length - 1); i < tiers.length; i++) {
+    onTier?.(tiers[i], i);
+    last = await attempt(tiers[i].extra);
+    if (entries.get(id) !== e) return { superseded: true };
+    if (last.ok) return { ...last, tierIdx: i };
+    if (last.cancelled) return last;
+    if (looksLikeBotWall(last.error)) botWallSeen = true;
+    if (isFatalError(last.error)) return { ...last, botWallSeen }; // no client fixes this — stop now
+    // Refresh yt-dlp once and retry the SAME tier before escalating clients. This fires
+    // on a stale-extractor failure AND on a bot-wall: a "Please sign in" / "not a bot"
+    // wall is very often just an out-of-date yt-dlp (YouTube changes its player every
+    // few weeks). refreshYtDlp drops the latest build into userData/bin, which
+    // resolveBinary prefers over a stale system/PATH copy — so the retry runs current.
+    if (!refreshed && (looksLikeExtractorFailure(last.error) || looksLikeBotWall(last.error))) {
+      refreshed = true;
+      setStatus(e, { status: 'setup', percent: 0, setupName: 'yt-dlp' });
+      const r = await refreshYtDlp((p) => { if (entries.get(id) === e) setStatus(e, { status: 'setup', percent: Math.round((p || 0) * 100), setupName: 'yt-dlp' }); });
+      if (entries.get(id) !== e) return { superseded: true };
+      if (r.ok) { i--; continue; } // retry same tier with the fresh binary
+    }
+    // Otherwise escalate to the next client tier (bot-wall, not-embeddable, …).
+  }
+  return { ...last, botWallSeen }; // tiers exhausted
+}
+
+function download(e, extra = []) {
   return new Promise((resolve) => {
     ensureCacheDir();
     const outTmpl = path.join(cacheDir(), `${e.id}.%(ext)s`);
     const args = [
       e.url, '--no-playlist', '--no-warnings', '--newline',
-      '--socket-timeout', '30', '--retries', '3',
+      '--socket-timeout', '30', '--retries', '3', ...extra,
       // Pull DASH fragments in parallel — a sizeable speed-up on YouTube's
       // fragmented streams with no quality cost (same bytes, more connections).
       '--concurrent-fragments', '5',
@@ -195,7 +266,7 @@ export async function prefetch(url) {
   if (existing) {
     // Ready file vanished (cache wiped) → fall through and re-download.
     if (existing.status === 'ready' && existing.path && fs.existsSync(existing.path)) return snapshot(existing);
-    if (existing.status === 'resolving' || existing.status === 'downloading' || existing.status === 'processing') return snapshot(existing);
+    if (existing.status === 'resolving' || existing.status === 'downloading' || existing.status === 'processing' || existing.status === 'setup') return snapshot(existing);
   }
 
   const e = { id, url, status: 'resolving', percent: 0, title: null, durationMs: null, path: null, error: null, setupName: null, child: null };
@@ -216,24 +287,33 @@ export async function prefetch(url) {
     }
   }
 
-  const meta = await resolveMetadata(id, url);
-  if (entries.get(id) !== e) return snapshot(entries.get(id)); // superseded/cancelled mid-resolve
-  if (!meta.ok) { setStatus(e, { status: 'error', error: meta.error }); return snapshot(e); }
-  setStatus(e, { status: 'downloading', percent: 0, title: meta.title, durationMs: meta.durationMs });
+  // Metadata first — also the cheapest probe to find a client tier that gets past
+  // YouTube's anti-bot wall. The tier it settles on is reused for the heavy stage.
+  const metaRun = await withClientCascade(e, id, (extra) => resolveMetadata(id, url, extra),
+    () => setStatus(e, { status: 'resolving' }));
+  if (metaRun.superseded) return snapshot(entries.get(id));
+  if (!metaRun.ok) { setStatus(e, { status: 'error', error: friendlyError(metaRun) }); return snapshot(e); }
+  const startIdx = metaRun.tierIdx;
+  setStatus(e, { status: 'downloading', percent: 0, title: metaRun.title, durationMs: metaRun.durationMs });
 
-  let res = await download(e);
-  // Stale yt-dlp (YouTube changed) → refresh it once and retry the download.
-  if (!res.ok && !res.cancelled && looksLikeExtractorFailure(res.error)) {
-    setStatus(e, { status: 'setup', percent: 0, setupName: 'yt-dlp' });
-    const r = await refreshYtDlp((p) => { if (entries.get(id) === e) setStatus(e, { status: 'setup', percent: Math.round((p || 0) * 100), setupName: 'yt-dlp' }); });
-    if (entries.get(id) !== e) return snapshot(entries.get(id));
-    if (r.ok) { setStatus(e, { status: 'downloading', percent: 0, title: meta.title, durationMs: meta.durationMs }); res = await download(e); }
-  }
+  const res = await withClientCascade(e, id, (extra) => download(e, extra), null, startIdx);
+  if (res.superseded) return snapshot(entries.get(id));
   if (entries.get(id) !== e) return snapshot(entries.get(id));
   if (res.cancelled) return snapshot(e);
-  if (!res.ok) { setStatus(e, { status: 'error', error: res.error }); return snapshot(e); }
+  if (!res.ok) { setStatus(e, { status: 'error', error: friendlyError(res) }); return snapshot(e); }
   setStatus(e, { status: 'ready', percent: 100, path: res.path });
   return snapshot(e);
+}
+
+// Turn an exhausted-cascade bot-wall into actionable guidance when no browser login is
+// configured; otherwise pass the raw yt-dlp error through. Takes the cascade result so
+// it can see a bot-wall hit on ANY tier, not just the (possibly different) last error.
+function friendlyError(result) {
+  const botWall = result?.botWallSeen || looksLikeBotWall(result?.error);
+  if (botWall && !cookieBrowser()) {
+    return 'YouTube wants a signed-in session for this video. Turn on “Use my browser’s YouTube login” and retry.';
+  }
+  return result?.error || 'Could not download this video.';
 }
 
 export function getStatus(url) {

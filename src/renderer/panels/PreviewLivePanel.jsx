@@ -616,6 +616,7 @@ export default function PreviewLivePanel({
   channelTemplate,
   ltFontScale = 1,
   allChannels = [], liveChannelIdx = 0, onSetLiveChannelIdx,
+  onToggleLoop,
   jumpKeys = null,
 }) {
   const previewSlides = previewItem ? getSlides(previewItem) : [];
@@ -671,6 +672,9 @@ export default function PreviewLivePanel({
 
   const isPaused = transport?.pausedAt != null;
   const isMuted  = !!transport?.muted;
+  // Live transport is the source of truth (reflects a loop toggle instantly); fall
+  // back to the item's persisted media_loop before the first transport arrives.
+  const loopOn   = transport ? !!transport.loop : !!liveItem?.media_loop;
 
   const mediaDuration = useMediaDuration(liveMediaPath, liveMediaType);
 
@@ -797,6 +801,17 @@ export default function PreviewLivePanel({
                   }`}
                 >
                   <span className="material-symbols-outlined text-[14px]">{isMuted ? 'volume_off' : 'volume_up'}</span>
+                </button>
+                <button
+                  onClick={() => onToggleLoop?.()}
+                  title={loopOn ? 'Looping — click to stop at end' : 'Loop this clip'}
+                  className={`flex items-center justify-center w-7 h-6 rounded border transition-colors cursor-pointer shrink-0 ${
+                    loopOn
+                      ? 'border-primary/50 bg-surface-container text-primary'
+                      : 'border-outline-variant/30 bg-surface-container text-on-surface-variant hover:border-primary/50 hover:text-primary'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[14px]">repeat</span>
                 </button>
                 <button
                   onClick={handleTogglePlayPause}

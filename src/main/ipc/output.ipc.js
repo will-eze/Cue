@@ -12,6 +12,7 @@ export function registerOutputIpc() {
   ipcMain.handle('output:media:control', (_e, action) => outputManager.mediaControl(action));
   ipcMain.handle('output:media:seek', (_e, pos) => outputManager.mediaSeek(pos));
   ipcMain.handle('output:media:set-muted', (_e, muted) => outputManager.mediaSetMuted(muted));
+  ipcMain.handle('output:media:set-loop', (_e, loop) => outputManager.mediaSetLoop(loop));
   ipcMain.handle('output:media:set-rate', (_e, rate) => outputManager.mediaSetRate(rate));
 
   // ── Screens (connected displays) ───────────────────────────────────────────

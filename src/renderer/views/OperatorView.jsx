@@ -1269,6 +1269,16 @@ export default function OperatorView({
     if (payload) window.cue.output.go(payload);
   }
 
+  // Toggle loop for the live media clip. Updates the live transport immediately (no
+  // restart) and persists to media_loop so it sticks for the rundown badge + next GO.
+  async function handleToggleLoop() {
+    if (!liveItem) return;
+    const next = !liveItem.media_loop;
+    window.cue.output.media?.setLoop?.(next);
+    await window.cue.services.setItemLoop(liveItem.id, next);
+    refreshService();
+  }
+
   const previewBgPath = previewItem ? resolveBackground(previewItem) : null;
   const liveBgPath    = liveItem    ? resolveBackground(liveItem)    : null;
 
@@ -1354,6 +1364,7 @@ export default function OperatorView({
             allChannels={channels}
             liveChannelIdx={liveChannelIdx}
             onSetLiveChannelIdx={setLiveChannelIdx}
+            onToggleLoop={handleToggleLoop}
             jumpKeys={jumpArmed ? JUMP_KEYS : null}
           />
         </div>

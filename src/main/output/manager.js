@@ -679,6 +679,14 @@ export function mediaSetMuted(muted) {
   broadcastTransport();
 }
 
+// Toggle native looping live, without restarting the clip. Output players read
+// transport.loop and update the <video> loop attribute in place (see media-player.js).
+export function mediaSetLoop(loop) {
+  if (!transport.active) return;
+  transport.loop = !!loop;
+  broadcastTransport();
+}
+
 // Operator playback speed. Rebase startAt so the CURRENT position is continuous
 // across the rate change (no jump), then every player adopts the new baseline rate.
 export function mediaSetRate(rate) {

@@ -17,7 +17,7 @@ function gitCommitCount() {
 // MAJOR = current DB schema version, derived from the highest migration (vN) in
 // schema.js so it can never drift from the schema. Bump MINOR/PATCH by hand per the
 // convention in CLAUDE.md (MINOR = features w/o migration; PATCH = fixes/docs/chores).
-const VERSION_MINOR = 4;
+const VERSION_MINOR = 5;
 const VERSION_PATCH = 0;
 
 function schemaVersion() {

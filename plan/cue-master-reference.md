@@ -162,8 +162,8 @@ src/
 │   │   │                     close DB, delete cue.db + media/ + fonts/, relaunch as a fresh install).
 │   │   ├── fonts.ipc.js      Registers fonts:* handlers (listUser/css/import [native multi-file picker]/delete).
 │   │   ├── bible.ipc.js      Registers bible:* handlers (versions/books/chapters/verses/adjacent/resolve/search/importFile/delete/online:*).
-│   │   ├── youtube.ipc.js    Registers youtube:* handlers (prefetch/status/cancel/detect). Wires the downloader's
-│   │   │                     status listener → broadcasts youtube:status to every window.
+│   │   ├── youtube.ipc.js    Registers youtube:* handlers (prefetch/status/cancel/detect) + clipboard:readText. Wires
+│   │   │                     the downloader's status listener → broadcasts youtube:status to every window.
 │   │   └── remote.ipc.js       Registers remote:* handlers (getConfig/setConfig/regenerateToken/navState). Owns the
 │   │                           settings keys (remote_enabled/port/lan/token) + applyRemoteConfig() (boot + on-change start).
 │   │
@@ -184,7 +184,8 @@ src/
 │   │   │                     PATH → dev-only resources/bin; ensureBinaries() downloads missing ones into userData/bin
 │   │   │                     on first use (streamed, progress); refreshYtDlp() re-fetches latest on extractor failure.
 │   │   └── downloader.js      Ephemeral YouTube resolver. parseVideoId; prefetch(url) (resolve metadata → download
-│   │                         with faststart + concurrent-fragments → ready); in-memory entries Map keyed by video id;
+│   │                         with faststart + concurrent-fragments → ready); withClientCascade (default → web_embedded
+│   │                         → cookies anti-bot tiers, refresh-on-bot-wall); in-memory entries Map keyed by video id;
 │   │                         getStatus/getReadyPath/cancel; wipeCache() (quit + startup). Emits youtube:status.
 │   │
 │   ├── update/
@@ -196,7 +197,7 @@ src/
 │       ├── manager.js        Output window registry. go/clear/logo dispatch. No operator capture loop —
 │       │                     the operator live monitor renders from payload, not capturePage.
 │       │                     Owns the foreground-media `transport` { active, startAt, pausedAt, loop, muted, rate }
-│       │                     (machine-clock based). go() stamps it; mediaControl/mediaSeek/mediaSetMuted/mediaSetRate
+│       │                     (machine-clock based). go() stamps it; mediaControl/mediaSeek/mediaSetMuted/mediaSetLoop/mediaSetRate
 │       │                     mutate it (setRate rebases startAt so position is continuous);
 │       │                     broadcastTransport() pushes `media:transport` to every window + `output:media-transport`
 │       │                     to the renderer. isPrimaryAudioMonitor() picks the single program-audio window (?mute=).
@@ -363,6 +364,8 @@ src/
 │   │   │                          LibreOffice (pixel-perfect; offered even in the missing state).
 │   │   ├── AddYouTubeModal.jsx    Paste-a-URL modal (Media tab). Speculative prefetch on paste; Confirm adds the cue
 │   │   │                          (if the URL was edited, abandons the speculative download); shows live youtube:status.
+│   │   │                          `initialUrl` pre-fills + auto-resolves (clipboard chip); "Use my browser's YouTube
+│   │   │                          login" control sets youtube_cookies_browser for the download cascade's cookies tier.
 │   │   ├── MediaPickerModal.jsx   Media grid picker. Used by RundownPanel for bg override.
 │   │   ├── MediaThumb.jsx         Cached thumbnail tile (cue-thumb:// + error fallback). Used by every media grid/list.
 │   │   ├── SlideList.jsx          Scrollable slide/section list. Preview and live variants.
@@ -416,6 +419,7 @@ src/
 │   └── utils/
 │       ├── useEditHistory.js     Shared editor undo/redo: useEditHistory(initial) → {state,set,reset,undo,redo,canUndo,canRedo} (bounded past/present/future, coalesced by tag) + useUndoRedoKeys (⌘Z/⌘⇧Z capture-phase). Reducer stays pure (StrictMode).
 │       ├── mediaUrl.js           mediaUrl(absPath) → cue-media://localhost/encoded/path
+│       ├── youtube.js            looksLikeYouTube(s) — shared client-side YouTube-URL gate (modal + clipboard chip)
 │       ├── fonts.js              useFonts() hook → merged [bundled…, user…] font list for the editors (user fonts
 │       │                         load async, grouped as category 'custom'). injectUserFontFaces() injects the user
 │       │                         @font-face <style> into the operator document (called on app start + after import).
@@ -763,6 +767,7 @@ Known keys:
 | `scripture_ref_style_json` | object\|null | Global style_json for the scripture reference line; optional `pos:{x,y}` free-positions it; `null` = default right-aligned bottom |
 | `lowerthird_font_scale` | number | Global lower-third font scale, percent (1–150, default 100). Lower-third font size = `(authored size or 72) × pct/100`; rides every content payload as `ltFontScale` (a fraction). Set via Settings → Lower Third / `output.lowerthird.setFontScale`. Fullscreen unaffected |
 | `operator_preview_layout` | 'stacked'\|'sidebyside' | Unused in current UI — reserved |
+| `youtube_cookies_browser` | string\|null | Opt-in: browser to read YouTube cookies from for the download cascade's cookies tier (`chrome`/`edge`/`firefox`/`brave`/`safari`); `null`/absent = off. Set from the Add-YouTube modal's "Use my browser's YouTube login" control |
 | `keyboard_modifier` | 'meta'\|'ctrl'\|'alt' | Modifier key for transport shortcuts (default: 'meta' on macOS, 'ctrl' on Windows) |
 | `keyboard_go` | string | Key char for GO shortcut (default: 'g') |
 | `keyboard_clear` | string | Key char for Clear shortcut (default: 'c') |
@@ -885,9 +890,13 @@ A pasted YouTube URL is resolved by **yt-dlp** into a local video file, which th
 
 **Binaries — auto-downloaded, not bundled.** `yt-dlp` + `ffmpeg` are *not* shipped in the installer (bundling ~85 MB per platform bloats the download and, worse, `yt-dlp` goes stale — YouTube breaks extractors every few weeks and a baked-in copy can't be updated). `src/main/youtube/bin.js` resolves each binary in order: `userData/bin` (auto-downloaded, kept fresh) → system PATH (power users) → a dev-only `resources/bin/<platform>-<arch>` copy that exists only in a checkout, never in a packaged build. If none has it, `ensureBinaries()` downloads the current platform's pair into `userData/bin` on first use (single-flight, ~85 MB once; `fetch` → streamed write → chmod → atomic rename, with 0–1 progress). `refreshYtDlp()` re-downloads the latest `yt-dlp` (throttled 10 min) when a download fails with an extractor-style error (`looksLikeExtractorFailure`), then retries once. Sources: `yt-dlp` from its GitHub `latest` release (`yt-dlp_macos` universal / `yt-dlp.exe`); `ffmpeg` pinned to the `eugeneware/ffmpeg-static` b6.0 release per arch.
 
-**Download command** (`downloader.js`): format `bv*[height<=1080][vcodec^=avc1]+ba[ext=m4a]/...` (prefer h264 ≤1080p for hardware decode, avoid 4K-AV1 software-decode stutter in the offscreen NDI window), `--merge-output-format mp4 --remux-video mp4`, `--concurrent-fragments 5` (parallel DASH fragments — faster, no quality loss), and `--postprocessor-args "ffmpeg:-movflags +faststart"` (moov atom at front; without it a long clip black-screens on go-live while the player fetches the tail index).
+**Download command** (`downloader.js`): format `bv*[height<=1080][vcodec^=avc1]+ba[ext=m4a]/...` (prefer h264 ≤1080p for hardware decode, avoid 4K-AV1 software-decode stutter in the offscreen NDI window), `--merge-output-format mp4 --remux-video mp4`, `--concurrent-fragments 5` (parallel DASH fragments — faster, no quality loss; also the throttle-defeating access pattern), and `--postprocessor-args "ffmpeg:-movflags +faststart"` (moov atom at front; without it a long clip black-screens on go-live while the player fetches the tail index).
 
-**Pre-fetch / status flow.** Latency is hidden by pre-fetching: the download starts the moment a valid URL is pasted (speculatively, before Confirm — `AddYouTubeModal.jsx`). If the URL is edited before Confirm, the speculative download is abandoned and the submitted URL fetched. Status is `setup (first-use binary download) → resolving → downloading (percent) → processing → ready | error`, pushed live to all windows over the `youtube:status` event and surfaced as a rundown badge (`RundownPanel`) and in the modal (with a Retry on error). `services.resolveItems` attaches the current status as `item.youtube`; `OperatorView` patches it live from the event and re-prefetches any `idle` cue on load. GO is soft-blocked until `ready` (`buildPayload` returns null otherwise), then resolves the ready path into a normal full-screen media payload (`{ media: { path, type:'video', loop } }`).
+**Anti-bot client cascade.** YouTube increasingly walls downloads with "Sign in to confirm you're not a bot" / "Please sign in". Every yt-dlp invocation (`resolveMetadata`, `download`) runs through `withClientCascade()`, which tries ordered client *tiers* and escalates on failure: (1) **default** (no extra args); (2) **`web_embedded`** (`--extractor-args youtube:player_client=web_embedded` — the embeddable IFrame player, no login/PO-token, but embeddable videos only); (3) **`cookies`** (`--cookies-from-browser <browser>`) — present *only* when the operator has opted in via the `youtube_cookies_browser` setting. Escalation rule (`looksLikeBotWall` / `isFatalError`): a **fatal** error (removed/deleted/region-locked) surfaces immediately; a **stale-binary OR bot-wall** error refreshes yt-dlp once and retries the same tier (a bot-wall is most often just an out-of-date yt-dlp, since `refreshYtDlp` drops the latest build into `userData/bin` which `resolveBinary` prefers over a stale PATH copy); anything else escalates to the next tier. Metadata settles on a working tier and the download stage resumes from it (`tierIdx`). On exhaustion, `friendlyError()` turns a bot-wall (`botWallSeen` across all tiers) into "turn on browser login" guidance when no browser is configured. Cookies are read by yt-dlp directly from the browser store and never persisted/logged by Cue.
+
+**Pre-fetch / status flow.** Latency is hidden by pre-fetching: the download starts the moment a valid URL is pasted (speculatively, before Confirm — `AddYouTubeModal.jsx`). If the URL is edited before Confirm, the speculative download is abandoned and the submitted URL fetched. Status is `setup (first-use binary download / yt-dlp refresh) → resolving → downloading (percent) → processing → ready | error`, pushed live to all windows over the `youtube:status` event and surfaced as a rundown badge (`RundownPanel`) and in the modal (with a Retry on error). `services.resolveItems` attaches the current status as `item.youtube`; `OperatorView` patches it live from the event and re-prefetches any `idle` cue on load. GO is soft-blocked until `ready` (`buildPayload` returns null otherwise), then resolves the ready path into a normal full-screen media payload (`{ media: { path, type:'video', loop } }`).
+
+**Clipboard detection.** On entering the Media tab, `LibraryPanel` reads the OS clipboard once via `window.cue.youtube.readClipboard()` (Electron main-process `clipboard.readText()` over the `clipboard:readText` IPC — silent, no permission prompt, never polled). If it holds a YouTube link (`utils/youtube.js → looksLikeYouTube`), a one-click chip offers to add it; clicking opens `AddYouTubeModal` with `initialUrl` pre-filled and already resolving. The link is offered once per distinct clipboard value (a `clipboardSeenRef` marks add/dismiss) so re-entering the tab does not re-nag. Editing/pasting a different URL in the modal cancels the in-flight resolve and switches to the new one (`startSpeculative`).
 
 ### Thumbnails — the `cue-thumb://` protocol
 
@@ -989,6 +998,7 @@ All renderer↔main communication is via `ipcRenderer.invoke` / `ipcMain.handle`
 | `media.control(action)` | void | `action` ∈ `'play' \| 'pause' \| 'restart'` — mutates the transport, broadcast to all surfaces. |
 | `media.seek(pos)` | void | Scrub foreground media to `pos` seconds (preserves paused state). |
 | `media.setMuted(muted)` | void | Toggle program (audience) audio. Stage + operator preview stay silent regardless. |
+| `media.setLoop(loop)` | void | Toggle native looping of the live clip live, without restarting it. Sets `transport.loop` + broadcasts; output players make `<video>.loop` follow `transport.loop` (`media-player.js`). The operator's transport-bar loop button persists `media_loop` (`services.setItemLoop`) alongside this so it sticks for the rundown badge + next GO. |
 | `media.setRate(rate)` | void | Operator playback speed (e.g. 0.25–2). Rebases `startAt` so position is continuous; becomes the baseline the ±6% convergence nudge multiplies around. |
 | `graphic.show({name,title,style,target})` | void | Show the name/title lower-third bug. `target` ∈ `'all'\|'screen'\|'ndi'`. |
 | `graphic.hide()` | void | Hide the name/title bug. |
@@ -1043,7 +1053,7 @@ outputs, NDI, operator live monitor, confidence monitor) by a single main-proces
 transport = { active, startAt, pausedAt, loop, muted }
 // position(now) = ((pausedAt ?? now) - startAt) / 1000   (mod duration when loop)
 ```
-`go()` stamps it; `mediaControl/mediaSeek/mediaSetMuted` mutate it; `broadcastTransport()` pushes
+`go()` stamps it; `mediaControl/mediaSeek/mediaSetMuted/mediaSetLoop/mediaSetRate` mutate it; `broadcastTransport()` pushes
 `media:transport` to every output window and `output:media-transport` to the renderer. Each player
 (`media-player.js`, stage video, `SyncedVideo`) derives its playhead from the shared machine clock —
 no clock-master election, no per-window time reporting — and converges via `playbackRate` nudging
@@ -1156,6 +1166,7 @@ Browsable pool of curated 16:9 worship backgrounds shipped only as a manifest (`
 | `status(url)` | `status snapshot \| null` | `{ id, url, status, percent, title, durationMs, path, error }`; `status` ∈ `resolving \| downloading \| processing \| ready \| error`. |
 | `cancel(url)` | void | Abandon the download (kill the child) and delete its bytes. Fired on an edited paste and on cue removal. |
 | `detect()` | `{ ytDlp, ffmpeg }` | Health check — absolute path of each bundled binary, or null if missing. |
+| `readClipboard()` | `string` | OS clipboard text (Electron main `clipboard.readText`). Used by `LibraryPanel` to detect a copied YouTube link on Media-tab entry. Silent, on-demand only. |
 
 The downloaded file is **ephemeral** — never a `media_assets` row (see §6 *Native YouTube player*).
 
@@ -1253,7 +1264,7 @@ Subscribe to main→renderer events. Returns an unsubscribe function — call it
 - `output:unresolved-channels` — array of unresolved channel objects on startup
 - `output:state-changed` — fired after go/clear/logo/setLive AND after any channel topology/flag change (`syncChannel` / `setChannelContentMode`); payload: `{activeWindows, outputsEnabled, displayMode, livePayload, transport, overlay}`. OperatorView reloads its channel list on this so the live monitor tracks content-mode changes.
 - `output:overlay-changed` — fired after any broadcast-graphics change; payload is the full `overlay` object `{nameTitle, ticker, custom}`. The Graphics panel + live monitor follow it.
-- `output:media-transport` — fired whenever the media transport changes (go / play / pause / restart / seek / setMuted / setRate); payload: `{ active, startAt, pausedAt, loop, muted, rate }`. The operator UI follows this to drive `SyncedVideo` and the transport bar. (There is NO `output:media-time` event — the old clock-master time-reporting chain was removed.)
+- `output:media-transport` — fired whenever the media transport changes (go / play / pause / restart / seek / setMuted / setLoop / setRate); payload: `{ active, startAt, pausedAt, loop, muted, rate }`. The operator UI follows this to drive `SyncedVideo` and the transport bar; output players make `<video>.loop` follow `transport.loop` so a live loop toggle applies without re-GO. (There is NO `output:media-time` event — the old clock-master time-reporting chain was removed.)
 - `youtube:status` — fired as an ephemeral YouTube download progresses; payload: `{ id, url, status, percent, title, durationMs, path, error, setupName }` (`setupName` = which binary is downloading during the `setup` state). The Media-tab modal, the rundown status badge, and `OperatorView` (which patches the matching cue by URL) all follow it. See §6 *Native YouTube player*.
 - `output:multiview-captures` — array of `{channelId, dataUrl, isNdi}` objects (~5fps, only while multiview is running). `isNdi: true` for NDI channels (sourced from `ndiLastFrames` JPEG cache at ~1fps); `isNdi: false` for screen channels (capturePage at ~5fps).
 - `output:ndi-unavailable` — fired if grandiose is not installed
