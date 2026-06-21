@@ -265,7 +265,11 @@ app.whenReady().then(async () => {
       "script-src 'self' 'wasm-unsafe-eval' blob:",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com cue-media: data:",
-      "img-src 'self' cue-media: cue-thumb: data: blob:",
+      // The background/theme library picker hotlinks each item's remote `thumb`
+      // (manifest CDNs) into <img> tags — without these hosts the grids render
+      // blank in the packaged app (CSP is dev-invisible). Origin `url` hosts
+      // (e.g. videos.pexels.com) are fetched in main, not here, so omitted.
+      "img-src 'self' cue-media: cue-thumb: data: blob: https://cdn.coverr.co https://images.unsplash.com https://images.pexels.com https://cdn.pixabay.com https://assets.mixkit.co",
       "media-src 'self' cue-media: blob:",
       "connect-src 'self' cue-media: cue-thumb: https://huggingface.co https://*.huggingface.co https://*.hf.co https://cdn-lfs.huggingface.co data: blob:",
       "worker-src 'self' blob:",

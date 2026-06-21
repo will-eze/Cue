@@ -138,7 +138,9 @@ module.exports = {
         );
       }
 
-      const { rebuild } = require('@electron/rebuild');
+      // @electron/rebuild ships as ESM-only — require() throws ERR_REQUIRE_ESM
+      // from this CommonJS config, so load it via dynamic import().
+      const { rebuild } = await import('@electron/rebuild');
       const electronVersion = require('electron/package.json').version;
       await rebuild({
         buildPath: __dirname,
