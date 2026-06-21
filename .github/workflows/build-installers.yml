@@ -44,13 +44,13 @@ jobs:
             artifact: cue-windows-exe
             files: out/make/**/*.exe
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           # Full history: the app build number is `git rev-list --count HEAD`
           # (vite.renderer.config.js). A shallow clone would pin every build to 1.
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           # Node 22 LTS: the Electron 42 toolchain (Forge 7.11 / @electron/rebuild 4)
           # requires Node >= 20.17; 22 is the current LTS and matches local dev (.nvmrc).
@@ -68,7 +68,7 @@ jobs:
       # first YouTube use (see src/main/youtube/bin.js), so there is nothing to fetch here.
       - run: npm run make
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.files }}
@@ -79,12 +79,12 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist          # dist/<artifact-name>/<files>
 
       - name: Publish installers to a GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           name: Cue ${{ github.event.inputs.tag || github.ref_name }}
