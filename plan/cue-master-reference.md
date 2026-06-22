@@ -264,9 +264,12 @@ src/
 │   │                         screen monitor, every NDI channel, and a placeholder tile per screen channel with no
 │   │                         monitors). Each tile carries a ChannelChip header (name + NDI/template/active badges).
 │   │                         Subscribes to output:multiview-captures. NDI channels show NdiTile (checkerboard + frame).
-│   │   └── StreamView.jsx    Stream Studio tab: external feed inputs (video/audio device pickers, audio mode), live
-│   │                         composite monitor (output:stream-preview), layout/cut switcher (Feed/Program/PiP +
-│   │                         lyrics-over-feed), stereo level meters, dropped-frame health badge, RTMP config + Go Live.
+│   │   ├── StreamView.jsx    Stream Studio tab: external feed inputs (video/audio device pickers, audio mode), live
+│   │   │                     composite monitor (output:stream-preview), layout preset bar + quick-layout templates,
+│   │   │                     lyrics-over-feed, stereo level meters, dropped-frame health badge, RTMP config + Go Live.
+│   │   └── StreamLayoutEditor.jsx  WYSIWYG modal editor for the free-form stream layout: drag/resize the camera +
+│   │                         program boxes on a 16:9 canvas, per-layer visibility/fit, z-order, lyric band, quick
+│   │                         templates; Save/Save-as-New/Delete presets. Exports DEFAULT_LAYOUT, TEMPLATES, programFit.
 │   │                         Mounts stream.open()/unmounts stream.close() (ref-counts the compositor for preview).
 │   │
 │   ├── panels/
@@ -398,7 +401,6 @@ src/
 │   │   │                          Lyrics Only / Graphics Only (show_program × show_graphics, via channelMode util).
 │   │   │                          Also the global "Program audio output" device picker (program_audio_device; labels
 │   │   │                          unlocked lazily on first interaction, never eagerly — see §13).
-│   │   ├── StreamSettings.jsx    Pointer card — streaming moved to the Stream tab (StreamView.jsx). Nav id 'stream'.
 │   │   ├── LogoSettings.jsx      Global logo picker.
 │   │   ├── BackgroundSettings.jsx Global song/scripture/slide background pickers. Bulk apply actions.
 │   │   ├── ThemeSettings.jsx     Theme library. Category tabs (Songs/Scripture/… auto-derived from present themes);
@@ -472,7 +474,7 @@ src/
 │   │                         HTML (isolated shadow root, .cue-in/.cue-out). Honours onGraphicUpdate; ?graphics=0 and
 │   │                         content:mode toggle the whole overlay live (caches last overlay to restore on re-enable).
 │   ├── stream-feed.js        Stream compositor (loaded by fullscreen.html, no-op unless ?stream=1). External camera
-│   │                         feed base (getUserMedia, resolved by label), Feed/Program/PiP layout, lower-third lyric
+│   │                         feed base (getUserMedia, resolved by label), free-form box layout (programFit), lower-third lyric
 │   │                         band, CSS-zoom 1920×1080 design space (resolution independence), and the stream audio
 │   │                         tap (external input + optional Cue media → cue-pcm-tap → output:stream-audio-pcm) + meters.
 │   ├── transitions.js        Shared program-output transition engine (loaded before fullscreen.js/lowerthird.js).
@@ -817,7 +819,8 @@ Known keys:
 | `libreoffice_path` | string\|null | User-set absolute path to the `soffice` binary (Locate manually…), tried first by `findLibreOffice()` for PowerPoint import |
 | `program_audio_device` | object\|null | In-room program-audio output device `{deviceId,label,groupId}`; `null` = system default. The audible (primary) output window routes its media element there via `setSinkId`, matching deviceId→label→groupId (device IDs are salted per-origin). Machine-specific (rides backups but degrades to default if the device is absent) |
 | `stream_config` | object | RTMP stream settings `{server,key,width,height,fps,videoBitrate,audioBitrate}`. `server`+`key` form the ingest URL; `key` is sensitive (lives in the synced DB) |
-| `stream_studio` | object | Stream Studio inputs + layout `{videoDeviceId,videoLabel,audioDeviceId,audioLabel,audioMode:'external'\|'mixed',layout:{mode,lyricsOverFeed,pip}}`. Device labels persist because deviceIds re-salt per session/origin. Machine-specific |
+| `stream_studio` | object | Stream Studio inputs + live layout `{videoDeviceId,videoLabel,audioDeviceId,audioLabel,audioMode:'external'\|'mixed',layout}` where `layout` is the free-form box model `{feed:{visible,x,y,w,h,fit},program:{visible,x,y,w,h,fit},front,lyricsOverFeed}`. Device labels persist because deviceIds re-salt per session/origin. Machine-specific |
+| `stream_presets` | array | Saved stream layout presets `[{id,name,layout}]` (same `layout` shape as `stream_studio.layout`). Applied live from the Stream tab; edited in StreamLayoutEditor |
 
 **localStorage keys** (UI state only — not in DB):
 | Key | Description |
@@ -1065,7 +1068,8 @@ All renderer↔main communication is via `ipcRenderer.invoke` / `ipcMain.handle`
 | `stream.start()` | `{ok,error?}` | Go Live: ensure ffmpeg, ensure the compositor window, spawn the encoder on the next frame, enable the stream audio tap. |
 | `stream.stop()` | `{ok}` | Stop the encoder; keep the compositor window if the Stream tab is still previewing. |
 | `stream.status()` | `{active, previewing, state, encoder, droppedFrames, sentFrames, backpressure}` | `state` ∈ `idle\|starting\|live\|reconnecting\|error`. |
-| `stream.getStudio()` / `stream.setStudio(cfg)` | object | Read/merge+persist `stream_studio` (`videoDeviceId/Label`, `audioDeviceId/Label`, `audioMode`, `layout{mode,lyricsOverFeed,pip}`); set pushes live to the compositor. |
+| `stream.getStudio()` / `stream.setStudio(cfg)` | object | Read/merge+persist `stream_studio` (`videoDeviceId/Label`, `audioDeviceId/Label`, `audioMode`, free-form `layout`); a `layout` patch REPLACES the whole layout (full box model) and pushes live to the compositor. |
+| `stream.getPresets()` / `stream.savePreset(p)` / `stream.deletePreset(id)` | array / `{presets,id}` / array | CRUD for saved layout presets (`stream_presets`). `savePreset` upserts by `id` (omit to create). |
 | `stream.open()` / `stream.close()` | studio / void | Ref-count the Stream tab: open starts the compositor for preview; close tears it down when not live. |
 
 **Output payload structure:**
@@ -1716,13 +1720,21 @@ The stream is its **own program**, distinct from the in-room/NDI program: an ext
 
 **Compositor (offscreen stream window).** A dedicated offscreen `BrowserWindow` (kept OUTSIDE the `windows` map; `backgroundThrottling:false` so the hidden window's `<video>`/timers are never throttled) loads `fullscreen.html` with `?stream=1`. `stream-feed.js` (a no-op unless `stream=1`, loaded in `fullscreen.html` after `graphics-overlay.js`) adds:
 - A `#cue-feed` `<video>` base layer fed by `getUserMedia({video:{deviceId}})`. Capture devices are resolved **by label** (deviceIds are salted per-origin between the operator renderer and the `file://` stream window, so an exact-id match fails — `stream-feed.js` unlocks labels once and matches by label, falling back to id).
-- A **layout/cut model** (`stream:layout` IPC): `feed` (camera full; Cue background suppressed; lyrics shown as a lower-third band only when `lyricsOverFeed` on), `program` (fullscreen Cue program covers the feed), `pip` (both visible — one full-frame, the other an inset box, `which:'feed'|'program'`).
+- A **free-form layout model** (`stream:layout` IPC) — two independently-positioned layers over black:
+  ```
+  { feed:    { visible, x, y, w, h, fit:'cover'|'contain' },   // camera/mixer, % of frame
+    program: { visible, x, y, w, h, fit:'fit'|'fill' },        // Cue bg + lyrics/content
+    front:   'feed' | 'program',                               // z-order on overlap
+    lyricsOverFeed: bool }                                     // lyric lower-third band
+  ```
+  One model expresses every arrangement: fullscreen feed, fullscreen program, PiP (either inset), side-by-side, top/bottom split, custom. The **feed** fills its box via `object-fit` (`cover` crops, `contain` letterboxes). The **program** is a designed 16:9 surface placed via a `transform` on the zoom-scaled `#stage`: `fit` scales **uniform + centred** (letterbox, `programFit()` — lyrics never distort, the default), `fill` **stretches** to the box. The transform translates in **element-relative `%`, never `vw/vh`** — `#stage` carries a `zoom`, and `zoom` multiplies viewport-unit translates, so `vw/vh` would mis-place the box. `programFit()` is duplicated verbatim in `stream-feed.js` and `StreamLayoutEditor.jsx` (renderer can't import an output script) so the editor is a true WYSIWYG of the output. Legacy `{mode,lyricsOverFeed,pip}` layouts are migrated to the box model by `normalizeLayout()` in `manager.js`.
+- **Saveable layout presets** (`stream_presets` setting, array of `{id,name,layout}`): named snapshots edited in `StreamLayoutEditor.jsx` (a drag/resize WYSIWYG canvas) and applied live from the Stream tab's preset bar. CRUD via `output:stream:presets:get/save/delete`. Applying a preset copies its `layout` into the live `stream_studio.layout`.
 - A **lower-third lyric band** (`#cue-stream-lt`, ported from `lowerthird.js`) for lyrics over the feed — the fullscreen `#content` layout is reserved for Program/PiP.
 - **Resolution independence via CSS `zoom`.** Cue-content layers (`#stage`, the lyric band, `#cue-gfx`) are 1920×1080 design boxes scaled with `zoom` (NOT `transform: scale`, which caches the layer at 1080 and GPU-upscales → blurry 4K). `zoom` re-rasterizes natively, so content keeps its 1080p-monitor size and stays crisp at any encode resolution; the camera feed is left native. `#slide-elements`'s own scale is neutralised to avoid double-scaling.
 
 **Encode pipeline.** A **steady-CFR pump** drives ffmpeg: the `paint` event caches the latest BGRA frame; a timer at the target fps writes that frame to `rtmp.writeVideo` (`pipe:0`) every interval, **duplicating the last frame when no new paint arrived** — feeding ffmpeg straight from `paint` starves YouTube on near-static scenes ("not receiving enough video") because the offscreen compositor coalesces repaints. ffmpeg starts on the FIRST frame so `-video_size` matches the real surface. `rtmp.js` spawns the bundled ffmpeg (`youtube/bin.js`), probes for a hardware H.264 encoder (videotoolbox/nvenc/qsv, `libx264` fallback), uses wallclock timestamps, drops video frames under stdin backpressure (never audio), auto-reconnects, and tracks `droppedFrames`/`sentFrames` — emitted ~1Hz so the Stream tab shows a Stable/Unstable health badge (dropped frames = bandwidth/encoder can't keep up). CSP does not apply (egress is in main).
 
-**Lifecycle.** The compositor window runs for **preview** while the Stream tab is open (ref-counted via `openStreamStudio`/`closeStreamStudio`); **ffmpeg only spawns at Go Live** (`startStream`). A ~10fps downscaled JPEG preview (`output:stream-preview`) feeds the Stream-tab monitor — it is a low-res monitor and does NOT represent stream quality. Resolution/fps changes recreate the window when idle. On macOS, `openStreamStudio` requests camera/mic via `systemPreferences.askForMediaAccess` (the offscreen window can't surface the TCC prompt itself); `NSCameraUsageDescription`/`NSMicrophoneUsageDescription` are in `forge.config.js` `extendInfo`. Config persists in the `stream_studio` setting (device ids+labels, `audioMode`, layout) and `stream_config` (RTMP server/key/resolution/fps/bitrate).
+**Lifecycle.** The compositor window runs for **preview** while the Stream tab is open (ref-counted via `openStreamStudio`/`closeStreamStudio`); **ffmpeg only spawns at Go Live** (`startStream`). A ~10fps downscaled JPEG preview (`output:stream-preview`) feeds the Stream-tab monitor — it is a low-res monitor and does NOT represent stream quality. Resolution/fps changes recreate the window when idle. On macOS, `openStreamStudio` requests camera/mic via `systemPreferences.askForMediaAccess` (the offscreen window can't surface the TCC prompt itself); `NSCameraUsageDescription`/`NSMicrophoneUsageDescription` are in `forge.config.js` `extendInfo`. Config persists in the `stream_studio` setting (device ids+labels, `audioMode`, layout), saved layouts in `stream_presets`, and `stream_config` (RTMP server/key/resolution/fps/bitrate). Streaming is configured entirely in the Stream tab — there is **no Stream section in Settings**.
 
 ---
 

@@ -832,12 +832,56 @@ const STREAM_DEFAULTS = {
   server: '', key: '', width: 1920, height: 1080, fps: 30,
   videoBitrate: '4500k', audioBitrate: '160k',
 };
+// ── Stream layout model ───────────────────────────────────────────────────────
+// A layout is a free-form composition of two boxes — the external camera/mixer FEED
+// and the Cue PROGRAM (background + lyrics/content) — over a black backdrop. Boxes are
+// in PERCENT of the 16:9 frame; `front` decides z-order when they overlap; `fit` is the
+// feed's object-fit. This one model expresses every arrangement (fullscreen feed,
+// fullscreen program, PiP either way, side-by-side, top/bottom split, custom). Presets
+// are named snapshots of this layout (stored separately in `stream_presets`).
+const DEFAULT_LAYOUT = {
+  feed:    { visible: true,  x: 0, y: 0, w: 100, h: 100, fit: 'cover' },   // fit: cover|contain
+  program: { visible: false, x: 0, y: 0, w: 100, h: 100, fit: 'fit' },     // fit: fit|fill
+  front: 'program',
+  lyricsOverFeed: false,
+};
+const clampPct = (v, d) => { const n = Number(v); return Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : d; };
+function normBox(b, def) {
+  b = b || {};
+  return { x: clampPct(b.x, def.x), y: clampPct(b.y, def.y), w: clampPct(b.w, def.w || 100), h: clampPct(b.h, def.h || 100) };
+}
+// Accept the new box model OR migrate the legacy {mode,lyricsOverFeed,pip} shape.
+function normalizeLayout(L) {
+  L = L || {};
+  if (L.mode || L.pip) { // legacy → box model
+    const pip = L.pip || { which: 'feed', x: 66, y: 4, w: 30, h: 30 };
+    const lof = !!L.lyricsOverFeed;
+    if (L.mode === 'program') return { ...DEFAULT_LAYOUT, feed: { ...DEFAULT_LAYOUT.feed, visible: false }, program: { ...DEFAULT_LAYOUT.program, visible: true }, front: 'program', lyricsOverFeed: false };
+    if (L.mode === 'pip') {
+      const inset = normBox(pip, { x: 66, y: 4, w: 30, h: 30 });
+      if (pip.which === 'program') // feed full base, program inset
+        return { feed: { ...DEFAULT_LAYOUT.feed, visible: true }, program: { ...DEFAULT_LAYOUT.program, visible: true, ...inset }, front: 'program', lyricsOverFeed: false };
+      // program full base, feed inset
+      return { feed: { ...DEFAULT_LAYOUT.feed, visible: true, ...inset }, program: { ...DEFAULT_LAYOUT.program, visible: true }, front: 'feed', lyricsOverFeed: false };
+    }
+    // 'feed'
+    return { ...DEFAULT_LAYOUT, feed: { ...DEFAULT_LAYOUT.feed, visible: true }, program: { ...DEFAULT_LAYOUT.program, visible: false }, lyricsOverFeed: lof };
+  }
+  const F = L.feed || {}, P = L.program || {};
+  return {
+    feed:    { visible: F.visible !== false, ...normBox(F, DEFAULT_LAYOUT.feed), fit: F.fit === 'contain' ? 'contain' : 'cover' },
+    program: { visible: !!P.visible, ...normBox(P, DEFAULT_LAYOUT.program), fit: P.fit === 'fill' ? 'fill' : 'fit' },
+    front: L.front === 'feed' ? 'feed' : 'program',
+    lyricsOverFeed: !!L.lyricsOverFeed,
+  };
+}
+
 const STREAM_STUDIO_DEFAULTS = {
   // Labels accompany the ids because deviceIds are salted per-origin — the compositor
   // window resolves the chosen device by label (see stream-feed.js).
   videoDeviceId: null, videoLabel: null, audioDeviceId: null, audioLabel: null,
   audioMode: 'external', // 'external' | 'mixed'
-  layout: { mode: 'feed', lyricsOverFeed: false, pip: { which: 'feed', x: 66, y: 4, w: 30, h: 30 } },
+  layout: DEFAULT_LAYOUT,
 };
 
 export function getStreamConfig() {
@@ -861,25 +905,42 @@ export function setStreamConfig(cfg) {
 
 export function getStreamStudio() {
   const s = getSetting('stream_studio') || {};
-  return {
-    ...STREAM_STUDIO_DEFAULTS, ...s,
-    layout: {
-      ...STREAM_STUDIO_DEFAULTS.layout, ...(s.layout || {}),
-      pip: { ...STREAM_STUDIO_DEFAULTS.layout.pip, ...((s.layout && s.layout.pip) || {}) },
-    },
-  };
+  return { ...STREAM_STUDIO_DEFAULTS, ...s, layout: normalizeLayout(s.layout) };
 }
 // Merge & persist a partial studio config (input device / audio mode / layout), then
-// push it live to the open compositor window.
+// push it live to the open compositor window. A `layout` patch REPLACES the whole
+// layout (it's the free-form box model — partial layer merges would orphan stale boxes);
+// callers send the complete layout object.
 export function setStreamStudio(cfg) {
   const cur = getStreamStudio();
   const merged = { ...cur, ...(cfg || {}) };
-  if (cfg && cfg.layout) {
-    merged.layout = { ...cur.layout, ...cfg.layout, pip: { ...cur.layout.pip, ...(cfg.layout.pip || {}) } };
-  }
+  if (cfg && cfg.layout) merged.layout = normalizeLayout(cfg.layout);
   setSetting('stream_studio', merged);
   pushStreamConfig();
   return merged;
+}
+
+// ── Stream layout presets ─────────────────────────────────────────────────────
+// Named snapshots of a layout. Stored as an array in settings; applying one copies its
+// layout into the live studio layout via setStreamStudio.
+export function getStreamPresets() {
+  const arr = getSetting('stream_presets');
+  return Array.isArray(arr) ? arr.map((p) => ({ id: p.id, name: p.name, layout: normalizeLayout(p.layout) })) : [];
+}
+export function saveStreamPreset(preset) {
+  preset = preset || {};
+  const list = getStreamPresets();
+  const id = preset.id || `lp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const entry = { id, name: String(preset.name || 'Untitled').slice(0, 60), layout: normalizeLayout(preset.layout) };
+  const idx = list.findIndex((p) => p.id === id);
+  if (idx >= 0) list[idx] = entry; else list.push(entry);
+  setSetting('stream_presets', list);
+  return { presets: list, id };
+}
+export function deleteStreamPreset(id) {
+  const list = getStreamPresets().filter((p) => p.id !== id);
+  setSetting('stream_presets', list);
+  return list;
 }
 
 export function getStreamStatus() {

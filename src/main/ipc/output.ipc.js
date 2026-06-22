@@ -52,6 +52,10 @@ export function registerOutputIpc() {
   ipcMain.handle('output:stream:studio:set', (_e, cfg) => outputManager.setStreamStudio(cfg));
   ipcMain.handle('output:stream:studio:open', () => outputManager.openStreamStudio());
   ipcMain.handle('output:stream:studio:close', () => outputManager.closeStreamStudio());
+  // Saveable layout presets (named snapshots of the free-form feed/program composition).
+  ipcMain.handle('output:stream:presets:get', () => outputManager.getStreamPresets());
+  ipcMain.handle('output:stream:presets:save', (_e, p) => outputManager.saveStreamPreset(p));
+  ipcMain.handle('output:stream:presets:delete', (_e, id) => outputManager.deleteStreamPreset(id));
 
   // ── Screens (connected displays) ───────────────────────────────────────────
   ipcMain.handle('output:screens:list', () => {

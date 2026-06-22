@@ -73,6 +73,10 @@ contextBridge.exposeInMainWorld('cue', {
       setStudio: (cfg) => ipcRenderer.invoke('output:stream:studio:set', cfg),
       open: () => ipcRenderer.invoke('output:stream:studio:open'),
       close: () => ipcRenderer.invoke('output:stream:studio:close'),
+      // Saveable layout presets (free-form feed/program composition).
+      getPresets: () => ipcRenderer.invoke('output:stream:presets:get'),
+      savePreset: (p) => ipcRenderer.invoke('output:stream:presets:save', p),
+      deletePreset: (id) => ipcRenderer.invoke('output:stream:presets:delete', id),
     },
     channels: {
       list: () => ipcRenderer.invoke('output:channels:list'),

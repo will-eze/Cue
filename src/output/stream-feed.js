@@ -184,61 +184,77 @@
   window.addEventListener('resize', applyDesignScale);
 
   // ── Layout / cut model ──────────────────────────────────────────────────────
-  // { mode:'feed'|'program'|'pip', lyricsOverFeed:bool, pip:{ which:'feed'|'program', x,y,w,h } }
-  let layout = { mode: 'feed', lyricsOverFeed: false, pip: { which: 'feed', x: 66, y: 4, w: 30, h: 30 } };
+  // Free-form composition of two layers over a black backdrop. Boxes are PERCENT of
+  // the frame; `front` is the z-order when they overlap; the feed's `fit` is object-fit.
+  //   { feed:{visible,x,y,w,h,fit}, program:{visible,x,y,w,h}, front:'feed'|'program',
+  //     lyricsOverFeed:bool }
+  let layout = {
+    feed:    { visible: true,  x: 0, y: 0, w: 100, h: 100, fit: 'cover' },
+    program: { visible: false, x: 0, y: 0, w: 100, h: 100 },
+    front: 'program', lyricsOverFeed: false,
+  };
 
+  // The Cue program is a designed 16:9 surface; placed in a box it is scaled UNIFORM-FIT
+  // and CENTRED (letterboxed) so lyrics/graphics never distort. Returns the actual
+  // rendered rect inside the box, all in % of the frame. MUST stay identical to the copy
+  // in StreamLayoutEditor.jsx (renderer can't import an output script) so the editor is
+  // a true WYSIWYG of this output.
+  function programFit(b) {
+    const f = Math.min(b.w, b.h) / 100;          // uniform scale factor (frame-relative)
+    const left = b.x + (b.w - 100 * f) / 2;      // centre within the box
+    const top = b.y + (b.h - 100 * f) / 2;
+    return { left, top, f, w: 100 * f, h: 100 * f };
+  }
+
+  // Position the feed <video> by percent box + object-fit.
   function boxFeed(b) {
     feed.style.inset = 'auto';
     feed.style.left = b.x + '%'; feed.style.top = b.y + '%';
     feed.style.width = b.w + '%'; feed.style.height = b.h + '%';
+    feed.style.objectFit = b.fit === 'contain' ? 'contain' : 'cover';
   }
-  function fullFeed() {
-    feed.style.left = feed.style.top = feed.style.width = feed.style.height = '';
-    feed.style.inset = '0'; feed.style.width = '100%'; feed.style.height = '100%';
-  }
-  // Full-frame program: `zoom` (set in applyDesignScale) already fills the frame, so
-  // no transform is needed.
-  function fullStage() { stage.style.transform = ''; }
-  // PiP: the stage is already zoom-scaled to fill the frame; shrink it into the inset
-  // with a transform (down-scaling crisp content doesn't degrade it). translate() uses
-  // viewport units so position is independent of the scale.
+  // Position the Cue program (#stage). The stage is already `zoom`-scaled to fill the
+  // frame (applyDesignScale); a transform shrinks/places it into its box. Down-scaling
+  // crisp content doesn't degrade it. Two fit modes: 'fit' scales UNIFORM and CENTRES
+  // (letterbox — preserves the program's 16:9, the default), 'fill' STRETCHES to the box.
+  // CRITICAL: translate in ELEMENT-RELATIVE % (not vw/vh). The stage carries a `zoom`,
+  // and zoom multiplies viewport-unit translates — so `vw/vh` here would be double-scaled
+  // and mis-place the box. `%` translates resolve against the stage's own 1920×1080 box
+  // (which == the frame after zoom), so the geometry is preserved regardless of zoom.
   function boxStage(b) {
-    stage.style.transform = `translate(${b.x}vw, ${b.y}vh) scale(${b.w / 100}, ${b.h / 100})`;
+    if (b.fit === 'fill') {                       // stretch to fill the exact box
+      stage.style.transform = `translate(${b.x}%, ${b.y}%) scale(${b.w / 100}, ${b.h / 100})`;
+      return;
+    }
+    const { left, top, f } = programFit(b);        // letterbox, centred
+    stage.style.transform = `translate(${left}%, ${top}%) scale(${f})`;
   }
 
   function applyLayout(L) {
-    if (L) layout = { ...layout, ...L, pip: { ...layout.pip, ...(L.pip || {}) } };
-    const { mode, lyricsOverFeed, pip } = layout;
-    fullStage(); fullFeed();
+    if (L) layout = {
+      feed: { ...layout.feed, ...(L.feed || {}) },
+      program: { ...layout.program, ...(L.program || {}) },
+      front: L.front || layout.front,
+      lyricsOverFeed: 'lyricsOverFeed' in L ? !!L.lyricsOverFeed : layout.lyricsOverFeed,
+    };
+    const { feed: F, program: P, front, lyricsOverFeed } = layout;
 
-    if (mode === 'program') {
-      // Cut fullscreen Cue program over the feed.
-      feed.style.display = 'none';
-      bg.style.opacity = '1';
-      content.style.opacity = '1';
-      stage.style.zIndex = '1';
-    } else if (mode === 'pip') {
-      bg.style.opacity = '1';
-      content.style.opacity = '1';
-      feed.style.display = '';
-      if (pip.which === 'feed') {       // program full (base), feed in the corner
-        stage.style.zIndex = '1'; feed.style.zIndex = '2'; boxFeed(pip);
-      } else {                          // feed full (base), program in the corner
-        feed.style.zIndex = '1'; stage.style.zIndex = '2'; boxStage(pip);
-      }
-    } else {
-      // 'feed' — camera is the base; the fullscreen Cue program is suppressed (its
-      // background AND its big centred lyrics). Cue lyrics show instead as a LOWER
-      // THIRD band (below), gated by lyrics-over-feed.
-      feed.style.display = '';
-      feed.style.zIndex = '1';
-      bg.style.opacity = '0';
-      content.style.opacity = '0';
-      stage.style.zIndex = '2';
-    }
-    // The lower-third lyric band shows only in feed mode with lyrics-over-feed on;
-    // Program/PiP use the fullscreen #content layout instead.
-    ltVisible = mode === 'feed' && !!lyricsOverFeed;
+    // Feed layer.
+    if (F.visible) { feed.style.display = ''; boxFeed(F); }
+    else feed.style.display = 'none';
+
+    // Program layer — opacity gates its background AND content together (a hidden
+    // program must drop both, exactly like the old 'feed' mode).
+    if (P.visible) { bg.style.opacity = '1'; content.style.opacity = '1'; boxStage(P); }
+    else { bg.style.opacity = '0'; content.style.opacity = '0'; }
+
+    // Z-order: the chosen layer sits on top. (gfx overlay stays above both at z 6+.)
+    if (front === 'feed') { feed.style.zIndex = '3'; stage.style.zIndex = '2'; }
+    else { feed.style.zIndex = '2'; stage.style.zIndex = '3'; }
+
+    // The lower-third lyric band is the broadcast alternative to the fullscreen program
+    // content — shown over the feed when enabled (independent of the program box).
+    ltVisible = !!lyricsOverFeed;
     renderLT(lastSlide);
   }
   applyDesignScale(); // sets stage + band + overlay transforms, then applyLayout

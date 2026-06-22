@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import StreamLayoutEditor, { DEFAULT_LAYOUT, TEMPLATES } from './StreamLayoutEditor.jsx';
 
 // ── Stream Studio ─────────────────────────────────────────────────────────────
 // The broadcast switcher. Brings an external video + audio feed in (capture device /
@@ -19,25 +20,14 @@ const FPS_OPTIONS = [30, 60];
 const BITRATES = ['2500k', '4500k', '6000k', '9000k', '13000k', '20000k'];
 const STATE_LABEL = { idle: 'Offline', starting: 'Starting…', live: 'Live', reconnecting: 'Reconnecting…', error: 'Error' };
 
-const PIP_SIZES = [{ label: 'S', w: 25 }, { label: 'M', w: 33 }, { label: 'L', w: 42 }];
-const PIP_CORNERS = [
-  { id: 'tl', label: 'Top-left',  icon: 'north_west' },
-  { id: 'tr', label: 'Top-right', icon: 'north_east' },
-  { id: 'bl', label: 'Bot-left',  icon: 'south_west' },
-  { id: 'br', label: 'Bot-right', icon: 'south_east' },
-];
-// Resolve a corner + size to an inset box (kept 16:9 by setting h% = w%, since the
-// frame is 16:9). Margin 4% from the edges.
-function cornerBox(corner, w) {
-  const m = 4, h = w;
-  const x = corner === 'tr' || corner === 'br' ? 100 - w - m : m;
-  const y = corner === 'bl' || corner === 'br' ? 100 - h - m : m;
-  return { x, y, w, h };
-}
-function activeCorner(pip) {
-  const right = pip.x > 50, bottom = pip.y > 50;
-  return bottom ? (right ? 'br' : 'bl') : (right ? 'tr' : 'tl');
-}
+// Two layouts are "the same" if their box composition matches (used to highlight the
+// active preset/template against the live layout).
+const layoutEq = (a, b) => {
+  if (!a || !b) return false;
+  const box = (x) => `${Math.round(x.x)},${Math.round(x.y)},${Math.round(x.w)},${Math.round(x.h)}`;
+  const sig = (l) => `${l.feed.visible ? box(l.feed) + ':' + (l.feed.fit || 'cover') : '-'}|${l.program.visible ? box(l.program) + ':' + (l.program.fit || 'fit') : '-'}|${l.front}|${l.lyricsOverFeed ? 'L' : ''}`;
+  return sig(a) === sig(b);
+};
 
 export default function StreamView() {
   const [studio, setStudio] = useState(null);   // { videoDeviceId, audioDeviceId, audioMode, layout }
@@ -50,6 +40,8 @@ export default function StreamView() {
   const [health, setHealth] = useState(null); // { dropRate, sentRate } frames/sec, or null
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [presets, setPresets] = useState([]);
+  const [editor, setEditor] = useState(null); // null | { presetId?, presetName?, initial }
   const triedUnlockRef = useRef(false);
   const healthRef = useRef({ dropped: 0, sent: 0, t: 0 });
 
@@ -70,6 +62,7 @@ export default function StreamView() {
       setStudio(s);
       setCfg(await window.cue.output.stream.getConfig());
       setStatus(await window.cue.output.stream.status());
+      setPresets(await window.cue.output.stream.getPresets());
       await enumerate();
     })();
     const offStatus = window.cue.on('stream:status', (s) => {
@@ -112,14 +105,12 @@ export default function StreamView() {
   }, [videoInputs, audioInputs, enumerate]);
 
   const patchStudio = useCallback(async (partial) => {
-    setStudio((prev) => {
-      const next = { ...prev, ...partial };
-      if (partial.layout) next.layout = { ...prev.layout, ...partial.layout, pip: { ...prev.layout.pip, ...(partial.layout.pip || {}) } };
-      return next;
-    });
+    setStudio((prev) => ({ ...prev, ...partial })); // layout patches send the COMPLETE box model
     await window.cue.output.stream.setStudio(partial);
   }, []);
-  const patchLayout = useCallback((partial) => patchStudio({ layout: partial }), [patchStudio]);
+  // Push a full layout live (and persist as the studio's current layout).
+  const applyLayout = useCallback((layout) => patchStudio({ layout }), [patchStudio]);
+  const refreshPresets = useCallback(async () => setPresets(await window.cue.output.stream.getPresets()), []);
 
   const patchCfg = useCallback(async (p) => {
     setCfg((prev) => ({ ...prev, ...p }));
@@ -143,7 +134,6 @@ export default function StreamView() {
     : 'bg-outline';
   const selRes = RESOLUTIONS.find((r) => r.width === cfg.width && r.height === cfg.height) || RESOLUTIONS[1];
   const L = studio.layout;
-  const pip = L.pip || { which: 'feed', x: 66, y: 4, w: 30, h: 30 };
 
   // deviceIds can re-salt across sessions — fall back to a label match so the picker
   // still reflects the chosen device.
@@ -174,60 +164,52 @@ export default function StreamView() {
           {live && <span className="absolute top-3 left-3 px-sm py-[2px] rounded text-label-sm font-label-sm font-bold uppercase bg-secondary text-on-secondary flex items-center gap-xs"><span className="w-[6px] h-[6px] rounded-full bg-on-secondary animate-pulse" />On Air</span>}
         </div>
 
-        {/* Layout / cut switcher */}
+        {/* Layout presets + quick layouts */}
         <div className="shrink-0 bg-surface-container border border-outline-variant/30 rounded-xl p-md space-y-sm">
-          <p className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-outline">Program Source</p>
-          <div className="flex gap-sm">
-            {[
-              { id: 'feed', label: 'Camera Feed', icon: 'videocam' },
-              { id: 'program', label: 'Cue Program', icon: 'subtitles' },
-              { id: 'pip', label: 'Picture-in-Picture', icon: 'picture_in_picture' },
-            ].map((m) => (
-              <button key={m.id} onClick={() => patchLayout({ mode: m.id })}
-                className={`flex-1 flex items-center justify-center gap-xs h-9 rounded-lg text-label-sm font-label-sm font-bold uppercase tracking-[0.04em] transition-all active:scale-95 cursor-pointer border ${
-                  L.mode === m.id ? 'bg-primary/15 border-primary/60 text-primary' : 'bg-surface-container-high border-outline-variant/30 text-on-surface-variant hover:text-on-surface hover:border-outline-variant/60'
-                }`}>
-                <span className="material-symbols-outlined text-[16px]">{m.icon}</span>{m.label}
-              </button>
-            ))}
+          <div className="flex items-center gap-sm">
+            <p className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-outline">Program Layout</p>
+            <button onClick={() => setEditor({ initial: L })}
+              className="ml-auto flex items-center gap-xs h-7 px-sm rounded-lg text-label-sm font-label-sm font-bold uppercase tracking-[0.03em] bg-surface-container-high border border-outline-variant/30 text-on-surface-variant hover:text-on-surface hover:border-outline-variant/60 cursor-pointer transition-all active:scale-95">
+              <span className="material-symbols-outlined text-[15px]">tune</span>Customise
+            </button>
           </div>
 
-          {L.mode === 'feed' && (
-            <label className="flex items-center gap-sm pt-xs cursor-pointer select-none">
-              <input type="checkbox" checked={!!L.lyricsOverFeed} onChange={(e) => patchLayout({ lyricsOverFeed: e.target.checked })}
-                className="accent-primary w-4 h-4 cursor-pointer" />
-              <span className="text-body-sm text-on-surface">Show Cue lyrics / content over the feed</span>
-            </label>
+          {/* Saved presets */}
+          {presets.length > 0 && (
+            <div className="flex flex-wrap gap-xs">
+              {presets.map((p) => {
+                const active = layoutEq(p.layout, L);
+                return (
+                  <div key={p.id} className={`group flex items-center rounded-lg border overflow-hidden ${active ? 'border-primary/60 bg-primary/15' : 'border-outline-variant/30 bg-surface-container-high'}`}>
+                    <button onClick={() => applyLayout(p.layout)}
+                      className={`pl-sm pr-xs h-8 text-label-sm font-label-sm font-bold uppercase tracking-[0.03em] cursor-pointer ${active ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>{p.name}</button>
+                    <button onClick={() => setEditor({ presetId: p.id, presetName: p.name, initial: p.layout })} title="Edit layout"
+                      className="px-xs h-8 text-on-surface-variant/50 hover:text-on-surface cursor-pointer"><span className="material-symbols-outlined text-[14px]">edit</span></button>
+                  </div>
+                );
+              })}
+            </div>
           )}
 
-          {L.mode === 'pip' && (
-            <div className="flex flex-wrap items-center gap-md pt-xs">
-              <div className="flex items-center gap-xs">
-                <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-outline">Inset</span>
-                <div className="flex bg-surface-container-lowest border border-outline-variant/40 rounded overflow-hidden">
-                  {[['feed', 'Camera'], ['program', 'Program']].map(([id, lbl]) => (
-                    <button key={id} onClick={() => patchLayout({ pip: { which: id } })}
-                      className={`px-sm h-6 text-label-sm font-label-sm uppercase tracking-[0.05em] cursor-pointer transition-colors ${pip.which === id ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>{lbl}</button>
-                  ))}
-                </div>
-              </div>
-              <div className="flex items-center gap-xs">
-                <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-outline">Corner</span>
-                {PIP_CORNERS.map((c) => (
-                  <button key={c.id} title={c.label} onClick={() => patchLayout({ pip: cornerBox(c.id, pip.w || 33) })}
-                    className={`w-7 h-7 flex items-center justify-center rounded cursor-pointer transition-colors border ${activeCorner(pip) === c.id ? 'bg-primary/15 border-primary/60 text-primary' : 'bg-surface-container-high border-outline-variant/30 text-on-surface-variant hover:text-on-surface'}`}>
-                    <span className="material-symbols-outlined text-[15px]">{c.icon}</span>
-                  </button>
-                ))}
-              </div>
-              <div className="flex items-center gap-xs">
-                <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-outline">Size</span>
-                {PIP_SIZES.map((s) => (
-                  <button key={s.label} onClick={() => patchLayout({ pip: cornerBox(activeCorner(pip), s.w) })}
-                    className={`w-7 h-7 flex items-center justify-center rounded text-label-sm font-label-sm font-bold cursor-pointer transition-colors border ${Math.round(pip.w) === s.w ? 'bg-primary/15 border-primary/60 text-primary' : 'bg-surface-container-high border-outline-variant/30 text-on-surface-variant hover:text-on-surface'}`}>{s.label}</button>
-                ))}
-              </div>
-            </div>
+          {/* Quick layouts (apply instantly, no save) */}
+          <div className="flex flex-wrap gap-xs">
+            {TEMPLATES.map((t) => {
+              const active = layoutEq(t.make(L), L);
+              return (
+                <button key={t.id} onClick={() => applyLayout(t.make(L))} title={t.name}
+                  className={`flex items-center gap-xs h-8 px-sm rounded-lg text-label-sm font-label-sm font-bold uppercase tracking-[0.03em] cursor-pointer transition-all active:scale-95 border ${active ? 'bg-primary/15 border-primary/60 text-primary' : 'bg-surface-container-high border-outline-variant/30 text-on-surface-variant hover:text-on-surface hover:border-outline-variant/60'}`}>
+                  <span className="material-symbols-outlined text-[15px]">{t.icon}</span>{t.name}
+                </button>
+              );
+            })}
+          </div>
+
+          {L.feed.visible && (
+            <label className="flex items-center gap-sm pt-xs cursor-pointer select-none">
+              <input type="checkbox" checked={!!L.lyricsOverFeed} onChange={(e) => applyLayout({ ...L, lyricsOverFeed: e.target.checked })}
+                className="accent-primary w-4 h-4 cursor-pointer" />
+              <span className="text-body-sm text-on-surface">Show Cue lyrics as a lower-third over the feed</span>
+            </label>
           )}
         </div>
       </div>
@@ -345,6 +327,19 @@ export default function StreamView() {
           The stream is its own program: your camera/mixer feed with Cue overlays. The in-room screens and NDI outputs keep showing Cue's program, unaffected. The monitor above is a low-rate preview — the live stream is full resolution and frame rate.
         </p>
       </div>
+
+      {editor && (
+        <StreamLayoutEditor
+          key={editor.presetId || 'new'}
+          initial={editor.initial}
+          presetId={editor.presetId}
+          presetName={editor.presetName}
+          onApply={applyLayout}
+          onSaved={async () => { await refreshPresets(); setEditor(null); }}
+          onDeleted={(list) => { setPresets(list); setEditor(null); }}
+          onClose={() => setEditor(null)}
+        />
+      )}
     </div>
   );
 }
