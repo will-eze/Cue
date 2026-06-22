@@ -193,6 +193,12 @@ src/
 │   │                         takes /releases[0] (prerelease-aware), picks asset by extension; downloadUpdate() streams
 │   │                         to temp w/ update:progress, strips macOS quarantine xattr, opens installer, quits.
 │   │
+│   ├── stream/
+│   │   └── rtmp.js           RTMP streaming via the bundled ffmpeg (no OAuth — stream key). spawn ffmpeg (video=rawvideo
+│   │                         bgra on pipe:0, audio=f32le on pipe:3); HW encoder probe (videotoolbox/nvenc/qsv) → libx264;
+│   │                         wallclock A/V; writeVideo (drops under backpressure) / writeAudio (never dropped);
+│   │                         start/stop/getStatus; auto-reconnect on unexpected exit. Driven by manager.startStream.
+│   │
 │   └── output/
 │       ├── manager.js        Output window registry. go/clear/logo dispatch. No operator capture loop —
 │       │                     the operator live monitor renders from payload, not capturePage.
@@ -216,8 +222,12 @@ src/
 │       │                     toggles a channel's lyric band / overlay at runtime via content:mode (no window recreate).
 │       │                     setRemoteStateListener(cb): notifyMainWindow('output:state-changed') also fires cb so the
 │       │                     network remote pushes STATE. setOutputsEnabled emits state early (before slow window work).
+│       │                     Audio: getProgramAudioDevice/setProgramAudioDevice (in-room device, audio:output-device);
+│       │                     program-audio tap → ingestAudioPcm (planar FLTp to NDI senders + interleaved f32le to RTMP);
+│       │                     updateAudioTapState (audio:tap on/off). RTMP: startStream/stopStream/getStreamStatus +
+│       │                     a dedicated offscreen stream window kept outside the windows map.
 │       └── ndi.js            Active NDI implementation. createRequire loads @grandi/<platform>-<arch>
-│                             at runtime. createSender / sendFrame (inflight guard) / destroySender.
+│                             at runtime. createSender / sendFrame (inflight guard) / sendAudio (FLTp planar) / destroySender.
 │
 ├── shared/
 │   ├── stage-schedule.js     Pure scheduled-stage-message logic (no electron/DOM) shared by main + renderer:
@@ -381,6 +391,10 @@ src/
 │   │   │                          NDI cards have an audio mute toggle (ndi_audio_muted) — volume_off/volume_up.
 │   │   │                          Lower-third cards have a 3-way content mode (ChannelModeSwitch): Lyrics + Graphics /
 │   │   │                          Lyrics Only / Graphics Only (show_program × show_graphics, via channelMode util).
+│   │   │                          Also the global "Program audio output" device picker (program_audio_device; labels
+│   │   │                          unlocked lazily on first interaction, never eagerly — see §13).
+│   │   ├── StreamSettings.jsx    RTMP streaming: server URL + key, resolution/fps/bitrate, Go Live/Stop, status
+│   │   │                          (window.cue.on('stream:status')). Nav id 'stream'.
 │   │   ├── LogoSettings.jsx      Global logo picker.
 │   │   ├── BackgroundSettings.jsx Global song/scripture/slide background pickers. Bulk apply actions.
 │   │   ├── ThemeSettings.jsx     Theme library. Category tabs (Songs/Scripture/… auto-derived from present themes);
@@ -442,6 +456,11 @@ src/
 │   │                         attach(el, {loop, baseMuted, transport}) locks one <video>/<audio> to the shared
 │   │                         transport: wall-clock-derived position, playbackRate convergence (±6%, preservesPitch),
 │   │                         native loop, el.muted = baseMuted || transport.muted. Subscribes to onMediaTransport.
+│   │                         Applies the in-room audio output device (setSinkId, audible window only) + offers each
+│   │                         element to CueAudioTap (§13 In-room device / Program-audio tap).
+│   ├── audio-tap.js          Program-audio tap (NDI/stream). captureStream → 48k AudioContext → cue-pcm-tap worklet →
+│   │                         output:audio-pcm. Worklet loaded from a blob: URL (asar-proof). Gated by audio:tap.
+│   ├── pcm-tap-worklet.js    AudioWorkletProcessor: batches planar Float32 PCM frames, posts them to the main thread.
 │   ├── graphics-overlay.js   Shared broadcast-graphics overlay (included by fullscreen.html + lowerthird.html, NOT
 │   │                         stage). Injects its own #cue-gfx DOM + styles. Renders the name/title bug (positioned by
 │   │                         style.name.textBox, styled per name/title), ticker crawl (top/bottom, speed), and custom
@@ -787,6 +806,8 @@ Known keys:
 | `remote_token` | string | Pairing token; minted on first enable, regenerable |
 | `user_fonts` | array | User-installed fonts: `[{id, family, label, filename, path, ext}]`. Files live in `userData/fonts/`; served via cue-media://. Included in backups (paths rewritten on restore), wiped by factory reset |
 | `libreoffice_path` | string\|null | User-set absolute path to the `soffice` binary (Locate manually…), tried first by `findLibreOffice()` for PowerPoint import |
+| `program_audio_device` | object\|null | In-room program-audio output device `{deviceId,label,groupId}`; `null` = system default. The audible (primary) output window routes its media element there via `setSinkId`, matching deviceId→label→groupId (device IDs are salted per-origin). Machine-specific (rides backups but degrades to default if the device is absent) |
+| `stream_config` | object | RTMP stream settings `{server,key,width,height,fps,videoBitrate,audioBitrate}`. `server`+`key` form the ingest URL; `key` is sensitive (lives in the synced DB) |
 
 **localStorage keys** (UI state only — not in DB):
 | Key | Description |
@@ -826,6 +847,7 @@ protocol.registerSchemesAsPrivileged([
 - Supports HTTP range requests (for video seeking), serving a `206` with `Content-Range`
 - **Bodies are streamed, never buffered.** Both the ranged (`206`) and full responses are `fs.createReadStream(...)` piped through `Readable.toWeb(stream)`. A `<video>` opens playback with an open-ended `bytes=0-`; reading that into a single `Buffer` froze the main process and spiked memory on multi-GB clips (a one-hour YouTube download), and a fixed-size chunk cap starved the player of the multi-MB `moov` index so the clip only looped its first few seconds. A lazy stream serves any range with bounded memory and lets Chromium read/seek/cancel freely — it cancels the open-ended request and re-asks for specific windows, so the whole file is never read.
 - Returns `Response` with correct MIME type and `Cache-Control: public, max-age=31536000, immutable` — Chromium serves from disk cache after first load so repeated media displays do not re-read from disk
+- Responses also carry `Access-Control-Allow-Origin: *` so the output window's program-audio tap (`captureStream` → Web Audio, §13) can read the cross-origin (`file://` → `cue-media://`) media without tainting; the foreground media element sets `crossOrigin='anonymous'`
 
 ### CRITICAL URL GOTCHA
 
@@ -1023,9 +1045,16 @@ All renderer↔main communication is via `ipcRenderer.invoke` / `ipcMain.handle`
 | `monitors.list(channelId?)` | `[channel_monitor rows]` | Pass channelId to filter. |
 | `monitors.create(channelId, {display_bounds, label})` | `monitor` | Assigns a physical screen to a channel and opens its BrowserWindow. |
 | `monitors.delete(monitorId)` | void | Closes window and removes row. |
-| `multiview.start()` | void | Begins capturing all output windows; emits `output:multiview-captures` at ~5fps. Refcounted — interval starts only when count goes 0→1. |
+| `multiview.start()` | void | Begins capturing all output windows; emits `output:multiview-captures` at ~1fps (1s). NDI tiles use the cached paint frame; screen tiles use `capturePage()` (a full GPU readback that contends with live playback, so kept to 1fps with an in-flight guard against pile-up). Refcounted — interval starts only when count goes 0→1. |
 | `multiview.stop()` | void | Decrements refcount; stops capture only when count reaches 0. Safe for multiple subscribers. |
 | `screens.list()` | `[{id, bounds, scaleFactor, label}]` | All connected displays. |
+| `audioDevice.get()` | object\|null | The configured in-room program-audio output device (`program_audio_device`), or null = system default. |
+| `audioDevice.set(device)` | object\|null | Persist `{deviceId,label,groupId}` (or null) AND broadcast `audio:output-device` to live output windows so the in-room device changes without re-GO. |
+| `stream.getConfig()` | object | RTMP `stream_config` (defaults merged). |
+| `stream.setConfig(cfg)` | object | Merge + persist `stream_config`; returns merged. |
+| `stream.start()` | `{ok,error?}` | Begin streaming the program to RTMP (reads stored config). Ensures ffmpeg is downloaded, opens a dedicated offscreen stream window, enables the program-audio tap. |
+| `stream.stop()` | `{ok}` | Stop streaming: kill ffmpeg, close the stream window, deactivate the tap if no other consumer. |
+| `stream.status()` | `{active, state, encoder}` | `state` ∈ `idle\|starting\|live\|reconnecting\|error`. |
 
 **Output payload structure:**
 ```js
@@ -1279,7 +1308,8 @@ Subscribe to main→renderer events. Returns an unsubscribe function — call it
 - `output:overlay-changed` — fired after any broadcast-graphics change; payload is the full `overlay` object `{nameTitle, ticker, custom}`. The Graphics panel + live monitor follow it.
 - `output:media-transport` — fired whenever the media transport changes (go / play / pause / restart / seek / setMuted / setLoop / setRate); payload: `{ active, startAt, pausedAt, loop, muted, rate }`. The operator UI follows this to drive `SyncedVideo` and the transport bar; output players make `<video>.loop` follow `transport.loop` so a live loop toggle applies without re-GO. (There is NO `output:media-time` event — the old clock-master time-reporting chain was removed.)
 - `youtube:status` — fired as an ephemeral YouTube download progresses; payload: `{ id, url, status, percent, title, durationMs, path, error, setupName }` (`setupName` = which binary is downloading during the `setup` state). The Media-tab modal, the rundown status badge, and `OperatorView` (which patches the matching cue by URL) all follow it. See §6 *Native YouTube player*.
-- `output:multiview-captures` — array of `{channelId, dataUrl, isNdi}` objects (~5fps, only while multiview is running). `isNdi: true` for NDI channels (sourced from `ndiLastFrames` JPEG cache at ~1fps); `isNdi: false` for screen channels (capturePage at ~5fps).
+- `output:multiview-captures` — array of `{channelId, dataUrl, isNdi}` objects (~1fps, only while multiview is running). `isNdi: true` for NDI channels (sourced from `ndiLastFrames` JPEG cache at ~1fps); `isNdi: false` for screen channels (capturePage, also ~1fps with an in-flight guard so a slow readback can't pile up and stutter live playback).
+- `stream:status` — RTMP stream state changes; payload `{active, state, detail?, encoder?}` where `state` ∈ `idle\|starting\|live\|reconnecting\|error`. `StreamSettings` follows it for the live indicator.
 - `output:ndi-unavailable` — fired if grandiose is not installed
 - `shortcut:next` / `shortcut:prev` — reserved for future hardware remote
 - `remote:command` — a network-control command `{action, itemId?, slideIdx?}` (action: go/clear/logo/next/prev/live/select). OperatorView dispatches it to the same handlers the keyboard uses, so the remote stays in sync with the UI.
@@ -1657,6 +1687,15 @@ The operator live/preview monitors **do not screen-capture the output window**. 
 ### Multiview refcounting
 `multiviewRefCount` tracks active subscribers. Multiview capture is driven **only by `MultiviewView`** (start on mount, stop on unmount) — the operator workflow never starts it. `startMultiviewCapture()` increments the count and starts the capture interval only when it goes 0→1; `stopMultiviewCapture()` decrements and clears the interval only at 0. The refcount keeps the design safe if multiple subscribers ever coexist, but at idle no capture interval runs.
 
+### In-room program audio output device
+The audible program audio can be routed to a chosen physical output device. One global descriptor (`program_audio_device`) — the architecture guarantees a single primary audio monitor, so there is no per-channel device. `createMonitorWindow` passes it as the `audioDevice` query param; runtime changes ride the `audio:output-device` broadcast. In the output window, `media-player.js` applies it per media element with `el.setSinkId`, resolving the stored descriptor to a live device by **deviceId → label → groupId** (device IDs are salted per-origin, so the value chosen in the operator renderer may not match in the output window's `file://` origin). Only the audible window (`baseMuted === false`) routes; muted role-windows are left on the default. `OutputChannels.jsx` enumerates `audiooutput` devices; device labels are unlocked **lazily** (a one-shot `getUserMedia` on first picker interaction, never eagerly — opening a mic stream reconfigures the OS audio engine and briefly cuts all audio).
+
+### Program-audio tap (NDI audio / streaming)
+One Web Audio tap in the primary audio window feeds both NDI audio and the RTMP stream. `audio-tap.js` (loaded in `fullscreen.html`) taps the audible window's foreground media via `el.captureStream()` — deliberately NOT `createMediaElementSource`, so in-room playback/`setSinkId` is untouched. The element sets `crossOrigin='anonymous'` and the `cue-media://` handler returns `Access-Control-Allow-Origin: *`, so the tap is CORS-clean (not tainted). The `AudioContext` is pinned to 48 kHz; a `cue-pcm-tap` AudioWorklet (`pcm-tap-worklet.js`) batches planar Float32 PCM and posts it via `output:audio-pcm`. **Worklet loading is asar-proof**: the worklet source is read in main (`audio:worklet-source`, Node `fs` is asar-aware) and loaded from a `blob:` URL — `AudioWorklet.addModule` cannot reliably fetch a module from inside `app.asar`. Main toggles the tap on/off with the `audio:tap` event (`updateAudioTapState`), running it only while a consumer needs it. `ingestAudioPcm` normalises to stereo and fans out: planar FLTp to each audio-enabled NDI sender, interleaved f32le to the RTMP encoder.
+
+### RTMP streaming (`src/main/stream/rtmp.js`)
+Direct-to-RTMP (YouTube/Facebook/Twitch) — a stream key, no OAuth. A dedicated offscreen stream window (kept OUTSIDE the `windows` map so its lifecycle is independent of output toggling) renders the program; broadcast points (`getAllOutputWindows`, `getGraphicsWindowInfos`, `broadcastTransport`, the logo branch) are made stream-aware so it mirrors output. Its paint buffer (raw BGRA) feeds `rtmp.writeVideo` on `pipe:0`; the audio tap feeds `rtmp.writeAudio` (f32le) on `pipe:3`. `rtmp.js` spawns the bundled ffmpeg (`youtube/bin.js` `ffmpegPath`/`ensureBinaries`), probes for a hardware H.264 encoder (videotoolbox/nvenc/qsv) with `libx264` fallback, uses wallclock timestamps for A/V alignment, drops video frames under stdin backpressure (never audio), and auto-reconnects on unexpected ffmpeg exit. ffmpeg launches on the FIRST paint so `-video_size` matches the real offscreen surface. CSP does not apply (RTMP egress is in main, not a renderer fetch).
+
 ---
 
 ## 14. NDI
@@ -1669,7 +1708,11 @@ The operator live/preview monitors **do not screen-capture the output window**. 
 ### Constants (hardcoded in `ndi.js`)
 `grandi`'s TypeScript enums are not exported by the native binary — only by the ESM wrapper, which we cannot import in a CJS bundle:
 - `FOURCC_BGRA = 1095911234` — 32-bit BGRA pixel format with alpha
+- `FOURCC_FLTP = 1884572742` — Float32 **planar** audio (one channel block after another)
 - `FORMAT_TYPE_PROGRESSIVE = 1` — progressive scan
+
+### NDI audio
+`ndi.sendAudio(channelId, planar, sampleRate, noChannels, noSamples)` sends a `sender.audio()` frame (`fourCC: FLTp`, `channelStrideBytes = noSamples*4`). `planar` is a Buffer of per-channel Float32 blocks. Audio is small and never dropped (gaps are audible) — unlike video it does not gate on the `inflight` flag. The offscreen NDI window is **always locally muted** (`mute:'1'`); its audio is the program-audio tap (§13 *Program-audio tap*) forwarded by `ingestAudioPcm`, gated per channel by `ndi_audio_muted` via `updateAudioTapState`. NDI audio therefore requires a screen (audible) output to exist as the tap source.
 
 ### Frame capture strategy
 Offscreen rendering (`offscreen: true` BrowserWindow) + `paint` event + `setInterval(invalidate, frameMs)`:

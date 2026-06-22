@@ -16,6 +16,24 @@ contextBridge.exposeInMainWorld('cueOutput', {
     ipcRenderer.on('media:transport', wrapper);
     return () => ipcRenderer.removeListener('media:transport', wrapper);
   },
+  // Runtime change of the in-room program-audio output device. The descriptor is
+  // {deviceId,label,groupId} or null (= system default); the template re-routes
+  // the active media element via setSinkId.
+  onAudioOutputDevice: (cb) => {
+    const wrapper = (_e, d) => cb(d);
+    ipcRenderer.on('audio:output-device', wrapper);
+    return () => ipcRenderer.removeListener('audio:output-device', wrapper);
+  },
+  // Program-audio tap (NDI audio / streaming). Main toggles it on/off; only the
+  // audible window actually runs it. sendAudioPcm ships batched planar Float32 PCM.
+  onAudioTap: (cb) => {
+    const wrapper = (_e, on) => cb(on);
+    ipcRenderer.on('audio:tap', wrapper);
+    return () => ipcRenderer.removeListener('audio:tap', wrapper);
+  },
+  sendAudioPcm: (buffer, meta) => ipcRenderer.send('output:audio-pcm', buffer, meta),
+  // Worklet source text (read in main, asar-aware) for blob-URL loading.
+  getWorkletSource: () => ipcRenderer.invoke('audio:worklet-source'),
 });
 
 // Inject any user-installed @font-face rules so custom families render on the

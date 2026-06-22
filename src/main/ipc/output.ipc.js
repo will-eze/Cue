@@ -1,4 +1,6 @@
-import { ipcMain, screen } from 'electron';
+import { ipcMain, screen, app } from 'electron';
+import path from 'path';
+import fs from 'fs';
 import * as outputManager from '../output/manager.js';
 import { getDb } from '../db/schema.js';
 
@@ -14,6 +16,32 @@ export function registerOutputIpc() {
   ipcMain.handle('output:media:set-muted', (_e, muted) => outputManager.mediaSetMuted(muted));
   ipcMain.handle('output:media:set-loop', (_e, loop) => outputManager.mediaSetLoop(loop));
   ipcMain.handle('output:media:set-rate', (_e, rate) => outputManager.mediaSetRate(rate));
+
+  // In-room program audio output device (setSinkId routing). Get returns the stored
+  // descriptor (or null = system default); set persists AND broadcasts to live
+  // output windows so the change applies without restarting output.
+  ipcMain.handle('output:audio-device:get', () => outputManager.getProgramAudioDevice());
+  ipcMain.handle('output:audio-device:set', (_e, device) => outputManager.setProgramAudioDevice(device));
+
+  // Program-audio PCM from the primary audio window's tap → NDI audio + RTMP audio.
+  // One-way + high-rate, so it uses ipcMain.on (not handle/invoke).
+  ipcMain.on('output:audio-pcm', (_e, buffer, meta) => outputManager.ingestAudioPcm(buffer, meta));
+
+  // Source of the PCM-tap AudioWorklet. Read in main (Node fs IS asar-aware) so the
+  // output window can load it via a blob: URL — AudioWorklet.addModule cannot
+  // reliably fetch a module from INSIDE app.asar, and src/output is not unpacked.
+  ipcMain.handle('audio:worklet-source', () => {
+    try {
+      return fs.readFileSync(path.join(app.getAppPath(), 'src', 'output', 'pcm-tap-worklet.js'), 'utf8');
+    } catch { return null; }
+  });
+
+  // ── Streaming (RTMP → YouTube/Facebook/Twitch) ─────────────────────────────
+  ipcMain.handle('output:stream:start', () => outputManager.startStream());
+  ipcMain.handle('output:stream:stop', () => outputManager.stopStream());
+  ipcMain.handle('output:stream:status', () => outputManager.getStreamStatus());
+  ipcMain.handle('output:stream:config:get', () => outputManager.getStreamConfig());
+  ipcMain.handle('output:stream:config:set', (_e, cfg) => outputManager.setStreamConfig(cfg));
 
   // ── Screens (connected displays) ───────────────────────────────────────────
   ipcMain.handle('output:screens:list', () => {

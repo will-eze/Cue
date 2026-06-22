@@ -1,7 +1,10 @@
 import { BrowserWindow, screen, app } from 'electron';
 import path from 'path';
 import { getDb } from '../db/schema.js';
+import { get as getSetting, set as setSetting } from '../db/settings.js';
 import * as ndi from './ndi.js';
+import * as rtmp from '../stream/rtmp.js';
+import { ensureBinaries } from '../youtube/bin.js';
 import { resolveAnchors, pruneExpired, nextPruneDelay } from '../../shared/stage-schedule.js';
 
 // windows keyed by monitor.id (integer) for screen monitors,
@@ -9,6 +12,15 @@ import { resolveAnchors, pruneExpired, nextPruneDelay } from '../../shared/stage
 const windows = new Map();
 // Per-NDI-channel paint listeners: channelId → { win, onPaint, timer }
 const ndiCaptureLoops = new Map();
+// RTMP streaming: a dedicated offscreen window renders the program for the encoder,
+// kept OUTSIDE the `windows` map so its lifecycle is independent of output toggling.
+let streamWin = null;          // offscreen BrowserWindow feeding the encoder
+let streamCapture = null;      // { win, onPaint, timer }
+let streaming = false;         // a stream is starting / live
+// NDI channels currently emitting program audio (id set), refreshed on topology
+// changes. The program-audio tap runs only while a consumer (NDI audio or stream)
+// needs it.
+let audioEnabledNdi = new Set();
 // Latest downscaled JPEG per NDI channel for multiview thumbnails (1fps cache)
 const ndiLastFrames = new Map(); // channelId → Buffer
 let mainWindowRef = null;
@@ -18,6 +30,7 @@ let mainWindowRef = null;
 let remoteStateCb = null;
 let multiviewInterval = null;
 let multiviewRefCount = 0;
+let multiviewCapturing = false; // in-flight guard so slow capturePage calls don't pile up
 let outputsEnabled = true;
 
 // Lower-third font scale — a GLOBAL percentage of the authored (fullscreen) font
@@ -181,11 +194,16 @@ function createMonitorWindow(channel, monitor) {
   // output is unmuted; stage/confidence monitors never carry audio. Layered with
   // the live program mute inside the template (el.muted = baseMuted || transport.muted).
   const baseMuted = channel.template === 'stage' || !isPrimaryAudioMonitor(channel.id, monitor.id);
+  // In-room program audio can be routed to a chosen output device (setSinkId in
+  // the template). The descriptor {deviceId,label,groupId} rides in as a query
+  // param; runtime changes arrive via the 'audio:output-device' broadcast.
+  const audioDevice = getSetting('program_audio_device');
   win.loadFile(getTemplatePath(channel.template || 'fullscreen'), {
     // program=0 hides the song lyric band; graphics=0 hides the broadcast-graphics
     // overlay — together they give a lower-third channel its 3 content modes.
     query: {
       mute: baseMuted ? '1' : '0',
+      audioDevice: audioDevice ? JSON.stringify(audioDevice) : '',
       program: channel.show_program === 0 ? '0' : '1',
       graphics: channel.show_graphics === 0 ? '0' : '1',
     },
@@ -248,7 +266,12 @@ function createNdiWindow(channel) {
   win.loadFile(getTemplatePath(channel.template || 'fullscreen'), {
     query: {
       alpha: '1',
-      mute: channel.ndi_audio_muted !== 0 ? '1' : '0',
+      // The offscreen NDI window is ALWAYS muted locally: its audio is sent over
+      // NDI via the program-audio tap (ndi.sendAudio), gated per channel by
+      // `ndi_audio_muted` in updateAudioTapState/ingestAudioPcm. An unmuted
+      // offscreen window would both leak audio to the default device and double the
+      // tap (it would capture too), so keep it '1'.
+      mute: '1',
       program: channel.show_program === 0 ? '0' : '1',
       graphics: channel.show_graphics === 0 ? '0' : '1',
     },
@@ -351,6 +374,7 @@ export async function init() {
     }
   }
 
+  updateAudioTapState();
   return unresolved;
 }
 
@@ -412,6 +436,9 @@ export async function syncChannel(channelId) {
   // Notify the renderer so the operator UI re-reads channel topology/flags
   // (e.g. the live monitor's content-mode awareness after a mode switch).
   notifyMainWindow('output:state-changed', getState());
+  // Topology changed → recompute which NDI channels want audio and (de)activate
+  // the program-audio tap accordingly.
+  updateAudioTapState();
 }
 
 // Toggle a channel's content mode (lyric band / graphics overlay) at RUNTIME by
@@ -459,6 +486,7 @@ export function closeAll() {
     if (win && !win.isDestroyed()) win.close();
   }
   windows.clear();
+  stopStream();
 }
 
 // Returns all live output BrowserWindows in channel → monitor order.
@@ -480,6 +508,8 @@ function getAllOutputWindows() {
       }
     }
   }
+  // The stream window mirrors the program exactly like a fullscreen screen channel.
+  if (streamWin && !streamWin.isDestroyed()) wins.push(streamWin);
   return wins;
 }
 
@@ -603,6 +633,13 @@ function sendCurrentState() {
         }
       }
     }
+    // Stream window uses the global logo (no per-channel override).
+    if (streamWin && !streamWin.isDestroyed()) {
+      streamWin.webContents.send('slide:update', {
+        type: 'logo', logoPath: resolveLogo({}), logoScaleMode, text: null,
+        backgroundPath: null, copyright: null, sectionLabel: null, transition,
+      });
+    }
     return;
   }
 
@@ -683,7 +720,220 @@ function broadcastTransport() {
   for (const [, win] of windows) {
     try { if (!win.isDestroyed()) win.webContents.send('media:transport', snapshot); } catch {}
   }
+  if (streamWin && !streamWin.isDestroyed()) {
+    try { streamWin.webContents.send('media:transport', snapshot); } catch {}
+  }
   notifyMainWindow('output:media-transport', snapshot);
+}
+
+// ── In-room program audio output device ──────────────────────────────────────
+// Which physical output device the audible program audio plays through. One
+// global descriptor (the architecture guarantees a single primary audio monitor);
+// null = system default. Stored as {deviceId,label,groupId}; the template matches
+// it back to a live device (deviceId → label → groupId) because device IDs are
+// salted per-origin.
+export function getProgramAudioDevice() {
+  return getSetting('program_audio_device') || null;
+}
+
+export function setProgramAudioDevice(device) {
+  const snapshot = device || null;
+  setSetting('program_audio_device', snapshot);
+  // Push to every open output window so a live change applies without re-GO.
+  for (const [, win] of windows) {
+    try { if (!win.isDestroyed()) win.webContents.send('audio:output-device', snapshot); } catch {}
+  }
+  return snapshot;
+}
+
+// ── Program-audio tap → NDI audio + RTMP audio ───────────────────────────────
+// One Web Audio tap in the primary audio window feeds both NDI audio and the
+// stream. Decide whether it needs to run, and which NDI channels want audio.
+function updateAudioTapState() {
+  const db = getDb();
+  let ndiCh = [];
+  try {
+    ndiCh = db.prepare("SELECT id, ndi_audio_muted FROM output_channels WHERE active = 1 AND type = 'ndi'").all();
+  } catch { ndiCh = []; }
+  audioEnabledNdi = new Set(
+    ndiCh.filter((c) => c.ndi_audio_muted === 0 && windows.has(`ndi-${c.id}`)).map((c) => c.id),
+  );
+  const needed = streaming || audioEnabledNdi.size > 0;
+  // Broadcast to every output window; only the audible (primary) one taps.
+  for (const [, win] of windows) {
+    try { if (!win.isDestroyed()) win.webContents.send('audio:tap', needed); } catch {}
+  }
+}
+
+// Receive a batched PCM frame from the primary audio window's tap (planar Float32:
+// [ch0 samples…, ch1 samples…]) and fan it out, normalised to stereo, to the NDI
+// sender(s) and/or the RTMP encoder.
+export function ingestAudioPcm(arrayBuffer, meta) {
+  if (!arrayBuffer || !meta) return;
+  const sendNdi = audioEnabledNdi.size > 0;
+  const sendStream = streaming && rtmp.isActive();
+  if (!sendNdi && !sendStream) return;
+
+  const channels = meta.channels || 1;
+  const samples = meta.samples || 0;
+  if (samples <= 0) return;
+  const sampleRate = meta.sampleRate || 48000;
+  const all = new Float32Array(arrayBuffer);
+  const ch0 = all.subarray(0, samples);
+  const ch1 = channels >= 2 ? all.subarray(samples, samples * 2) : ch0;
+
+  if (sendNdi) {
+    // Planar Float32 (FLTp), stereo.
+    const planar = Buffer.allocUnsafe(samples * 2 * 4);
+    Buffer.from(ch0.buffer, ch0.byteOffset, samples * 4).copy(planar, 0);
+    Buffer.from(ch1.buffer, ch1.byteOffset, samples * 4).copy(planar, samples * 4);
+    for (const id of audioEnabledNdi) ndi.sendAudio(id, planar, sampleRate, 2, samples);
+  }
+
+  if (sendStream) {
+    // Interleaved f32le, stereo.
+    const inter = Buffer.allocUnsafe(samples * 2 * 4);
+    for (let i = 0; i < samples; i++) {
+      inter.writeFloatLE(ch0[i], i * 8);
+      inter.writeFloatLE(ch1[i], i * 8 + 4);
+    }
+    rtmp.writeAudio(inter);
+  }
+}
+
+// ── RTMP streaming ───────────────────────────────────────────────────────────
+const STREAM_DEFAULTS = {
+  server: '', key: '', width: 1920, height: 1080, fps: 30,
+  videoBitrate: '4500k', audioBitrate: '160k',
+};
+
+export function getStreamConfig() {
+  return { ...STREAM_DEFAULTS, ...(getSetting('stream_config') || {}) };
+}
+
+export function setStreamConfig(cfg) {
+  const merged = { ...getStreamConfig(), ...(cfg || {}) };
+  setSetting('stream_config', merged);
+  return merged;
+}
+
+export function getStreamStatus() {
+  return { active: streaming, ...rtmp.getStatus() };
+}
+
+function emitStreamStatus(s) {
+  notifyMainWindow('stream:status', { active: streaming, ...(s || {}) });
+}
+
+export async function startStream() {
+  if (streaming) return { ok: false, error: 'already streaming' };
+  const cfg = getStreamConfig();
+  if (!cfg.server || !cfg.key) return { ok: false, error: 'Stream server and key are required' };
+
+  // ffmpeg is only fetched on first YouTube use — make sure it exists.
+  emitStreamStatus({ state: 'starting', detail: 'preparing encoder' });
+  const ready = await ensureBinaries();
+  if (!ready.ok) {
+    emitStreamStatus({ state: 'error', detail: ready.error || 'ffmpeg unavailable' });
+    return { ok: false, error: ready.error || 'ffmpeg unavailable' };
+  }
+
+  streaming = true;
+  const url = `${String(cfg.server).replace(/\/+$/, '')}/${cfg.key}`;
+  const config = {
+    url, fps: cfg.fps || 30,
+    videoBitrate: cfg.videoBitrate, audioBitrate: cfg.audioBitrate,
+    width: cfg.width, height: cfg.height,
+  };
+  streamWin = createStreamWindow(config);
+  updateAudioTapState(); // turn the program-audio tap on
+  return { ok: true };
+}
+
+export async function stopStream() {
+  if (!streaming && !streamWin && !rtmp.isActive()) return { ok: true };
+  streaming = false;
+  stopStreamCapture();
+  if (streamWin && !streamWin.isDestroyed()) { try { streamWin.close(); } catch {} }
+  streamWin = null;
+  await rtmp.stop();
+  updateAudioTapState(); // tap may still be needed for NDI audio
+  emitStreamStatus({ state: 'idle', detail: null });
+  return { ok: true };
+}
+
+function createStreamWindow(config) {
+  const preload = getOutputPreloadPath();
+  const win = new BrowserWindow({
+    width: config.width || 1920,
+    height: config.height || 1080,
+    show: false,
+    frame: false,
+    backgroundColor: '#000000',
+    webPreferences: {
+      offscreen: true, preload, contextIsolation: true, nodeIntegration: false,
+      sandbox: false, autoplayPolicy: 'no-user-gesture-required',
+    },
+  });
+  // mute=1: the stream window is silent locally; its audio is the primary audio
+  // window's tap, mixed into the encoder. program+graphics on = full program.
+  win.loadFile(getTemplatePath('fullscreen'), { query: { mute: '1', program: '1', graphics: '1' } });
+  win.webContents.once('did-finish-load', () => {
+    sendStateToWindow(win, {});       // sync current program (channel-less)
+    sendGraphicToWindow(win, 'screen');
+    startStreamCapture(win, config);
+  });
+  return win;
+}
+
+function startStreamCapture(win, config) {
+  const fps = config.fps || 30;
+  const frameMs = Math.round(1000 / fps);
+  win.webContents.setFrameRate(fps);
+  win.webContents.startPainting();
+
+  let lastSentAt = 0;
+  let rtmpReady = false;
+  let rtmpStarting = false;
+
+  const onPaint = async (_e, _dirty, image) => {
+    const now = Date.now();
+    if (now - lastSentAt < frameMs - 2) return;
+    const { width, height } = image.getSize();
+    if (width <= 0 || height <= 0) return;
+
+    // Launch ffmpeg on the FIRST real frame so -video_size matches the actual
+    // offscreen surface, avoiding corrupt output on size mismatch.
+    if (!rtmpReady) {
+      if (rtmpStarting) return;
+      rtmpStarting = true;
+      const res = await rtmp.start(
+        { ...config, width, height, sampleRate: 48000, channels: 2 },
+        (s) => emitStreamStatus(s),
+      );
+      rtmpStarting = false;
+      if (!res.ok) return;
+      rtmpReady = true;
+    }
+    lastSentAt = now;
+    rtmp.writeVideo(image.toBitmap());
+  };
+
+  win.webContents.on('paint', onPaint);
+  const timer = setInterval(() => { if (!win.isDestroyed()) win.webContents.invalidate(); }, frameMs);
+  streamCapture = { win, onPaint, timer };
+}
+
+function stopStreamCapture() {
+  if (!streamCapture) return;
+  clearInterval(streamCapture.timer);
+  if (streamCapture.win && !streamCapture.win.isDestroyed()) {
+    try {
+      streamCapture.win.webContents.off('paint', streamCapture.onPaint);
+      streamCapture.win.webContents.stopPainting();
+    } catch {}
+  }
+  streamCapture = null;
 }
 
 // Transport command from the operator: play / pause / restart.
@@ -765,6 +1015,7 @@ async function reopenAllChannels() {
       }
     }
   }
+  updateAudioTapState();
 }
 
 // Toggle all output BrowserWindows on or off.
@@ -1025,6 +1276,8 @@ function getGraphicsWindowInfos() {
     const kind = (typeof key === 'string' && key.startsWith('ndi-')) ? 'ndi' : 'screen';
     infos.push({ win, kind });
   }
+  // The stream window carries the same broadcast-graphics overlay as a screen.
+  if (streamWin && !streamWin.isDestroyed()) infos.push({ win: streamWin, kind: 'screen' });
   return infos;
 }
 
@@ -1251,7 +1504,10 @@ function applyProgramAction(action) {
 export function startMultiviewCapture() {
   multiviewRefCount++;
   if (multiviewRefCount === 1) {
-    multiviewInterval = setInterval(runMultiviewCapture, 500);
+    // ~1 fps: capturePage() on a live screen window is a full GPU readback that
+    // contends with the program output's rendering (stutters playback). 1s matches
+    // the NDI thumbnail cache cadence and is plenty for a monitoring wall.
+    multiviewInterval = setInterval(runMultiviewCapture, 1000);
   }
 }
 
@@ -1264,6 +1520,16 @@ export function stopMultiviewCapture() {
 }
 
 async function runMultiviewCapture() {
+  if (multiviewCapturing) return; // previous tick's capturePage still running — skip
+  multiviewCapturing = true;
+  try {
+    await runMultiviewCaptureInner();
+  } finally {
+    multiviewCapturing = false;
+  }
+}
+
+async function runMultiviewCaptureInner() {
   const db = getDb();
   const channels = db.prepare('SELECT * FROM output_channels ORDER BY id').all();
 

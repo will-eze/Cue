@@ -57,6 +57,17 @@ contextBridge.exposeInMainWorld('cue', {
       setLoop: (loop) => ipcRenderer.invoke('output:media:set-loop', loop),
       setRate: (rate) => ipcRenderer.invoke('output:media:set-rate', rate),
     },
+    audioDevice: {
+      get: () => ipcRenderer.invoke('output:audio-device:get'),
+      set: (device) => ipcRenderer.invoke('output:audio-device:set', device),
+    },
+    stream: {
+      start: () => ipcRenderer.invoke('output:stream:start'),
+      stop: () => ipcRenderer.invoke('output:stream:stop'),
+      status: () => ipcRenderer.invoke('output:stream:status'),
+      getConfig: () => ipcRenderer.invoke('output:stream:config:get'),
+      setConfig: (cfg) => ipcRenderer.invoke('output:stream:config:set', cfg),
+    },
     channels: {
       list: () => ipcRenderer.invoke('output:channels:list'),
       create: (data) => ipcRenderer.invoke('output:channels:create', data),
@@ -258,6 +269,7 @@ contextBridge.exposeInMainWorld('cue', {
       'youtube:status',
       'scripture:detected', 'scripture:transcript', 'scripture:status',
       'update:progress',
+      'stream:status',
     ];
     if (!allowed.includes(channel)) return () => {};
     const wrapper = (_event, ...args) => callback(...args);

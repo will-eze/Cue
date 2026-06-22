@@ -29,6 +29,45 @@
     });
   }
 
+  // ── In-room program-audio output device (setSinkId) ────────────────────────
+  // Route audible program audio to a chosen physical device. The descriptor
+  // arrives as a query param at load and via the onAudioOutputDevice runtime
+  // event. deviceIds are salted per-origin, so a value chosen in the operator
+  // renderer is matched back here by deviceId → label → groupId. Only the audible
+  // window (baseMuted === false) routes; muted role-windows leave the default.
+  let desiredSink = null;
+  try {
+    const raw = new URLSearchParams(location.search).get('audioDevice');
+    if (raw) desiredSink = JSON.parse(raw);
+  } catch { /* malformed param → system default */ }
+
+  async function resolveSinkId(desc) {
+    if (!desc || !desc.deviceId) return ''; // '' = system default device
+    try {
+      const outs = (await navigator.mediaDevices.enumerateDevices())
+        .filter((d) => d.kind === 'audiooutput');
+      const match = outs.find((d) => d.deviceId === desc.deviceId)
+        || (desc.label   && outs.find((d) => d.label === desc.label))
+        || (desc.groupId && outs.find((d) => d.groupId === desc.groupId));
+      return match ? match.deviceId : '';
+    } catch { return ''; }
+  }
+
+  async function applySink(el) {
+    if (!el || typeof el.setSinkId !== 'function') return;
+    try { await el.setSinkId(await resolveSinkId(desiredSink)); } catch { /* unsupported / denied */ }
+  }
+
+  if (window.cueOutput && window.cueOutput.onAudioOutputDevice) {
+    window.cueOutput.onAudioOutputDevice((desc) => {
+      desiredSink = desc || null;
+      // Re-route the currently-playing element if this window emits audio.
+      if (activePlayer && activePlayer.element && !activePlayer.baseMuted) {
+        applySink(activePlayer.element);
+      }
+    });
+  }
+
   // Signed drift that accounts for the loop wrap (shorter way around the loop).
   function wrappedDelta(cur, expected, duration, loop) {
     let d = cur - expected;
@@ -48,6 +87,13 @@
     el.loop = loop;
     try { el.preservesPitch = true; } catch {}
     el.muted = baseMuted;
+    // Route this element's audio to the configured output device (audible windows
+    // only; muted role-windows stay on the default). Re-applied per element because
+    // each new foreground clip creates a fresh element.
+    if (!baseMuted) applySink(el);
+    // Offer the element to the program-audio tap (NDI audio / streaming). The tap
+    // only engages on the audible window and only while main has enabled it.
+    try { window.CueAudioTap?.setElement(el, baseMuted); } catch {}
 
     let transport = opts.transport || latestTransport || null;
     let timer = null;
@@ -115,10 +161,12 @@
       },   // react immediately to control events
       get transport() { return transport; },
       get element() { return el; },
+      get baseMuted() { return baseMuted; },
       destroy() {
         destroyed = true;
         if (timer) { clearInterval(timer); timer = null; }
         try { el.pause(); } catch {}
+        try { window.CueAudioTap?.setElement(null, true); } catch {}
         if (activePlayer === controller) activePlayer = null;
       },
     };

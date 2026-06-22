@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { CHANNEL_MODES, channelMode, modeToFlags } from '../utils/channelMode';
 
 export default function OutputChannels() {
@@ -8,6 +8,8 @@ export default function OutputChannels() {
   const [creatingChannel, setCreatingChannel] = useState(false);
   const [error, setError] = useState('');
   const [newChannel, setNewChannel] = useState({ name: '', type: 'screen', template: 'fullscreen', ndi_fps: 30, ndi_width: 1920, ndi_height: 1080, ndi_audio_muted: 1 });
+  const [audioOutputs, setAudioOutputs] = useState([]);       // physical output devices
+  const [audioDevice, setAudioDevice] = useState(null);       // {deviceId,label,groupId} | null (= system default)
 
   const load = useCallback(async () => {
     const [chs, mons, scrs] = await Promise.all([
@@ -21,6 +23,69 @@ export default function OutputChannels() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const triedUnlockRef = useRef(false);
+
+  const enumerateOutputs = useCallback(async () => {
+    try {
+      const list = await navigator.mediaDevices.enumerateDevices();
+      setAudioOutputs(list.filter(
+        (d) => d.kind === 'audiooutput' && d.deviceId !== 'default' && d.deviceId !== 'communications',
+      ));
+    } catch { /* enumeration unavailable */ }
+  }, []);
+
+  // Enumerate output devices + load the current selection. NOTE: we deliberately do
+  // NOT call getUserMedia here — opening a mic stream briefly reconfigures the audio
+  // engine and audibly cuts program/stream audio, and this effect runs every time
+  // the Settings view mounts. Labels are unlocked lazily on first interaction below.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      await enumerateOutputs();
+      try {
+        const cur = await window.cue.output.audioDevice.get();
+        if (!cancelled) setAudioDevice(cur || null);
+      } catch { /* ignore */ }
+    })();
+    const onChange = () => enumerateOutputs();
+    navigator.mediaDevices?.addEventListener?.('devicechange', onChange);
+    return () => {
+      cancelled = true;
+      navigator.mediaDevices?.removeEventListener?.('devicechange', onChange);
+    };
+  }, [enumerateOutputs]);
+
+  // Chromium hides device labels until a media grant. Unlock them ON DEMAND (when the
+  // operator opens the picker) and only ONCE per session — never eagerly, to avoid
+  // the audio glitch. No-op if labels are already present.
+  const unlockLabelsOnce = useCallback(async () => {
+    if (triedUnlockRef.current) return;
+    triedUnlockRef.current = true;
+    if (audioOutputs.length && audioOutputs.every((d) => d.label)) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((t) => t.stop());
+      await enumerateOutputs();
+    } catch { /* denied — deviceId fallback still works */ }
+  }, [audioOutputs, enumerateOutputs]);
+
+  async function handleSelectAudioOutput(deviceId) {
+    let descriptor = null;
+    if (deviceId) {
+      const d = audioOutputs.find((x) => x.deviceId === deviceId);
+      if (d) descriptor = { deviceId: d.deviceId, label: d.label, groupId: d.groupId };
+    }
+    setAudioDevice(descriptor);
+    await window.cue.output.audioDevice.set(descriptor);
+  }
+
+  // Resolve the stored descriptor to a current dropdown value (deviceId can be
+  // re-salted across sessions — fall back to label match so the picker still
+  // reflects the chosen device).
+  const selectedAudioValue = !audioDevice ? ''
+    : audioOutputs.some((d) => d.deviceId === audioDevice.deviceId) ? audioDevice.deviceId
+    : (audioOutputs.find((d) => d.label === audioDevice.label)?.deviceId || '');
 
   async function handleCreateChannel() {
     if (!newChannel.name.trim()) return;
@@ -122,6 +187,29 @@ export default function OutputChannels() {
           ))}
         </div>
       )}
+
+      {/* In-room program audio output device */}
+      <div className="flex items-center gap-sm flex-wrap">
+        <span className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em] shrink-0 flex items-center gap-xs">
+          <span className="material-symbols-outlined text-[14px] text-outline">volume_up</span>
+          Program audio output:
+        </span>
+        <select
+          value={selectedAudioValue}
+          onMouseDown={unlockLabelsOnce}
+          onFocus={unlockLabelsOnce}
+          onChange={(e) => handleSelectAudioOutput(e.target.value)}
+          className="bg-surface-container-lowest border border-outline-variant/30 rounded px-sm py-[3px] text-label-sm font-label-sm text-on-surface outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 cursor-pointer max-w-[280px]"
+        >
+          <option value="">System default</option>
+          {audioOutputs.map((d, i) => (
+            <option key={d.deviceId || i} value={d.deviceId}>
+              {d.label || `Output ${i + 1}`}
+            </option>
+          ))}
+        </select>
+        <span className="text-[10px] text-on-surface-variant/60">In-room audio only · online / NDI audio is separate</span>
+      </div>
 
       {/* New channel form */}
       {creatingChannel && (

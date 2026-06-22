@@ -156,6 +156,9 @@ function setForegroundMedia(media, transport) {
 
   const el = document.createElement(media.type === 'audio' ? 'audio' : 'video');
   el.id = 'cue-media-el';
+  // CORS-clean so the program-audio tap (captureStream → Web Audio) isn't tainted.
+  // Must be set before src; the cue-media:// handler returns Access-Control-Allow-Origin.
+  el.crossOrigin = 'anonymous';
   el.src = url;
   if (media.type === 'video') {
     el.setAttribute('playsinline', '');

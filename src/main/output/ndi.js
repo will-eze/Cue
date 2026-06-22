@@ -9,6 +9,7 @@ const _require = createRequire(import.meta.url);
 // FourCC and FrameType constants from grandi's TypeScript enums — the native
 // binary does not export them, only the ESM wrapper does.
 const FOURCC_BGRA            = 1095911234;
+const FOURCC_FLTP           = 1884572742; // Float32, planar (one channel block after another)
 const FORMAT_TYPE_PROGRESSIVE = 1;
 
 const ARCH_PACKAGES = {
@@ -81,6 +82,26 @@ export function sendFrame(channelId, bgraBuffer, width, height, fps) {
     })
     .catch(() => {})
     .finally(() => { entry.inflight = false; });
+}
+
+// Send one program-audio frame to a sender. `planar` is a Buffer of Float32
+// samples laid out per-channel (ch0 block, then ch1 block, …) — i.e. FLTp.
+// Audio is small and must not be dropped (gaps are audible), so unlike video we
+// don't gate on the video inflight flag; we just fire-and-forget.
+export function sendAudio(channelId, planar, sampleRate, noChannels, noSamples) {
+  if (!ndiAvailable) return;
+  const entry = senders.get(channelId);
+  if (!entry) return;
+  entry.sender
+    .audio({
+      sampleRate,
+      noChannels,
+      noSamples,
+      channelStrideBytes: noSamples * 4, // 4 bytes per Float32 sample, planar
+      data: planar,
+      fourCC: FOURCC_FLTP,
+    })
+    .catch(() => {});
 }
 
 export function destroySender(channelId) {

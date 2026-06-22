@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import OutputChannels from '../settings/OutputChannels';
+import StreamSettings from '../settings/StreamSettings';
 import LogoSettings from '../settings/LogoSettings';
 import BackgroundSettings from '../settings/BackgroundSettings';
 import ThemeSettings from '../settings/ThemeSettings';
@@ -20,6 +21,7 @@ import DangerZone from '../settings/DangerZone';
 // Exported so the top bar can offer each subsection as a pinnable deep-link tab.
 export const SECTIONS = [
   { id: 'channels',   icon: 'cast',            label: 'Channels' },
+  { id: 'stream',     icon: 'live_tv',         label: 'Stream' },
   { id: 'logo',       icon: 'image',           label: 'Logo' },
   { id: 'background', icon: 'wallpaper',       label: 'Background' },
   { id: 'themes',     icon: 'style',           label: 'Themes' },
@@ -234,6 +236,7 @@ export default function SettingsView({ activeServiceId, onRundownCleared, onRund
         </header>
 
         <section ref={setRef('channels')} data-section="channels" className="scroll-mt-lg"><OutputChannels /></section>
+        <section ref={setRef('stream')} data-section="stream" className="scroll-mt-lg"><StreamSettings /></section>
         <section ref={setRef('logo')} data-section="logo" className="scroll-mt-lg"><LogoSettings /></section>
         <section ref={setRef('background')} data-section="background" className="scroll-mt-lg"><BackgroundSettings activeServiceId={activeServiceId} /></section>
         <section ref={setRef('themes')} data-section="themes" className="scroll-mt-lg"><ThemeSettings /></section>

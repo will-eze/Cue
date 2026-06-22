@@ -144,8 +144,13 @@ app.whenReady().then(async () => {
       const mimeType = MEDIA_MIME[ext] || 'application/octet-stream';
       const rangeHeader = request.headers.get('range');
 
-      // Media files use UUID names and never change — cache forever.
-      const cacheHeaders = { 'Cache-Control': 'public, max-age=31536000, immutable' };
+      // Media files use UUID names and never change — cache forever. ACAO lets the
+      // output window tap program audio via Web Audio (captureStream) without the
+      // cross-origin (file:// → cue-media://) media tainting the stream.
+      const cacheHeaders = {
+        'Cache-Control': 'public, max-age=31536000, immutable',
+        'Access-Control-Allow-Origin': '*',
+      };
 
       if (rangeHeader) {
         const match = /bytes=(\d*)-(\d*)/.exec(rangeHeader);
@@ -290,6 +295,13 @@ app.whenReady().then(async () => {
       callback({ responseHeaders: { ...details.responseHeaders, 'Content-Security-Policy': [CSP] } });
     });
   }
+
+  // Audio-output device selection: routing program audio via setSinkId requires
+  // the 'speaker-selection' permission, and exposing device labels needs 'media'.
+  // Electron's default grants these, but register an explicit allow-handler so the
+  // in-room audio-output picker works reliably in packaged builds. The app loads
+  // only local + known-trusted remote content, so granting requests is acceptable.
+  session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(true));
 
   initDb();
   seedBundledBibles();
