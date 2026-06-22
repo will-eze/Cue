@@ -140,6 +140,8 @@ let mediaPlayer = null;
 
 function clearForegroundMedia() {
   if (mediaPlayer) { mediaPlayer.destroy(); mediaPlayer = null; }
+  // Detach from the stream-audio mixer (stream window only; no-op elsewhere).
+  if (window.CueStreamFeed) window.CueStreamFeed.onMediaElement(null);
 }
 
 function setForegroundMedia(media, transport) {
@@ -177,6 +179,8 @@ function setForegroundMedia(media, transport) {
     baseMuted: MUTE_AUDIO,
     transport,
   });
+  // Offer this element to the stream-audio mixer (stream window only; no-op elsewhere).
+  if (window.CueStreamFeed) window.CueStreamFeed.onMediaElement(el);
 }
 
 // Apply an optional reference/attribution style (scripture) to the #copyright

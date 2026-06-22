@@ -12,19 +12,28 @@ function parseStyle(g) {
   catch { return {}; }
 }
 
-// Destination overrides — 'default' uses each graphic's saved target.
-const DEST_OPTS = [
-  { id: 'default', label: 'Default', icon: 'tune' },
-  { id: 'all',     label: 'All',     icon: 'cast' },
-  { id: 'screen',  label: 'In-Room', icon: 'monitor' },
-  { id: 'ndi',     label: 'Online',  icon: 'lan' },
+// Destination override — a toggleable SET of kinds. Empty set = "Default" (use each
+// graphic's saved target). Any combination is allowed (e.g. Online + Stream).
+const DEST_KINDS = ['screen', 'ndi', 'stream'];
+const KIND_OPTS = [
+  { id: 'screen', label: 'In-Room', icon: 'monitor' },
+  { id: 'ndi',    label: 'Online',  icon: 'lan' },
+  { id: 'stream', label: 'Stream',  icon: 'live_tv' },
 ];
-const TARGET_LABEL = { all: 'All', screen: 'In-Room', ndi: 'Online' };
+const TARGET_LABEL = { all: 'All', screen: 'In-Room', ndi: 'Online', stream: 'Stream' };
+// Collapse a kind set to a fire target: empty → fall back; all three → 'all'; one →
+// the string; otherwise the array of kinds (the overlay bus accepts kind arrays).
+const destToTarget = (dest, fallback) =>
+  dest.length === 0 ? fallback
+  : dest.length === DEST_KINDS.length ? 'all'
+  : dest.length === 1 ? dest[0]
+  : [...dest];
 
-// Each overlay slot holds one occupant per destination kind: { screen, ndi }.
+// Each overlay slot holds one occupant per destination kind: { screen, ndi, stream }.
 const SLOT_BY_KIND = { lower_third: 'nameTitle', ticker: 'ticker', countdown: 'countdown', custom: 'custom' };
-const EMPTY_OVERLAY = { nameTitle: { screen: null, ndi: null }, ticker: { screen: null, ndi: null }, custom: { screen: null, ndi: null }, countdown: { screen: null, ndi: null } };
-const slotAnyLive = (slot) => !!(slot && (slot.screen || slot.ndi));
+const EMPTY_KIND_SLOT = { screen: null, ndi: null, stream: null };
+const EMPTY_OVERLAY = { nameTitle: { ...EMPTY_KIND_SLOT }, ticker: { ...EMPTY_KIND_SLOT }, custom: { ...EMPTY_KIND_SLOT }, countdown: { ...EMPTY_KIND_SLOT } };
+const slotAnyLive = (slot) => !!(slot && (slot.screen || slot.ndi || slot.stream));
 
 export default function GraphicsPanel() {
   const [graphics, setGraphics] = useState([]);
@@ -34,7 +43,8 @@ export default function GraphicsPanel() {
   const [quickTicker, setQuickTicker] = useState('');
   const [quickStyleId, setQuickStyleId] = useState(null); // saved ticker whose style the quick ticker borrows (null = plain default)
   const [quickDismiss, setQuickDismiss] = useState(0); // auto-dismiss seconds for the quick ticker (0 = sticky)
-  const [dest, setDest] = useState('default'); // live destination override
+  const [dest, setDest] = useState([]); // live destination override (kind set; [] = default)
+  const toggleDest = (id) => setDest((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
   const [ltChannels, setLtChannels] = useState([]); // lower-third channels (for the mode switcher)
 
   const load = useCallback(() => { window.cue.graphics.list().then(setGraphics); }, []);
@@ -69,10 +79,10 @@ export default function GraphicsPanel() {
   const tickerLive = slotAnyLive(overlay.ticker);
   const anyLive = slotAnyLive(overlay.nameTitle) || slotAnyLive(overlay.ticker) || slotAnyLive(overlay.custom) || slotAnyLive(overlay.countdown);
 
-  // Resolve the destination for a fire: live override wins, else the graphic default
-  // (graphics default to Online/NDI).
-  const resolveTarget = (g) => (dest === 'default' ? (g?.target || 'ndi') : dest);
-  const quickTarget = () => (dest === 'default' ? 'ndi' : dest);
+  // Resolve the destination for a fire: live override (kind set) wins, else the
+  // graphic default (graphics default to Online/NDI).
+  const resolveTarget = (g) => destToTarget(dest, g?.target || 'ndi');
+  const quickTarget = () => destToTarget(dest, 'ndi');
 
   async function remove(g) {
     if (!confirm(`Delete "${g.label || g.name || g.text || 'graphic'}"?`)) return;
@@ -106,10 +116,7 @@ export default function GraphicsPanel() {
   function liveDests(g) {
     const slot = overlay[SLOT_BY_KIND[g.kind]];
     if (!slot) return [];
-    const d = [];
-    if (slot.screen && slot.screen.id === g.id) d.push('screen');
-    if (slot.ndi && slot.ndi.id === g.id) d.push('ndi');
-    return d;
+    return DEST_KINDS.filter((k) => slot[k] && slot[k].id === g.id);
   }
   const isLive = (g) => liveDests(g).length > 0;
   // Soonest auto-dismiss anchor (absolute ms) across the kinds this graphic is live on,
@@ -117,15 +124,15 @@ export default function GraphicsPanel() {
   function liveDismissAt(g) {
     const slot = overlay[SLOT_BY_KIND[g.kind]];
     if (!slot) return null;
-    const ats = [];
-    if (slot.screen && slot.screen.id === g.id && slot.screen.dismissAt) ats.push(slot.screen.dismissAt);
-    if (slot.ndi && slot.ndi.id === g.id && slot.ndi.dismissAt) ats.push(slot.ndi.dismissAt);
+    const ats = DEST_KINDS
+      .filter((k) => slot[k] && slot[k].id === g.id && slot[k].dismissAt)
+      .map((k) => slot[k].dismissAt);
     return ats.length ? Math.min(...ats) : null;
   }
 
   function clear(g) {
     const dests = liveDests(g);
-    const target = dests.length === 2 ? 'all' : dests[0]; // both kinds → all, else the one it's on
+    const target = destToTarget(dests, dests[0]); // all kinds → 'all', one → string, else array
     if (g.kind === 'lower_third') window.cue.output.graphic.hide(target);
     else if (g.kind === 'ticker') window.cue.output.ticker.hide(target);
     else if (g.kind === 'countdown') window.cue.output.countdown.hide(target);
@@ -161,13 +168,19 @@ export default function GraphicsPanel() {
         <span className="material-symbols-outlined text-[18px] text-primary">branding_watermark</span>
         <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant">Broadcast Graphics</span>
 
-        {/* Live destination override */}
-        <div className="ml-md flex items-center gap-[2px] bg-surface-container rounded-lg p-[3px]" title="Where graphics are sent — In-Room = screens, Online = NDI">
+        {/* Live destination override — Default, or any combination of kinds */}
+        <div className="ml-md flex items-center gap-[2px] bg-surface-container rounded-lg p-[3px]" title="Where graphics are sent — In-Room = screens, Online = NDI, Stream = the broadcast composite. Combine any.">
           <span className="material-symbols-outlined text-[14px] text-on-surface-variant/50 ml-1">send</span>
-          {DEST_OPTS.map((d) => (
-            <button key={d.id} onClick={() => setDest(d.id)}
+          <button onClick={() => setDest([])}
+            className={`flex items-center gap-xs px-sm py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] transition-colors cursor-pointer ${
+              dest.length === 0 ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'
+            }`}>
+            <span className="material-symbols-outlined text-[13px]">tune</span>Default
+          </button>
+          {KIND_OPTS.map((d) => (
+            <button key={d.id} onClick={() => toggleDest(d.id)}
               className={`flex items-center gap-xs px-sm py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] transition-colors cursor-pointer ${
-                dest === d.id ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'
+                dest.includes(d.id) ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'
               }`}>
               <span className="material-symbols-outlined text-[13px]">{d.icon}</span>{d.label}
             </button>
@@ -287,7 +300,7 @@ export default function GraphicsPanel() {
               <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-outline px-xs">{title}</span>
               <div className="grid gap-md" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(248px, 1fr))' }}>
                 {items.map((g) => (
-                  <GraphicCard key={g.id} g={g} liveOn={liveDests(g)} dismissAt={liveDismissAt(g)} destLabel={TARGET_LABEL[resolveTarget(g)]}
+                  <GraphicCard key={g.id} g={g} liveOn={liveDests(g)} dismissAt={liveDismissAt(g)} destLabel={(() => { const t = resolveTarget(g); return Array.isArray(t) ? t.map((k) => TARGET_LABEL[k]).join(' + ') : TARGET_LABEL[t]; })()}
                     onTake={() => take(g)} onClear={() => clear(g)}
                     onEdit={() => setEditor(g)} onDelete={() => remove(g)} />
                 ))}
@@ -339,10 +352,8 @@ function useDismissCountdown(dismissAt) {
 function GraphicCard({ g, liveOn = [], dismissAt = null, destLabel, onTake, onClear, onEdit, onDelete }) {
   const live = liveOn.length > 0;
   const dismissIn = useDismissCountdown(dismissAt);
-  // Where it's live: both kinds → "Live", else name the single destination.
-  const liveLabel = liveOn.length === 2 ? 'Live'
-    : liveOn[0] === 'ndi' ? 'Live · Online'
-    : liveOn[0] === 'screen' ? 'Live · In-Room' : 'Live';
+  // Where it's live: multiple kinds → "Live", else name the single destination.
+  const liveLabel = liveOn.length > 1 ? 'Live' : `Live · ${TARGET_LABEL[liveOn[0]] || ''}`;
   const cdSt = g.kind === 'countdown' ? parseStyle(g) : null;
   const cdModeLabel = cdSt ? (cdSt.mode === 'clock' ? 'Clock' : cdSt.mode === 'countup' ? 'Count Up' : 'Countdown') : '';
   const primaryText = g.kind === 'ticker' ? g.text

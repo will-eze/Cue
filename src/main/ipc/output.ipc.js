@@ -23,9 +23,13 @@ export function registerOutputIpc() {
   ipcMain.handle('output:audio-device:get', () => outputManager.getProgramAudioDevice());
   ipcMain.handle('output:audio-device:set', (_e, device) => outputManager.setProgramAudioDevice(device));
 
-  // Program-audio PCM from the primary audio window's tap → NDI audio + RTMP audio.
+  // Program-audio PCM from the primary IN-ROOM audio window's tap → NDI audio.
   // One-way + high-rate, so it uses ipcMain.on (not handle/invoke).
   ipcMain.on('output:audio-pcm', (_e, buffer, meta) => outputManager.ingestAudioPcm(buffer, meta));
+  // Stream-window tap PCM (external feed + optional Cue media) → RTMP audio.
+  ipcMain.on('output:stream-audio-pcm', (_e, buffer, meta) => outputManager.ingestStreamAudioPcm(buffer, meta));
+  // Stereo peak levels from the stream window's meter → Stream tab (one-way, ~20Hz).
+  ipcMain.on('output:stream-levels', (_e, lv) => outputManager.ingestStreamLevels(lv));
 
   // Source of the PCM-tap AudioWorklet. Read in main (Node fs IS asar-aware) so the
   // output window can load it via a blob: URL — AudioWorklet.addModule cannot
@@ -42,6 +46,12 @@ export function registerOutputIpc() {
   ipcMain.handle('output:stream:status', () => outputManager.getStreamStatus());
   ipcMain.handle('output:stream:config:get', () => outputManager.getStreamConfig());
   ipcMain.handle('output:stream:config:set', (_e, cfg) => outputManager.setStreamConfig(cfg));
+  // Stream studio (external feed + layout/cut). open/close ref-count the compositor
+  // window so it stays up for live preview while the Stream tab is open.
+  ipcMain.handle('output:stream:studio:get', () => outputManager.getStreamStudio());
+  ipcMain.handle('output:stream:studio:set', (_e, cfg) => outputManager.setStreamStudio(cfg));
+  ipcMain.handle('output:stream:studio:open', () => outputManager.openStreamStudio());
+  ipcMain.handle('output:stream:studio:close', () => outputManager.closeStreamStudio());
 
   // ── Screens (connected displays) ───────────────────────────────────────────
   ipcMain.handle('output:screens:list', () => {

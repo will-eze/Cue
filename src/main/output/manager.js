@@ -1,4 +1,4 @@
-import { BrowserWindow, screen, app } from 'electron';
+import { BrowserWindow, screen, app, systemPreferences } from 'electron';
 import path from 'path';
 import { getDb } from '../db/schema.js';
 import { get as getSetting, set as setSetting } from '../db/settings.js';
@@ -14,9 +14,11 @@ const windows = new Map();
 const ndiCaptureLoops = new Map();
 // RTMP streaming: a dedicated offscreen window renders the program for the encoder,
 // kept OUTSIDE the `windows` map so its lifecycle is independent of output toggling.
-let streamWin = null;          // offscreen BrowserWindow feeding the encoder
+let streamWin = null;          // offscreen BrowserWindow compositing the stream program
 let streamCapture = null;      // { win, onPaint, timer }
-let streaming = false;         // a stream is starting / live
+let streaming = false;         // ffmpeg encode is live (Go Live), independent of preview
+let streamEncodeConfig = null; // url + bitrates, set at Go Live, consumed on first paint
+let streamPreviewRefCount = 0; // Stream tab(s) open → keep the compositor window alive
 // NDI channels currently emitting program audio (id set), refreshed on topology
 // changes. The program-audio tap runs only while a consumer (NDI audio or stream)
 // needs it.
@@ -72,25 +74,30 @@ let stagePruneTimer = null;
 // Dispatched as graphic:update to lower-third windows only, so a graphic never
 // disturbs the fullscreen program. Persisted for newly opened windows.
 //
-// Each slot holds ONE occupant PER DESTINATION KIND ({ screen, ndi }) so different
-// graphics can run In-Room vs Online at the same time (e.g. two different tickers).
-// A fire targeted 'all' fills both kinds with the same object; 'screen'/'ndi' fills
-// just that one (leaving the other kind's occupant running). The output windows are
-// already tagged screen/ndi, so each receives only its kind's occupant — the inner
-// slot-value shape is unchanged, so the output templates need no changes.
-const emptySlot = () => ({ screen: null, ndi: null });
+// Each slot holds ONE occupant PER DESTINATION KIND ({ screen, ndi, stream }) so
+// different graphics can run In-Room vs Online vs Stream at the same time. A fire
+// targeted 'all' fills every kind; a single kind ('screen'/'ndi'/'stream') or an
+// ARRAY of kinds (e.g. ['ndi','stream']) fills just those, leaving the others'
+// occupants running. The output windows are already tagged by kind, so each receives
+// only its kind's occupant — the inner slot-value shape is unchanged, so the output
+// templates need no changes.
+const OVERLAY_KINDS = ['screen', 'ndi', 'stream'];
+const emptySlot = () => ({ screen: null, ndi: null, stream: null });
 let overlay = { nameTitle: emptySlot(), ticker: emptySlot(), custom: emptySlot(), countdown: emptySlot() };
 
-// Assign a slot value to the destination(s) named by `target` ('all'|'screen'|'ndi').
-// value=null clears the targeted kind(s). Leaves the untargeted kind untouched.
+// The destination kinds a `target` touches: 'all' → every kind; a string → that one;
+// an array → exactly those.
+const kindsForTarget = (target) => {
+  if (!target || target === 'all') return OVERLAY_KINDS;
+  return Array.isArray(target) ? target.filter((k) => OVERLAY_KINDS.includes(k)) : [target];
+};
+
+// Assign a slot value to the destination(s) named by `target`. value=null clears the
+// targeted kind(s). Leaves untargeted kinds untouched.
 function setSlot(name, value, target) {
   const slot = overlay[name];
-  if ((target || 'all') === 'all') { slot.screen = value; slot.ndi = value; }
-  else slot[target] = value;
+  for (const k of kindsForTarget(target)) slot[k] = value;
 }
-
-// The destination kinds a `target` touches.
-const kindsForTarget = (target) => ((target || 'all') === 'all' ? ['screen', 'ndi'] : [target]);
 
 // ── Auto-dismiss ──────────────────────────────────────────────────────────────
 // A name/title, ticker or custom graphic can carry `autoDismissSec` — fire it and it
@@ -758,77 +765,192 @@ function updateAudioTapState() {
   audioEnabledNdi = new Set(
     ndiCh.filter((c) => c.ndi_audio_muted === 0 && windows.has(`ndi-${c.id}`)).map((c) => c.id),
   );
-  const needed = streaming || audioEnabledNdi.size > 0;
+  // The in-room tap now feeds NDI ONLY. Stream audio diverges from in-room audio:
+  // it is the EXTERNAL feed (+ optional Cue media), tapped inside the stream window
+  // itself (stream-feed.js → ingestStreamAudioPcm), never this in-room program tap.
+  const needed = audioEnabledNdi.size > 0;
   // Broadcast to every output window; only the audible (primary) one taps.
   for (const [, win] of windows) {
     try { if (!win.isDestroyed()) win.webContents.send('audio:tap', needed); } catch {}
   }
 }
 
-// Receive a batched PCM frame from the primary audio window's tap (planar Float32:
-// [ch0 samples…, ch1 samples…]) and fan it out, normalised to stereo, to the NDI
-// sender(s) and/or the RTMP encoder.
-export function ingestAudioPcm(arrayBuffer, meta) {
-  if (!arrayBuffer || !meta) return;
-  const sendNdi = audioEnabledNdi.size > 0;
-  const sendStream = streaming && rtmp.isActive();
-  if (!sendNdi && !sendStream) return;
-
+// Split a batched planar Float32 PCM frame ([ch0 samples…, ch1 samples…]) into its
+// two channel views, normalised to stereo. Returns null when there is nothing to do.
+function splitStereo(arrayBuffer, meta) {
+  if (!arrayBuffer || !meta) return null;
   const channels = meta.channels || 1;
   const samples = meta.samples || 0;
-  if (samples <= 0) return;
+  if (samples <= 0) return null;
   const sampleRate = meta.sampleRate || 48000;
   const all = new Float32Array(arrayBuffer);
   const ch0 = all.subarray(0, samples);
   const ch1 = channels >= 2 ? all.subarray(samples, samples * 2) : ch0;
-
-  if (sendNdi) {
-    // Planar Float32 (FLTp), stereo.
-    const planar = Buffer.allocUnsafe(samples * 2 * 4);
-    Buffer.from(ch0.buffer, ch0.byteOffset, samples * 4).copy(planar, 0);
-    Buffer.from(ch1.buffer, ch1.byteOffset, samples * 4).copy(planar, samples * 4);
-    for (const id of audioEnabledNdi) ndi.sendAudio(id, planar, sampleRate, 2, samples);
-  }
-
-  if (sendStream) {
-    // Interleaved f32le, stereo.
-    const inter = Buffer.allocUnsafe(samples * 2 * 4);
-    for (let i = 0; i < samples; i++) {
-      inter.writeFloatLE(ch0[i], i * 8);
-      inter.writeFloatLE(ch1[i], i * 8 + 4);
-    }
-    rtmp.writeAudio(inter);
-  }
+  return { ch0, ch1, samples, sampleRate };
 }
 
-// ── RTMP streaming ───────────────────────────────────────────────────────────
+// Receive a batched PCM frame from the primary IN-ROOM audio window's tap and fan it
+// out to the NDI sender(s). Stream audio is handled separately (ingestStreamAudioPcm).
+export function ingestAudioPcm(arrayBuffer, meta) {
+  if (audioEnabledNdi.size === 0) return;
+  const f = splitStereo(arrayBuffer, meta);
+  if (!f) return;
+  // Planar Float32 (FLTp), stereo.
+  const planar = Buffer.allocUnsafe(f.samples * 2 * 4);
+  Buffer.from(f.ch0.buffer, f.ch0.byteOffset, f.samples * 4).copy(planar, 0);
+  Buffer.from(f.ch1.buffer, f.ch1.byteOffset, f.samples * 4).copy(planar, f.samples * 4);
+  for (const id of audioEnabledNdi) ndi.sendAudio(id, planar, f.sampleRate, 2, f.samples);
+}
+
+// Receive a batched PCM frame from the STREAM window's own tap (external audio input
+// + optional Cue media, mixed in stream-feed.js) and write it to the RTMP encoder.
+// This is the stream's audio source — independent of the in-room program audio.
+export function ingestStreamAudioPcm(arrayBuffer, meta) {
+  if (!rtmp.isActive()) return;
+  const f = splitStereo(arrayBuffer, meta);
+  if (!f) return;
+  // Interleaved f32le, stereo.
+  const inter = Buffer.allocUnsafe(f.samples * 2 * 4);
+  for (let i = 0; i < f.samples; i++) {
+    inter.writeFloatLE(f.ch0[i], i * 8);
+    inter.writeFloatLE(f.ch1[i], i * 8 + 4);
+  }
+  rtmp.writeAudio(inter);
+}
+
+// Relay stereo peak levels (0..1) from the stream window's meter to the Stream tab.
+export function ingestStreamLevels(lv) {
+  notifyMainWindow('output:stream-levels', lv || { l: 0, r: 0 });
+}
+
+// ── Stream studio (external feed + composited Cue program → RTMP) ─────────────
+// The stream is its OWN program: an offscreen window composites an external video
+// feed (capture device) with Cue's program + stream-targeted graphics, and taps an
+// external audio interface (+ optional Cue media) for the encoder. The compositor
+// window runs for PREVIEW while a Stream tab is open; ffmpeg only spawns at Go Live.
 const STREAM_DEFAULTS = {
   server: '', key: '', width: 1920, height: 1080, fps: 30,
   videoBitrate: '4500k', audioBitrate: '160k',
+};
+const STREAM_STUDIO_DEFAULTS = {
+  // Labels accompany the ids because deviceIds are salted per-origin — the compositor
+  // window resolves the chosen device by label (see stream-feed.js).
+  videoDeviceId: null, videoLabel: null, audioDeviceId: null, audioLabel: null,
+  audioMode: 'external', // 'external' | 'mixed'
+  layout: { mode: 'feed', lyricsOverFeed: false, pip: { which: 'feed', x: 66, y: 4, w: 30, h: 30 } },
 };
 
 export function getStreamConfig() {
   return { ...STREAM_DEFAULTS, ...(getSetting('stream_config') || {}) };
 }
-
 export function setStreamConfig(cfg) {
-  const merged = { ...getStreamConfig(), ...(cfg || {}) };
+  const prev = getStreamConfig();
+  const merged = { ...prev, ...(cfg || {}) };
   setSetting('stream_config', merged);
+  // A resolution/fps change must resize the offscreen surface. Recreate the preview
+  // window when it's up and idle so the monitor (and a subsequent Go Live) matches.
+  const dimsChanged = merged.width !== prev.width || merged.height !== prev.height || merged.fps !== prev.fps;
+  if (dimsChanged && !streaming && streamWin && !streamWin.isDestroyed()) {
+    stopStreamCapture();
+    try { streamWin.close(); } catch {}
+    streamWin = null;
+    if (streamPreviewRefCount > 0) prepareStream();
+  }
+  return merged;
+}
+
+export function getStreamStudio() {
+  const s = getSetting('stream_studio') || {};
+  return {
+    ...STREAM_STUDIO_DEFAULTS, ...s,
+    layout: {
+      ...STREAM_STUDIO_DEFAULTS.layout, ...(s.layout || {}),
+      pip: { ...STREAM_STUDIO_DEFAULTS.layout.pip, ...((s.layout && s.layout.pip) || {}) },
+    },
+  };
+}
+// Merge & persist a partial studio config (input device / audio mode / layout), then
+// push it live to the open compositor window.
+export function setStreamStudio(cfg) {
+  const cur = getStreamStudio();
+  const merged = { ...cur, ...(cfg || {}) };
+  if (cfg && cfg.layout) {
+    merged.layout = { ...cur.layout, ...cfg.layout, pip: { ...cur.layout.pip, ...(cfg.layout.pip || {}) } };
+  }
+  setSetting('stream_studio', merged);
+  pushStreamConfig();
   return merged;
 }
 
 export function getStreamStatus() {
-  return { active: streaming, ...rtmp.getStatus() };
+  return { active: streaming, previewing: !!(streamWin && !streamWin.isDestroyed()), ...rtmp.getStatus() };
 }
 
 function emitStreamStatus(s) {
   notifyMainWindow('stream:status', { active: streaming, ...(s || {}) });
 }
 
+// Push current input selection + layout to the offscreen compositor window.
+function pushStreamConfig() {
+  if (!streamWin || streamWin.isDestroyed()) return;
+  const s = getStreamStudio();
+  try {
+    streamWin.webContents.send('stream:input', {
+      videoDeviceId: s.videoDeviceId, videoLabel: s.videoLabel,
+      audioDeviceId: s.audioDeviceId, audioLabel: s.audioLabel,
+      audioMode: s.audioMode,
+    });
+    streamWin.webContents.send('stream:layout', s.layout);
+  } catch {}
+}
+
+// Open the offscreen compositor for preview/encoding (idempotent, NO ffmpeg).
+export function prepareStream() {
+  if (streamWin && !streamWin.isDestroyed()) return { ok: true };
+  const cfg = getStreamConfig();
+  streamWin = createStreamWindow({ width: cfg.width, height: cfg.height, fps: cfg.fps || 30 });
+  return { ok: true };
+}
+
+// macOS gates camera/mic behind TCC. An offscreen window's getUserMedia never surfaces
+// the system prompt, so request access from MAIN (with the Info.plist usage strings) —
+// once granted, the compositor window's getUserMedia succeeds. No-op off macOS / when
+// already determined.
+async function ensureMediaAccess() {
+  if (process.platform !== 'darwin' || !systemPreferences.askForMediaAccess) return;
+  for (const type of ['camera', 'microphone']) {
+    try {
+      if (systemPreferences.getMediaAccessStatus(type) !== 'granted') {
+        await systemPreferences.askForMediaAccess(type);
+      }
+    } catch {}
+  }
+}
+
+// Ref-counted by the Stream tab: while open, the compositor window stays alive so the
+// operator can configure inputs and watch the live preview before going live.
+export async function openStreamStudio() {
+  streamPreviewRefCount++;
+  await ensureMediaAccess(); // prompt for camera/mic before the offscreen window taps them
+  prepareStream();
+  return getStreamStudio();
+}
+export function closeStreamStudio() {
+  streamPreviewRefCount = Math.max(0, streamPreviewRefCount - 1);
+  maybeTeardownStream();
+}
+// Tear the compositor down only when nothing needs it (not live AND no tab open).
+function maybeTeardownStream() {
+  if (streaming || streamPreviewRefCount > 0) return;
+  stopStreamCapture();
+  if (streamWin && !streamWin.isDestroyed()) { try { streamWin.close(); } catch {} }
+  streamWin = null;
+}
+
 export async function startStream() {
-  if (streaming) return { ok: false, error: 'already streaming' };
   const cfg = getStreamConfig();
   if (!cfg.server || !cfg.key) return { ok: false, error: 'Stream server and key are required' };
+  if (streaming) return { ok: false, error: 'already streaming' };
 
   // ffmpeg is only fetched on first YouTube use — make sure it exists.
   emitStreamStatus({ state: 'starting', detail: 'preparing encoder' });
@@ -838,27 +960,27 @@ export async function startStream() {
     return { ok: false, error: ready.error || 'ffmpeg unavailable' };
   }
 
-  streaming = true;
+  prepareStream(); // ensure the compositor window + capture loop exist
   const url = `${String(cfg.server).replace(/\/+$/, '')}/${cfg.key}`;
-  const config = {
+  streamEncodeConfig = {
     url, fps: cfg.fps || 30,
     videoBitrate: cfg.videoBitrate, audioBitrate: cfg.audioBitrate,
     width: cfg.width, height: cfg.height,
   };
-  streamWin = createStreamWindow(config);
-  updateAudioTapState(); // turn the program-audio tap on
+  streaming = true; // the capture loop spawns ffmpeg on the next paint
+  // Enable the stream window's own audio tap (external feed + optional Cue media).
+  try { streamWin?.webContents.send('stream:audio-tap', true); } catch {}
   return { ok: true };
 }
 
 export async function stopStream() {
-  if (!streaming && !streamWin && !rtmp.isActive()) return { ok: true };
+  if (!streaming && !rtmp.isActive()) { maybeTeardownStream(); return { ok: true }; }
   streaming = false;
-  stopStreamCapture();
-  if (streamWin && !streamWin.isDestroyed()) { try { streamWin.close(); } catch {} }
-  streamWin = null;
+  streamEncodeConfig = null;
+  try { if (streamWin && !streamWin.isDestroyed()) streamWin.webContents.send('stream:audio-tap', false); } catch {}
   await rtmp.stop();
-  updateAudioTapState(); // tap may still be needed for NDI audio
   emitStreamStatus({ state: 'idle', detail: null });
+  maybeTeardownStream(); // keep the window if a Stream tab is still previewing
   return { ok: true };
 }
 
@@ -873,16 +995,25 @@ function createStreamWindow(config) {
     webPreferences: {
       offscreen: true, preload, contextIsolation: true, nodeIntegration: false,
       sandbox: false, autoplayPolicy: 'no-user-gesture-required',
+      // The window is never shown, so Chromium treats it as hidden and throttles its
+      // timers + media (the camera <video> stutters/freezes, esp. once the operator
+      // switches tabs). Disable throttling so the feed keeps rendering at full rate —
+      // essential for a live broadcast that must survive leaving the Stream tab.
+      backgroundThrottling: false,
     },
   });
-  // mute=1: the stream window is silent locally; its audio is the primary audio
-  // window's tap, mixed into the encoder. program+graphics on = full program.
-  win.loadFile(getTemplatePath('fullscreen'), { query: { mute: '1', program: '1', graphics: '1' } });
+  // stream=1 turns on the compositor (external feed base + Cue program + PiP/cut).
+  // mute=1: locally silent; its audio is its OWN tap (external feed + Cue media),
+  // never the in-room program tap. program+graphics on = full Cue program available.
+  win.loadFile(getTemplatePath('fullscreen'), { query: { mute: '1', program: '1', graphics: '1', stream: '1' } });
   win.webContents.once('did-finish-load', () => {
-    sendStateToWindow(win, {});       // sync current program (channel-less)
-    sendGraphicToWindow(win, 'screen');
+    sendStateToWindow(win, {});            // sync the current Cue program
+    sendGraphicToWindow(win, 'stream');    // stream-targeted broadcast graphics
+    pushStreamConfig();                    // input devices + layout
     startStreamCapture(win, config);
+    if (streaming) { try { win.webContents.send('stream:audio-tap', true); } catch {} }
   });
+  win.on('closed', () => { if (win === streamWin) streamWin = null; });
   return win;
 }
 
@@ -892,35 +1023,70 @@ function startStreamCapture(win, config) {
   win.webContents.setFrameRate(fps);
   win.webContents.startPainting();
 
-  let lastSentAt = 0;
+  // The 'paint' event only fires when the offscreen compositor produces a new frame —
+  // a largely-static scene coalesces paints, so feeding ffmpeg straight from 'paint'
+  // delivers fewer than `fps` frames with gaps, which starves YouTube ("not receiving
+  // enough video" → viewer buffering). Instead we cache the LATEST painted frame and
+  // pump it to the encoder at a STEADY fps from a timer, duplicating the last frame
+  // when no new paint arrived → true CFR, no starvation.
+  let lastBitmap = null;   // Buffer (BGRA) — copied in onPaint so it stays valid
+  let lastImage = null;    // NativeImage for preview resize (best-effort)
+  let lastW = 0, lastH = 0;
   let rtmpReady = false;
   let rtmpStarting = false;
+  let lastPreviewAt = 0;
+  let lastHealthAt = 0;
+  // Stream-tab PREVIEW thumbnail only — the live stream is the full-resolution buffer
+  // at the target fps/bitrate, so preview sharpness does NOT reflect stream quality.
+  const PREVIEW_MS = 100;
+  const PREVIEW_W = 1280;
 
-  const onPaint = async (_e, _dirty, image) => {
-    const now = Date.now();
-    if (now - lastSentAt < frameMs - 2) return;
+  const onPaint = (_e, _dirty, image) => {
     const { width, height } = image.getSize();
     if (width <= 0 || height <= 0) return;
+    lastImage = image; lastW = width; lastH = height;
+    try { lastBitmap = image.toBitmap(); } catch {}
+  };
+  win.webContents.on('paint', onPaint);
 
-    // Launch ffmpeg on the FIRST real frame so -video_size matches the actual
-    // offscreen surface, avoiding corrupt output on size mismatch.
-    if (!rtmpReady) {
-      if (rtmpStarting) return;
-      rtmpStarting = true;
-      const res = await rtmp.start(
-        { ...config, width, height, sampleRate: 48000, channels: 2 },
-        (s) => emitStreamStatus(s),
-      );
-      rtmpStarting = false;
-      if (!res.ok) return;
-      rtmpReady = true;
+  const tick = async () => {
+    if (win.isDestroyed()) return;
+    win.webContents.invalidate(); // request the next paint (refreshes lastBitmap)
+    if (!lastBitmap) return;
+
+    if (streaming && streamEncodeConfig) {
+      // Spawn ffmpeg on the FIRST real frame so -video_size matches the actual surface.
+      if (!rtmpReady && !rtmpStarting) {
+        rtmpStarting = true;
+        const res = await rtmp.start(
+          { ...streamEncodeConfig, width: lastW, height: lastH, sampleRate: 48000, channels: 2 },
+          (s) => emitStreamStatus(s),
+        );
+        rtmpStarting = false;
+        rtmpReady = !!res.ok;
+      }
+      if (rtmpReady) rtmp.writeVideo(lastBitmap); // every tick → steady CFR to YouTube
+    } else {
+      rtmpReady = false; // reset so a subsequent Go Live re-spawns the encoder
     }
-    lastSentAt = now;
-    rtmp.writeVideo(image.toBitmap());
+
+    const now = Date.now();
+    // Push stream health (dropped/sent frame counts) once a second so the Stream tab
+    // can show whether the connection/encoder is keeping up.
+    if (streaming && rtmpReady && now - lastHealthAt >= 1000) {
+      lastHealthAt = now;
+      emitStreamStatus(rtmp.getStatus());
+    }
+    if (streamPreviewRefCount > 0 && now - lastPreviewAt >= PREVIEW_MS && lastImage) {
+      lastPreviewAt = now;
+      try {
+        const small = lastImage.resize({ width: PREVIEW_W });
+        notifyMainWindow('output:stream-preview', `data:image/jpeg;base64,${small.toJPEG(82).toString('base64')}`);
+      } catch {}
+    }
   };
 
-  win.webContents.on('paint', onPaint);
-  const timer = setInterval(() => { if (!win.isDestroyed()) win.webContents.invalidate(); }, frameMs);
+  const timer = setInterval(tick, frameMs);
   streamCapture = { win, onPaint, timer };
 }
 
@@ -1276,8 +1442,9 @@ function getGraphicsWindowInfos() {
     const kind = (typeof key === 'string' && key.startsWith('ndi-')) ? 'ndi' : 'screen';
     infos.push({ win, kind });
   }
-  // The stream window carries the same broadcast-graphics overlay as a screen.
-  if (streamWin && !streamWin.isDestroyed()) infos.push({ win: streamWin, kind: 'screen' });
+  // The stream window is its own destination kind so its overlay can be targeted
+  // independently from the in-room screens and the NDI feed.
+  if (streamWin && !streamWin.isDestroyed()) infos.push({ win: streamWin, kind: 'stream' });
   return infos;
 }
 
@@ -1431,11 +1598,12 @@ export function applyScene(scene) {
       overlay[name] = {
         screen: reviveSlotValue(name, slot.screen),
         ndi:    reviveSlotValue(name, slot.ndi),
+        stream: reviveSlotValue(name, slot.stream),
       };
       // Re-arm auto-dismiss against the freshly revived occupant (or disarm if none /
       // not dismissable). reviveSlotValue already re-stamped a fresh dismissAt.
       if (name !== 'countdown') {
-        for (const kind of ['screen', 'ndi']) {
+        for (const kind of OVERLAY_KINDS) {
           const v = overlay[name][kind];
           armDismiss(name, kind, v && v.autoDismissSec, v);
         }

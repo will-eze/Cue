@@ -67,6 +67,12 @@ contextBridge.exposeInMainWorld('cue', {
       status: () => ipcRenderer.invoke('output:stream:status'),
       getConfig: () => ipcRenderer.invoke('output:stream:config:get'),
       setConfig: (cfg) => ipcRenderer.invoke('output:stream:config:set', cfg),
+      // Stream studio: external feed inputs + layout/cut. open/close are ref-counted
+      // by the Stream tab and keep the compositor window alive for live preview.
+      getStudio: () => ipcRenderer.invoke('output:stream:studio:get'),
+      setStudio: (cfg) => ipcRenderer.invoke('output:stream:studio:set', cfg),
+      open: () => ipcRenderer.invoke('output:stream:studio:open'),
+      close: () => ipcRenderer.invoke('output:stream:studio:close'),
     },
     channels: {
       list: () => ipcRenderer.invoke('output:channels:list'),
@@ -269,7 +275,7 @@ contextBridge.exposeInMainWorld('cue', {
       'youtube:status',
       'scripture:detected', 'scripture:transcript', 'scripture:status',
       'update:progress',
-      'stream:status',
+      'stream:status', 'output:stream-preview', 'output:stream-levels',
     ];
     if (!allowed.includes(channel)) return () => {};
     const wrapper = (_event, ...args) => callback(...args);

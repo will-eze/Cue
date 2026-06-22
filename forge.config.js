@@ -65,6 +65,7 @@ module.exports = {
     // off Electron.app's own plist, so this gap is invisible until packaged.)
     extendInfo: {
       NSMicrophoneUsageDescription: 'Cue listens to the service audio to auto-detect spoken scripture references and quotes.',
+      NSCameraUsageDescription: 'Cue captures your video feed (camera or capture device) to composite the broadcast stream.',
     },
     name: 'Cue',
     executableName: 'cue',

@@ -32,6 +32,27 @@ contextBridge.exposeInMainWorld('cueOutput', {
     return () => ipcRenderer.removeListener('audio:tap', wrapper);
   },
   sendAudioPcm: (buffer, meta) => ipcRenderer.send('output:audio-pcm', buffer, meta),
+  // Stream-window tap: external feed audio (+ optional Cue media) → RTMP. Separate
+  // from the in-room tap above so stream audio diverges from in-room audio.
+  sendStreamAudioPcm: (buffer, meta) => ipcRenderer.send('output:stream-audio-pcm', buffer, meta),
+  sendStreamLevels: (lv) => ipcRenderer.send('output:stream-levels', lv),
+  // Stream compositor bus (stream window only). Input selection, layout/cut, and the
+  // PCM-tap enable toggle (mirrors onAudioTap but for the stream's own audio graph).
+  onStreamInput: (cb) => {
+    const wrapper = (_e, cfg) => cb(cfg);
+    ipcRenderer.on('stream:input', wrapper);
+    return () => ipcRenderer.removeListener('stream:input', wrapper);
+  },
+  onStreamLayout: (cb) => {
+    const wrapper = (_e, l) => cb(l);
+    ipcRenderer.on('stream:layout', wrapper);
+    return () => ipcRenderer.removeListener('stream:layout', wrapper);
+  },
+  onStreamAudioTap: (cb) => {
+    const wrapper = (_e, on) => cb(on);
+    ipcRenderer.on('stream:audio-tap', wrapper);
+    return () => ipcRenderer.removeListener('stream:audio-tap', wrapper);
+  },
   // Worklet source text (read in main, asar-aware) for blob-URL loading.
   getWorkletSource: () => ipcRenderer.invoke('audio:worklet-source'),
 });

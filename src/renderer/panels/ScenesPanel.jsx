@@ -30,7 +30,7 @@ function overlayChips(overlay) {
   for (const kind of ['nameTitle', 'ticker', 'custom', 'countdown']) {
     const slot = overlay[kind];
     if (!slot) continue;
-    for (const dest of ['screen', 'ndi']) {
+    for (const dest of ['screen', 'ndi', 'stream']) {
       const v = slot[dest];
       if (!v) continue;
       const detail = kind === 'nameTitle' ? (v.name || v.title || '')
@@ -175,7 +175,7 @@ function SceneEditor({ scene, onClose, onSaved }) {
   // overlay, the program action (from displayMode) and the audio (from the transport).
   async function captureNow() {
     const st = await window.cue.output.getState();
-    setOverlay(st.overlay || { nameTitle: { screen: null, ndi: null }, ticker: { screen: null, ndi: null }, custom: { screen: null, ndi: null }, countdown: { screen: null, ndi: null } });
+    setOverlay(st.overlay || { nameTitle: { screen: null, ndi: null, stream: null }, ticker: { screen: null, ndi: null, stream: null }, custom: { screen: null, ndi: null, stream: null }, countdown: { screen: null, ndi: null, stream: null } });
     setManageOverlay(true);
     const dm = st.displayMode;
     setProgram(dm === 'logo' ? 'logo' : dm === 'cleared' ? 'clear' : dm === 'content' ? 'content' : 'none');

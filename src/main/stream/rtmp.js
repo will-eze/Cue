@@ -17,6 +17,10 @@ let state = 'idle';            // idle | starting | live | reconnecting | error
 let stopping = false;
 let videoBackpressure = false; // drop video frames (never audio) while stdin is full
 let reconnectTimer = null;
+// Health counters (cumulative since the current launch). A rising droppedFrames count
+// means the encoder/network can't keep up — surfaced in the Stream tab.
+let droppedFrames = 0;
+let sentFrames = 0;
 
 // Probe once for a hardware H.264 encoder; fall back to libx264. Hardware encoders
 // are effectively required for 1440p60 / 2160p60 — software can't keep up there.
@@ -93,6 +97,8 @@ async function launch() {
 
   proc = spawn(ff, buildArgs(opts, encoder), { stdio: ['pipe', 'ignore', 'pipe', 'pipe'] });
   videoBackpressure = false;
+  droppedFrames = 0;
+  sentFrames = 0;
 
   proc.stdin.on('error', () => {});            // EPIPE on teardown is expected
   proc.stdio[3].on('error', () => {});
@@ -127,7 +133,9 @@ function cleanup() {
 
 // ── Public API ──────────────────────────────────────────────────────────────
 export function isActive() { return !!proc; }
-export function getStatus() { return { state, encoder: cachedEncoder || null }; }
+export function getStatus() {
+  return { state, encoder: cachedEncoder || null, droppedFrames, sentFrames, backpressure: videoBackpressure };
+}
 
 export async function start(o, statusCb) {
   if (proc) return { ok: false, error: 'already streaming' };
@@ -154,7 +162,10 @@ export async function stop() {
 // Raw BGRA frame (Buffer, width*height*4 bytes). Dropped under backpressure so the
 // main process never queues multi-MB frames — mirrors the NDI inflight guard.
 export function writeVideo(buf) {
-  if (!proc || !proc.stdin.writable || videoBackpressure) return;
+  if (!proc || !proc.stdin.writable) return;
+  // Dropped under backpressure → counted so the UI can show an unstable connection.
+  if (videoBackpressure) { droppedFrames++; return; }
+  sentFrames++;
   if (!proc.stdin.write(buf)) videoBackpressure = true;
 }
 

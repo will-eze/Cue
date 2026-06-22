@@ -196,8 +196,8 @@ src/
 │   ├── stream/
 │   │   └── rtmp.js           RTMP streaming via the bundled ffmpeg (no OAuth — stream key). spawn ffmpeg (video=rawvideo
 │   │                         bgra on pipe:0, audio=f32le on pipe:3); HW encoder probe (videotoolbox/nvenc/qsv) → libx264;
-│   │                         wallclock A/V; writeVideo (drops under backpressure) / writeAudio (never dropped);
-│   │                         start/stop/getStatus; auto-reconnect on unexpected exit. Driven by manager.startStream.
+│   │                         wallclock A/V; writeVideo (drops + counts under backpressure) / writeAudio (never dropped);
+│   │                         start/stop/getStatus (incl. droppedFrames/sentFrames); auto-reconnect. Driven by Stream Studio.
 │   │
 │   └── output/
 │       ├── manager.js        Output window registry. go/clear/logo dispatch. No operator capture loop —
@@ -223,9 +223,10 @@ src/
 │       │                     setRemoteStateListener(cb): notifyMainWindow('output:state-changed') also fires cb so the
 │       │                     network remote pushes STATE. setOutputsEnabled emits state early (before slow window work).
 │       │                     Audio: getProgramAudioDevice/setProgramAudioDevice (in-room device, audio:output-device);
-│       │                     program-audio tap → ingestAudioPcm (planar FLTp to NDI senders + interleaved f32le to RTMP);
-│       │                     updateAudioTapState (audio:tap on/off). RTMP: startStream/stopStream/getStreamStatus +
-│       │                     a dedicated offscreen stream window kept outside the windows map.
+│       │                     in-room tap → ingestAudioPcm (planar FLTp to NDI senders ONLY); stream tap → ingestStreamAudioPcm
+│       │                     (interleaved f32le to RTMP); updateAudioTapState (audio:tap on/off). Stream Studio: prepare/open/
+│       │                     close/start/stopStream, get/setStreamStudio, steady-CFR encode pump + preview/levels/health, a
+│       │                     dedicated offscreen compositor window (backgroundThrottling:false) kept outside the windows map.
 │       └── ndi.js            Active NDI implementation. createRequire loads @grandi/<platform>-<arch>
 │                             at runtime. createSender / sendFrame (inflight guard) / sendAudio (FLTp planar) / destroySender.
 │
@@ -263,6 +264,10 @@ src/
 │   │                         screen monitor, every NDI channel, and a placeholder tile per screen channel with no
 │   │                         monitors). Each tile carries a ChannelChip header (name + NDI/template/active badges).
 │   │                         Subscribes to output:multiview-captures. NDI channels show NdiTile (checkerboard + frame).
+│   │   └── StreamView.jsx    Stream Studio tab: external feed inputs (video/audio device pickers, audio mode), live
+│   │                         composite monitor (output:stream-preview), layout/cut switcher (Feed/Program/PiP +
+│   │                         lyrics-over-feed), stereo level meters, dropped-frame health badge, RTMP config + Go Live.
+│   │                         Mounts stream.open()/unmounts stream.close() (ref-counts the compositor for preview).
 │   │
 │   ├── panels/
 │   │   ├── RundownPanel.jsx       Service selector with inline rename/delete UI (no native confirm dialogs).
@@ -393,8 +398,7 @@ src/
 │   │   │                          Lyrics Only / Graphics Only (show_program × show_graphics, via channelMode util).
 │   │   │                          Also the global "Program audio output" device picker (program_audio_device; labels
 │   │   │                          unlocked lazily on first interaction, never eagerly — see §13).
-│   │   ├── StreamSettings.jsx    RTMP streaming: server URL + key, resolution/fps/bitrate, Go Live/Stop, status
-│   │   │                          (window.cue.on('stream:status')). Nav id 'stream'.
+│   │   ├── StreamSettings.jsx    Pointer card — streaming moved to the Stream tab (StreamView.jsx). Nav id 'stream'.
 │   │   ├── LogoSettings.jsx      Global logo picker.
 │   │   ├── BackgroundSettings.jsx Global song/scripture/slide background pickers. Bulk apply actions.
 │   │   ├── ThemeSettings.jsx     Theme library. Category tabs (Songs/Scripture/… auto-derived from present themes);
@@ -458,14 +462,19 @@ src/
 │   │                         native loop, el.muted = baseMuted || transport.muted. Subscribes to onMediaTransport.
 │   │                         Applies the in-room audio output device (setSinkId, audible window only) + offers each
 │   │                         element to CueAudioTap (§13 In-room device / Program-audio tap).
-│   ├── audio-tap.js          Program-audio tap (NDI/stream). captureStream → 48k AudioContext → cue-pcm-tap worklet →
-│   │                         output:audio-pcm. Worklet loaded from a blob: URL (asar-proof). Gated by audio:tap.
+│   ├── audio-tap.js          In-room program-audio tap (NDI only). captureStream → 48k AudioContext → cue-pcm-tap worklet →
+│   │                         output:audio-pcm. Worklet loaded from a blob: URL (asar-proof). Gated by audio:tap. (Stream
+│   │                         audio is a separate tap in stream-feed.js → output:stream-audio-pcm.)
 │   ├── pcm-tap-worklet.js    AudioWorkletProcessor: batches planar Float32 PCM frames, posts them to the main thread.
 │   ├── graphics-overlay.js   Shared broadcast-graphics overlay (included by fullscreen.html + lowerthird.html, NOT
 │   │                         stage). Injects its own #cue-gfx DOM + styles. Renders the name/title bug (positioned by
 │   │                         style.name.textBox, styled per name/title), ticker crawl (top/bottom, speed), and custom
 │   │                         HTML (isolated shadow root, .cue-in/.cue-out). Honours onGraphicUpdate; ?graphics=0 and
 │   │                         content:mode toggle the whole overlay live (caches last overlay to restore on re-enable).
+│   ├── stream-feed.js        Stream compositor (loaded by fullscreen.html, no-op unless ?stream=1). External camera
+│   │                         feed base (getUserMedia, resolved by label), Feed/Program/PiP layout, lower-third lyric
+│   │                         band, CSS-zoom 1920×1080 design space (resolution independence), and the stream audio
+│   │                         tap (external input + optional Cue media → cue-pcm-tap → output:stream-audio-pcm) + meters.
 │   ├── transitions.js        Shared program-output transition engine (loaded before fullscreen.js/lowerthird.js).
 │   │                         window.CueTransitions.run(stage, {type,durationMs,easing}, render, {fgSel}): clones the
 │   │                         live stage as a ghost overlay, calls render() to mutate the live stage to the new content,
@@ -808,6 +817,7 @@ Known keys:
 | `libreoffice_path` | string\|null | User-set absolute path to the `soffice` binary (Locate manually…), tried first by `findLibreOffice()` for PowerPoint import |
 | `program_audio_device` | object\|null | In-room program-audio output device `{deviceId,label,groupId}`; `null` = system default. The audible (primary) output window routes its media element there via `setSinkId`, matching deviceId→label→groupId (device IDs are salted per-origin). Machine-specific (rides backups but degrades to default if the device is absent) |
 | `stream_config` | object | RTMP stream settings `{server,key,width,height,fps,videoBitrate,audioBitrate}`. `server`+`key` form the ingest URL; `key` is sensitive (lives in the synced DB) |
+| `stream_studio` | object | Stream Studio inputs + layout `{videoDeviceId,videoLabel,audioDeviceId,audioLabel,audioMode:'external'\|'mixed',layout:{mode,lyricsOverFeed,pip}}`. Device labels persist because deviceIds re-salt per session/origin. Machine-specific |
 
 **localStorage keys** (UI state only — not in DB):
 | Key | Description |
@@ -1051,10 +1061,12 @@ All renderer↔main communication is via `ipcRenderer.invoke` / `ipcMain.handle`
 | `audioDevice.get()` | object\|null | The configured in-room program-audio output device (`program_audio_device`), or null = system default. |
 | `audioDevice.set(device)` | object\|null | Persist `{deviceId,label,groupId}` (or null) AND broadcast `audio:output-device` to live output windows so the in-room device changes without re-GO. |
 | `stream.getConfig()` | object | RTMP `stream_config` (defaults merged). |
-| `stream.setConfig(cfg)` | object | Merge + persist `stream_config`; returns merged. |
-| `stream.start()` | `{ok,error?}` | Begin streaming the program to RTMP (reads stored config). Ensures ffmpeg is downloaded, opens a dedicated offscreen stream window, enables the program-audio tap. |
-| `stream.stop()` | `{ok}` | Stop streaming: kill ffmpeg, close the stream window, deactivate the tap if no other consumer. |
-| `stream.status()` | `{active, state, encoder}` | `state` ∈ `idle\|starting\|live\|reconnecting\|error`. |
+| `stream.setConfig(cfg)` | object | Merge + persist `stream_config`; returns merged. Recreates the idle preview window if resolution/fps changed. |
+| `stream.start()` | `{ok,error?}` | Go Live: ensure ffmpeg, ensure the compositor window, spawn the encoder on the next frame, enable the stream audio tap. |
+| `stream.stop()` | `{ok}` | Stop the encoder; keep the compositor window if the Stream tab is still previewing. |
+| `stream.status()` | `{active, previewing, state, encoder, droppedFrames, sentFrames, backpressure}` | `state` ∈ `idle\|starting\|live\|reconnecting\|error`. |
+| `stream.getStudio()` / `stream.setStudio(cfg)` | object | Read/merge+persist `stream_studio` (`videoDeviceId/Label`, `audioDeviceId/Label`, `audioMode`, `layout{mode,lyricsOverFeed,pip}`); set pushes live to the compositor. |
+| `stream.open()` / `stream.close()` | studio / void | Ref-count the Stream tab: open starts the compositor for preview; close tears it down when not live. |
 
 **Output payload structure:**
 ```js
@@ -1305,11 +1317,13 @@ Editors load the merged list via the `useFonts()` hook (`renderer/utils/fonts.js
 Subscribe to main→renderer events. Returns an unsubscribe function — call it to remove the listener (e.g. in `useEffect` cleanup). Allowed channels:
 - `output:unresolved-channels` — array of unresolved channel objects on startup
 - `output:state-changed` — fired after go/clear/logo/setLive AND after any channel topology/flag change (`syncChannel` / `setChannelContentMode`); payload: `{activeWindows, outputsEnabled, displayMode, livePayload, transport, overlay}`. OperatorView reloads its channel list on this so the live monitor tracks content-mode changes.
-- `output:overlay-changed` — fired after any broadcast-graphics change; payload is the full `overlay` object `{nameTitle, ticker, custom}`. The Graphics panel + live monitor follow it.
+- `output:overlay-changed` — fired after any broadcast-graphics change; payload is the full `overlay` object — each slot a `{screen, ndi, stream}` shape. The Graphics panel + live monitor follow it.
 - `output:media-transport` — fired whenever the media transport changes (go / play / pause / restart / seek / setMuted / setLoop / setRate); payload: `{ active, startAt, pausedAt, loop, muted, rate }`. The operator UI follows this to drive `SyncedVideo` and the transport bar; output players make `<video>.loop` follow `transport.loop` so a live loop toggle applies without re-GO. (There is NO `output:media-time` event — the old clock-master time-reporting chain was removed.)
 - `youtube:status` — fired as an ephemeral YouTube download progresses; payload: `{ id, url, status, percent, title, durationMs, path, error, setupName }` (`setupName` = which binary is downloading during the `setup` state). The Media-tab modal, the rundown status badge, and `OperatorView` (which patches the matching cue by URL) all follow it. See §6 *Native YouTube player*.
 - `output:multiview-captures` — array of `{channelId, dataUrl, isNdi}` objects (~1fps, only while multiview is running). `isNdi: true` for NDI channels (sourced from `ndiLastFrames` JPEG cache at ~1fps); `isNdi: false` for screen channels (capturePage, also ~1fps with an in-flight guard so a slow readback can't pile up and stutter live playback).
-- `stream:status` — RTMP stream state changes; payload `{active, state, detail?, encoder?}` where `state` ∈ `idle\|starting\|live\|reconnecting\|error`. `StreamSettings` follows it for the live indicator.
+- `stream:status` — RTMP stream state changes + ~1Hz health; payload `{active, state, detail?, encoder?, droppedFrames?, sentFrames?, backpressure?}` where `state` ∈ `idle\|starting\|live\|reconnecting\|error`. The Stream tab derives a Stable/Unstable dropped-fps badge from successive frame counts.
+- `output:stream-preview` — ~10fps downscaled JPEG data-URL of the stream composite, for the Stream-tab monitor (preview only, not stream quality).
+- `output:stream-levels` — `{l, r}` stereo peak levels (0..1) from the stream audio mix, for the Stream-tab meters.
 - `output:ndi-unavailable` — fired if grandiose is not installed
 - `shortcut:next` / `shortcut:prev` — reserved for future hardware remote
 - `remote:command` — a network-control command `{action, itemId?, slideIdx?}` (action: go/clear/logo/next/prev/live/select). OperatorView dispatches it to the same handlers the keyboard uses, so the remote stays in sync with the UI.
@@ -1605,7 +1619,7 @@ A rundown item can carry a per-slide auto-advance interval (`service_items.advan
 All four editors (`SongEditor`, `ScriptureEditor`, `GraphicsEditor`, `PresentationEditor`) share `useEditHistory(initial)` → `{ state, set, reset, undo, redo, canUndo, canRedo }`: a bounded (50-deep) past/present/future stack holding the editor's working document, committed to the DB only on Save (session-local, no IPC). `set(updater, coalesceTag)` merges a rapid run of same-tag edits (typing, slider drags) into one undo step; `reset()` seeds the initial DB load without recording a step. **The reducer must stay pure — coalesce bookkeeping happens in the `set`/`undo`/`redo` function bodies, never inside the `setHist` updater, because React StrictMode double-invokes the updater in dev and a ref mutation there clobbers the first snapshot** (the bug that made coalesced lyric typing record no undo step). `useUndoRedoKeys(undo, redo)` binds ⌘Z / ⌘⇧Z at the document capture phase (`stopPropagation`, Z only — never ⌘C/⌘X/⌘A) so it beats both the operator keydown and native text undo. `UndoRedoButtons.jsx` is the shared toolbar pair. SongEditor's contentEditable is uncontrolled: lyric input flushes into `sections` through history (coalesced per section), and undo/redo bump a `domSyncTick` that re-renders the active section's DOM from the restored state.
 
 ### Customisable top bar (`App.jsx` + `TopBarTabs.jsx`)
-The top nav is data-driven: fixed Operator/Multiview/Settings tabs plus operator-pinned **extra** tabs (deep-links to Settings subsections, `settings:<id>`), persisted in the `topbar_tabs` settings key (capped at 6). `TopBarTabs` renders the extras (dnd-kit horizontal reorder, 5px activation so a click still navigates; ×-to-unpin) and a `+` picker of unpinned `SECTIONS` (exported from `SettingsView`) with a Reset-to-default. `navigateTo(tabId)` routes base views and `settings:<section>` deep-links (preserving the leave-Settings `bgRefreshTick` bump); `SettingsView` accepts `initialSection` + a `sectionNonce` and smooth-scrolls to that section (the nonce re-fires the scroll on re-click).
+The top nav is data-driven: fixed Operator/Multiview/Stream/Settings tabs plus operator-pinned **extra** tabs (deep-links to Settings subsections, `settings:<id>`), persisted in the `topbar_tabs` settings key (capped at 6). `TopBarTabs` renders the extras (dnd-kit horizontal reorder, 5px activation so a click still navigates; ×-to-unpin) and a `+` picker of unpinned `SECTIONS` (exported from `SettingsView`) with a Reset-to-default. `navigateTo(tabId)` routes base views and `settings:<section>` deep-links (preserving the leave-Settings `bgRefreshTick` bump); `SettingsView` accepts `initialSection` + a `sectionNonce` and smooth-scrolls to that section (the nonce re-fires the scroll on re-click).
 
 ---
 
@@ -1658,7 +1672,7 @@ The program-output templates animate slide changes via `transitions.js` (`window
 **Lower-third font scale (global).** A single `lowerthird_font_scale` setting (percent, 1–150, default 100) lets the operator run a smaller relative font on the lower-third than on the screen. Main attaches it to every content payload as `ltFontScale` (a fraction); `lowerthird.js applyStyle(el, s, scale)` and `renderWithRuns(text, runs, scale)` multiply the font size by it, computing the base as `(Number(s.fontSize) || 72) * scale` — the **72px base mirrors the fullscreen default**, so at 100% the lower-third matches the screen and the operator dials it down. Fullscreen ignores `ltFontScale`. The operator preview mirrors this exactly: `PreviewLivePanel.MonitorFrame` takes an `ltFontScale` prop (only applied when `isLT`) using the same `(fontSize||72)*scale` formula, and passes the scale into the shared `renderWithRuns(text, runs, scale)` (in `SongEditor.jsx`, default `scale=1` so the editor/fullscreen are unaffected). `OperatorView` loads the scale in `loadScriptureDefaults` (so the preview refreshes on return from Settings, like every other global default); the real NDI/screen output updates **live** because `setLowerthirdFontScale` re-broadcasts the current slide. Authored in Settings → **Lower Third** (`LowerthirdSettings.jsx`).
 
 ### Broadcast-graphics overlay + lower-third content modes
-The broadcast-graphics overlay (name/title bug, ticker, custom HTML, countdown) renders on **every non-stage output window** (fullscreen + lower-third) via the shared `src/output/graphics-overlay.js`, so an In-Room graphic overlays the auditorium program and an Online graphic overlays the NDI feed. It injects its own `#cue-gfx` DOM (high z-index, `pointer-events:none`) and listens for `graphic:update`. Each window receives `overlayForKind(kind)` — its own destination-kind occupant of each `{screen,ndi}` slot (`getGraphicsWindowInfos` classifies by windows-map key: numeric = screen/in-room, `ndi-*` = online) — so a different graphic can run In-Room vs Online (§7 overlay-bus note). The output templates take a single occupant per slot, unchanged in shape.
+The broadcast-graphics overlay (name/title bug, ticker, custom HTML, countdown) renders on **every non-stage output window** (fullscreen + lower-third + the stream compositor) via the shared `src/output/graphics-overlay.js`. It injects its own `#cue-gfx` DOM (high z-index, `pointer-events:none`) and listens for `graphic:update`. Each slot holds one occupant per destination **kind — `{screen, ndi, stream}`** (`OVERLAY_KINDS`): In-Room screens, the Online NDI feed, and the broadcast Stream composite, independently. Each window receives `overlayForKind(kind)` (`getGraphicsWindowInfos` classifies by windows-map key: numeric = screen, `ndi-*` = online; the stream window is tagged `stream`). A fire's `target` is `'all'`, a single kind, or **an array of kinds** (`kindsForTarget`) — so a graphic can hit any combination (e.g. Stream + NDI but not in-room). The Graphics panel exposes Default + toggleable In-Room/Online/Stream chips; the output templates take a single occupant per slot, unchanged in shape.
 
 **Custom HTML designs:** a `custom` graphic renders into `#lt-custom` (a shadow root: `position:absolute; inset:0; transparent`) — arbitrary author HTML/CSS, alpha-key safe, with `.cue-in`/`.cue-out` on the `.cue-root` wrapper for enter/exit. The Graphics editor's design gallery (`GraphicsPresetModal`) offers built-in designs (§7 `graphics.presets`) as live tiles; picking one from the panel creates a graphic and opens the editor, while the editor's "Apply a design" restyles the current draft (locked to its kind). **Tickers crawl** in every preview surface too (gallery tiles, editor, live monitor, card thumbs) via the shared `@keyframes cue-ticker-crawl`, duration = `scrollWidth/speed`, mirroring the output crawl.
 
@@ -1690,11 +1704,25 @@ The operator live/preview monitors **do not screen-capture the output window**. 
 ### In-room program audio output device
 The audible program audio can be routed to a chosen physical output device. One global descriptor (`program_audio_device`) — the architecture guarantees a single primary audio monitor, so there is no per-channel device. `createMonitorWindow` passes it as the `audioDevice` query param; runtime changes ride the `audio:output-device` broadcast. In the output window, `media-player.js` applies it per media element with `el.setSinkId`, resolving the stored descriptor to a live device by **deviceId → label → groupId** (device IDs are salted per-origin, so the value chosen in the operator renderer may not match in the output window's `file://` origin). Only the audible window (`baseMuted === false`) routes; muted role-windows are left on the default. `OutputChannels.jsx` enumerates `audiooutput` devices; device labels are unlocked **lazily** (a one-shot `getUserMedia` on first picker interaction, never eagerly — opening a mic stream reconfigures the OS audio engine and briefly cuts all audio).
 
-### Program-audio tap (NDI audio / streaming)
-One Web Audio tap in the primary audio window feeds both NDI audio and the RTMP stream. `audio-tap.js` (loaded in `fullscreen.html`) taps the audible window's foreground media via `el.captureStream()` — deliberately NOT `createMediaElementSource`, so in-room playback/`setSinkId` is untouched. The element sets `crossOrigin='anonymous'` and the `cue-media://` handler returns `Access-Control-Allow-Origin: *`, so the tap is CORS-clean (not tainted). The `AudioContext` is pinned to 48 kHz; a `cue-pcm-tap` AudioWorklet (`pcm-tap-worklet.js`) batches planar Float32 PCM and posts it via `output:audio-pcm`. **Worklet loading is asar-proof**: the worklet source is read in main (`audio:worklet-source`, Node `fs` is asar-aware) and loaded from a `blob:` URL — `AudioWorklet.addModule` cannot reliably fetch a module from inside `app.asar`. Main toggles the tap on/off with the `audio:tap` event (`updateAudioTapState`), running it only while a consumer needs it. `ingestAudioPcm` normalises to stereo and fans out: planar FLTp to each audio-enabled NDI sender, interleaved f32le to the RTMP encoder.
+### Program-audio tap (NDI audio) and the separate stream tap
+In-room program audio and stream audio are **separate** taps (the stream is its own program — see Stream Studio below):
+- **In-room tap → NDI only.** `audio-tap.js` (loaded in `fullscreen.html`) taps the audible window's foreground media via `el.captureStream()` — deliberately NOT `createMediaElementSource`, so in-room playback/`setSinkId` is untouched. The element sets `crossOrigin='anonymous'` and the `cue-media://` handler returns `Access-Control-Allow-Origin: *`, so the tap is CORS-clean. The `AudioContext` is pinned to 48 kHz; a `cue-pcm-tap` AudioWorklet (`pcm-tap-worklet.js`) batches planar Float32 PCM and posts it via `output:audio-pcm`. Main toggles it with the `audio:tap` event (`updateAudioTapState`), needed only while an NDI-audio channel is live. `ingestAudioPcm` fans planar FLTp to each audio-enabled NDI sender. **It no longer feeds the RTMP encoder.**
+- **Stream tap → RTMP only.** Built inside the offscreen stream window by `stream-feed.js`: the external audio-interface input (`getUserMedia({audio:{deviceId}})`) plus, in "mixed" mode, Cue's own foreground media (`captureStream` on `#cue-media-el`, offered via `window.CueStreamFeed.onMediaElement`), summed in a `GainNode` mix bus → the same `cue-pcm-tap` worklet → posted via `output:stream-audio-pcm` → `ingestStreamAudioPcm` writes interleaved f32le to ffmpeg `pipe:3`. Main enables it with the `stream:audio-tap` event at Go Live. A stereo `AnalyserNode` per channel sends peak levels via `output:stream-levels` for the Stream-tab meters.
 
-### RTMP streaming (`src/main/stream/rtmp.js`)
-Direct-to-RTMP (YouTube/Facebook/Twitch) — a stream key, no OAuth. A dedicated offscreen stream window (kept OUTSIDE the `windows` map so its lifecycle is independent of output toggling) renders the program; broadcast points (`getAllOutputWindows`, `getGraphicsWindowInfos`, `broadcastTransport`, the logo branch) are made stream-aware so it mirrors output. Its paint buffer (raw BGRA) feeds `rtmp.writeVideo` on `pipe:0`; the audio tap feeds `rtmp.writeAudio` (f32le) on `pipe:3`. `rtmp.js` spawns the bundled ffmpeg (`youtube/bin.js` `ffmpegPath`/`ensureBinaries`), probes for a hardware H.264 encoder (videotoolbox/nvenc/qsv) with `libx264` fallback, uses wallclock timestamps for A/V alignment, drops video frames under stdin backpressure (never audio), and auto-reconnects on unexpected ffmpeg exit. ffmpeg launches on the FIRST paint so `-video_size` matches the real offscreen surface. CSP does not apply (RTMP egress is in main, not a renderer fetch).
+**Worklet loading is asar-proof** (both taps): the worklet source is read in main (`audio:worklet-source`, Node `fs` is asar-aware) and loaded from a `blob:` URL — `AudioWorklet.addModule` cannot reliably fetch a module from inside `app.asar`.
+
+### Stream Studio — external feed + composited program → RTMP (`src/main/stream/rtmp.js`, `src/output/stream-feed.js`, `src/renderer/views/StreamView.jsx`)
+The stream is its **own program**, distinct from the in-room/NDI program: an external video feed (the operator's video mixer, via a capture device) is the base layer, with Cue's program, the lower-third lyric band, and stream-targeted broadcast graphics composited on top. The in-room screens and NDI feed are unaffected.
+
+**Compositor (offscreen stream window).** A dedicated offscreen `BrowserWindow` (kept OUTSIDE the `windows` map; `backgroundThrottling:false` so the hidden window's `<video>`/timers are never throttled) loads `fullscreen.html` with `?stream=1`. `stream-feed.js` (a no-op unless `stream=1`, loaded in `fullscreen.html` after `graphics-overlay.js`) adds:
+- A `#cue-feed` `<video>` base layer fed by `getUserMedia({video:{deviceId}})`. Capture devices are resolved **by label** (deviceIds are salted per-origin between the operator renderer and the `file://` stream window, so an exact-id match fails — `stream-feed.js` unlocks labels once and matches by label, falling back to id).
+- A **layout/cut model** (`stream:layout` IPC): `feed` (camera full; Cue background suppressed; lyrics shown as a lower-third band only when `lyricsOverFeed` on), `program` (fullscreen Cue program covers the feed), `pip` (both visible — one full-frame, the other an inset box, `which:'feed'|'program'`).
+- A **lower-third lyric band** (`#cue-stream-lt`, ported from `lowerthird.js`) for lyrics over the feed — the fullscreen `#content` layout is reserved for Program/PiP.
+- **Resolution independence via CSS `zoom`.** Cue-content layers (`#stage`, the lyric band, `#cue-gfx`) are 1920×1080 design boxes scaled with `zoom` (NOT `transform: scale`, which caches the layer at 1080 and GPU-upscales → blurry 4K). `zoom` re-rasterizes natively, so content keeps its 1080p-monitor size and stays crisp at any encode resolution; the camera feed is left native. `#slide-elements`'s own scale is neutralised to avoid double-scaling.
+
+**Encode pipeline.** A **steady-CFR pump** drives ffmpeg: the `paint` event caches the latest BGRA frame; a timer at the target fps writes that frame to `rtmp.writeVideo` (`pipe:0`) every interval, **duplicating the last frame when no new paint arrived** — feeding ffmpeg straight from `paint` starves YouTube on near-static scenes ("not receiving enough video") because the offscreen compositor coalesces repaints. ffmpeg starts on the FIRST frame so `-video_size` matches the real surface. `rtmp.js` spawns the bundled ffmpeg (`youtube/bin.js`), probes for a hardware H.264 encoder (videotoolbox/nvenc/qsv, `libx264` fallback), uses wallclock timestamps, drops video frames under stdin backpressure (never audio), auto-reconnects, and tracks `droppedFrames`/`sentFrames` — emitted ~1Hz so the Stream tab shows a Stable/Unstable health badge (dropped frames = bandwidth/encoder can't keep up). CSP does not apply (egress is in main).
+
+**Lifecycle.** The compositor window runs for **preview** while the Stream tab is open (ref-counted via `openStreamStudio`/`closeStreamStudio`); **ffmpeg only spawns at Go Live** (`startStream`). A ~10fps downscaled JPEG preview (`output:stream-preview`) feeds the Stream-tab monitor — it is a low-res monitor and does NOT represent stream quality. Resolution/fps changes recreate the window when idle. On macOS, `openStreamStudio` requests camera/mic via `systemPreferences.askForMediaAccess` (the offscreen window can't surface the TCC prompt itself); `NSCameraUsageDescription`/`NSMicrophoneUsageDescription` are in `forge.config.js` `extendInfo`. Config persists in the `stream_studio` setting (device ids+labels, `audioMode`, layout) and `stream_config` (RTMP server/key/resolution/fps/bitrate).
 
 ---
 
