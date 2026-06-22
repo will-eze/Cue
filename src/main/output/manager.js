@@ -76,6 +76,47 @@ function setSlot(name, value, target) {
   else slot[target] = value;
 }
 
+// The destination kinds a `target` touches.
+const kindsForTarget = (target) => ((target || 'all') === 'all' ? ['screen', 'ndi'] : [target]);
+
+// ── Auto-dismiss ──────────────────────────────────────────────────────────────
+// A name/title, ticker or custom graphic can carry `autoDismissSec` — fire it and it
+// hides itself after that many seconds. Main owns the overlay bus, so it owns the hide:
+// ONE one-shot setTimeout per (slot, kind), NOT a per-second stream over the bus (cf.
+// the countdown guard rail — only the resolved anchor crosses the bus, never ticks).
+// The timer verifies the slot still holds the SAME occupant before hiding, so a graphic
+// that has since replaced this one (its own fire re-armed/cleared the timer) is never
+// dropped out from under the new occupant.
+const dismissTimers = new Map(); // `${name}:${kind}` -> timeout handle
+
+function clearDismiss(name, kind) {
+  const key = `${name}:${kind}`;
+  const h = dismissTimers.get(key);
+  if (h) { clearTimeout(h); dismissTimers.delete(key); }
+}
+
+// Arm (or re-arm) the dismiss for one slot+kind. sec<=0 just disarms. `expected` is the
+// slot value the timer is allowed to hide — identity-checked at fire time.
+function armDismiss(name, kind, sec, expected) {
+  clearDismiss(name, kind);
+  const s = Number(sec);
+  if (!Number.isFinite(s) || s <= 0 || !expected) return;
+  const key = `${name}:${kind}`;
+  dismissTimers.set(key, setTimeout(() => {
+    dismissTimers.delete(key);
+    if (overlay[name] && overlay[name][kind] === expected) {
+      overlay[name][kind] = null;
+      broadcastGraphic();
+    }
+  }, s * 1000));
+}
+
+// Stamp a value with a fresh auto-dismiss anchor and arm timers for every kind `target`
+// fills (used by graphicShow/tickerShow/customShow). A null/0 sec disarms those kinds.
+function applyDismiss(name, value, sec, target) {
+  for (const kind of kindsForTarget(target)) armDismiss(name, kind, value ? sec : 0, value);
+}
+
 // displayMode drives what every output window shows:
 //   'idle'    — nothing was ever GO'd; outputs show black
 //   'content' — slide text + background showing
@@ -1010,42 +1051,55 @@ function broadcastGraphic() {
   notifyMainWindow('output:overlay-changed', { ...overlay });
 }
 
+// A positive autoDismissSec auto-hides the graphic that many seconds after it airs;
+// `dismissAt` (absolute ms) rides the slot for operator-side display only.
+function dismissFields(data) {
+  const sec = Number(data && data.autoDismissSec) || 0;
+  return sec > 0 ? { autoDismissSec: sec, dismissAt: Date.now() + sec * 1000 } : { autoDismissSec: null, dismissAt: null };
+}
+
 export function graphicShow(data) {
   const value = data && (data.name || data.title)
-    ? { id: data.id ?? null, name: data.name ?? '', title: data.title ?? '', style: data.style ?? null, target: data.target || 'all' }
+    ? { id: data.id ?? null, name: data.name ?? '', title: data.title ?? '', style: data.style ?? null, target: data.target || 'all', ...dismissFields(data) }
     : null;
   setSlot('nameTitle', value, data && data.target);
+  applyDismiss('nameTitle', value, value && value.autoDismissSec, data && data.target);
   broadcastGraphic();
 }
 
 export function graphicHide(target) {
   setSlot('nameTitle', null, target);
+  for (const kind of kindsForTarget(target)) clearDismiss('nameTitle', kind);
   broadcastGraphic();
 }
 
 export function tickerShow(data) {
   const value = data && data.text
-    ? { id: data.id ?? null, text: data.text, speed: Number.isFinite(data.speed) ? data.speed : 100, style: data.style ?? null, target: data.target || 'all' }
+    ? { id: data.id ?? null, text: data.text, speed: Number.isFinite(data.speed) ? data.speed : 100, style: data.style ?? null, target: data.target || 'all', ...dismissFields(data) }
     : null;
   setSlot('ticker', value, data && data.target);
+  applyDismiss('ticker', value, value && value.autoDismissSec, data && data.target);
   broadcastGraphic();
 }
 
 export function tickerHide(target) {
   setSlot('ticker', null, target);
+  for (const kind of kindsForTarget(target)) clearDismiss('ticker', kind);
   broadcastGraphic();
 }
 
 export function customShow(data) {
   const value = data && data.html
-    ? { id: data.id ?? null, html: String(data.html), target: data.target || 'all' }
+    ? { id: data.id ?? null, html: String(data.html), target: data.target || 'all', ...dismissFields(data) }
     : null;
   setSlot('custom', value, data && data.target);
+  applyDismiss('custom', value, value && value.autoDismissSec, data && data.target);
   broadcastGraphic();
 }
 
 export function customHide(target) {
   setSlot('custom', null, target);
+  for (const kind of kindsForTarget(target)) clearDismiss('custom', kind);
   broadcastGraphic();
 }
 
@@ -1125,6 +1179,14 @@ export function applyScene(scene) {
         screen: reviveSlotValue(name, slot.screen),
         ndi:    reviveSlotValue(name, slot.ndi),
       };
+      // Re-arm auto-dismiss against the freshly revived occupant (or disarm if none /
+      // not dismissable). reviveSlotValue already re-stamped a fresh dismissAt.
+      if (name !== 'countdown') {
+        for (const kind of ['screen', 'ndi']) {
+          const v = overlay[name][kind];
+          armDismiss(name, kind, v && v.autoDismissSec, v);
+        }
+      }
     }
     broadcastGraphic();
   }
@@ -1146,7 +1208,11 @@ export function applyScene(scene) {
 // so re-stamp it from the retained authoring spec (see countdownShow).
 function reviveSlotValue(name, v) {
   if (!v) return null;
-  if (name !== 'countdown') return v;
+  if (name !== 'countdown') {
+    // Re-stamp a fresh auto-dismiss anchor so the timer runs full-length from recall
+    // (a stored absolute dismissAt would be stale), mirroring the countdown anchor.
+    return Number(v.autoDismissSec) > 0 ? { ...v, dismissAt: Date.now() + Number(v.autoDismissSec) * 1000 } : v;
+  }
   const s = { ...v };
   if (s.mode === 'countup') {
     s.startAt = Date.now();

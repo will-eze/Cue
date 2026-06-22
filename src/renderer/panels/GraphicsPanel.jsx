@@ -33,6 +33,7 @@ export default function GraphicsPanel() {
   const [gallery, setGallery] = useState(false); // design gallery open
   const [quickTicker, setQuickTicker] = useState('');
   const [quickStyleId, setQuickStyleId] = useState(null); // saved ticker whose style the quick ticker borrows (null = plain default)
+  const [quickDismiss, setQuickDismiss] = useState(0); // auto-dismiss seconds for the quick ticker (0 = sticky)
   const [dest, setDest] = useState('default'); // live destination override
   const [ltChannels, setLtChannels] = useState([]); // lower-third channels (for the mode switcher)
 
@@ -88,15 +89,16 @@ export default function GraphicsPanel() {
   function take(g) {
     const target = resolveTarget(g);
     const style = parseStyle(g);
-    if (g.kind === 'lower_third') window.cue.output.graphic.show({ id: g.id, name: g.name, title: g.title, style, target });
-    else if (g.kind === 'ticker') window.cue.output.ticker.show({ id: g.id, text: g.text, speed: g.speed, style, target });
+    const autoDismissSec = Number(style.autoDismissSec) || 0;
+    if (g.kind === 'lower_third') window.cue.output.graphic.show({ id: g.id, name: g.name, title: g.title, style, target, autoDismissSec });
+    else if (g.kind === 'ticker') window.cue.output.ticker.show({ id: g.id, text: g.text, speed: g.speed, style, target, autoDismissSec });
     else if (g.kind === 'countdown') window.cue.output.countdown.show({
       id: g.id, mode: style.mode, source: style.source, durationSec: style.durationSec,
       targetClock: style.targetClock, format: style.format, showSeconds: style.showSeconds,
       label: g.text || '', endMessage: style.endMessage || '',
       style: { time: style.time, message: style.message }, target,
     });
-    else if (g.kind === 'custom') window.cue.output.graphic.showCustom({ id: g.id, html: fillPlaceholders(g.html, g), target });
+    else if (g.kind === 'custom') window.cue.output.graphic.showCustom({ id: g.id, html: fillPlaceholders(g.html, g), target, autoDismissSec });
   }
   // Which destination kinds this saved graphic is currently live on (match by id,
   // not content — otherwise two graphics sharing a body would both light up). Ad-hoc
@@ -110,6 +112,16 @@ export default function GraphicsPanel() {
     return d;
   }
   const isLive = (g) => liveDests(g).length > 0;
+  // Soonest auto-dismiss anchor (absolute ms) across the kinds this graphic is live on,
+  // or null if it has no timer. Drives the card's ticking "auto · Ns" badge.
+  function liveDismissAt(g) {
+    const slot = overlay[SLOT_BY_KIND[g.kind]];
+    if (!slot) return null;
+    const ats = [];
+    if (slot.screen && slot.screen.id === g.id && slot.screen.dismissAt) ats.push(slot.screen.dismissAt);
+    if (slot.ndi && slot.ndi.id === g.id && slot.ndi.dismissAt) ats.push(slot.ndi.dismissAt);
+    return ats.length ? Math.min(...ats) : null;
+  }
 
   function clear(g) {
     const dests = liveDests(g);
@@ -131,6 +143,7 @@ export default function GraphicsPanel() {
       speed: base?.speed ?? 100,
       style: base ? parseStyle(base) : undefined,
       target: quickTarget(),
+      autoDismissSec: Number(quickDismiss) || 0,
     });
   }
 
@@ -236,6 +249,14 @@ export default function GraphicsPanel() {
                   ))}
                 </select>
               </label>
+              {/* Optional auto-dismiss — hides the ticker N seconds after it airs (0 = sticky) */}
+              <label className="flex items-center gap-xs text-[10px] font-mono text-on-surface-variant/60 uppercase tracking-[0.05em]" title="Auto-hide this ticker after N seconds (0 = stay until cleared)">
+                <span className="material-symbols-outlined text-[13px]">timer</span>
+                <input type="number" min="0" max="3600" value={quickDismiss || ''} placeholder="0"
+                  onChange={(e) => setQuickDismiss(Math.max(0, Number(e.target.value) || 0))}
+                  className="w-12 bg-surface-container-lowest border border-outline-variant/40 rounded px-xs h-7 text-body-md text-on-surface text-center tabular-nums focus:outline-none focus:border-primary" />
+                <span className="normal-case tracking-normal">sec</span>
+              </label>
               {tickerLive && (
                 <span className="flex items-center gap-xs text-label-sm font-label-sm uppercase tracking-[0.05em] text-secondary shrink-0">
                   <span className="w-[6px] h-[6px] rounded-full bg-secondary dot-pulse" /> On Air
@@ -266,7 +287,7 @@ export default function GraphicsPanel() {
               <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-outline px-xs">{title}</span>
               <div className="grid gap-md" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(248px, 1fr))' }}>
                 {items.map((g) => (
-                  <GraphicCard key={g.id} g={g} liveOn={liveDests(g)} destLabel={TARGET_LABEL[resolveTarget(g)]}
+                  <GraphicCard key={g.id} g={g} liveOn={liveDests(g)} dismissAt={liveDismissAt(g)} destLabel={TARGET_LABEL[resolveTarget(g)]}
                     onTake={() => take(g)} onClear={() => clear(g)}
                     onEdit={() => setEditor(g)} onDelete={() => remove(g)} />
                 ))}
@@ -301,8 +322,23 @@ export default function GraphicsPanel() {
 
 // ── Card with live thumbnail ─────────────────────────────────────────────────
 
-function GraphicCard({ g, liveOn = [], destLabel, onTake, onClear, onEdit, onDelete }) {
+// Seconds remaining until `dismissAt` (absolute ms), ticking locally for display only —
+// the authoritative hide runs in main. null when there's no timer or it has elapsed.
+function useDismissCountdown(dismissAt) {
+  const [, force] = useState(0);
+  useEffect(() => {
+    if (!dismissAt) return;
+    const id = setInterval(() => force((n) => n + 1), 500);
+    return () => clearInterval(id);
+  }, [dismissAt]);
+  if (!dismissAt) return null;
+  const secs = Math.ceil((dismissAt - Date.now()) / 1000);
+  return secs > 0 ? secs : null;
+}
+
+function GraphicCard({ g, liveOn = [], dismissAt = null, destLabel, onTake, onClear, onEdit, onDelete }) {
   const live = liveOn.length > 0;
+  const dismissIn = useDismissCountdown(dismissAt);
   // Where it's live: both kinds → "Live", else name the single destination.
   const liveLabel = liveOn.length === 2 ? 'Live'
     : liveOn[0] === 'ndi' ? 'Live · Online'
@@ -327,8 +363,15 @@ function GraphicCard({ g, liveOn = [], destLabel, onTake, onClear, onEdit, onDel
       <div className="relative">
         <GraphicThumb g={g} />
         {live && (
-          <span className="absolute top-1.5 left-1.5 flex items-center gap-xs px-sm py-[2px] rounded bg-secondary text-on-secondary text-[9px] font-label-sm uppercase tracking-[0.08em] font-bold">
-            <span className="w-[5px] h-[5px] rounded-full bg-on-secondary dot-pulse" /> {liveLabel}
+          <span className="absolute top-1.5 left-1.5 flex flex-col items-start gap-[3px]">
+            <span className="flex items-center gap-xs px-sm py-[2px] rounded bg-secondary text-on-secondary text-[9px] font-label-sm uppercase tracking-[0.08em] font-bold">
+              <span className="w-[5px] h-[5px] rounded-full bg-on-secondary dot-pulse" /> {liveLabel}
+            </span>
+            {dismissIn != null && (
+              <span className="flex items-center gap-xs px-sm py-[1px] rounded bg-background/75 text-on-surface-variant text-[9px] font-label-sm uppercase tracking-[0.06em] tabular-nums" title="Auto-dismisses">
+                <span className="material-symbols-outlined text-[11px]">timer</span>{dismissIn}s
+              </span>
+            )}
           </span>
         )}
         <span className="absolute top-1.5 right-1.5 px-sm py-[2px] rounded bg-background/70 text-on-surface-variant text-[9px] font-label-sm uppercase tracking-[0.06em]">{destLabel}</span>

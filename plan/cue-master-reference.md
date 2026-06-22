@@ -211,7 +211,8 @@ src/
 │       │                     multiview capture is driven only by MultiviewView (start on mount, stop on unmount).
 │       │                     Broadcast-graphics overlay bus: overlay {nameTitle,ticker,custom} + graphicShow/Hide,
 │       │                     tickerShow/Hide, customShow/Hide; broadcastGraphic() → per-window target-filtered
-│       │                     graphic:update to all non-stage windows (getGraphicsWindowInfos). setChannelContentMode()
+│       │                     graphic:update to all non-stage windows (getGraphicsWindowInfos). Auto-dismiss: dismissTimers
+│       │                     map = main-owned one-shot setTimeout per slot+kind (armDismiss/clearDismiss), §13. setChannelContentMode()
 │       │                     toggles a channel's lyric band / overlay at runtime via content:mode (no window recreate).
 │       │                     setRemoteStateListener(cb): notifyMainWindow('output:state-changed') also fires cb so the
 │       │                     network remote pushes STATE. setOutputsEnabled emits state early (before slow window work).
@@ -697,7 +698,7 @@ order_index INTEGER NOT NULL DEFAULT 0
 created_at DATETIME, updated_at DATETIME
 ```
 
-`style_json` shape — **lower_third**: `{ name: <style incl. textBox + ltBar>, title: <style> }` (the `name` style's `textBox` is the draggable/resizable position box, `ltBar` is the bar background). **ticker**: a flat style + `{ bar:{color,opacity}|null, position:'bottom'|'top' }`. **custom**: `null` (raw HTML). **countdown** (v16): `{ mode:'countdown'|'countup'|'clock', source:'duration'|'target', durationSec, targetClock:'HH:MM', format:'24h'|'12h', showSeconds, endMessage, time:<style incl. textBox + ltBar>, message:<style> }` — the `text` column holds the optional label ("Service starts in").
+`style_json` shape — **lower_third**: `{ name: <style incl. textBox + ltBar>, title: <style> }` (the `name` style's `textBox` is the draggable/resizable position box, `ltBar` is the bar background). **ticker**: a flat style + `{ bar:{color,opacity}|null, position:'bottom'|'top' }`. **custom**: `null` (raw HTML), or `{ autoDismissSec }` when auto-dismiss is set. lower_third and ticker also carry an optional top-level `autoDismissSec` (>0 = self-hide N seconds after airing; §13). **countdown** (v16): `{ mode:'countdown'|'countup'|'clock', source:'duration'|'target', durationSec, targetClock:'HH:MM', format:'24h'|'12h', showSeconds, endMessage, time:<style incl. textBox + ltBar>, message:<style> }` — the `text` column holds the optional label ("Service starts in").
 
 #### `scenes` (v24 — one-press multi-output state recall)
 ```sql
@@ -1000,11 +1001,11 @@ All renderer↔main communication is via `ipcRenderer.invoke` / `ipcMain.handle`
 | `media.setMuted(muted)` | void | Toggle program (audience) audio. Stage + operator preview stay silent regardless. |
 | `media.setLoop(loop)` | void | Toggle native looping of the live clip live, without restarting it. Sets `transport.loop` + broadcasts; output players make `<video>.loop` follow `transport.loop` (`media-player.js`). The operator's transport-bar loop button persists `media_loop` (`services.setItemLoop`) alongside this so it sticks for the rundown badge + next GO. |
 | `media.setRate(rate)` | void | Operator playback speed (e.g. 0.25–2). Rebases `startAt` so position is continuous; becomes the baseline the ±6% convergence nudge multiplies around. |
-| `graphic.show({name,title,style,target})` | void | Show the name/title lower-third bug. `target` ∈ `'all'\|'screen'\|'ndi'`. |
+| `graphic.show({name,title,style,target,autoDismissSec})` | void | Show the name/title lower-third bug. `target` ∈ `'all'\|'screen'\|'ndi'`. `autoDismissSec>0` self-hides after that many seconds (main-owned one-shot timer per slot+kind; §13). |
 | `graphic.hide()` | void | Hide the name/title bug. |
-| `graphic.showCustom({html,target})` | void | Show a custom-HTML graphic (placeholders already substituted). |
+| `graphic.showCustom({html,target,autoDismissSec})` | void | Show a custom-HTML graphic (placeholders already substituted). `autoDismissSec>0` self-hides. |
 | `graphic.hideCustom()` | void | Hide the custom graphic. |
-| `ticker.show({text,speed,style,target})` | void | Show the scrolling ticker. |
+| `ticker.show({text,speed,style,target,autoDismissSec})` | void | Show the scrolling ticker. `autoDismissSec>0` self-hides. |
 | `ticker.hide()` | void | Hide the ticker. |
 | `countdown.show({id,mode,source,durationSec,targetClock,format,showSeconds,label,endMessage,style,target})` | void | Show a self-ticking countdown/count-up/clock. Main resolves the anchor (`endsAt` for `mode:'countdown'`, `startAt` for `'countup'`); the output template owns the per-second tick. `style` = `{time, message}`. |
 | `countdown.hide()` | void | Hide the countdown/clock. |
@@ -1079,6 +1080,18 @@ carrying `overlayForKind(kind)` = that window's-kind occupant of each slot (nume
 `src/output/graphics-overlay.js` (injects its own DOM + styles, honours `?graphics=0` and `content:mode`).
 A program `go`/`clear`/`logo` never touches the overlay, and a graphic never touches the program. Default
 destination for new graphics is **Online (NDI)**.
+
+**Auto-dismiss** — a name/title, ticker, or custom graphic can carry `autoDismissSec` (authored in
+`style_json`, fired through the existing `*Show` data). `>0` arms a **main-owned one-shot `setTimeout` per
+`(slot, kind)`** (`dismissTimers` map in `manager.js`) that nulls that slot+kind and `broadcastGraphic()`s
+when it fires — NOT a per-second stream over the bus (same discipline as the countdown anchor). The timer
+identity-checks `overlay[name][kind] === expected` before hiding, so a graphic that has since replaced this
+one (each `*Show`/`*Hide` re-arms or clears the slot's timer) is never yanked out from under the new
+occupant. The fired slot value carries an absolute `dismissAt` for operator-side display only
+(`GraphicsPanel` cards show a locally-ticked "auto · Ns" badge). On Scene recall `reviveSlotValue` re-stamps
+a fresh `dismissAt` and `applyScene` re-arms the timer full-length (a stored absolute `dismissAt` would be
+stale). Countdowns are excluded — they own their own end behaviour. `autoDismissSec` lives only in
+`style_json` (no schema column), so it round-trips through scene snapshots and graphic CRUD untouched.
 
 **Countdown / clock graphic** (v16) — a `countdown` slot is a self-ticking timer the **output template
 owns**: `countdownShow` resolves the anchor in the main process (duration → `endsAt = now + durationSec`;

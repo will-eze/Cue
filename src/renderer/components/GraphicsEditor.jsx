@@ -643,6 +643,7 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
       html: graphic?.html || '',
       speed: graphic?.speed ?? 100,
       target: graphic?.target || 'ndi', // graphics default to Online (NDI)
+      autoDismissSec: Number(parsed.autoDismissSec) || 0, // 0 = sticky; >0 auto-hides after N sec live
       nameStyle:   { ...freshNameStyle(),   ...(parsed.name  || {}) },
       titleStyle:  { ...freshTitleStyle(),  ...(parsed.title || {}) },
       tickerStyle: { ...freshTickerStyle(), ...(graphic?.kind === 'ticker' ? parsed : {}) },
@@ -701,10 +702,18 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
   const canSave = isLT ? draft.name.trim() : isTK ? draft.text.trim() : isCD ? true : draft.html.trim();
 
   async function save() {
+    // Auto-dismiss (name/title, ticker, custom) rides in style_json — no schema column,
+    // same as how the countdown stashes mode/durationSec. 0 = sticky → omit the key.
+    const dis = (isLT || isTK || isCustom) && draft.autoDismissSec > 0 ? { autoDismissSec: draft.autoDismissSec } : {};
     let style_json = null;
-    if (isLT) style_json = { name: draft.nameStyle, title: draft.titleStyle };
-    else if (isTK) style_json = draft.tickerStyle;
-    else if (isCD) style_json = { ...draft.cd, time: draft.timeStyle, message: draft.msgStyle };
+    if (isLT) style_json = { name: draft.nameStyle, title: draft.titleStyle, ...dis };
+    else if (isTK) {
+      // tickerStyle absorbs the whole style_json on load (incl. a stored autoDismissSec),
+      // so drop the stale key before re-folding the current toggle state.
+      const { autoDismissSec: _drop, ...tickerBase } = draft.tickerStyle;
+      style_json = { ...tickerBase, ...dis };
+    } else if (isCD) style_json = { ...draft.cd, time: draft.timeStyle, message: draft.msgStyle };
+    else if (isCustom && dis.autoDismissSec) style_json = dis;
 
     const payload = {
       kind: draft.kind, label: draft.label, name: draft.name, title: draft.title,
@@ -1010,6 +1019,29 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
             <p className="text-[10px] text-on-surface-variant/60 leading-snug -mt-xs">
               In-Room = screen/monitor channels · Online = NDI channels. Can be overridden per-fire from the panel.
             </p>
+
+            {/* Auto-dismiss — countdowns have their own end behaviour, so skip them. */}
+            {(isLT || isTK || isCustom) && (
+              <Field label="Auto-dismiss">
+                <div className="flex items-center gap-sm">
+                  <button onClick={() => set({ autoDismissSec: draft.autoDismissSec > 0 ? 0 : 8 })}
+                    className={`flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] border transition-colors cursor-pointer ${
+                      draft.autoDismissSec > 0 ? 'bg-primary/15 border-primary/50 text-primary' : 'bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
+                    }`}>
+                    <span className="material-symbols-outlined text-[14px]">timer</span>
+                    {draft.autoDismissSec > 0 ? 'On' : 'Off'}
+                  </button>
+                  {draft.autoDismissSec > 0 && (
+                    <div className="flex items-center gap-xs">
+                      <input type="number" min="1" max="3600" value={draft.autoDismissSec}
+                        onChange={(e) => set({ autoDismissSec: Math.max(1, Number(e.target.value) || 1) })}
+                        className="w-16 bg-surface-container-lowest border border-outline-variant/40 rounded-lg px-sm py-1.5 text-body-md text-on-surface text-center tabular-nums focus:outline-none focus:border-primary" />
+                      <span className="text-label-sm font-label-sm text-on-surface-variant normal-case">seconds after airing</span>
+                    </div>
+                  )}
+                </div>
+              </Field>
+            )}
           </div>
 
           {/* Preview */}
