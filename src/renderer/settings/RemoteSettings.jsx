@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import QRCode from 'qrcode';
 
 // Network control API — a local HTTP server that turns a Stream Deck (via
 // Bitfocus Companion), a MIDI bridge, or any phone on the LAN into a transport
@@ -39,6 +40,12 @@ export default function RemoteSettings() {
     setBusy(false);
   }
 
+  async function regenerateView() {
+    setBusy(true);
+    setCfg(await window.cue.remote.regenerateViewToken());
+    setBusy(false);
+  }
+
   function copy(text, id) {
     navigator.clipboard?.writeText(text);
     setCopied(id);
@@ -52,6 +59,8 @@ export default function RemoteSettings() {
   const lanUrl = (cfg.urls || []).find((u) => !u.includes('127.0.0.1'));
   const baseUrl = lanUrl || (cfg.urls || [])[0] || `http://127.0.0.1:${cfg.port}`;
   const pairUrl = cfg.token ? `${baseUrl}/?token=${cfg.token}` : baseUrl;
+  // View-only program mirror link (separate token from control).
+  const viewUrl = cfg.viewToken ? `${baseUrl}/output?vt=${cfg.viewToken}` : null;
 
   return (
     <section className="space-y-md">
@@ -155,6 +164,11 @@ export default function RemoteSettings() {
               </code>
               <CopyBtn copied={copied === 'url'} onClick={() => copy(pairUrl, 'url')} />
             </div>
+            {cfg.lan && (
+              <div className="mt-sm flex justify-center">
+                <QrCode text={pairUrl} />
+              </div>
+            )}
             {!cfg.lan && (
               <p className="text-[11px] text-on-surface-variant/60 mt-xs">
                 Enable “Allow LAN Access” to reach this from another device.
@@ -168,6 +182,61 @@ export default function RemoteSettings() {
           </div>
         </div>
       )}
+
+      {/* Remote Output — view-only program mirror */}
+      <div className="bg-surface-container-low border border-outline-variant/30 rounded-xl overflow-hidden">
+        <div className="px-md py-sm border-b border-outline-variant/20 flex items-center gap-lg">
+          <div className="w-44 shrink-0">
+            <p className="text-label-sm font-label-sm text-on-surface uppercase tracking-[0.05em]">Remote Output</p>
+            <p className="text-[11px] text-on-surface-variant mt-[2px]">
+              Mirror the live program (with audio) to a phone or laptop
+            </p>
+          </div>
+          <Toggle on={cfg.outputEnabled} disabled={busy} onClick={() => apply({ outputEnabled: !cfg.outputEnabled })} />
+          <span className="flex items-center gap-xs ml-auto">
+            <span className={`w-[6px] h-[6px] rounded-full shrink-0 ${cfg.outputEnabled && cfg.running ? 'bg-tertiary' : 'bg-outline-variant'}`} />
+            <span className={`text-label-sm font-mono uppercase tracking-[0.05em] ${cfg.outputEnabled && cfg.running ? 'text-tertiary' : 'text-on-surface-variant/50'}`}>
+              {cfg.outputEnabled && cfg.running ? 'Live' : 'Off'}
+            </span>
+          </span>
+        </div>
+
+        {cfg.outputEnabled && viewUrl && (
+          <>
+            <div className="px-md py-sm border-b border-outline-variant/20 flex items-center justify-between">
+              <span className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em]">View Link</span>
+              <button
+                onClick={regenerateView}
+                disabled={busy}
+                className="text-[11px] font-mono uppercase tracking-[0.05em] text-on-surface-variant hover:text-error transition-colors cursor-pointer flex items-center gap-xs disabled:opacity-40"
+              >
+                <span className="material-symbols-outlined text-[14px]">autorenew</span>
+                Regenerate Link
+              </button>
+            </div>
+            <div className="px-md py-sm">
+              <p className="text-[10px] font-mono uppercase tracking-[0.1em] text-outline mb-xs">
+                Scan or open to watch the program (view-only)
+              </p>
+              <div className="flex items-center gap-sm">
+                <code className="flex-1 min-w-0 truncate text-label-sm font-mono text-primary bg-surface-container-lowest border border-outline-variant/40 rounded-lg px-sm py-[6px]">
+                  {viewUrl}
+                </code>
+                <CopyBtn copied={copied === 'viewUrl'} onClick={() => copy(viewUrl, 'viewUrl')} />
+              </div>
+              {!cfg.lan ? (
+                <p className="text-[11px] text-on-surface-variant/60 mt-xs">
+                  Enable “Allow LAN Access” above to reach this from another device.
+                </p>
+              ) : (
+                <div className="mt-sm flex justify-center">
+                  <QrCode text={viewUrl} />
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
 
       {/* Companion / API reference */}
       {enabled && (
@@ -190,6 +259,28 @@ export default function RemoteSettings() {
         </div>
       )}
     </section>
+  );
+}
+
+function QrCode({ text, size = 152 }) {
+  const [src, setSrc] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    QRCode.toDataURL(text, { margin: 1, width: size * 2, color: { dark: '#000000', light: '#ffffff' } })
+      .then((url) => { if (alive) setSrc(url); })
+      .catch(() => { if (alive) setSrc(null); });
+    return () => { alive = false; };
+  }, [text, size]);
+  if (!src) return null;
+  return (
+    <img
+      src={src}
+      alt="QR code"
+      width={size}
+      height={size}
+      className="rounded-lg bg-white p-2"
+      style={{ width: size, height: size, imageRendering: 'pixelated' }}
+    />
   );
 }
 

@@ -232,6 +232,7 @@ contextBridge.exposeInMainWorld('cue', {
     getConfig:       () => ipcRenderer.invoke('remote:getConfig'),
     setConfig:       (data) => ipcRenderer.invoke('remote:setConfig', data),
     regenerateToken: () => ipcRenderer.invoke('remote:regenerateToken'),
+    regenerateViewToken: () => ipcRenderer.invoke('remote:regenerateViewToken'),
     pushNavState:    (s) => ipcRenderer.invoke('remote:navState', s),
   },
   settings: {

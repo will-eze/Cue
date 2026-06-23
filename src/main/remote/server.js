@@ -14,14 +14,23 @@
 import http from 'http';
 import crypto from 'crypto';
 import os from 'os';
+import path from 'path';
+import fs from 'fs';
+import { app } from 'electron';
 import { CONTROL_PAGE } from './control-page.js';
+import { OUTPUT_PAGE } from './output-page.js';
+import { serveLocalFile, MEDIA_MIME } from './media-serve.js';
 
 let server = null;
-let config = { enabled: false, port: 7373, lan: false, token: null };
+// `token` gates the CONTROL surface (transport). `viewToken` gates the read-only
+// OUTPUT surface (program mirror) — a separate secret so handing out a view link
+// can never drive the service. `outputEnabled` toggles the output surface alone.
+let config = { enabled: false, port: 7373, lan: false, token: null, viewToken: null, outputEnabled: false };
 
 // Injected by index.js so this module stays decoupled from the manager/window.
 let getStateFn = () => ({});
 let commandHandler = () => {};
+let getProgramFn = () => ({ slide: null, transport: null, overlay: null });
 
 // Rundown snapshot pushed from the renderer so remote clients can list and
 // SELECT items. Kept here (not the DB) because the operator's live/preview
@@ -30,12 +39,27 @@ let navState = { items: [], previewItemId: null, liveItemId: null, liveSlideIdx:
 
 // Open SSE responses — each receives a fresh state frame on every change.
 const sseClients = new Set();
+// Open SSE responses for the OUTPUT mirror — each gets program bus deltas.
+const outputSseClients = new Set();
 
 const ACTIONS = ['go', 'clear', 'logo', 'next', 'prev', 'live', 'select'];
 
-export function configure({ getState, onCommand }) {
-  if (getState)  getStateFn = getState;
-  if (onCommand) commandHandler = onCommand;
+export function configure({ getState, onCommand, getProgram }) {
+  if (getState)   getStateFn = getState;
+  if (onCommand)  commandHandler = onCommand;
+  if (getProgram) getProgramFn = getProgram;
+}
+
+// ── Remote output (program mirror) ────────────────────────────────────────────
+// Push a program bus delta ({slide} | {transport} | {overlay}) to browser viewers,
+// stamped with serverNow so a viewer can correct its clock offset (its Date.now()
+// may differ from this host's, which would desync media playback / countdowns).
+export function pushProgram(delta) {
+  if (!outputSseClients.size) return;
+  const frame = `data: ${JSON.stringify({ serverNow: Date.now(), ...delta })}\n\n`;
+  for (const res of outputSseClients) {
+    try { res.write(frame); } catch {}
+  }
 }
 
 // ── State ────────────────────────────────────────────────────────────────────
@@ -84,11 +108,37 @@ function tokenFromReq(req, url) {
   return req.headers['x-cue-token'] || url.searchParams.get('token') || '';
 }
 
-function validToken(provided) {
-  if (!config.token || !provided) return false;
+function viewTokenFromReq(req, url) {
+  return req.headers['x-cue-view-token'] || url.searchParams.get('vt') || '';
+}
+
+function validToken(provided, expected = config.token) {
+  if (!expected || !provided) return false;
   const a = Buffer.from(String(provided));
-  const b = Buffer.from(config.token);
+  const b = Buffer.from(expected);
   return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+// ── Static output assets (the browser program renderer) ───────────────────────
+// The plain-DOM output scripts/CSS + bundled fonts, served from where packaging
+// copies them (app.getAppPath()/src/output and /src/fonts). No secrets — these
+// are the same files the local output windows load — so they're served ungated;
+// only the program STREAM and MEDIA files carry the view token.
+const STATIC_MIME = { js: 'text/javascript', css: 'text/css', html: 'text/html; charset=utf-8' };
+
+function serveStaticAsset(baseRelDir, file, allowedExt, res) {
+  const name = path.basename(file); // strip any traversal
+  const ext = name.split('.').pop().toLowerCase();
+  if (!allowedExt.includes(ext)) { res.writeHead(404); res.end('Not found'); return; }
+  const abs = path.join(app.getAppPath(), baseRelDir, name);
+  fs.readFile(abs, (err, buf) => {
+    if (err) { res.writeHead(404); res.end('Not found'); return; }
+    res.writeHead(200, {
+      'Content-Type': STATIC_MIME[ext] || MEDIA_MIME[ext] || 'application/octet-stream',
+      'Cache-Control': 'no-cache',
+    });
+    res.end(buf);
+  });
 }
 
 // ── Request handling ─────────────────────────────────────────────────────────
@@ -125,19 +175,69 @@ function handleRequest(req, res) {
   res.setHeader('Referrer-Policy', 'no-referrer');
   // CORS so a browser-based controller on another origin can drive the surface.
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Cue-Token');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Cue-Token, X-Cue-View-Token');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
 
   // The control web UI is public (it holds no secrets); it prompts for the token
-  // and uses it for the protected /api calls below.
+  // and uses it for the protected /api calls below. Served only when the control
+  // surface is enabled (the server may be running solely for Remote Output).
   if (path === '/' || path === '/index.html') {
+    if (!config.enabled) { res.writeHead(404); res.end('Not found'); return; }
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(CONTROL_PAGE);
     return;
   }
 
+  // ── Remote output (view-only program mirror) ────────────────────────────────
+  // The page shell + its scripts/CSS/fonts are public (no secrets); the live
+  // program stream and the media files it pulls are gated by the view token.
+  if (path === '/output' || path === '/output/' || path === '/output.html') {
+    if (!config.outputEnabled) { res.writeHead(404); res.end('Not found'); return; }
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(OUTPUT_PAGE);
+    return;
+  }
+  if (path.startsWith('/output/assets/')) {
+    serveStaticAsset('src/output', path.slice('/output/assets/'.length), ['js', 'css'], res);
+    return;
+  }
+  if (path.startsWith('/output/fonts/')) {
+    serveStaticAsset('src/fonts', path.slice('/output/fonts/'.length), ['css', 'woff2', 'woff', 'ttf', 'otf'], res);
+    return;
+  }
+  if (path === '/output/stream' && req.method === 'GET') {
+    if (!config.outputEnabled || !validToken(viewTokenFromReq(req, url), config.viewToken)) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'unauthorized' }));
+      return;
+    }
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    });
+    // Initial full frame so a late joiner renders the current program immediately.
+    res.write(`data: ${JSON.stringify({ serverNow: Date.now(), ...(getProgramFn() || {}) })}\n\n`);
+    outputSseClients.add(res);
+    const keepAlive = setInterval(() => { try { res.write(': ping\n\n'); } catch {} }, 25000);
+    req.on('close', () => { clearInterval(keepAlive); outputSseClients.delete(res); });
+    return;
+  }
+  if (path.startsWith('/output/media/') && req.method === 'GET') {
+    if (!config.outputEnabled || !validToken(viewTokenFromReq(req, url), config.viewToken)) {
+      res.writeHead(401); res.end('unauthorized');
+      return;
+    }
+    const filePath = decodeURIComponent(path.slice('/output/media'.length)); // leading slash kept → absolute path
+    serveLocalFile(filePath, req, res);
+    return;
+  }
+
   if (!path.startsWith('/api/')) { res.writeHead(404); res.end('Not found'); return; }
+
+  // Control API only when the control surface is enabled.
+  if (!config.enabled) { res.writeHead(404); res.end('Not found'); return; }
 
   if (!validToken(tokenFromReq(req, url))) {
     res.writeHead(401, { 'Content-Type': 'application/json' });
@@ -212,6 +312,8 @@ export function getConfig() {
     port: config.port,
     lan: config.lan,
     token: config.token,
+    outputEnabled: config.outputEnabled,
+    viewToken: config.viewToken,
     running: !!server,
     urls: listUrls(),
   };
@@ -222,7 +324,9 @@ export function getConfig() {
 export async function start(opts = {}) {
   await stop();
   config = { ...config, ...opts };
-  if (!config.enabled) return getConfig();
+  // Run if EITHER surface is on — control (transport) and output (program mirror)
+  // are independent toggles that share one server / port / LAN binding.
+  if (!config.enabled && !config.outputEnabled) return getConfig();
 
   const host = config.lan ? '0.0.0.0' : '127.0.0.1';
   await new Promise((resolve) => {
@@ -243,6 +347,8 @@ export async function start(opts = {}) {
 export async function stop() {
   for (const res of sseClients) { try { res.end(); } catch {} }
   sseClients.clear();
+  for (const res of outputSseClients) { try { res.end(); } catch {} }
+  outputSseClients.clear();
   if (server) {
     await new Promise((r) => server.close(r));
     server = null;

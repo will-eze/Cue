@@ -30,6 +30,15 @@ let mainWindowRef = null;
 // connected Stream Deck / Companion / phone clients. Set by index.js; decoupled
 // so this module never imports the remote server.
 let remoteStateCb = null;
+// Remote OUTPUT mirror: pushes the canonical program (screen-kind) buses — slide,
+// transport, overlay — to the network remote so a phone/laptop can re-render the
+// live program in a browser. Decoupled like remoteStateCb (set by index.js).
+let remoteProgramCb = null;
+// Last screen-kind values, cached so a late-joining viewer gets the current frame.
+let mirrorSlide = { type: 'clear', text: null, backgroundPath: null, logoPath: null, copyright: null, sectionLabel: null };
+let mirrorTransport = null;
+let mirrorOverlay = null;
+let lastTransition = { type: 'none' };
 let multiviewInterval = null;
 let multiviewRefCount = 0;
 let multiviewCapturing = false; // in-flight guard so slow capturePage calls don't pile up
@@ -589,11 +598,12 @@ function sendStateToWindow(win, channel) {
   win.webContents.send('slide:update', { ...state.livePayload, type: 'content', transport: { ...transport }, ltFontScale: ltFontScaleFraction() });
 }
 
-function sendCurrentState() {
+function emitSlides() {
   // Consume the pending transition once: it rides exactly this dispatch, then clears
   // so a later re-sync (e.g. a window reopening) doesn't replay the animation.
   const transition = pendingTransition || { type: 'none' };
   pendingTransition = null;
+  lastTransition = transition; // remembered for the remote-output mirror payload
 
   if (state.displayMode === 'idle') {
     for (const win of getAllOutputWindows()) {
@@ -654,6 +664,56 @@ function sendCurrentState() {
   for (const win of getAllOutputWindows()) {
     win.webContents.send('slide:update', { ...state.livePayload, type: 'content', transport: { ...transport }, transition, ltFontScale: ltFontScaleFraction() });
   }
+}
+
+// Dispatch the program to the local output windows, then mirror the canonical
+// screen-kind slide to the network remote (browser viewers). The wrapper keeps
+// every existing caller (go/clear/logo/refresh) unchanged.
+function sendCurrentState() {
+  emitSlides();
+  mirrorSlide = buildMirrorSlide();
+  emitProgramChange({ slide: mirrorSlide });
+}
+
+// ── Remote-output mirror (browser program viewers) ───────────────────────────
+// Re-derives the SAME payload a screen/in-room window receives for the current
+// displayMode, so the remote browser renders identical program output. NDI
+// (alpha) and stream-kind payloads are deliberately NOT mirrored.
+function buildMirrorSlide() {
+  const transition = lastTransition;
+  if (state.displayMode === 'idle') {
+    return { type: 'clear', text: null, backgroundPath: null, logoPath: null, copyright: null, sectionLabel: null, transition };
+  }
+  if (state.displayMode === 'cleared') {
+    return { type: 'clear', text: null, backgroundPath: state.livePayload?.backgroundPath ?? null, logoPath: null, copyright: null, sectionLabel: null, transition };
+  }
+  if (state.displayMode === 'logo') {
+    let logoScaleMode = 'cover';
+    try {
+      const row = getDb().prepare('SELECT value FROM settings WHERE key = ?').get('logo_scale_mode');
+      if (row) logoScaleMode = JSON.parse(row.value);
+    } catch { /* default cover */ }
+    // The mirror uses the global logo (no per-channel override).
+    return { type: 'logo', logoPath: resolveLogo({}), logoScaleMode, text: null, backgroundPath: null, copyright: null, sectionLabel: null, transition };
+  }
+  // content
+  return { ...state.livePayload, type: 'content', transport: { ...transport }, transition, ltFontScale: ltFontScaleFraction() };
+}
+
+function emitProgramChange(delta) {
+  if (!remoteProgramCb) return;
+  try { remoteProgramCb(delta); } catch {}
+}
+
+// Current full program frame for a viewer that just connected.
+export function getProgramSnapshot() {
+  if (mirrorOverlay == null) mirrorOverlay = overlayForKind('screen');
+  if (mirrorTransport == null) mirrorTransport = { ...transport };
+  return { slide: mirrorSlide, transport: mirrorTransport, overlay: mirrorOverlay };
+}
+
+export function setRemoteProgramListener(cb) {
+  remoteProgramCb = cb;
 }
 
 export function go(payload) {
@@ -730,6 +790,8 @@ function broadcastTransport() {
   if (streamWin && !streamWin.isDestroyed()) {
     try { streamWin.webContents.send('media:transport', snapshot); } catch {}
   }
+  mirrorTransport = snapshot;
+  emitProgramChange({ transport: snapshot });
   notifyMainWindow('output:media-transport', snapshot);
 }
 
@@ -1529,6 +1591,8 @@ function broadcastGraphic() {
   for (const { win, kind } of getGraphicsWindowInfos()) {
     try { win.webContents.send('graphic:update', overlayForKind(kind)); } catch {}
   }
+  mirrorOverlay = overlayForKind('screen');
+  emitProgramChange({ overlay: mirrorOverlay });
   notifyMainWindow('output:overlay-changed', { ...overlay });
 }
 

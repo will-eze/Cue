@@ -343,8 +343,13 @@ app.whenReady().then(async () => {
     onCommand: (cmd) => {
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('remote:command', cmd);
     },
+    // Program mirror: the current screen-kind program frame for a viewer that joins
+    // the read-only /output surface.
+    getProgram: () => outputManager.getProgramSnapshot(),
   });
   outputManager.setRemoteStateListener(() => remoteServer.pushState());
+  // Push program bus deltas (slide / transport / overlay) to browser viewers.
+  outputManager.setRemoteProgramListener((delta) => remoteServer.pushProgram(delta));
   await applyRemoteConfig();
 
   const unresolvedChannels = await outputManager.init();

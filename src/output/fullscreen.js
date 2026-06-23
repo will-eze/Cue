@@ -16,7 +16,11 @@ function pathToUrl(p) {
   if (!p) return null;
   const normalized = p.replace(/\\/g, '/');
   const pathPart = normalized.startsWith('/') ? normalized : '/' + normalized;
-  return 'cue-media://localhost' + pathPart.split('/').map(encodeURIComponent).join('/');
+  // Default cue-media:// for real output windows; the remote-output browser sets
+  // CUE_MEDIA_BASE (an http /output/media endpoint) + CUE_MEDIA_SUFFIX (?vt=token).
+  const base = (typeof window !== 'undefined' && window.CUE_MEDIA_BASE) || 'cue-media://localhost';
+  const suffix = (typeof window !== 'undefined' && window.CUE_MEDIA_SUFFIX) || '';
+  return base + pathPart.split('/').map(encodeURIComponent).join('/') + suffix;
 }
 
 function esc(str) {

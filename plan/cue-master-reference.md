@@ -29,6 +29,7 @@ Both use cases run simultaneously — there are no modes or separate application
 | `react-window` | 1.8.10 | Virtualised song list. |
 | `@dnd-kit/utilities` | 3.2.2 | `CSS.Transform` helper for the sortable slide/section lists. |
 | `pdfjs-dist` | **4.10.38** | PowerPoint import: rasterises the LibreOffice-converted PDF to per-slide images in the **renderer** (needs a DOM canvas). **Pinned to v4** — v5/v6 call `Promise.try` natively (Chromium 134+), which Electron 30's Chromium ~124 lacks, so the worker throws `Promise.try is not a function` and hangs forever. v4 ships a polyfill guard. Worker loaded via Vite `?worker` + `GlobalWorkerOptions.workerPort` (a `?url` workerSrc silently falls back to a slow main-thread "fake worker"). Bundled into the renderer (not externalized) → no `forge.config.js` change. |
+| `qrcode` | 1.5.4 | Renders the Remote Output / control pairing QR codes locally to a data-URL in `RemoteSettings.jsx`. Vite-bundled into the renderer — no native/packaging/CSP impact. |
 | `tailwindcss` | 3.4.4 | Operator UI styling. |
 | `tar` | 6.2.1 | node-tar. Reads/writes the gzipped-tar `.cuebackup` bundle (backup/restore). Externalized in `vite.main.config.js`. |
 | `grandi` | installed | NDI output. ESM-only; loaded at runtime via `createRequire` to bypass Vite's CJS bundler. Platform binaries: `@grandi/darwin-arm64`, `@grandi/darwin-x64`, `@grandi/win32-x64`, etc. Listed in `forge.config.js` `rebuildConfig.extraModules` and `vite.main.config.js` `external`. |
@@ -71,8 +72,10 @@ src/
 ├── main/
 │   ├── index.js              App entry. Window creation. cue-media:// protocol handler.
 │   │                         Dialog IPC. Startup sequence: initDb → seedBundledBibles → seedGhsHymnal.
-│   │                         Wires the remote control server: remoteServer.configure (getState + forward commands to
-│   │                         the renderer as remote:command), outputManager.setRemoteStateListener, applyRemoteConfig().
+│   │                         Wires the remote server: remoteServer.configure (getState + forward commands to the
+│   │                         renderer as remote:command + getProgram=getProgramSnapshot), outputManager.
+│   │                         setRemoteStateListener (control STATE push) + setRemoteProgramListener (Remote Output
+│   │                         program deltas → remoteServer.pushProgram), applyRemoteConfig().
 │   ├── preload.js            contextBridge → window.cue. The complete renderer API surface.
 │   ├── output-preload.js     Minimal contextBridge for output windows → window.cueOutput only. Also injects
 │   │                         user-installed @font-face rules (fonts:css) into every output window on load.
@@ -164,20 +167,42 @@ src/
 │   │   ├── bible.ipc.js      Registers bible:* handlers (versions/books/chapters/verses/adjacent/resolve/search/importFile/delete/online:*).
 │   │   ├── youtube.ipc.js    Registers youtube:* handlers (prefetch/status/cancel/detect) + clipboard:readText. Wires
 │   │   │                     the downloader's status listener → broadcasts youtube:status to every window.
-│   │   └── remote.ipc.js       Registers remote:* handlers (getConfig/setConfig/regenerateToken/navState). Owns the
-│   │                           settings keys (remote_enabled/port/lan/token) + applyRemoteConfig() (boot + on-change start).
+│   │   └── remote.ipc.js       Registers remote:* handlers (getConfig/setConfig/regenerateToken/regenerateViewToken/
+│   │                           navState). Owns the settings keys (remote_enabled/port/lan/token +
+│   │                           remote_output_enabled/remote_view_token) + applyRemoteConfig() (boot + on-change start;
+│   │                           mints the control token when enabled and the view token when outputEnabled).
 │   │
 │   ├── remote/
-│   │   ├── server.js           Network control API. Dependency-free Node http server (no ws — SSE for the live STATE
-│   │   │                       push). Binds 127.0.0.1 (LAN opt-in = 0.0.0.0). Token-gated /api/*. configure() injects
-│   │   │                       getState + onCommand (decoupled from manager/window). ACTIONS = go/clear/logo/next/prev/
-│   │   │                       live/select; GET /api/<action> or POST /api/command. STATE via GET /api/state + GET
-│   │   │                       /api/stream (SSE). setNavState() holds the renderer-pushed rundown (items + slides).
-│   │   │                       128-bit token (crypto.randomBytes(16)) compared with timingSafeEqual; Referrer-Policy:
-│   │   │                       no-referrer on every response so the ?token= can't leak via Referer.
-│   │   └── control-page.js     CONTROL_PAGE: self-contained dark HTML control surface served at GET / (phone remote).
-│   │                           Token from ?token= → localStorage. SSE-driven (single source of truth, no stale renders).
-│   │                           Accordion rundown — expand a song to its numbered slides, tap a verse to jump live.
+│   │   ├── server.js           Network control API + Remote Output mirror. Dependency-free Node http server (no ws —
+│   │   │                       SSE for live pushes). Binds 127.0.0.1 (LAN opt-in = 0.0.0.0). TWO independent surfaces
+│   │   │                       sharing one server/port/LAN binding, each its own toggle + token: CONTROL (enabled,
+│   │   │                       token-gated /api/*, GET / control page) and OUTPUT (outputEnabled, view-token-gated
+│   │   │                       program mirror). Runs if EITHER is on. configure() injects getState + onCommand +
+│   │   │                       getProgram (decoupled from manager/window). Control: ACTIONS = go/clear/logo/next/prev/
+│   │   │                       live/select; GET /api/<action> or POST /api/command; STATE via GET /api/state + GET
+│   │   │                       /api/stream (SSE); setNavState() holds the renderer-pushed rundown. Output: GET /output
+│   │   │                       (page), /output/assets/* + /output/fonts/* (ungated static templates/fonts), GET
+│   │   │                       /output/stream (SSE program deltas {slide|transport|overlay}, each stamped serverNow),
+│   │   │                       GET /output/media/* (serveLocalFile). pushProgram(delta) fans deltas to outputSseClients.
+│   │   │                       Both 128-bit tokens (crypto.randomBytes(16)) compared with timingSafeEqual; Referrer-
+│   │   │                       Policy: no-referrer on every response so ?token=/?vt= can't leak via Referer.
+│   │   ├── control-page.js     CONTROL_PAGE: self-contained dark HTML control surface served at GET / (phone remote).
+│   │   │                       Token from ?token= → localStorage. SSE-driven (single source of truth, no stale renders).
+│   │   │                       Accordion rundown — expand a song to its numbered slides, tap a verse to jump live.
+│   │   ├── output-page.js      OUTPUT_PAGE: self-contained view-only browser mirror of the live PROGRAM, served at
+│   │   │                       GET /output (gated by the SEPARATE view token). Re-renders the same screen-kind buses
+│   │   │                       using the same plain-DOM templates (fullscreen/media-player/transitions/graphics-overlay
+│   │   │                       served from /output/assets) behind a shim that swaps Electron IPC for an SSE feed
+│   │   │                       (/output/stream) and points media at the http /output/media endpoint. Handles browser
+│   │   │                       realities: clock-offset (EWMA on each frame's serverNow, rebases host-epoch transport/
+│   │   │                       countdown timestamps so the unmodified templates' Date.now() math holds) and an
+│   │   │                       autoplay-with-audio "Tap to view" gate. Hosts the program in a fixed 1920×1080 #cue-frame
+│   │   │                       CSS-zoomed uniform-fit + centred (letterbox) so any-aspect device matches the auditorium
+│   │   │                       screen pixel-for-pixel; neutralises fullscreen.js's scaleSlideCanvas with
+│   │   │                       #slide-elements{transform:none!important} and re-homes #cue-gfx into the frame.
+│   │   └── media-serve.js       serveLocalFile(path,req,res) + MEDIA_MIME + isUnderUserData(): the http twin of the
+│   │                           cue-media:// handler. Streams userData-contained files (Range-aware, never buffered) to a
+│   │                           browser viewer. KEEPS the isUnderUserData() containment guard (arbitrary-file-read).
 │   │
 │   ├── youtube/
 │   │   ├── bin.js             yt-dlp + ffmpeg resolver + auto-downloader (NOT bundled). Resolves userData/bin →
@@ -431,8 +456,11 @@ src/
 │   │   ├── ShortcutSettings.jsx  Configurable keyboard shortcuts UI. Modifier selector (Cmd/Ctrl/Alt)
 │   │                              + key inputs for GO, Clear, Logo, Live Toggle. Saves to settings DB.
 │   │                              Shortcuts reload in OperatorView on next bgRefreshTick.
-│   │   ├── RemoteSettings.jsx    Network control card. Enable toggle, port, Allow-LAN toggle, pairing token
-│   │   │                          (copy/regenerate), phone URL, and the HTTP API reference. Drives remote:setConfig.
+│   │   ├── RemoteSettings.jsx    Network control card (enable toggle, port, Allow-LAN, pairing token copy/regenerate,
+│   │   │                          phone URL, HTTP API reference) PLUS a Remote Output card (separate enable toggle,
+│   │   │                          view-only /output link copy + Regenerate Link). Renders a QR (qrcode → data-URL,
+│   │   │                          shown when LAN is on) for both the control pairing URL and the view URL. Drives
+│   │   │                          remote:setConfig / regenerateToken / regenerateViewToken.
 │   │   └── DataSettings.jsx      Backup/restore card. Export button (settings.exportBackup) + confirm-gated
 │   │                              Restore (settings.importBackup, "Overwrite all?" → "Choose file"; app relaunches
 │   │                              on success). Shows current media disk usage. Toast feedback.
@@ -815,6 +843,8 @@ Known keys:
 | `remote_port` | number | Server TCP port (default 7373) |
 | `remote_lan` | boolean | Bind all interfaces (LAN) vs 127.0.0.1 only (default false) |
 | `remote_token` | string | Pairing token; minted on first enable, regenerable |
+| `remote_output_enabled` | boolean | Remote Output (view-only program mirror) surface on/off (default false). Independent of `remote_enabled` — shares the same server/port/LAN binding |
+| `remote_view_token` | string | Separate secret gating `/output` (page stream + media). Minted on first output-enable, regenerable independently of the control token so a leaked view link can't drive the service |
 | `user_fonts` | array | User-installed fonts: `[{id, family, label, filename, path, ext}]`. Files live in `userData/fonts/`; served via cue-media://. Included in backups (paths rewritten on restore), wiped by factory reset |
 | `libreoffice_path` | string\|null | User-set absolute path to the `soffice` binary (Locate manually…), tried first by `findLibreOffice()` for PowerPoint import |
 | `program_audio_device` | object\|null | In-room program-audio output device `{deviceId,label,groupId}`; `null` = system default. The audible (primary) output window routes its media element there via `setSinkId`, matching deviceId→label→groupId (device IDs are salted per-origin). Machine-specific (rides backups but degrades to default if the device is absent) |
@@ -1279,12 +1309,15 @@ Network control API (Stream Deck / Companion / phone). The renderer only configu
 
 | Method | Returns | Notes |
 |---|---|---|
-| `getConfig()` | `{enabled, port, lan, token, running, urls}` | Current server config + bound URLs. |
-| `setConfig({enabled?, port?, lan?})` | config | Persists settings keys then (re)starts/stops the server. |
-| `regenerateToken()` | config | Mints a new pairing token (old links stop working) and restarts. |
+| `getConfig()` | `{enabled, port, lan, token, outputEnabled, viewToken, running, urls}` | Current server config + bound URLs. |
+| `setConfig({enabled?, port?, lan?, outputEnabled?})` | config | Persists settings keys then (re)starts/stops the server. |
+| `regenerateToken()` | config | Mints a new control pairing token (old control links stop working) and restarts. |
+| `regenerateViewToken()` | config | Mints a new Remote Output view token (old `/output` links stop working) and restarts. |
 | `pushNavState({items, previewItemId, liveItemId, liveSlideIdx})` | void | Renderer pushes the rundown (each item carries `slides:[{index,label,preview}]`) so remote clients can list + jump to a slide. No-op when the server is stopped. |
 
-HTTP surface (token via `X-Cue-Token` header or `?token=`): `GET /` (control page), `GET /api/state`, `GET /api/stream` (SSE), `GET /api/{go,clear,logo,next,prev,live}`, `GET /api/select?itemId=N&slideIdx=M`, `POST /api/command {action, …}`.
+Control HTTP surface (token via `X-Cue-Token` header or `?token=`): `GET /` (control page), `GET /api/state`, `GET /api/stream` (SSE), `GET /api/{go,clear,logo,next,prev,live}`, `GET /api/select?itemId=N&slideIdx=M`, `POST /api/command {action, …}`.
+
+Output HTTP surface (view token via `X-Cue-View-Token` header or `?vt=`): `GET /output` (mirror page, ungated shell), `GET /output/assets/<file>` + `GET /output/fonts/<file>` (ungated static templates/fonts), `GET /output/stream` (SSE program deltas, view-gated), `GET /output/media/<abs-path>` (view-gated, `serveLocalFile`). The mirror taps the manager's screen-kind buses: `setRemoteProgramListener(cb)` fires `{slide|transport|overlay}` deltas → `pushProgram`; `getProgramSnapshot()` returns the full current `{slide, transport, overlay}` frame for a late joiner.
 
 ### `window.cue.presentations`
 
