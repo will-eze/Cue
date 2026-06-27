@@ -1,0 +1,21 @@
+{
+  "name": "Midnight Forest",
+  "category": "presentation",
+  "sort_order": 83,
+  "style": {
+    "kind": "pres-theme",
+    "bgRef": "library/unsplash-X6-_XS6rxhQ.jpg",
+    "bg": "linear-gradient(160deg,#080e08,#101810)",
+    "scrim": 0.48,
+    "display": "DM Serif Display",
+    "body": "Inter",
+    "quoteFont": "DM Serif Display",
+    "title": "#f0ede8",
+    "sub": "#c0cec0",
+    "bodyColor": "#d4ddd4",
+    "accent": "#7daa7d",
+    "accentText": "#080e08",
+    "kicker": "#8fa88f",
+    "serif": true
+  }
+}

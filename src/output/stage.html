@@ -7,56 +7,10 @@
   <link rel="stylesheet" href="stage.css" />
 </head>
 <body>
-  <div id="app">
-
-    <!-- Top info bar -->
-    <div id="top-bar">
-      <div class="bar-col" id="time-col">
-        <div class="bar-label">LOCAL TIME</div>
-        <div class="bar-value mono" id="time-value">--:--:-- --</div>
-      </div>
-
-      <div class="bar-divider"></div>
-
-      <div class="bar-col" id="timer-col">
-        <div class="bar-label">
-          <span>REMAINING</span>
-          <span class="timer-icon" id="timer-state-icon">&#9203;</span>
-        </div>
-        <div class="bar-value mono timer-idle" id="timer-value">00:00</div>
-        <div class="progress-track"><div id="timer-bar"></div></div>
-      </div>
-
-      <div class="bar-divider"></div>
-
-      <div class="bar-col" id="counter-col">
-        <div class="bar-label" id="counter-label">VIDEO</div>
-        <div class="bar-value mono counter-idle" id="counter-value">--:--</div>
-      </div>
-    </div>
-
-    <!-- Main content: current + next slides, full width -->
-    <div id="content">
-      <div id="current-section">
-        <div id="media-wrap"></div>
-        <div id="current-ref"></div>
-        <div id="current-text"></div>
-      </div>
-
-      <div id="slide-divider"></div>
-
-      <div id="next-section">
-        <span id="next-caption">COMING NEXT</span>
-        <span id="next-text">—</span>
-      </div>
-    </div>
-
-    <!-- Bottom message bar -->
-    <div id="bottom-bar">
-      <div id="message-text" class="msg-empty"></div>
-    </div>
-
-  </div>
+  <!-- Customisable WYSIWYG stage display. stage.js builds one absolutely-positioned
+       element per layout entry into #stage-root; the layout arrives via stage:layout
+       (per channel). Until then the built-in default layout is rendered. -->
+  <div id="stage-root"></div>
   <script src="media-player.js"></script>
   <script src="stage.js"></script>
 </body>

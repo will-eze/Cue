@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import OperatorView from './views/OperatorView';
 import MultiviewView from './views/MultiviewView';
 import StreamView from './views/StreamView';
+import StageView from './views/StageView';
 import SettingsView from './views/SettingsView';
 import TopBarTabs from './components/TopBarTabs';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -88,7 +89,7 @@ export default function App() {
   // Settings" behaviour (so background/shortcut edits take effect on return).
   function navigateTo(tabId) {
     const leavingSettings = view === 'settings';
-    if (tabId === 'operator' || tabId === 'multiview' || tabId === 'stream') {
+    if (tabId === 'operator' || tabId === 'multiview' || tabId === 'stream' || tabId === 'stage') {
       if (leavingSettings) setBgRefreshTick((t) => t + 1);
       setView(tabId);
       return;
@@ -126,6 +127,7 @@ export default function App() {
             <NavTab label="Operator" active={activeTabId === 'operator'} onClick={() => navigateTo('operator')} />
             <NavTab label="Multiview" active={activeTabId === 'multiview'} onClick={() => navigateTo('multiview')} />
             <NavTab label="Stream" active={activeTabId === 'stream'} onClick={() => navigateTo('stream')} />
+            <NavTab label="Stage" active={activeTabId === 'stage'} onClick={() => navigateTo('stage')} />
             <NavTab label="Settings" active={activeTabId === 'settings'} onClick={() => navigateTo('settings')} />
             <TopBarTabs
               extraTabs={extraTabs}
@@ -287,6 +289,7 @@ export default function App() {
         </div>
         {view === 'multiview' && <ErrorBoundary label="Multiview"><MultiviewView /></ErrorBoundary>}
         {view === 'stream' && <ErrorBoundary label="Stream"><StreamView /></ErrorBoundary>}
+        {view === 'stage' && <ErrorBoundary label="Stage"><StageView /></ErrorBoundary>}
         {view === 'settings' && <ErrorBoundary label="Settings"><SettingsView
           activeServiceId={activeServiceId}
           initialSection={settingsSection}

@@ -1,0 +1,20 @@
+{
+  "name": "Stormwatch",
+  "category": "presentation",
+  "sort_order": 85,
+  "style": {
+    "kind": "pres-theme",
+    "bgRef": "library/unsplash-CO-rNFAVsRU.jpg",
+    "bg": "linear-gradient(180deg,#0e1418,#0a1020)",
+    "scrim": 0.44,
+    "display": "Oswald",
+    "body": "Inter",
+    "title": "#ffffff",
+    "sub": "#c0ccd8",
+    "bodyColor": "#d0d8e4",
+    "accent": "#5eb4e0",
+    "accentText": "#0a0e14",
+    "kicker": "#4da8d4",
+    "titleUpper": true
+  }
+}

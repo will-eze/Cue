@@ -7,7 +7,7 @@ import {
   SortableContext, verticalListSortingStrategy, useSortable, arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { FormattingToolbar } from './SongEditor';
+import { FormattingToolbar, renderTextContent } from './SongEditor';
 import MediaPickerModal from './MediaPickerModal';
 import UndoRedoButtons from './UndoRedoButtons';
 import useEditHistory, { useUndoRedoKeys } from '../utils/useEditHistory';
@@ -41,9 +41,9 @@ function elementInner(el) {
   if (el.type === 'text') {
     const s = el.style || {};
     const shadow = s.textShadow;
-    const shadowCss = shadow
-      ? (shadow.enabled ? `${shadow.x ?? 0}px ${shadow.y ?? 2}px ${shadow.blur ?? 16}px ${shadow.color ?? '#000'}` : 'none')
-      : '0 2px 16px rgba(0,0,0,0.8)';
+    const shadowCss = shadow?.enabled
+      ? `${shadow.x ?? 0}px ${shadow.y ?? 2}px ${shadow.blur ?? 16}px ${shadow.color ?? '#000'}`
+      : 'none';
     return (
       <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column',
         justifyContent: s.verticalAlign === 'top' ? 'flex-start' : s.verticalAlign === 'bottom' ? 'flex-end' : 'center' }}>
@@ -60,7 +60,7 @@ function elementInner(el) {
           letterSpacing: s.letterSpacing ? `${s.letterSpacing}em` : undefined,
           textShadow: shadowCss,
           WebkitTextStroke: s.textStroke?.enabled ? `${s.textStroke.width ?? 2}px ${s.textStroke.color ?? '#000'}` : undefined,
-        }}>{el.text}</div>
+        }} dangerouslySetInnerHTML={{ __html: renderTextContent(el.text || '', null, s) }} />
       </div>
     );
   }
@@ -88,10 +88,32 @@ const HANDLES = [
   { k: 'sw', cx: 0, cy: 1 }, { k: 'se', cx: 1, cy: 1 },
 ];
 
-// One interactive element on the canvas: click to select, drag body to move,
-// corner handles to resize. Positions are % of the 1920×1080 canvas.
-function EditableElement({ el, selected, scale, canvasRef, onSelect, onChange }) {
+// One interactive element on the canvas: click to select, drag to move,
+// corner handles to resize, double-click text to edit in place.
+function EditableElement({ el, selected, editing, scale, canvasRef, onSelect, onChange, onStartEdit, onEndEdit }) {
   const drag = useRef(null);
+  const textEditRef = useRef(null);
+
+  // Seed contenteditable content and focus on edit-mode entry.
+  // el.text intentionally excluded — we read it once on entry; user edits freely until blur.
+  useEffect(() => {
+    if (!editing || !textEditRef.current) return;
+    textEditRef.current.innerHTML = (el.text || '').replace(/\n/g, '<br>');
+    textEditRef.current.focus();
+    const range = document.createRange();
+    range.selectNodeContents(textEditRef.current);
+    range.collapse(false);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+  }, [editing]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Two-way sync: when el.text changes from the Inspector textarea while in canvas
+  // edit mode, push the new value into the contenteditable (only if not focused, so
+  // we never overwrite the user's in-progress typing).
+  useEffect(() => {
+    if (!textEditRef.current || document.activeElement === textEditRef.current) return;
+    textEditRef.current.innerHTML = (el.text || '').replace(/\n/g, '<br>');
+  }, [el.text]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onPointerMove = useCallback((e) => {
     const d = drag.current;
@@ -127,19 +149,76 @@ function EditableElement({ el, selected, scale, canvasRef, onSelect, onChange })
     window.addEventListener('pointerup', endDrag);
   }
 
+  function handleDoubleClick(e) {
+    if (el.type !== 'text') return;
+    e.stopPropagation();
+    onStartEdit();
+  }
+
+  function handleTextBlur() {
+    if (!textEditRef.current) return;
+    onChange({ ...el, text: textEditRef.current.innerText.trimEnd() });
+    onEndEdit();
+  }
+
+  const s = el.style || {};
+  const shadow = s.textShadow;
+  const shadowCss = shadow?.enabled
+    ? `${shadow.x ?? 0}px ${shadow.y ?? 2}px ${shadow.blur ?? 16}px ${shadow.color ?? '#000'}`
+    : 'none';
+
   return (
     <div
-      onPointerDown={(e) => startDrag(e, 'move')}
+      onPointerDown={editing ? (e) => e.stopPropagation() : (e) => startDrag(e, 'move')}
+      onDoubleClick={handleDoubleClick}
       style={{
         position: 'absolute', left: `${el.x}%`, top: `${el.y}%`, width: `${el.w}%`, height: `${el.h}%`,
         transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
         opacity: el.opacity != null ? el.opacity : 1, zIndex: el.z != null ? el.z : 0,
-        cursor: 'move', outline: selected ? `${2 / scale}px solid #4d8eff` : `${1 / scale}px dashed rgba(255,255,255,0.35)`,
+        cursor: editing ? 'text' : 'move',
+        outline: editing
+          ? `${2 / scale}px solid rgba(255,255,255,0.75)`
+          : selected ? `${2 / scale}px solid #4d8eff` : `${1 / scale}px dashed rgba(255,255,255,0.35)`,
         outlineOffset: 0, boxSizing: 'border-box',
       }}
     >
-      <div style={{ width: '100%', height: '100%', pointerEvents: 'none', overflow: 'hidden' }}>{elementInner(el)}</div>
-      {selected && HANDLES.map((h) => (
+      {el.type === 'text' && editing ? (
+        // key="edit" forces React to unmount this subtree (not reuse its DOM nodes)
+        // when switching to the static path, preventing the stale innerHTML from the
+        // useEffect appearing as a ghost text node alongside the new dangerouslySetInnerHTML child.
+        <div key="edit" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column',
+          justifyContent: s.verticalAlign === 'top' ? 'flex-start' : s.verticalAlign === 'bottom' ? 'flex-end' : 'center' }}>
+          <div
+            ref={textEditRef}
+            contentEditable
+            suppressContentEditableWarning
+            onBlur={handleTextBlur}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') { e.preventDefault(); textEditRef.current?.blur(); }
+              e.stopPropagation(); // keep editor-level Delete/Backspace from firing
+            }}
+            style={{
+              width: '100%', outline: 'none', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+              fontFamily: s.fontFamily || undefined,
+              fontSize: (s.fontSize ?? 48) + 'px',
+              textAlign: s.align || 'center',
+              fontWeight: s.bold ? 700 : 400,
+              fontStyle: s.italic ? 'italic' : 'normal',
+              textDecoration: s.underline ? 'underline' : 'none',
+              textTransform: s.uppercase ? 'uppercase' : 'none',
+              color: s.color || '#ffffff',
+              lineHeight: s.lineSpacing ? String(s.lineSpacing) : '1.25',
+              letterSpacing: s.letterSpacing ? `${s.letterSpacing}em` : undefined,
+              textShadow: shadowCss,
+              WebkitTextStroke: s.textStroke?.enabled ? `${s.textStroke.width ?? 2}px ${s.textStroke.color ?? '#000'}` : undefined,
+              caretColor: '#4d8eff',
+            }}
+          />
+        </div>
+      ) : (
+        <div key="static" style={{ width: '100%', height: '100%', pointerEvents: 'none', overflow: 'hidden' }}>{elementInner(el)}</div>
+      )}
+      {selected && !editing && HANDLES.map((h) => (
         <div key={h.k}
           onPointerDown={(e) => startDrag(e, h.k)}
           style={{ position: 'absolute', left: `calc(${h.cx * 100}% - ${6 / scale}px)`, top: `calc(${h.cy * 100}% - ${6 / scale}px)`,
@@ -196,11 +275,13 @@ export default function PresentationEditor({ presentationId, onClose, onSave }) 
   useUndoRedoKeys(doc.undo, doc.redo);
   const [cur, setCur] = useState(0);
   const [selId, setSelId] = useState(null);
+  const [editingId, setEditingId] = useState(null);
   const [picker, setPicker] = useState(null); // 'element' | 'background'
   const [ctxMenu, setCtxMenu] = useState(null);
   const [saving, setSaving] = useState(false);
   const [newSlideOpen, setNewSlideOpen] = useState(false);
   const [applyOpen, setApplyOpen] = useState(false);
+  const [downloadingBg, setDownloadingBg] = useState(false);
   const canvasRef = useRef(null);
   const [scale, setScale] = useState(0.4);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
@@ -264,21 +345,49 @@ export default function PresentationEditor({ presentationId, onClose, onSave }) 
     patchElement({ ...selected, z: minZ - 1 });
   }
 
-  // Add a slide composed from a theme × layout (buildThemeSlide bakes the theme's
-  // background as a full-bleed gradient shape — fully offline — and tags each element
-  // with its role so the deck can be re-skinned later). PLAIN_THEME = "No theme".
-  function addThemedSlide(tokens, layoutId) {
-    const elements = buildThemeSlide(tokens, layoutId);
-    setSlides((arr) => [...arr, { _key: newId(), label: null, background_id: null, background_path: null, elements }]);
-    setCur(slides.length);
-    setSelId(null);
+  // Add a slide composed from a theme × layout. Photo-backed themes (bgRef) resolve
+  // their background via IPC before building so the image element carries a real mediaId.
+  // The modal closes immediately; a download toast shows while waiting.
+  async function addThemedSlide(themeEntry, layoutId) {
     setNewSlideOpen(false);
+    setSelId(null);
+    const nextIdx = slides.length;
+    const needsDl = themeEntry?.tokens?.bgRef && !themeEntry.background_id && themeEntry.id !== '__plain';
+    if (needsDl) setDownloadingBg(true);
+    try {
+      const bgMedia = await resolveThemeBg(themeEntry);
+      const elements = buildThemeSlide(themeEntry.tokens, layoutId, bgMedia);
+      setSlides((arr) => [...arr, { _key: newId(), label: null, background_id: null, background_path: null, elements }]);
+      setCur(nextIdx);
+    } finally {
+      if (needsDl) setDownloadingBg(false);
+    }
   }
   // Re-skin existing slides with a theme: this slide, or the whole deck.
-  function applyTheme(tokens, scope) {
-    if (scope === 'all') setSlides((arr) => arr.map((s) => ({ ...s, elements: reskinSlide(tokens, s.elements) })));
-    else patchSlide({ elements: reskinSlide(tokens, slide.elements) });
+  async function applyTheme(themeEntry, scope) {
+    const needsDl = themeEntry?.tokens?.bgRef && !themeEntry.background_id && themeEntry.id !== '__plain';
+    if (needsDl) setDownloadingBg(true);
+    try {
+      const bgMedia = await resolveThemeBg(themeEntry);
+      if (scope === 'all') setSlides((arr) => arr.map((s) => ({ ...s, elements: reskinSlide(themeEntry.tokens, s.elements, bgMedia) })));
+      else patchSlide({ elements: reskinSlide(themeEntry.tokens, slide.elements, bgMedia) });
+    } finally {
+      if (needsDl) setDownloadingBg(false);
+    }
     setApplyOpen(false);
+  }
+  // Resolve a photo-backed theme's bgRef → { id, path } (downloads on first use).
+  // Returns null for gradient/plain themes (no async work needed).
+  async function resolveThemeBg(themeEntry) {
+    if (!themeEntry?.tokens?.bgRef || themeEntry.id === '__plain') return null;
+    if (themeEntry.background_id) return { id: themeEntry.background_id, path: themeEntry.background_path };
+    try {
+      const resolved = await window.cue.themes.resolveBackground(themeEntry.id);
+      return resolved?.background_id ? { id: resolved.background_id, path: resolved.background_path } : null;
+    } catch (err) {
+      console.warn('[pres-theme] background resolve failed:', err?.message);
+      return null;
+    }
   }
   function duplicateSlide(i) {
     const src = slides[i];
@@ -335,6 +444,12 @@ export default function PresentationEditor({ presentationId, onClose, onSave }) 
 
   return createPortal(
     <div className="fixed inset-0 z-50 bg-background/90 backdrop-blur-sm flex flex-col">
+      {downloadingBg && (
+        <div className="fixed bottom-6 right-6 z-[80] bg-surface-container-high border border-outline-variant/30 rounded-lg px-md py-sm text-label-sm text-on-surface-variant flex items-center gap-sm shadow-xl pointer-events-none">
+          <span className="material-symbols-outlined text-[16px] text-primary animate-spin">progress_activity</span>
+          Downloading background…
+        </div>
+      )}
       {/* Header — two rows. Row 1 is a draggable titlebar strip that clears the
           macOS traffic lights; the action buttons are nodrag so they stay clickable.
           The title input lives in row 2, below the traffic-light zone. */}
@@ -394,7 +509,7 @@ export default function PresentationEditor({ presentationId, onClose, onSave }) 
             <AddBtn icon="palette" label="Apply Theme" onClick={() => setApplyOpen(true)} />
           </div>
           <div className="flex-1 min-h-0 flex items-center justify-center p-lg overflow-hidden">
-            <div ref={canvasRef} onPointerDown={() => setSelId(null)}
+            <div ref={canvasRef} onPointerDown={() => { setSelId(null); setEditingId(null); }}
               className="relative bg-black shadow-2xl ring-1 ring-white/10 overflow-hidden"
               style={{ width: '100%', maxWidth: 'min(100%, calc((100vh - 200px) * 16 / 9))', aspectRatio: '16 / 9' }}>
               {slide?.background_path && <img src={mediaUrl(slide.background_path)} className="absolute inset-0 w-full h-full object-cover pointer-events-none" alt="" />}
@@ -402,8 +517,20 @@ export default function PresentationEditor({ presentationId, onClose, onSave }) 
                   the live output (#slide-elements) + the operator monitor. */}
               <div style={{ position: 'absolute', top: 0, left: 0, width: NATIVE_W, height: NATIVE_H, transform: `scale(${scale})`, transformOrigin: 'top left' }}>
                 {slide && [...slide.elements].sort((a, b) => (a.z || 0) - (b.z || 0)).map((el) => (
-                  <EditableElement key={el.id} el={el} selected={el.id === selId} scale={scale} canvasRef={canvasRef}
-                    onSelect={() => setSelId(el.id)} onChange={patchElement} />
+                  <EditableElement key={el.id} el={el} selected={el.id === selId} editing={el.id === editingId}
+                    scale={scale} canvasRef={canvasRef}
+                    onSelect={() => {
+                      // Commit any active inline edit before changing selection
+                      if (editingId !== null && editingId !== el.id) {
+                        const active = document.activeElement;
+                        if (active?.contentEditable === 'true') active.blur();
+                      }
+                      setSelId(el.id);
+                    }}
+                    onChange={patchElement}
+                    onStartEdit={() => { setSelId(el.id); setEditingId(el.id); }}
+                    onEndEdit={() => setEditingId(null)}
+                  />
                 ))}
               </div>
             </div>
@@ -452,18 +579,43 @@ function MenuItem({ children, onClick, danger }) {
   return <button onClick={onClick} className={`block w-full text-left px-md py-xs hover:bg-surface-variant transition-colors ${danger ? 'text-error' : 'text-on-surface'}`}>{children}</button>;
 }
 
+// Build StaticSlide props for a theme preview tile. Photo themes use either the
+// locally-downloaded path (cue-media://) or the Unsplash thumb URL (HTTPS, CSP-allowed)
+// as the background. When a photo background URL is available, the gradient bgShape
+// element is filtered out so it doesn't cover the photo.
+function themePreviewProps(themeEntry, layoutId) {
+  const hasBgUrl = themeEntry.background_path || themeEntry.bg_thumb;
+  return {
+    elements: hasBgUrl
+      ? buildThemeSlide(themeEntry.tokens, layoutId).filter((e) => e.role !== 'background')
+      : buildThemeSlide(themeEntry.tokens, layoutId),
+    backgroundPath: themeEntry.background_path || null,
+    backgroundRaw: themeEntry.background_path ? null : (themeEntry.bg_thumb || null),
+  };
+}
+
 // Load built-in presentation themes (themes table, category 'presentation') and
-// parse their token style_json. Returns [{ id, name, tokens }].
+// parse their token style_json. Also fetches the background library item list so
+// photo-backed themes can show their Unsplash thumbnail in the picker without a
+// download — following the same pattern as ThemeSettings.
+// Returns [{ id, name, tokens, background_id, background_path, bg_thumb }].
 function usePresentationThemes() {
   const [themes, setThemes] = useState([]);
   useEffect(() => {
-    window.cue.themes.list().then((list) => {
+    Promise.all([
+      window.cue.themes.list(),
+      window.cue.backgrounds?.list?.().catch(() => []),
+    ]).then(([list, bgItems]) => {
+      const thumbMap = {};
+      for (const it of (bgItems || [])) if (it.thumb) thumbMap[it.id] = it.thumb;
       const out = [];
       for (const t of (list || [])) {
         if ((t.category || 'song') !== 'presentation') continue;
         let tokens = null;
         try { tokens = typeof t.style_json === 'string' ? JSON.parse(t.style_json) : t.style_json; } catch {}
-        if (tokens) out.push({ id: t.id, name: t.name, tokens });
+        if (!tokens) continue;
+        const bgThumb = tokens.bgRef ? (thumbMap[tokens.bgRef] || null) : null;
+        out.push({ id: t.id, name: t.name, tokens, background_id: t.background_id ?? null, background_path: t.background_path ?? null, bg_thumb: bgThumb });
       }
       setThemes(out);
     }).catch(() => {});
@@ -527,7 +679,7 @@ function NewSlideModal({ currentElements, onAdd, onClose }) {
             {list.map((t) => (
               <button key={t.id} onClick={() => setSelId(t.id)}
                 className={`flex items-center gap-sm p-xs rounded-lg border text-left transition-colors ${t.id === selId ? 'border-primary/60 bg-primary/10' : 'border-transparent hover:bg-surface-variant'}`}>
-                <div className="w-24 shrink-0"><StaticSlide elements={buildThemeSlide(t.tokens, 'title')} /></div>
+                <div className="w-24 shrink-0"><StaticSlide {...themePreviewProps(t, 'title')} /></div>
                 <span className="text-label-sm font-mono text-on-surface truncate min-w-0">{t.name}</span>
               </button>
             ))}
@@ -538,10 +690,10 @@ function NewSlideModal({ currentElements, onAdd, onClose }) {
             <div className="grid gap-md" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
               {PRES_LAYOUTS.map((l) => (
                 <div key={l.id} role="button" tabIndex={0}
-                  onClick={() => onAdd(sel.tokens, l.id)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAdd(sel.tokens, l.id); } }}
+                  onClick={() => onAdd(sel, l.id)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAdd(sel, l.id); } }}
                   className="bg-surface-container border border-outline-variant/30 rounded-xl overflow-hidden flex flex-col cursor-pointer hover:border-primary/50 hover:ring-1 hover:ring-primary/30 active:scale-[0.99] transition-all">
-                  <div className="p-sm pb-0"><StaticSlide elements={buildThemeSlide(sel.tokens, l.id)} /></div>
+                  <div className="p-sm pb-0"><StaticSlide {...themePreviewProps(sel, l.id)} /></div>
                   <div className="px-md py-sm"><span className="text-label-sm font-mono text-on-surface truncate">{l.name}</span></div>
                 </div>
               ))}
@@ -589,10 +741,10 @@ function ApplyThemeModal({ hasSlide, onApply, onClose }) {
           <div className="grid gap-md" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
             {choices.map((t) => (
               <div key={t.id} role="button" tabIndex={0}
-                onClick={() => onApply(t.tokens, scope)}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onApply(t.tokens, scope); } }}
+                onClick={() => onApply(t, scope)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onApply(t, scope); } }}
                 className="bg-surface-container border border-outline-variant/30 rounded-xl overflow-hidden flex flex-col cursor-pointer hover:border-primary/50 hover:ring-1 hover:ring-primary/30 active:scale-[0.99] transition-all">
-                <div className="p-sm pb-0"><StaticSlide elements={buildThemeSlide(t.tokens, 'title-sub')} /></div>
+                <div className="p-sm pb-0"><StaticSlide {...themePreviewProps(t, 'title-sub')} /></div>
                 <div className="px-md py-sm"><span className="text-label-sm font-mono text-on-surface truncate">{t.name}</span></div>
               </div>
             ))}
@@ -627,7 +779,7 @@ function Inspector({ el, fonts, onChange, onDelete, onFront, onBack, onReplaceIm
             rows={3} value={el.text || ''} onChange={(e) => set('text', e.target.value)} placeholder="Text…" />
           <div className="overflow-x-auto">
             <FormattingToolbar style={el.style || {}} onChange={(s) => set('style', s)} fonts={fonts}
-              hasSelection={false} execCmd={() => {}} previewTemplate="lowerthird" simple />
+              hasSelection={() => false} execCmd={() => {}} previewTemplate="lowerthird" simple />
           </div>
           <VAlign style={el.style || {}} onChange={(s) => set('style', s)} />
         </div>

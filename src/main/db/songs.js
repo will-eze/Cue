@@ -259,6 +259,25 @@ export function update(id, data) {
   })();
 }
 
+export function applyStyleToSong(songId, styleJson) {
+  const db = getDb();
+  let newStyle = {};
+  try { newStyle = styleJson ? JSON.parse(styleJson) : {}; } catch {}
+  const sections = db.prepare('SELECT id, style_json FROM song_sections WHERE song_id = ?').all(songId);
+  const upd = db.prepare('UPDATE song_sections SET style_json = ? WHERE id = ?');
+  db.transaction(() => {
+    for (const sec of sections) {
+      let existing = {};
+      try { existing = sec.style_json ? JSON.parse(sec.style_json) : {}; } catch {}
+      // Preserve character-level runs from the existing section.
+      const runs = existing.runs?.length ? existing.runs : undefined;
+      const merged = runs ? { ...newStyle, runs } : newStyle;
+      const isEmpty = Object.keys(merged).length === 0;
+      upd.run(isEmpty ? null : JSON.stringify(merged), sec.id);
+    }
+  })();
+}
+
 export function del(id) {
   const db = getDb();
   const refs = db.prepare(`SELECT COUNT(*) AS count FROM service_items WHERE item_type='song' AND ref_id=?`).get(id);

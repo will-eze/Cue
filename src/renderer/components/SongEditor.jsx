@@ -22,21 +22,24 @@ const SECTION_TYPES = ['verse', 'chorus', 'refrain', 'bridge', 'pre-chorus', 'ta
 const FONT_SIZES    = [18, 24, 28, 32, 36, 40, 48, 56, 64, 72, 80, 96, 112, 128, 144, 160];
 
 export const DEFAULT_STYLE = {
-  fontFamily:    null,
-  fontSize:      null,
-  color:         null,
-  bold:          false,
-  italic:        false,
-  underline:     false,
-  uppercase:     false,
-  align:         'center',
-  verticalAlign: 'center',
-  lineSpacing:   null,
-  letterSpacing: null,
-  textShadow:    null,
-  textStroke:    null,
-  textBox:       null,
-  ltBar:         null,
+  fontFamily:       null,
+  fontSize:         null,
+  color:            null,
+  bold:             false,
+  italic:           false,
+  underline:        false,
+  uppercase:        false,
+  align:            'center',
+  verticalAlign:    'center',
+  lineSpacing:      null,
+  letterSpacing:    null,
+  textShadow:       null,
+  textStroke:       null,
+  textBox:          null,
+  ltBar:            null,
+  listStyle:        null,  // null|'disc'|'decimal'
+  bulletSpacing:    null,  // em — gap after each bullet item
+  paragraphSpacing: null,  // em — gap between \n\n-separated blocks
 };
 
 const TEXTBOX_PRESETS = [
@@ -101,6 +104,48 @@ export function renderWithRuns(text, runs, scale = 1) {
   return html;
 }
 
+// Full text renderer that handles list-style and paragraph-spacing on top of renderWithRuns.
+// Used by SlidePreview, LowerThirdPreview and any consumer that should honour these style props.
+// The contenteditable editor always works with plain text; these styles only affect preview/output.
+export function renderTextContent(text, runs, style = {}, scale = 1) {
+  const { listStyle, bulletSpacing, paragraphSpacing } = style || {};
+
+  if (listStyle && listStyle !== 'none') {
+    const tag = listStyle === 'decimal' ? 'ol' : 'ul';
+    const lines = (text || '').split('\n');
+    let curPos = 0;
+    const items = [];
+    for (const line of lines) {
+      const lineStart = curPos;
+      const lineEnd = curPos + line.length;
+      curPos += line.length + 1;
+      if (!line.trim()) continue;
+      const lineRuns = (runs || [])
+        .filter((r) => r.end > lineStart && r.start < lineEnd)
+        .map((r) => ({ ...r, start: Math.max(0, r.start - lineStart), end: Math.min(line.length, r.end - lineStart) }));
+      const bsStyle = bulletSpacing ? `margin-bottom:${bulletSpacing}em` : '';
+      items.push(`<li style="${bsStyle}">${renderWithRuns(line, lineRuns, scale)}</li>`);
+    }
+    return `<${tag} style="padding-left:1.5em;margin:0;list-style-type:${listStyle}">${items.join('')}</${tag}>`;
+  }
+
+  if (paragraphSpacing) {
+    const parts = (text || '').split('\n\n');
+    let curPos = 0;
+    return parts.map((para, i) => {
+      const paraStart = curPos;
+      curPos += para.length + 2;
+      const paraRuns = (runs || [])
+        .filter((r) => r.end > paraStart && r.start < paraStart + para.length)
+        .map((r) => ({ ...r, start: Math.max(0, r.start - paraStart), end: Math.min(para.length, r.end - paraStart) }));
+      const mbStyle = i < parts.length - 1 ? `margin-bottom:${paragraphSpacing}em` : '';
+      return `<div style="${mbStyle}">${renderWithRuns(para, paraRuns, scale)}</div>`;
+    }).join('');
+  }
+
+  return renderWithRuns(text, runs, scale);
+}
+
 function extractContentAndRuns(el) {
   let text = '';
   const runs = [];
@@ -147,7 +192,8 @@ export function styleIsDefault(s) {
   return !s.fontFamily && !s.fontSize && !s.color && !s.bold && !s.italic &&
     !s.underline && !s.uppercase && (!s.align || s.align === 'center') &&
     (!s.verticalAlign || s.verticalAlign === 'center') &&
-    !s.lineSpacing && !s.letterSpacing && !s.textShadow && !s.textStroke && !s.textBox && !s.ltBar && !s.bgCss && !s.bgScrim;
+    !s.lineSpacing && !s.letterSpacing && !s.textShadow && !s.textStroke && !s.textBox && !s.ltBar &&
+    !s.bgCss && !s.bgScrim && !s.listStyle && !s.bulletSpacing && !s.paragraphSpacing;
 }
 
 function serializeSection(type, text, runs, style) {
@@ -351,11 +397,13 @@ function resizeBox(s, hx, hy, dx, dy) {
   return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) };
 }
 
-export function SlidePreview({ text, runs, style, backgroundPath, copyright, copyrightAlign, copyrightStyle, onTextBoxChange, onRefPosChange }) {
+export function SlidePreview({ text, runs, style, backgroundPath, copyright, copyrightAlign, copyrightStyle, onTextBoxChange, onRefPosChange, onCanvasTextChange }) {
   const wrapRef  = useRef(null);
   const [scale, setScale] = useState(0.5);
   const scaleRef = useRef(scale);
   scaleRef.current = scale;
+  const [isEditing, setIsEditing] = useState(false);
+  const textEditRef = useRef(null);
 
   useEffect(() => {
     if (!wrapRef.current) return;
@@ -365,6 +413,23 @@ export function SlidePreview({ text, runs, style, backgroundPath, copyright, cop
     ro.observe(wrapRef.current);
     return () => ro.disconnect();
   }, []);
+
+  useEffect(() => {
+    if (!isEditing || !textEditRef.current) return;
+    textEditRef.current.innerText = text || '';
+    textEditRef.current.focus();
+    const range = document.createRange();
+    range.selectNodeContents(textEditRef.current);
+    range.collapse(false);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+  }, [isEditing]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function handleCanvasBlur() {
+    if (!textEditRef.current || !onCanvasTextChange) { setIsEditing(false); return; }
+    onCanvasTextChange(textEditRef.current.innerText.trimEnd());
+    setIsEditing(false);
+  }
 
   // Drag: pointer delta → native px (÷ scale) → percent. onMove(dx%, dy%, startSnapshot).
   function startDrag(e, start, onMove) {
@@ -443,7 +508,7 @@ export function SlidePreview({ text, runs, style, backgroundPath, copyright, cop
     width:               '100%',
   };
 
-  const rendered = renderWithRuns(text || '', runs || []);
+  const rendered = renderTextContent(text || '', runs || [], style);
 
   return (
     <div
@@ -481,11 +546,27 @@ export function SlidePreview({ text, runs, style, backgroundPath, copyright, cop
 
           {/* Text box content */}
           <div style={{ ...textBoxCss, zIndex: 2 }}>
-            <div style={textCss} dangerouslySetInnerHTML={{ __html: rendered }} />
+            {isEditing ? (
+              <div
+                key="edit"
+                ref={textEditRef}
+                contentEditable
+                suppressContentEditableWarning
+                onBlur={handleCanvasBlur}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') { e.preventDefault(); textEditRef.current?.blur(); }
+                  e.stopPropagation();
+                }}
+                onPointerDown={(e) => e.stopPropagation()}
+                style={{ ...textCss, outline: `${2 / scale}px solid rgba(255,255,255,0.75)`, caretColor: '#4d8eff', cursor: 'text' }}
+              />
+            ) : (
+              <div key="static" style={textCss} dangerouslySetInnerHTML={{ __html: rendered }} />
+            )}
           </div>
 
           {/* Text box selection frame (drag body to move) + resize handles */}
-          {tbDraggable && (
+          {tbDraggable && !isEditing && (
             <div
               onPointerDown={(e) => startDrag(
                 e,
@@ -496,6 +577,7 @@ export function SlidePreview({ text, runs, style, backgroundPath, copyright, cop
                   w: s.w, h: s.h,
                 }),
               )}
+              onDoubleClick={onCanvasTextChange ? () => setIsEditing(true) : undefined}
               style={{
                 position: 'absolute', left: `${tbL}px`, top: `${tbT}px`, width: `${tbW}px`, height: `${tbH}px`,
                 border: '2px solid rgba(173,198,255,0.8)', boxSizing: 'border-box', zIndex: 3, cursor: 'move',
@@ -602,7 +684,7 @@ export function LowerThirdPreview({ text, runs, style, copyright, copyrightAlign
             display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
             zIndex: 1,
           }}>
-            <div style={textCss} dangerouslySetInnerHTML={{ __html: renderWithRuns(text || '', runs || []) }} />
+            <div style={textCss} dangerouslySetInnerHTML={{ __html: renderTextContent(text || '', runs || [], style) }} />
             {copyright && <div style={copyrightStyleCss}>{copyright}</div>}
           </div>
         </div>
@@ -810,12 +892,33 @@ export function FormattingToolbar({ style, onChange, fonts, hasSelection, execCm
         )}
       </div>
 
-      {/* Row 2: Spacing + Shadow + Stroke + TextBox */}
+      {/* Row 2: Lists + Spacing + Shadow + Stroke + TextBox */}
       <div className={`${row} border-t border-outline-variant/20`}>
+
+        {/* Bullet / numbered list */}
+        <span className={label}>List</span>
+        <ToolBtn active={style.listStyle === 'disc'} title="Unordered bullet list" onMouseDown={() => set('listStyle', style.listStyle === 'disc' ? null : 'disc')}>
+          <span className="material-symbols-outlined text-[13px]">format_list_bulleted</span>
+        </ToolBtn>
+        <ToolBtn active={style.listStyle === 'decimal'} title="Numbered list" onMouseDown={() => set('listStyle', style.listStyle === 'decimal' ? null : 'decimal')}>
+          <span className="material-symbols-outlined text-[13px]">format_list_numbered</span>
+        </ToolBtn>
+        {style.listStyle && (
+          <>
+            <span className={label}>Gap</span>
+            <NumInput value={style.bulletSpacing} onChange={(v) => set('bulletSpacing', v)} min={0} max={4} step={0.05} width="w-12" placeholder="0" />
+          </>
+        )}
+
+        <Divider />
 
         {/* Line spacing */}
         <span className={label}>Line</span>
         <NumInput value={style.lineSpacing} onChange={(v) => set('lineSpacing', v)} min={0.5} max={4} step={0.05} width="w-12" placeholder="1.25" />
+
+        {/* Paragraph spacing */}
+        <span className={label}>Para</span>
+        <NumInput value={style.paragraphSpacing} onChange={(v) => set('paragraphSpacing', v)} min={0} max={4} step={0.05} width="w-12" placeholder="0" />
 
         {/* Letter spacing */}
         <span className={label}>Track</span>
@@ -1361,6 +1464,37 @@ export default function SongEditor({ song, onClose, onSave }) {
     handleEditorInput();
   }
 
+  // Canvas text edit committed from SlidePreview. Reconstructs the full section
+  // content by replacing only the active preview part (for split sections, the
+  // other parts are preserved). Re-seeds the right panel editor DOM.
+  function handleCanvasTextChange(newText) {
+    const key = activeKeyRef.current;
+    if (!key) return;
+    const fullText = previewContent.text;
+    let newFullText;
+    if (previewParts.length <= 1) {
+      newFullText = newText;
+    } else {
+      const segments = fullText.split(SLIDE_BREAK);
+      let nonEmptyCount = 0;
+      const updated = segments.map((seg) => {
+        if (!seg.trim()) return seg;
+        if (nonEmptyCount === partIdx) {
+          nonEmptyCount++;
+          const lead = seg.match(/^\s*/)?.[0] || '';
+          const trail = seg.match(/\s*$/)?.[0] || '';
+          return lead + newText + trail;
+        }
+        nonEmptyCount++;
+        return seg;
+      });
+      newFullText = updated.join(SLIDE_BREAK);
+    }
+    setSections((prev) => prev.map((s) => s._key === key ? { ...s, content: newFullText, runs: [] } : s));
+    setPreviewContent({ text: newFullText, runs: [] });
+    if (editorRef.current) editorRef.current.innerHTML = renderEditorHtml(newFullText, []);
+  }
+
   // ── Section mutations ───────────────────────────────────────────────────
   function addSection() {
     const k = newKey();
@@ -1466,6 +1600,17 @@ export default function SongEditor({ song, onClose, onSave }) {
       setSaveError(`Save failed: ${err?.message || 'unknown error'}`);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleApplyStyleToSong() {
+    if (!song?.id) return;
+    const styleJsonStr = styleIsDefault(style) ? null : JSON.stringify(style);
+    try {
+      await window.cue.songs.applyStyleToSong(song.id, styleJsonStr);
+      toast.success('Style applied to all sections');
+    } catch (err) {
+      toast.error('Failed: ' + (err?.message || 'unknown error'));
     }
   }
 
@@ -1732,6 +1877,20 @@ export default function SongEditor({ song, onClose, onSave }) {
                 previewTemplate={previewTemplate}
               />
 
+              {/* Apply-to-all-sections strip — only available once the song is saved */}
+              {song?.id && (
+                <div className="flex items-center justify-end px-md py-[5px] border-b border-outline-variant/30 bg-surface-container/50">
+                  <button
+                    onMouseDown={(e) => { e.preventDefault(); handleApplyStyleToSong(); }}
+                    className="flex items-center gap-xs text-[9px] font-mono text-on-surface-variant/50 hover:text-primary uppercase tracking-[0.05em] transition-colors"
+                    title="Apply current text styling to all sections of this song"
+                  >
+                    <span className="material-symbols-outlined text-[12px]">format_paint</span>
+                    Apply Style to All Sections
+                  </button>
+                </div>
+              )}
+
               {/* Content area: preview left, editor right */}
               <div className="flex flex-1 min-h-0 gap-0">
 
@@ -1784,6 +1943,7 @@ export default function SongEditor({ song, onClose, onSave }) {
                           backgroundPath={effectiveBgPath}
                           copyright={copyright || undefined}
                           onTextBoxChange={(box) => setStyle((s) => ({ ...s, textBox: box }))}
+                          onCanvasTextChange={handleCanvasTextChange}
                         />
                       )}
                       {bgLoading && (

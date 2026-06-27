@@ -1,0 +1,20 @@
+{
+  "name": "Overcast",
+  "category": "presentation",
+  "sort_order": 82,
+  "style": {
+    "kind": "pres-theme",
+    "bgRef": "library/unsplash-7aIxv-gosaY.jpg",
+    "bg": "linear-gradient(160deg,#0a0c10,#141820)",
+    "scrim": 0.42,
+    "display": "Barlow Condensed",
+    "body": "Inter",
+    "title": "#ffffff",
+    "sub": "#b8c8d8",
+    "bodyColor": "#cdd8e4",
+    "accent": "#e0e8f0",
+    "accentText": "#0a0c10",
+    "kicker": "#90aec8",
+    "titleUpper": true
+  }
+}

@@ -228,7 +228,7 @@ function createMonitorWindow(channel, monitor) {
   // Without this, IPC sent before onSlideUpdate is registered is silently dropped.
   win.webContents.once('did-finish-load', () => {
     sendStateToWindow(win, channel);
-    if (channel.template === 'stage') sendStageState(win);
+    if (channel.template === 'stage') sendStageState(win, channel);
     else sendGraphicToWindow(win, 'screen'); // fullscreen + lower-third carry the overlay
   });
   return win;
@@ -294,7 +294,7 @@ function createNdiWindow(channel) {
   });
   win.webContents.once('did-finish-load', () => {
     sendStateToWindow(win, channel);
-    if (channel.template === 'stage') sendStageState(win);
+    if (channel.template === 'stage') sendStageState(win, channel);
     else sendGraphicToWindow(win, 'ndi'); // fullscreen + lower-third carry the overlay
     startNdiCapture(channel.id, win, channel);
   });
@@ -1411,10 +1411,15 @@ function getAllStageWindows() {
   return wins;
 }
 
-function sendStageState(win) {
+function sendStageState(win, channel) {
   win.webContents.send('stage:timer',    { ...stageState.timer });
   win.webContents.send('stage:message',  { text: stageState.message });
   win.webContents.send('stage:schedule', { scheduled: stageState.scheduled });
+  // Per-channel layout — the window builds its DOM from this. NULL column → default.
+  if (channel) {
+    const layout = getStageLayout(channel.id);
+    win.webContents.send('stage:layout', { channelId: channel.id, elements: layout.elements });
+  }
 }
 
 // Push the scheduled-message list to every stage window AND the operator (so its
@@ -1527,6 +1532,131 @@ export function stageTimerCmd(action, seconds) {
   for (const win of getAllStageWindows()) {
     win.webContents.send('stage:timer', { ...t });
   }
+}
+
+// ── Stage display layout (per-channel) + presets ──────────────────────────────
+// The stage/confidence monitor is a free-form set of positioned elements (each box in
+// PERCENT of a 1920×1080 frame). Each channel of template 'stage' carries its own layout
+// in output_channels.stage_layout_json (NULL → the built-in default below, which
+// reproduces the previous fixed look so existing stage channels are visually unchanged).
+// Reusable named layouts live in the `stage_presets` setting. Clock/timer/elapsed/video/
+// message elements tick LOCALLY in the output template (resolved against Date.now()) — no
+// per-second IPC. Same WYSIWYG-box discipline as the stream layout above.
+// Insets ~2.5% from the frame edges with ~1.5% gutters between elements, so a fresh
+// stage channel looks intentional (not full-bleed). Mirrors the "Classic" template in
+// StageLayoutEditor.jsx — keep the two in sync.
+const DEFAULT_STAGE_LAYOUT = {
+  elements: [
+    { id: 'clock',   type: 'clock',          x: 2.5, y: 2.5,  w: 30.5, h: 12, hour12: true, showSeconds: true },
+    { id: 'timer',   type: 'timer',          x: 34.5, y: 2.5, w: 31,   h: 12, showBar: true },
+    { id: 'video',   type: 'videoCountdown', x: 67,  y: 2.5,  w: 30.5, h: 12 },
+    { id: 'current', type: 'currentText',    x: 2.5, y: 16,   w: 95,   h: 54, align: 'center', color: '#ffffff', fit: 'auto', showRef: true },
+    { id: 'next',    type: 'nextText',       x: 2.5, y: 71.5, w: 95,   h: 14, color: 'rgba(255,255,255,0.4)' },
+    { id: 'message', type: 'message',        x: 2.5, y: 87.5, w: 95,   h: 10, align: 'center' },
+  ],
+};
+const STAGE_ELEMENT_TYPES = new Set(['currentText', 'nextText', 'clock', 'timer', 'elapsedTimer', 'videoCountdown', 'message', 'staticText']);
+let stageElSeq = 1;
+function normStageElement(e) {
+  if (!e || !STAGE_ELEMENT_TYPES.has(e.type)) return null;
+  const box = normBox(e, { x: 0, y: 0, w: 30, h: 12 });
+  const out = { id: typeof e.id === 'string' && e.id ? e.id : `el_${Date.now()}_${stageElSeq++}`, type: e.type, ...box };
+  const S = (v, d) => (typeof v === 'string' ? v : d);
+  const B = (v, d) => (typeof v === 'boolean' ? v : d);
+  const N = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
+  const A = (v) => (['left', 'center', 'right'].includes(v) ? v : 'center');
+  out.align = A(e.align); // alignment is a universal control on every element
+  switch (e.type) {
+    case 'currentText':
+      out.color = S(e.color, '#ffffff');
+      out.fit = e.fit === 'fixed' ? 'fixed' : 'auto'; out.fontPx = N(e.fontPx, 88); out.showRef = B(e.showRef, true);
+      break;
+    case 'nextText':
+      out.label = S(e.label, ''); out.color = S(e.color, 'rgba(255,255,255,0.4)'); out.fontPx = N(e.fontPx, 26);
+      break;
+    case 'clock':
+      out.label = S(e.label, ''); out.hour12 = B(e.hour12, true); out.showSeconds = B(e.showSeconds, true);
+      break;
+    case 'timer':
+      out.label = S(e.label, ''); out.showBar = B(e.showBar, true);
+      break;
+    case 'elapsedTimer':
+      out.label = S(e.label, '');
+      break;
+    case 'videoCountdown':
+      out.label = S(e.label, '');
+      break;
+    case 'message':
+      break;
+    case 'staticText':
+      out.text = S(e.text, 'Text'); out.color = S(e.color, '#e2e2e8'); out.fontPx = N(e.fontPx, 32);
+      break;
+  }
+  return out;
+}
+function normalizeStageLayout(L) {
+  const src = (L && Array.isArray(L.elements)) ? L.elements : DEFAULT_STAGE_LAYOUT.elements;
+  const els = src.map(normStageElement).filter(Boolean);
+  return { elements: els.length ? els : DEFAULT_STAGE_LAYOUT.elements.map(normStageElement) };
+}
+
+// Resolve every open stage window belonging to a channel (screen windows are keyed by
+// monitor id, NDI by `ndi-<id>` — mirror setChannelContentMode's lookup).
+function getChannelStageWindows(channelId) {
+  const db = getDb();
+  const channel = db.prepare('SELECT * FROM output_channels WHERE id = ?').get(channelId);
+  if (!channel) return [];
+  const wins = [];
+  if (channel.type === 'ndi') {
+    const w = windows.get(`ndi-${channelId}`);
+    if (w && !w.isDestroyed()) wins.push(w);
+  } else {
+    const monitors = db.prepare('SELECT * FROM channel_monitors WHERE channel_id = ? AND active = 1').all(channelId);
+    for (const m of monitors) { const w = windows.get(m.id); if (w && !w.isDestroyed()) wins.push(w); }
+  }
+  return wins;
+}
+
+export function getStageLayout(channelId) {
+  let parsed = null;
+  try {
+    const row = getDb().prepare('SELECT stage_layout_json FROM output_channels WHERE id = ?').get(channelId);
+    if (row && row.stage_layout_json) parsed = JSON.parse(row.stage_layout_json);
+  } catch {}
+  return normalizeStageLayout(parsed);
+}
+
+export function setStageLayout(channelId, layout) {
+  const norm = normalizeStageLayout(layout);
+  try {
+    getDb().prepare('UPDATE output_channels SET stage_layout_json = ? WHERE id = ?').run(JSON.stringify(norm), channelId);
+  } catch {}
+  const msg = { channelId: Number(channelId), elements: norm.elements };
+  for (const win of getChannelStageWindows(channelId)) {
+    try { win.webContents.send('stage:layout', msg); } catch {}
+  }
+  notifyMainWindow('stage:layout', msg);
+  return norm;
+}
+
+export function getStagePresets() {
+  const arr = getSetting('stage_presets');
+  return Array.isArray(arr) ? arr.map((p) => ({ id: p.id, name: p.name, layout: normalizeStageLayout(p.layout) })) : [];
+}
+export function saveStagePreset(preset) {
+  preset = preset || {};
+  const list = getStagePresets();
+  const id = preset.id || `sp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const entry = { id, name: String(preset.name || 'Untitled').slice(0, 60), layout: normalizeStageLayout(preset.layout) };
+  const idx = list.findIndex((p) => p.id === id);
+  if (idx >= 0) list[idx] = entry; else list.push(entry);
+  setSetting('stage_presets', list);
+  return { presets: list, id };
+}
+export function deleteStagePreset(id) {
+  const list = getStagePresets().filter((p) => p.id !== id);
+  setSetting('stage_presets', list);
+  return list;
 }
 
 function notifyMainWindow(channel, ...args) {

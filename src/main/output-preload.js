@@ -5,6 +5,8 @@ contextBridge.exposeInMainWorld('cueOutput', {
   onStageTimer:    (cb) => ipcRenderer.on('stage:timer',    (_e, p) => cb(p)),
   onStageMessage:  (cb) => ipcRenderer.on('stage:message',  (_e, p) => cb(p)),
   onStageSchedule: (cb) => ipcRenderer.on('stage:schedule', (_e, p) => cb(p)),
+  // Per-channel WYSIWYG stage layout — the window rebuilds its DOM from this.
+  onStageLayout:   (cb) => ipcRenderer.on('stage:layout',   (_e, p) => cb(p)),
   onGraphicUpdate: (cb) => ipcRenderer.on('graphic:update', (_e, p) => cb(p)),
   // Runtime content-mode toggle (lyrics band / graphics overlay) — avoids
   // recreating the window (and dropping the NDI sender) on a mode switch.

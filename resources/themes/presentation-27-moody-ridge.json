@@ -1,0 +1,21 @@
+{
+  "name": "Moody Ridge",
+  "category": "presentation",
+  "sort_order": 87,
+  "style": {
+    "kind": "pres-theme",
+    "bgRef": "library/unsplash-mGU0TVjsfnU.jpg",
+    "bg": "linear-gradient(160deg,#100c08,#1c1610)",
+    "scrim": 0.48,
+    "display": "Playfair Display",
+    "body": "Inter",
+    "quoteFont": "Playfair Display",
+    "title": "#f5f0ea",
+    "sub": "#d0b898",
+    "bodyColor": "#dcc8b0",
+    "accent": "#c8a07a",
+    "accentText": "#100c08",
+    "kicker": "#b89070",
+    "serif": true
+  }
+}

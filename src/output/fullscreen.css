@@ -71,6 +71,23 @@ html, body {
   width: 100%;
 }
 
+/* Split-verse (compare) view — two translations of one verse stacked in #text.
+   Sizes are em-relative so they track the (auto-fit) base font set inline by JS.
+   A thin rule separates the two translations so the comparison reads clearly. */
+#text.split .split-verse { padding: 0.1em 0; }
+#text.split .split-verse + .split-verse {
+  margin-top: 0.5em;
+  padding-top: 0.6em;
+  border-top: 2px solid rgba(255,255,255,0.22);
+}
+#text.split .split-verse-attr {
+  font-size: 0.42em;
+  opacity: 0.78;
+  margin-top: 0.18em;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
 /* Presentation slide canvas — a fixed 1920×1080 design box, scaled to the viewport
    by JS (transform: scale) so element % positions and px font sizes are pixel-accurate
    on any output resolution. Hidden unless the live payload carries `elements`. */

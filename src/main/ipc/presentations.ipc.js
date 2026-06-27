@@ -2,6 +2,7 @@ import { ipcMain, shell } from 'electron';
 import * as presentations from '../db/presentations.js';
 import * as media from '../db/media.js';
 import * as pptx from '../import/pptx-import.js';
+import { generateSermonPresentation } from '../import/sermon-build.js';
 
 export function registerPresentationsIpc() {
   ipcMain.handle('presentations:list', () => presentations.list());
@@ -34,6 +35,15 @@ export function registerPresentationsIpc() {
     });
     const id = presentations.create({ title: title || 'Imported Presentation', slides });
     return { id, slideCount: slides.length };
+  });
+
+  // ── Sermon → Slides ─────────────────────────────────────────────────────────
+  // txt/md/docx are read in main; PDF text is extracted in the renderer (pdfjs)
+  // and passed in as `text`. Either way generate resolves scripture, applies the
+  // theme, and builds the presentation.
+  ipcMain.handle('sermon:generate', async (_e, payload) => {
+    try { return { ok: true, ...(await generateSermonPresentation(payload || {})) }; }
+    catch (err) { return { ok: false, error: err.message }; }
   });
 
   // Open an external URL (the LibreOffice download page) in the default browser.

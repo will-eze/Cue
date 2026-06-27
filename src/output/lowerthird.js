@@ -71,6 +71,9 @@ function applyStyle(el, s, scale = 1) {
   // preview, which renders the text in a full-width bar) — without it a flex edge
   // case could shrink the element and make centre/right alignment look like no-op.
   el.style.width           = '100%';
+  // Clear any split-verse auto-fit constraints left from a previous slide.
+  el.style.maxHeight       = '';
+  el.style.overflow        = '';
   el.style.fontFamily      = s.fontFamily   || '';
   el.style.textAlign       = s.align        || 'center';
   el.style.fontWeight      = s.bold         ? '700' : '400';
@@ -104,7 +107,28 @@ function clearBand() {
   ltDiv.style.background = 'transparent';
   textEl.className = '';
   textEl.innerHTML = '';
+  textEl.style.fontSize = '';
+  textEl.style.maxHeight = '';
+  textEl.style.overflow = '';
   copyright.textContent = '';
+}
+
+// Split-verse auto-fit for the lower third: largest font (≤ maxPx) at which both
+// stacked translations fit within maxH; clips beyond that as a safety net.
+function fitSplitText(maxPx, maxH) {
+  const cap = Math.max(20, maxPx);
+  textEl.style.maxHeight = maxH + 'px';
+  textEl.style.overflow = 'hidden';
+  textEl.style.fontSize = cap + 'px';
+  if (textEl.scrollHeight > maxH) {
+    let lo = 20, hi = cap;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      textEl.style.fontSize = mid + 'px';
+      if (textEl.scrollHeight <= maxH) lo = mid; else hi = mid;
+    }
+    textEl.style.fontSize = lo + 'px';
+  }
 }
 
 function renderProgram(payload) {
@@ -122,6 +146,22 @@ function renderProgram(payload) {
 
   textEl.className = '';
   applyStyle(textEl, styleJson, scale);
+
+  // Split-verse (compare) view: stack both translations in the band, each with its
+  // own attribution. Shrink the base a touch more so two verses fit the lower third.
+  const sv = payload.scriptureVerses;
+  if (Array.isArray(sv) && sv.length > 1) {
+    textEl.classList.add('split');
+    textEl.innerHTML = sv.map((b) =>
+      `<div class="split-verse"><div class="split-verse-body">${renderWithRuns(b.text || '', styleJson?.runs, scale)}</div>`
+      + `<div class="split-verse-attr">${esc(b.attribution || '')}</div></div>`).join('');
+    copyright.textContent = '';
+    // Auto-fit the stacked translations to fill the band at the largest size that still
+    // fits within ~60% of the screen (so a long two-translation reading can't run off
+    // the top of the frame). Mirrors fullscreen's approach, capped for the lower third.
+    fitSplitText((Number(styleJson?.fontSize) || 72) * scale, Math.round(window.innerHeight * 0.6));
+    return;
+  }
   textEl.innerHTML = renderWithRuns(text || '', styleJson?.runs, scale);
   copyright.textContent = copy || '';
   // Scripture attribution ("John 1:1 (KJV)") right-aligned + stylable; song copyright inherits.

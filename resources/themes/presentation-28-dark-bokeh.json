@@ -1,0 +1,21 @@
+{
+  "name": "Dark Bokeh",
+  "category": "presentation",
+  "sort_order": 88,
+  "style": {
+    "kind": "pres-theme",
+    "bgRef": "library/unsplash-A1WVd4snKLw.jpg",
+    "bg": "radial-gradient(ellipse at 60% 40%,#1a1208,#080808)",
+    "scrim": 0.30,
+    "display": "Bebas Neue",
+    "body": "Lato",
+    "title": "#ffffff",
+    "sub": "#e8d880",
+    "bodyColor": "#e8e8d0",
+    "accent": "#ffcc44",
+    "accentText": "#080808",
+    "kicker": "#ffcc44",
+    "titleUpper": true,
+    "sectionUpper": true
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "Above Clouds",
+  "category": "presentation",
+  "sort_order": 86,
+  "style": {
+    "kind": "pres-theme",
+    "bgRef": "library/unsplash-nv7WX42LKjU.jpg",
+    "bg": "linear-gradient(180deg,#0e1c2c,#162438)",
+    "scrim": 0.35,
+    "display": "Montserrat",
+    "body": "Montserrat",
+    "title": "#ffffff",
+    "sub": "#d4e8f8",
+    "bodyColor": "#ddeef8",
+    "accent": "#d4e8f8",
+    "accentText": "#0e1c2c",
+    "kicker": "#c0d8f0"
+  }
+}

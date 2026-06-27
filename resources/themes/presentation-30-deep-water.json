@@ -1,0 +1,19 @@
+{
+  "name": "Deep Water",
+  "category": "presentation",
+  "sort_order": 90,
+  "style": {
+    "kind": "pres-theme",
+    "bgRef": "library/unsplash-J3ABLQjZQBg.jpg",
+    "bg": "linear-gradient(180deg,#041820,#061428)",
+    "scrim": 0.42,
+    "display": "Archivo",
+    "body": "Inter",
+    "title": "#ffffff",
+    "sub": "#a0d8e8",
+    "bodyColor": "#c0e4f0",
+    "accent": "#6bd0e8",
+    "accentText": "#041820",
+    "kicker": "#56c8e0"
+  }
+}

@@ -18,6 +18,9 @@ contextBridge.exposeInMainWorld('cue', {
     importGhs: () => ipcRenderer.invoke('songs:importGhs'),
     importCommit: (parsedSongs) => ipcRenderer.invoke('songs:importCommit', parsedSongs),
     matchTitles: (rawText) => ipcRenderer.invoke('songs:matchTitles', rawText),
+    scrapeSearch: (query) => ipcRenderer.invoke('songScrape:search', query),
+    scrapeFetch: (candidate) => ipcRenderer.invoke('songScrape:fetch', candidate),
+    applyStyleToSong: (songId, styleJson) => ipcRenderer.invoke('songs:applyStyleToSong', songId, styleJson),
   },
   tags: {
     list: () => ipcRenderer.invoke('tags:list'),
@@ -99,6 +102,12 @@ contextBridge.exposeInMainWorld('cue', {
       getSchedule: ()           => ipcRenderer.invoke('output:stage:schedule:get'),
       schedule:    (msg)        => ipcRenderer.invoke('output:stage:schedule:add', msg),
       unschedule:  (id)         => ipcRenderer.invoke('output:stage:schedule:remove', id),
+      // Customisable WYSIWYG layout (per channel) + reusable named presets.
+      getLayout:    (channelId)         => ipcRenderer.invoke('output:stage:layout:get', channelId),
+      setLayout:    (channelId, layout) => ipcRenderer.invoke('output:stage:layout:set', channelId, layout),
+      getPresets:   ()         => ipcRenderer.invoke('output:stage:preset:list'),
+      savePreset:   (preset)   => ipcRenderer.invoke('output:stage:preset:save', preset),
+      deletePreset: (id)       => ipcRenderer.invoke('output:stage:preset:delete', id),
     },
     lowerthird: {
       setFontScale: (pct) => ipcRenderer.invoke('output:lowerthird:set-font-scale', pct),
@@ -185,9 +194,10 @@ contextBridge.exposeInMainWorld('cue', {
     create:         (data)                   => ipcRenderer.invoke('themes:create', data),
     update:         (id, data)               => ipcRenderer.invoke('themes:update', id, data),
     delete:         (id)                     => ipcRenderer.invoke('themes:delete', id),
-    applyToSong:    (themeId, songId, setBg) => ipcRenderer.invoke('themes:applyToSong', themeId, songId, setBg),
-    applyToRundown: (themeId, svcId, setBg)  => ipcRenderer.invoke('themes:applyToRundown', themeId, svcId, setBg),
-    applyToAllSongs:(themeId, setBg)         => ipcRenderer.invoke('themes:applyToAllSongs', themeId, setBg),
+    applyToSong:       (themeId, songId, setBg) => ipcRenderer.invoke('themes:applyToSong', themeId, songId, setBg),
+    applyToRundown:    (themeId, svcId, setBg)  => ipcRenderer.invoke('themes:applyToRundown', themeId, svcId, setBg),
+    applyToAllSongs:   (themeId, setBg)         => ipcRenderer.invoke('themes:applyToAllSongs', themeId, setBg),
+    resolveBackground: (themeId)                => ipcRenderer.invoke('themes:resolveBackground', themeId),
   },
   presentations: {
     list:          ()              => ipcRenderer.invoke('presentations:list'),
@@ -206,6 +216,7 @@ contextBridge.exposeInMainWorld('cue', {
     setLibreOfficePath: (p)         => ipcRenderer.invoke('presentations:setLibreOfficePath', p),
     convertPptx:        (filePath)  => ipcRenderer.invoke('presentations:convertPptx', filePath),
     createFromImages:   (title, buffers) => ipcRenderer.invoke('presentations:createFromImages', title, buffers),
+    sermonGenerate:     (payload)   => ipcRenderer.invoke('sermon:generate', payload),
   },
   youtube: {
     prefetch: (url) => ipcRenderer.invoke('youtube:prefetch', url),
@@ -274,7 +285,7 @@ contextBridge.exposeInMainWorld('cue', {
       'output:multiview-captures',
       'output:media-transport',
       'output:overlay-changed',
-      'stage:schedule',
+      'stage:schedule', 'stage:layout',
       'shortcut:next', 'shortcut:prev',
       'remote:command',
       'youtube:status',

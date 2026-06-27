@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import SlideList from '../components/SlideList';
 import { renderWithRuns, copyrightCss } from '../components/SongEditor';
 import { flatTextCss, buildBarBg as buildGraphicBarBg, fmtDuration as fmtGfxDuration, fmtClock as fmtGfxClock, CD_DEFAULT_BOX, TIME_BASE as GFX_TIME_BASE, MSG_BASE as GFX_MSG_BASE } from '../components/GraphicsEditor';
@@ -240,11 +240,24 @@ function SyncedVideo({ src, transport, loop, style }) {
   return <video ref={ref} src={src} loop={loop} style={style} muted playsInline />;
 }
 
-// Confidence-monitor layout — mirrors output/stage.html + stage.css at native
-// 1920×1080 so it scales identically to the other monitor templates. Shows the
-// top status bar (live clock + idle timer/video slots), the current slide text
-// big on a dark background, the COMING NEXT row, and the message bar.
-function StageMonitor({ slide, item, slides, slideIdx, copyrightText, copyrightRight, transport, hideText }) {
+// Confidence-monitor — a layout-driven mirror of the customisable stage display
+// (output/stage.js). Reads the selected channel's per-channel layout (subscribing to
+// stage:layout) and renders the same positioned elements at native 1920×1080, binding
+// the live slide / next / transport it already receives. The timer/message tickers show
+// their idle state here (the operator doesn't track stage timer/message state in this
+// panel). Parallel renderer to the plain-DOM template, same as StreamLayoutEditor.
+const STAGE_DEFAULT_ELEMENTS = [
+  { id: 'clock',   type: 'clock',          x: 2.5, y: 2.5,  w: 30.5, h: 12, hour12: true, showSeconds: true },
+  { id: 'timer',   type: 'timer',          x: 34.5, y: 2.5, w: 31,   h: 12, showBar: true },
+  { id: 'video',   type: 'videoCountdown', x: 67,  y: 2.5,  w: 30.5, h: 12 },
+  { id: 'current', type: 'currentText',    x: 2.5, y: 16,   w: 95,   h: 54, align: 'center', color: '#ffffff', fit: 'auto', showRef: true },
+  { id: 'next',    type: 'nextText',       x: 2.5, y: 71.5, w: 95,   h: 14, color: 'rgba(255,255,255,0.4)' },
+  { id: 'message', type: 'message',        x: 2.5, y: 87.5, w: 95,   h: 10, align: 'center' },
+];
+const alignJustify = (a) => (a === 'left' ? 'flex-start' : a === 'right' ? 'flex-end' : 'center');
+
+function StageMonitor({ slide, item, slides, slideIdx, copyrightText, copyrightRight, transport, hideText, channelId }) {
+  const [elements, setElements] = useState(null);
   const [clock, setClock] = useState('');
   useEffect(() => {
     const fmt = () => setClock(new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }));
@@ -253,70 +266,86 @@ function StageMonitor({ slide, item, slides, slideIdx, copyrightText, copyrightR
     return () => clearInterval(id);
   }, []);
 
-  const barCol     = { flex: '1 1 0', minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 2%', gap: 8 };
-  const barLabel   = { fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, sans-serif', fontSize: 13, fontWeight: 500, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#424754' };
-  const barValue   = { fontSize: 48, fontWeight: 700, lineHeight: 1, fontVariantNumeric: 'tabular-nums' };
-  const barDivider = { flexShrink: 0, width: 1, background: 'rgba(255,255,255,0.07)', margin: '2% 0' };
+  // Load + live-subscribe to this channel's layout.
+  useEffect(() => {
+    if (channelId == null) { setElements(STAGE_DEFAULT_ELEMENTS); return; }
+    let alive = true;
+    window.cue.output.stage.getLayout(channelId).then((l) => { if (alive) setElements(l.elements); });
+    const off = window.cue.on('stage:layout', (p) => { if (p && p.channelId === channelId) setElements(p.elements); });
+    return () => { alive = false; if (off) off(); };
+  }, [channelId]);
 
+  const els = elements || STAGE_DEFAULT_ELEMENTS;
   const isMediaItem = item?.item_type === 'media';
   const mediaPath   = isMediaItem ? item?.asset?.path : null;
   const isVideo     = mediaPath && /\.(mp4|webm|mov|m4v|avi|mkv)$/i.test(mediaPath);
-  const nextText    = slides[slideIdx + 1]?.content || '';
-  const refText     = copyrightRight ? copyrightText : null; // scripture reference
+  const live = {
+    clock,
+    currentText: slide?.content || '',
+    nextText:    slides[slideIdx + 1]?.content || '',
+    refText:     copyrightRight ? copyrightText : null,
+    isVideo, mediaPath, transport, item, hideText,
+  };
 
   return (
-    <div style={{ width: NATIVE_W, height: NATIVE_H, display: 'flex', flexDirection: 'column', background: '#111317', fontFamily: 'Inter, sans-serif', color: '#e2e2e8' }}>
-      {/* Top status bar */}
-      <div style={{ flex: '0 0 12%', minHeight: 0, background: '#1a1c20', borderBottom: '1px solid rgba(255,255,255,0.07)', display: 'flex' }}>
-        <div style={barCol}>
-          <div style={barLabel}>LOCAL TIME</div>
-          <div style={{ ...barValue, color: '#adc6ff' }}>{clock}</div>
+    <div style={{ width: NATIVE_W, height: NATIVE_H, position: 'relative', background: '#0c0e12', fontFamily: 'Inter, sans-serif', color: '#e2e2e8' }}>
+      {els.map((el, i) => (
+        <div key={el.id} style={{ position: 'absolute', left: `${el.x}%`, top: `${el.y}%`, width: `${el.w}%`, height: `${el.h}%`, zIndex: i + 1, overflow: 'hidden' }}>
+          <StageElement el={el} live={live} />
         </div>
-        <div style={barDivider} />
-        <div style={barCol}>
-          <div style={barLabel}>REMAINING</div>
-          <div style={{ ...barValue, color: '#2a2e38' }}>00:00</div>
-        </div>
-        <div style={barDivider} />
-        <div style={barCol}>
-          <div style={barLabel}>VIDEO</div>
-          <div style={{ ...barValue, color: '#2a2e38' }}>--:--</div>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div style={{ flex: '1 1 0', minHeight: 0, background: '#0c0e12', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ position: 'relative', flex: '1 1 0', minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2.5% 6%', textAlign: 'center' }}>
-          {isVideo ? (
-            transport?.active
-              ? <SyncedVideo src={mediaUrl(mediaPath)} transport={transport} loop={!!item?.media_loop} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
-              : <video src={mediaUrl(mediaPath)} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} autoPlay loop muted />
-          ) : !hideText && (
-            <>
-              {refText && (
-                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: '1.5% 6% 0', textAlign: 'center', fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, sans-serif', fontSize: 34, fontWeight: 600, letterSpacing: '0.04em', color: '#adc6ff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {refText}
-                </div>
-              )}
-              <div style={{ fontWeight: 700, lineHeight: 1.15, color: '#ffffff', whiteSpace: 'pre-wrap', wordBreak: 'break-word', textAlign: 'center', width: '100%', fontSize: 88, overflow: 'hidden' }}>
-                {slide?.content || ''}
-              </div>
-            </>
-          )}
-        </div>
-        <div style={{ flexShrink: 0, height: 1, background: 'rgba(255,255,255,0.08)' }} />
-        <div style={{ flex: '0 0 auto', maxHeight: '20%', overflow: 'hidden', display: 'flex', alignItems: 'baseline', gap: '1.5%', padding: '1.2% 6%' }}>
-          <span style={{ flexShrink: 0, fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, sans-serif', fontSize: 13, fontWeight: 500, letterSpacing: '0.18em', textTransform: 'uppercase', color: '#4d8eff', whiteSpace: 'nowrap' }}>COMING NEXT</span>
-          <span style={{ fontSize: 26, fontWeight: 400, lineHeight: 1.3, color: 'rgba(255,255,255,0.4)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflow: 'hidden' }}>{nextText || '—'}</span>
-        </div>
-      </div>
-
-      {/* Bottom message bar */}
-      <div style={{ flex: '0 0 10%', minHeight: 0, background: '#1a1c20', borderTop: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', padding: '0 4%' }}>
-        <div style={{ fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, sans-serif', fontSize: 14, fontWeight: 500, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(140,144,159,0.25)' }}>NO MESSAGES</div>
-      </div>
+      ))}
     </div>
   );
+}
+
+// One positioned stage element, rendered at native scale with live content bound in.
+function StageElement({ el, live }) {
+  const Bar = ({ label, value, valColor, children }) => (
+    <div style={{ width: '100%', height: '100%', background: '#1a1c20', border: '1px solid rgba(255,255,255,0.07)', display: 'flex', flexDirection: 'column', alignItems: alignJustify(el.align), justifyContent: 'center', gap: 8, overflow: 'hidden', padding: '0 2%' }}>
+      {label && <div style={{ fontSize: 13, fontWeight: 500, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#424754', whiteSpace: 'nowrap' }}>{label}</div>}
+      <div style={{ fontSize: 48, fontWeight: 700, lineHeight: 1, fontVariantNumeric: 'tabular-nums', color: valColor }}>{value}</div>
+      {children}
+    </div>
+  );
+  switch (el.type) {
+    case 'clock':          return <Bar label={el.label} value={live.clock} valColor="#adc6ff" />;
+    case 'timer':          return <Bar label={el.label} value="00:00" valColor="#2a2e38">{el.showBar !== false && <div style={{ width: '65%', height: 4, background: 'rgba(255,255,255,0.07)', borderRadius: 99, overflow: 'hidden' }}><div style={{ height: '100%', width: '100%', background: '#2a2e38' }} /></div>}</Bar>;
+    case 'elapsedTimer':   return <Bar label={el.label} value="00:00" valColor="#2a2e38" />;
+    case 'videoCountdown': return <Bar label={el.label} value="--:--" valColor="#2a2e38" />;
+    case 'message':        return (
+      <div style={{ width: '100%', height: '100%', background: '#1a1c20', border: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: el.align === 'left' ? 'flex-start' : el.align === 'right' ? 'flex-end' : 'center', padding: '0 4%' }}>
+        <div style={{ fontSize: 14, fontWeight: 500, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(140,144,159,0.25)' }}>NO MESSAGES</div>
+      </div>
+    );
+    case 'staticText':     return (
+      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: el.align === 'left' ? 'flex-start' : el.align === 'right' ? 'flex-end' : 'center', color: el.color || '#e2e2e8', fontSize: (el.fontPx || 32), fontWeight: 600, textAlign: el.align || 'center', whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflow: 'hidden', padding: '0 2%' }}>
+        {el.text || ''}
+      </div>
+    );
+    case 'nextText':       return (
+      <div style={{ width: '100%', height: '100%', background: '#0c0e12', display: 'flex', alignItems: 'baseline', justifyContent: alignJustify(el.align), gap: '1.5%', padding: '1.2% 4%', overflow: 'hidden' }}>
+        {el.label && <span style={{ flexShrink: 0, fontSize: 13, fontWeight: 500, letterSpacing: '0.18em', textTransform: 'uppercase', color: '#4d8eff', whiteSpace: 'nowrap' }}>{el.label}</span>}
+        <span style={{ fontSize: (el.fontPx || 26), fontWeight: 400, lineHeight: 1.3, color: el.color || 'rgba(255,255,255,0.4)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflow: 'hidden' }}>{live.nextText || '—'}</span>
+      </div>
+    );
+    case 'currentText':    return (
+      <div style={{ width: '100%', height: '100%', position: 'relative', background: '#0c0e12', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2% 4%', overflow: 'hidden', textAlign: 'center' }}>
+        {live.isVideo ? (
+          live.transport?.active
+            ? <SyncedVideo src={mediaUrl(live.mediaPath)} transport={live.transport} loop={!!live.item?.media_loop} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
+            : <video src={mediaUrl(live.mediaPath)} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} autoPlay loop muted />
+        ) : !live.hideText && (
+          <>
+            {live.refText && el.showRef !== false && (
+              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: '1.5% 6% 0', textAlign: 'center', fontSize: 34, fontWeight: 600, letterSpacing: '0.04em', color: '#adc6ff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{live.refText}</div>
+            )}
+            <div style={{ fontWeight: 700, lineHeight: 1.15, color: el.color || '#ffffff', whiteSpace: 'pre-wrap', wordBreak: 'break-word', textAlign: el.align || 'center', width: '100%', fontSize: (el.fit === 'fixed' ? (el.fontPx || 88) : 88), overflow: 'hidden' }}>{live.currentText}</div>
+          </>
+        )}
+      </div>
+    );
+    default: return null;
+  }
 }
 
 // Presentation slide — a multi-element canvas, rendered at native 1920×1080 inside
@@ -347,9 +376,9 @@ function PresentationCanvas({ elements, backgroundPath, hideText }) {
         if (el.type === 'text') {
           const s = el.style || {};
           const shadow = s.textShadow;
-          const shadowCss = shadow
-            ? (shadow.enabled ? `${shadow.x ?? 0}px ${shadow.y ?? 2}px ${shadow.blur ?? 16}px ${shadow.color ?? '#000'}` : 'none')
-            : '0 2px 16px rgba(0,0,0,0.8), 0 0 40px rgba(0,0,0,0.6)';
+          const shadowCss = shadow?.enabled
+            ? `${shadow.x ?? 0}px ${shadow.y ?? 2}px ${shadow.blur ?? 16}px ${shadow.color ?? '#000'}`
+            : 'none';
           return (
             <div key={el.id || i} style={{ ...box, display: 'flex', flexDirection: 'column',
               justifyContent: s.verticalAlign === 'top' ? 'flex-start' : s.verticalAlign === 'bottom' ? 'flex-end' : 'center' }}>
@@ -398,7 +427,47 @@ function PresentationCanvas({ elements, backgroundPath, hideText }) {
   );
 }
 
-function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroundPath, displayMode, channelTemplate, ltFontScale = 1, transport, overlay, hideProgram }) {
+// Split-verse (compare) blocks for the monitor — mirrors the output templates'
+// stacked two-translation layout (fullscreen.js / lowerthird.js). Each block keeps the
+// shared verse style at a reduced size, with its attribution inline beneath.
+// Split-verse (compare) block — mirrors fullscreen.js / lowerthird.js: the two stacked
+// translations are auto-fit to the largest font (≤ maxFontPx) that fits maxHeightPx, so
+// short verses fill the area and long readings shrink. A thin rule separates them.
+function SplitVerses({ verses, baseStyle, maxFontPx, maxHeightPx, runs, scale = 1, attrColor }) {
+  const ref = useRef(null);
+  const [fontPx, setFontPx] = useState(maxFontPx);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    const cap = Math.max(18, maxFontPx);
+    if (!el || !maxHeightPx) { setFontPx(cap); return; }
+    el.style.fontSize = cap + 'px';
+    let best = cap;
+    if (el.scrollHeight > maxHeightPx) {
+      let lo = 18, hi = cap;
+      while (hi - lo > 1) {
+        const mid = (lo + hi) >> 1;
+        el.style.fontSize = mid + 'px';
+        if (el.scrollHeight <= maxHeightPx) lo = mid; else hi = mid;
+      }
+      best = lo;
+    }
+    setFontPx(best);
+  }, [verses, maxFontPx, maxHeightPx, scale]);
+  return (
+    <div ref={ref} style={{ ...baseStyle, fontSize: fontPx + 'px', maxHeight: maxHeightPx ? maxHeightPx + 'px' : undefined, overflow: 'hidden' }}>
+      {verses.map((b, i) => (
+        <div key={i} style={i ? { marginTop: '0.5em', paddingTop: '0.55em', borderTop: '2px solid rgba(255,255,255,0.22)' } : undefined}>
+          <div dangerouslySetInnerHTML={{ __html: renderWithRuns(b.text || '', runs, scale) }} />
+          <div style={{ fontSize: '0.42em', opacity: 0.78, fontWeight: 600, letterSpacing: '0.03em', marginTop: '0.18em', color: attrColor || undefined }}>
+            {b.attribution}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroundPath, displayMode, channelTemplate, stageChannelId, ltFontScale = 1, transport, overlay, hideProgram }) {
   const wrapRef = useRef(null);
   const [scale, setScale] = useState(0.5);
 
@@ -487,6 +556,7 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
                     copyrightRight={copyrightRight}
                     transport={transport}
                     hideText={hideText}
+                    channelId={stageChannelId}
                   />
                 ) : (
                 <>
@@ -529,8 +599,12 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
                     minHeight: 160,
                     display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
                   }}>
-                    <p style={textStyle} dangerouslySetInnerHTML={{ __html: renderWithRuns(slide.content, style?.runs, ltScale) }} />
-                    {copyrightText && (
+                    {slide.splitVerses ? (
+                      <SplitVerses verses={slide.splitVerses} baseStyle={textStyle} maxFontPx={baseFontPx} maxHeightPx={Math.round(NATIVE_H * 0.6)} runs={style?.runs} scale={ltScale} attrColor={copyrightStyle?.color} />
+                    ) : (
+                      <p style={textStyle} dangerouslySetInnerHTML={{ __html: renderWithRuns(slide.content, style?.runs, ltScale) }} />
+                    )}
+                    {copyrightText && !slide.splitVerses && (
                       <div style={{ fontSize: 18, color: 'rgba(255,255,255,0.7)', marginTop: 4, ...copyrightCss(copyrightStyle, copyrightRight ? 'right' : 'left', false), paddingLeft: undefined, paddingRight: undefined }}>
                         {copyrightText}
                       </div>
@@ -549,13 +623,17 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
                                     : 'center',
                       overflow: 'hidden',
                     }}>
-                      <p style={textStyle} dangerouslySetInnerHTML={{ __html: renderWithRuns(slide.content, style?.runs) }} />
+                      {slide.splitVerses ? (
+                        <SplitVerses verses={slide.splitVerses} baseStyle={textStyle} maxFontPx={baseFontPx} maxHeightPx={Math.round((tb.h / 100) * NATIVE_H)} runs={style?.runs} scale={1} attrColor={copyrightStyle?.color} />
+                      ) : (
+                        <p style={textStyle} dangerouslySetInnerHTML={{ __html: renderWithRuns(slide.content, style?.runs) }} />
+                      )}
                     </div>
                   );
                 })())}
 
                 {/* Attribution / copyright — matches fullscreen.css #copyright */}
-                {!hideText && !isLT && copyrightText && (
+                {!hideText && !isLT && copyrightText && !slide.splitVerses && (
                   <div style={{
                     position: 'absolute', bottom: 40, left: 0, right: 0,
                     color: 'rgba(255,255,255,0.7)', fontSize: 20,
@@ -727,6 +805,7 @@ export default function PreviewLivePanel({
             isLive={false}
             backgroundPath={previewBgPath}
             channelTemplate={channelTemplate}
+            stageChannelId={selectedChannel?.id}
             ltFontScale={ltFontScale}
           />
           <div className="flex-1 overflow-y-auto pr-xs">
@@ -757,6 +836,7 @@ export default function PreviewLivePanel({
             backgroundPath={liveBgPath}
             displayMode={displayMode}
             channelTemplate={selectedTemplate}
+            stageChannelId={selectedChannel?.id}
             ltFontScale={ltFontScale}
             transport={transport}
             overlay={monitorOverlay}

@@ -145,6 +145,20 @@ export function seedBundledThemes() {
   setSetting('themes_seeded', true);
 }
 
+// Silently pre-download the full-res background for every unresolved built-in
+// presentation photo theme so the images are cached before the user opens the picker.
+// Fire-and-forget — call once after seedBundledThemes().
+export async function preloadPresentationThemeBgs() {
+  const db = getDb();
+  const unresolved = db.prepare(
+    `SELECT id FROM themes WHERE builtin=1 AND category='presentation' AND background_id IS NULL`
+  ).all();
+  for (const { id } of unresolved) {
+    try { await resolveThemeBackground(id); }
+    catch (err) { console.warn('[theme-preload]', id, err.message); }
+  }
+}
+
 // Merge theme style_json into a section's existing style_json, preserving inline
 // text runs (per-character bold/italic/colour ranges that belong to that section).
 function mergeIntoSection(sectionStyleJson, themeStyleObj) {

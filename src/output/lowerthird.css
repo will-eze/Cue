@@ -28,6 +28,21 @@ html, body {
   white-space: pre-wrap;
 }
 
+/* Split-verse (compare) view — both translations stacked in the band, separated by
+   a thin rule so the comparison reads clearly. Font size is auto-fit inline by JS. */
+#text.split .split-verse + .split-verse {
+  margin-top: 0.45em;
+  padding-top: 0.45em;
+  border-top: 2px solid rgba(255,255,255,0.22);
+}
+#text.split .split-verse-attr {
+  font-size: 0.4em;
+  opacity: 0.78;
+  margin-top: 0.12em;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
 #text.logo-mode {
   display: flex;
   align-items: center;

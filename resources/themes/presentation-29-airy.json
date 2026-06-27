@@ -1,0 +1,19 @@
+{
+  "name": "Airy",
+  "category": "presentation",
+  "sort_order": 89,
+  "style": {
+    "kind": "pres-theme",
+    "bgRef": "library/unsplash-17_tB-oI0ao.jpg",
+    "bg": "linear-gradient(135deg,#141820,#0e1220)",
+    "scrim": 0.40,
+    "display": "Jost",
+    "body": "Inter",
+    "title": "#f8f8f8",
+    "sub": "#b8c8d0",
+    "bodyColor": "#ccd4d8",
+    "accent": "#90aec0",
+    "accentText": "#0e1220",
+    "kicker": "#7898b0"
+  }
+}

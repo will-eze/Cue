@@ -135,6 +135,13 @@ export function registerOutputIpc() {
   ipcMain.handle('output:stage:schedule:add',    (_e, m)  => outputManager.scheduleStageMessage(m));
   ipcMain.handle('output:stage:schedule:remove', (_e, id) => outputManager.unscheduleStageMessage(id));
 
+  // Customisable WYSIWYG stage layout (per channel) + reusable named presets.
+  ipcMain.handle('output:stage:layout:get', (_e, channelId)         => outputManager.getStageLayout(channelId));
+  ipcMain.handle('output:stage:layout:set', (_e, channelId, layout) => outputManager.setStageLayout(channelId, layout));
+  ipcMain.handle('output:stage:preset:list',   ()        => outputManager.getStagePresets());
+  ipcMain.handle('output:stage:preset:save',   (_e, p)   => outputManager.saveStagePreset(p));
+  ipcMain.handle('output:stage:preset:delete', (_e, id)  => outputManager.deleteStagePreset(id));
+
   // ── Lower-third appearance ─────────────────────────────────────────────────
   ipcMain.handle('output:lowerthird:set-font-scale', (_e, pct) => outputManager.setLowerthirdFontScale(pct));
 

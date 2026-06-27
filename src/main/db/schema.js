@@ -755,6 +755,19 @@ const migrations = [
       END;
     `);
   },
+
+  // v27 — Customisable WYSIWYG stage display. A stage/confidence channel's layout is
+  // now a free-form set of positioned elements (current text, next text, clock, timer,
+  // elapsed timer, video countdown, message, static text) instead of the old fixed
+  // skeleton. The layout is stored PER CHANNEL as a JSON document; NULL means "use the
+  // built-in default layout" (an inset, guttered arrangement of the classic elements).
+  // Reusable named layouts live in the `stage_presets` setting (a plain ALTER, no table
+  // rebuild needed).
+  function v27(database) {
+    database.exec(`
+      ALTER TABLE output_channels ADD COLUMN stage_layout_json TEXT;
+    `);
+  },
 ];
 
 function runMigrations() {

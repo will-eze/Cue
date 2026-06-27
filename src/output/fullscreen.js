@@ -51,8 +51,53 @@ function renderWithRuns(text, runs) {
   return html;
 }
 
-function buildShadow(shadow) {
-  if (!shadow) return '0 2px 16px rgba(0,0,0,0.8), 0 0 40px rgba(0,0,0,0.6)';
+// List-style / paragraph-spacing wrapper around renderWithRuns. Mirrors the React
+// version in SongEditor.jsx — keep the two in sync when changing the logic.
+function renderTextContent(text, runs, style) {
+  const listStyle = style?.listStyle;
+  const bulletSpacing = style?.bulletSpacing;
+  const paragraphSpacing = style?.paragraphSpacing;
+
+  if (listStyle && listStyle !== 'none') {
+    const tag = listStyle === 'decimal' ? 'ol' : 'ul';
+    const lines = (text || '').split('\n');
+    let curPos = 0;
+    const items = [];
+    for (const line of lines) {
+      const lineStart = curPos;
+      const lineEnd = curPos + line.length;
+      curPos += line.length + 1;
+      if (!line.trim()) continue;
+      const lineRuns = (runs || [])
+        .filter((r) => r.end > lineStart && r.start < lineEnd)
+        .map((r) => ({ ...r, start: Math.max(0, r.start - lineStart), end: Math.min(line.length, r.end - lineStart) }));
+      const bsStyle = bulletSpacing ? `margin-bottom:${bulletSpacing}em` : '';
+      items.push(`<li style="${bsStyle}">${renderWithRuns(line, lineRuns)}</li>`);
+    }
+    return `<${tag} style="padding-left:1.5em;margin:0;list-style-type:${listStyle}">${items.join('')}</${tag}>`;
+  }
+
+  if (paragraphSpacing) {
+    const parts = (text || '').split('\n\n');
+    let curPos = 0;
+    return parts.map((para, i) => {
+      const paraStart = curPos;
+      curPos += para.length + 2;
+      const paraRuns = (runs || [])
+        .filter((r) => r.end > paraStart && r.start < paraStart + para.length)
+        .map((r) => ({ ...r, start: Math.max(0, r.start - paraStart), end: Math.min(para.length, r.end - paraStart) }));
+      const mbStyle = i < parts.length - 1 ? `margin-bottom:${paragraphSpacing}em` : '';
+      return `<div style="${mbStyle}">${renderWithRuns(para, paraRuns)}</div>`;
+    }).join('');
+  }
+
+  return renderWithRuns(text, runs);
+}
+
+// noDefault suppresses the song readability fallback for presentation elements,
+// where shadow Off should mean truly no shadow (not a dark auto-shadow).
+function buildShadow(shadow, noDefault = false) {
+  if (!shadow) return noDefault ? 'none' : '0 2px 16px rgba(0,0,0,0.8), 0 0 40px rgba(0,0,0,0.6)';
   if (!shadow.enabled) return 'none';
   return `${shadow.x ?? 0}px ${shadow.y ?? 2}px ${shadow.blur ?? 16}px ${shadow.color ?? '#000'}`;
 }
@@ -101,6 +146,27 @@ function applyStyle(s) {
   textEl.style.wordBreak  = 'break-word';
   textEl.style.width      = '100%';
 }
+
+// Split-verse auto-fit: binary-search the font size so the stacked translations fill
+// — but never overflow — the text box. `maxPx` caps it at the authored scripture size
+// so a single short verse pair never blows up larger than normal scripture.
+let lastSplitMax = 0;
+function fitSplitText(maxPx) {
+  const maxH = textWrap.clientHeight;
+  const cap = Math.max(22, maxPx);
+  if (!maxH) { textEl.style.fontSize = cap + 'px'; return; }
+  textEl.style.fontSize = cap + 'px';
+  if (textEl.scrollHeight <= maxH) return;
+  let lo = 22, hi = cap;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    textEl.style.fontSize = mid + 'px';
+    if (textEl.scrollHeight <= maxH) lo = mid; else hi = mid;
+  }
+  textEl.style.fontSize = lo + 'px';
+}
+// Refit a live split verse when the output window is resized (the box height changes).
+window.addEventListener('resize', () => { if (lastSplitMax) fitSplitText(lastSplitMax); });
 
 function showLogo(p, scaleMode) {
   if (!p) { logoWrap.innerHTML = ''; logoWrap.className = ''; return; }
@@ -247,7 +313,7 @@ function textInnerCss(s) {
     'justify-content:' + (s.verticalAlign === 'top' ? 'flex-start' : s.verticalAlign === 'bottom' ? 'flex-end' : 'center'),
     'text-align:' + (s.align || 'center'),
     'font-weight:' + (s.bold ? '700' : '400'),
-    'text-shadow:' + buildShadow(s.textShadow),
+    'text-shadow:' + buildShadow(s.textShadow, true),
   ];
   if (s.fontFamily)    css.push('font-family:' + String(s.fontFamily).replace(/"/g, "'"));
   if (s.fontSize)      css.push('font-size:' + Number(s.fontSize) + 'px');
@@ -282,7 +348,7 @@ function elementHtml(el) {
   if (el.z != null)       box.push(`z-index:${el.z}`);
   let inner = '';
   if (el.type === 'text') {
-    inner = `<div class="cue-el-text" style="${textInnerCss(el.style)}"><div style="width:100%">${renderWithRuns(el.text || '', el.style && el.style.runs)}</div></div>`;
+    inner = `<div class="cue-el-text" style="${textInnerCss(el.style)}"><div style="width:100%">${renderTextContent(el.text || '', el.style && el.style.runs, el.style)}</div></div>`;
   } else if (el.type === 'image' && el.path) {
     const url = pathToUrl(el.path);
     const fit = el.fit === 'cover' ? 'cover' : 'contain';
@@ -376,7 +442,27 @@ function renderSlide(payload) {
   hideLogo();
   setBackground(backgroundPath, styleJson?.bgCss);
   applyStyle(styleJson);
-  textEl.innerHTML = renderWithRuns(text || '', styleJson?.runs);
+
+  // Split-verse (compare) view: one verse, two translations stacked. Each block keeps
+  // the global verse style; its attribution rides inline (the bottom #copyright stays
+  // empty so it doesn't collide with the lower block).
+  const sv = payload.scriptureVerses;
+  if (Array.isArray(sv) && sv.length > 1) {
+    textEl.classList.add('split');
+    textEl.innerHTML = sv.map((b) =>
+      `<div class="split-verse"><div class="split-verse-body">${renderWithRuns(b.text || '', styleJson?.runs)}</div>`
+      + `<div class="split-verse-attr">${esc(b.attribution || '')}</div></div>`).join('');
+    copyright.textContent = '';
+    // Auto-fit instead of a fixed shrink: pick the LARGEST font (up to the authored
+    // scripture size) at which both translations still fit the verse box. Short verses
+    // keep the full size and fill the screen; only long readings shrink.
+    fitSplitText(Number(styleJson?.fontSize) || 72);
+    lastSplitMax = Number(styleJson?.fontSize) || 72;
+    return;
+  }
+  lastSplitMax = 0;
+  textEl.classList.remove('split');
+  textEl.innerHTML = renderTextContent(text || '', styleJson?.runs, styleJson);
   copyright.textContent = copy || '';
   // Scripture attribution ("John 1:1 (KJV)") sits bottom-right (stylable); song copyright centred.
   applyCopyrightStyle(copyright, payload.copyrightStyle, payload.copyrightAlign === 'right' ? 'right' : 'center');

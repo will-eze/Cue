@@ -68,11 +68,40 @@ function fetchSlideMedia(db, slideRows) {
 }
 
 export function list() {
-  return getDb().prepare(`
-    SELECT p.*, (SELECT COUNT(*) FROM presentation_slides s WHERE s.presentation_id = p.id) AS slide_count
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT p.*,
+           (SELECT COUNT(*) FROM presentation_slides s WHERE s.presentation_id = p.id) AS slide_count,
+           (SELECT s.elements_json FROM presentation_slides s WHERE s.presentation_id = p.id ORDER BY s.order_index LIMIT 1) AS first_slide_elements_json,
+           (SELECT s.background_id FROM presentation_slides s WHERE s.presentation_id = p.id ORDER BY s.order_index LIMIT 1) AS first_slide_background_id
     FROM presentations p
     ORDER BY p.updated_at DESC, p.id DESC
   `).all();
+
+  // Resolve media paths for the first-slide thumbnail (background + image elements).
+  const mediaIds = new Set();
+  for (const r of rows) {
+    if (r.first_slide_background_id != null) mediaIds.add(Number(r.first_slide_background_id));
+    for (const id of collectImageMediaIds(r.first_slide_elements_json)) mediaIds.add(id);
+  }
+  const mediaMap = new Map();
+  if (mediaIds.size) {
+    const arr = [...mediaIds];
+    const ph = arr.map(() => '?').join(',');
+    for (const a of db.prepare(`SELECT * FROM media_assets WHERE id IN (${ph})`).all(...arr)) {
+      mediaMap.set(a.id, a);
+    }
+  }
+
+  return rows.map((r) => {
+    const elements = parseElements(r.first_slide_elements_json);
+    const resolved = resolveElements(elements, mediaMap);
+    const bgPath = r.first_slide_background_id != null
+      ? (mediaMap.get(Number(r.first_slide_background_id))?.path ?? null)
+      : null;
+    const { first_slide_elements_json: _j, first_slide_background_id: _b, ...rest } = r;
+    return { ...rest, first_slide_elements: resolved, first_slide_bg_path: bgPath };
+  });
 }
 
 export function get(id) {

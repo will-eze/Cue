@@ -12,4 +12,7 @@ export function registerThemesIpc() {
   ipcMain.handle('themes:applyToSong',    async (_e, themeId, songId, setBg)    => { if (setBg) await themes.resolveThemeBackground(themeId); return themes.applyToSong(themeId, songId, setBg); });
   ipcMain.handle('themes:applyToRundown', async (_e, themeId, serviceId, setBg) => { if (setBg) await themes.resolveThemeBackground(themeId); return themes.applyToRundown(themeId, serviceId, setBg); });
   ipcMain.handle('themes:applyToAllSongs',async (_e, themeId, setBg)            => { if (setBg) await themes.resolveThemeBackground(themeId); return themes.applyToAllSongs(themeId, setBg); });
+  // Resolve a photo-backed presentation theme: download bgRef into the media library
+  // (no-op if already resolved) and return the updated theme row with background_id set.
+  ipcMain.handle('themes:resolveBackground', async (_e, themeId)                => { await themes.resolveThemeBackground(themeId); return themes.get(themeId); });
 }

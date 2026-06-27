@@ -1,0 +1,21 @@
+{
+  "name": "Cosmos",
+  "category": "presentation",
+  "sort_order": 84,
+  "style": {
+    "kind": "pres-theme",
+    "bgRef": "library/unsplash-phIFdC6lA4E.jpg",
+    "bg": "radial-gradient(ellipse at 40% 30%,#0c1428,#06090f)",
+    "scrim": 0.38,
+    "display": "Cinzel",
+    "body": "Jost",
+    "quoteFont": "Cinzel",
+    "title": "#ffffff",
+    "sub": "#b8d0e8",
+    "bodyColor": "#d0e0f0",
+    "accent": "#9bc4e8",
+    "accentText": "#060810",
+    "kicker": "#7aaece",
+    "titleUpper": true
+  }
+}

@@ -108,6 +108,7 @@ function roleStyle(tokens, role, sp = {}) {
 }
 
 const bgShape = (fill) => ({ id: eid(), type: 'shape', shape: 'rect', x: 0, y: 0, w: 100, h: 100, z: 0, rotation: 0, opacity: 1, fill: fill || '#0a0e12', stroke: { color: '', width: 0 }, radius: 0, role: 'background' });
+const bgImageEl = (mediaId, path) => ({ id: eid(), type: 'image', x: 0, y: 0, w: 100, h: 100, z: 0, rotation: 0, opacity: 1, fit: 'cover', mediaId, path: path || null, role: 'background' });
 const scrimShape = (op) => ({ id: eid(), type: 'shape', shape: 'rect', x: 0, y: 0, w: 100, h: 100, z: 1, rotation: 0, opacity: Math.max(0, Math.min(1, op)), fill: '#000000', stroke: { color: '', width: 0 }, radius: 0, role: 'scrim' });
 
 function specElement(sp, tokens, z) {
@@ -121,12 +122,18 @@ function specElement(sp, tokens, z) {
     role: sp.role, text: sp.text || DEFAULT_TEXT[sp.role] || '', style: roleStyle(tokens, sp.role, sp) };
 }
 
-// Compose a slide's elements for a theme × layout. Background baked as a full-bleed
-// gradient/solid shape (slides store only a media-FK bg), optional scrim, then roles.
-export function buildThemeSlide(tokens, layoutId) {
+// Compose a slide's elements for a theme × layout. Background is either a full-bleed
+// gradient/solid shape (gradient themes) or a media image element (photo themes when
+// bgMedia = {id, path} is provided). Photo themes fall back to tokens.bg gradient for
+// previews rendered before the background has been downloaded.
+export function buildThemeSlide(tokens, layoutId, bgMedia) {
   const layout = PRES_LAYOUTS.find((l) => l.id === layoutId) || PRES_LAYOUTS[0];
   const els = [];
-  if (tokens?.bg) els.push(bgShape(tokens.bg)); // omit for "No theme" (PLAIN_THEME)
+  if (bgMedia) {
+    els.push(bgImageEl(bgMedia.id, bgMedia.path));
+  } else if (tokens?.bg) {
+    els.push(bgShape(tokens.bg)); // gradient theme, or photo-theme preview fallback
+  }
   if (tokens?.scrim) els.push(scrimShape(tokens.scrim));
   let z = 2;
   for (const sp of layout.specs) els.push(specElement(sp, tokens || {}, z++));
@@ -134,24 +141,26 @@ export function buildThemeSlide(tokens, layoutId) {
 }
 
 // Best-effort: identify which theme a slide's composed elements were built from, by
-// matching the baked background fill (primary signal) plus accent/font as tiebreakers
-// against each theme's tokens. Returns the matching theme id, or null when there's no
-// confident match (e.g. a "No theme" slide, which has no baked background). Lets the
-// new-slide picker default to the deck's current theme. `themes` = [{ id, name, tokens }].
+// matching the baked background (gradient fill or photo mediaId) plus accent/font as
+// tiebreakers. Returns the matching theme id, or null when there's no confident match.
+// Lets the new-slide picker default to the deck's current theme.
+// `themes` = [{ id, name, tokens, background_id? }].
 export function detectThemeId(elements, themes) {
   if (!Array.isArray(themes) || !themes.length) return null;
   const els = elements || [];
   const bgEl = els.find((e) => e.role === 'background');
   const accentEl = els.find((e) => e.role === 'accent');
   const textEl = els.find((e) => e.type === 'text' && e.role);
-  const bg = bgEl?.fill ?? null;
+  const bgFill = bgEl?.type === 'shape' ? (bgEl.fill ?? null) : null;
+  const bgMediaId = bgEl?.type === 'image' ? bgEl.mediaId : null;
   const accent = accentEl ? (accentEl.fill || accentEl.stroke?.color || null) : null;
   const font = textEl?.style?.fontFamily || null;
   let best = null, bestScore = 0;
   for (const t of themes) {
     const tk = t.tokens || {};
     let score = 0;
-    if (bg && tk.bg && tk.bg === bg) score += 2;
+    if (bgMediaId && t.background_id && Number(t.background_id) === Number(bgMediaId)) score += 3;
+    else if (bgFill && tk.bg && tk.bg === bgFill) score += 2;
     if (accent && tk.accent && tk.accent === accent) score += 1;
     if (font && (tk.display === font || tk.body === font)) score += 1;
     if (score > bestScore) { bestScore = score; best = t.id; }
@@ -159,13 +168,19 @@ export function detectThemeId(elements, themes) {
   return bestScore > 0 ? best : null;
 }
 
-// Re-skin existing slide elements with a theme's tokens: swap the background, recolour
-// accents, and restyle role-tagged text (font/colour/case) while PRESERVING content,
+// Re-skin existing slide elements with a theme's tokens: swap the background (gradient
+// or photo), recolour accents, and restyle role-tagged text while PRESERVING content,
 // sizes and positions. Untagged (hand-made) elements are left untouched.
-export function reskinSlide(tokens, elements) {
+// bgMedia = { id, path } when the theme is photo-backed and has been resolved.
+export function reskinSlide(tokens, elements, bgMedia) {
   let hasBg = false;
   const out = (elements || []).map((el) => {
-    if (el.role === 'background') { hasBg = true; return { ...el, fill: tokens.bg || el.fill }; }
+    if (el.role === 'background') {
+      hasBg = true;
+      if (bgMedia) return bgImageEl(bgMedia.id, bgMedia.path);
+      if (tokens.bg) return bgShape(tokens.bg); // gradient theme replaces any bg
+      return el; // no bg change (PLAIN_THEME, or photo theme not yet resolved)
+    }
     if (el.role === 'scrim') return { ...el, opacity: Math.max(0, Math.min(1, tokens.scrim || 0)) };
     if (el.role === 'accent') {
       return el.type === 'shape' && el.shape === 'line'
@@ -178,6 +193,9 @@ export function reskinSlide(tokens, elements) {
     }
     return el;
   });
-  if (!hasBg) out.unshift(bgShape(tokens.bg));
+  if (!hasBg) {
+    if (bgMedia) out.unshift(bgImageEl(bgMedia.id, bgMedia.path));
+    else if (tokens.bg) out.unshift(bgShape(tokens.bg));
+  }
   return out;
 }

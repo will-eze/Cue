@@ -3,14 +3,17 @@ import { FixedSizeList as List } from 'react-window';
 import SongPreviewModal from '../components/SongPreviewModal';
 import SongImportModal from '../components/SongImportModal';
 import SongListImportModal from '../components/SongListImportModal';
+import SongScrapeModal from '../components/SongScrapeModal';
 import SongEditor from '../components/SongEditor';
 import ContextMenu from '../components/ContextMenu';
 import ScripturePanel from './ScripturePanel';
 import GraphicsPanel from './GraphicsPanel';
 import ScenesPanel from './ScenesPanel';
 import MediaThumb from '../components/MediaThumb';
+import { StaticSlide } from '../components/SlideElements';
 import PresentationEditor from '../components/PresentationEditor';
 import PptxImportModal from '../components/PptxImportModal';
+import SermonImportModal from '../components/SermonImportModal';
 import AddYouTubeModal from '../components/AddYouTubeModal';
 import { mediaUrl } from '../utils/mediaUrl';
 import { looksLikeYouTube } from '../utils/youtube';
@@ -230,11 +233,13 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
   const [editPresentation, setEditPresentation] = useState(null); // null=closed, {}=new, {id}=edit
   const [presContext, setPresContext] = useState(null);
   const [pptxImport, setPptxImport] = useState(false);
+  const [sermonImport, setSermonImport] = useState(false);
   const [ytModal, setYtModal] = useState(false);
   const [ytInitialUrl, setYtInitialUrl] = useState('');     // pre-fill for the modal (clipboard chip)
   const [clipboardYt, setClipboardYt] = useState(null);     // YouTube link detected in the clipboard
   const clipboardSeenRef = useRef(null);                    // last clipboard link we already offered/dismissed
   const [songListModal, setSongListModal] = useState(false);
+  const [scrapeModal, setScrapeModal] = useState(false);
 
   useEffect(() => { loadSongs(); window.cue.tags.list().then(setTags); }, [refreshTick]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (tab === 'media') loadMedia(); }, [tab, activeFolderId]);
@@ -514,6 +519,16 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
                     </button>
                     <div className="my-xs border-t border-outline-variant/20" />
                     <button
+                      onClick={() => { setImportMenuOpen(false); setScrapeModal(true); }}
+                      className="w-full flex items-start gap-sm px-md py-sm text-left hover:bg-surface-variant transition-colors cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-[16px] text-primary mt-[1px]">travel_explore</span>
+                      <span className="flex flex-col">
+                        <span className="text-body-md text-on-surface">Find Song Online…</span>
+                        <span className="text-label-sm font-label-sm text-on-surface-variant tracking-normal normal-case">Search the web for lyrics and add a song</span>
+                      </span>
+                    </button>
+                    <button
                       onClick={() => { setImportMenuOpen(false); setSongListModal(true); }}
                       className="w-full flex items-start gap-sm px-md py-sm text-left hover:bg-surface-variant transition-colors cursor-pointer"
                     >
@@ -578,6 +593,14 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
           )}
           {tab === 'presentations' && (
             <>
+              <button
+                onClick={() => setSermonImport(true)}
+                title="Turn a sermon document into a presentation"
+                className="bg-surface-container border border-outline-variant/40 text-on-surface px-md py-xs rounded text-label-sm font-label-sm hover:bg-surface-container-high active:scale-95 transition-all cursor-pointer flex items-center gap-xs"
+              >
+                <span className="material-symbols-outlined text-[14px]">menu_book</span>
+                Sermon to Slides
+              </button>
               <button
                 onClick={() => setPptxImport(true)}
                 title="Import a PowerPoint (.pptx) file"
@@ -717,22 +740,13 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
           ) : (
             <div className="grid gap-md" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
               {presentations.map((p) => (
-                <button
+                <PresentationCard
                   key={p.id}
-                  onClick={() => onAddPresentation?.(p.id)}
-                  onDoubleClick={() => setEditPresentation({ id: p.id })}
+                  pres={p}
+                  onEdit={() => setEditPresentation({ id: p.id })}
+                  onAddToRundown={() => onAddPresentation?.(p.id)}
                   onContextMenu={(e) => { e.preventDefault(); setPresContext({ x: e.clientX, y: e.clientY, pres: p }); }}
-                  title="Click to add to rundown · Double-click to edit"
-                  className="group text-left rounded-lg border border-outline-variant/30 bg-surface-container hover:border-primary/50 overflow-hidden transition-all cursor-pointer"
-                >
-                  <div className="relative bg-black flex items-center justify-center" style={{ aspectRatio: '16 / 9' }}>
-                    <span className="material-symbols-outlined text-outline-variant text-4xl group-hover:text-primary transition-colors">slideshow</span>
-                  </div>
-                  <div className="px-sm py-xs">
-                    <p className="text-body-md text-on-surface truncate">{p.title}</p>
-                    <p className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wide">{p.slide_count} slide{p.slide_count === 1 ? '' : 's'}</p>
-                  </div>
-                </button>
+                />
               ))}
             </div>
           )}
@@ -754,6 +768,12 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
         <PptxImportModal
           onClose={() => setPptxImport(false)}
           onDone={(id) => { setPptxImport(false); loadPresentations(); setEditPresentation({ id }); }}
+        />
+      )}
+      {sermonImport && (
+        <SermonImportModal
+          onClose={() => setSermonImport(false)}
+          onDone={(id) => { setSermonImport(false); loadPresentations(); setEditPresentation({ id }); }}
         />
       )}
       {ytModal && (
@@ -797,6 +817,11 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
           onCancel={() => setSongListModal(false)}
           onAddManyToRundown={onAddManyToRundown} />
       )}
+      {scrapeModal && (
+        <SongScrapeModal
+          onClose={() => setScrapeModal(false)}
+          onSaved={() => { setScrapeModal(false); loadSongs(); window.cue.tags.list().then(setTags); onSongSave?.(); }} />
+      )}
       {songContextMenu && (
         <ContextMenu
           x={songContextMenu.x} y={songContextMenu.y}
@@ -811,6 +836,47 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
           ]}
         />
       )}
+    </div>
+  );
+}
+
+// Single-click opens the editor; double-click adds to rundown without also firing the
+// single-click action (timer-based disambiguation, same pattern as SongRow / MediaGrid).
+function PresentationCard({ pres, onEdit, onAddToRundown, onContextMenu }) {
+  const clickTimer = useRef(null);
+  useEffect(() => () => { if (clickTimer.current) clearTimeout(clickTimer.current); }, []);
+
+  function handleClick() {
+    if (clickTimer.current) {
+      clearTimeout(clickTimer.current);
+      clickTimer.current = null;
+      onAddToRundown();
+    } else {
+      clickTimer.current = setTimeout(() => {
+        clickTimer.current = null;
+        onEdit();
+      }, 220);
+    }
+  }
+
+  return (
+    <div
+      onClick={handleClick}
+      onContextMenu={onContextMenu}
+      title="Click to edit · Double-click to add to rundown"
+      className="group text-left rounded-lg border border-outline-variant/30 bg-surface-container hover:border-primary/50 overflow-hidden transition-all cursor-pointer"
+    >
+      {pres.first_slide_elements?.length ? (
+        <StaticSlide elements={pres.first_slide_elements} backgroundPath={pres.first_slide_bg_path} />
+      ) : (
+        <div className="relative bg-black flex items-center justify-center" style={{ aspectRatio: '16 / 9' }}>
+          <span className="material-symbols-outlined text-outline-variant text-4xl group-hover:text-primary transition-colors">slideshow</span>
+        </div>
+      )}
+      <div className="px-sm py-xs">
+        <p className="text-body-md text-on-surface truncate">{pres.title}</p>
+        <p className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wide">{pres.slide_count} slide{pres.slide_count === 1 ? '' : 's'}</p>
+      </div>
     </div>
   );
 }

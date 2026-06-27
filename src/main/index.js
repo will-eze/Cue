@@ -25,7 +25,7 @@ import { autoSnapshot } from './db/backup.js';
 import * as remoteServer from './remote/server.js';
 import { seedBundledBibles } from './db/bible.js';
 import { seedGhsHymnal } from './db/songs.js';
-import { seedBundledThemes } from './db/themes.js';
+import { seedBundledThemes, preloadPresentationThemeBgs } from './db/themes.js';
 import * as outputManager from './output/manager.js';
 import { isAvailable as ndiAvailable } from './output/ndi.js';
 import { thumbCachePath, getThumbnailDir } from './db/media.js';
@@ -307,6 +307,7 @@ app.whenReady().then(async () => {
   seedBundledBibles();
   seedGhsHymnal();
   seedBundledThemes();
+  setImmediate(() => preloadPresentationThemeBgs().catch(() => {}));
 
   // Ephemeral YouTube downloads never survive a session. Wipe any leftover files
   // from a previous run (e.g. a crash where will-quit never fired), and drop the

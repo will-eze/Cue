@@ -1,0 +1,22 @@
+{
+  "name": "Summit",
+  "category": "presentation",
+  "sort_order": 81,
+  "style": {
+    "kind": "pres-theme",
+    "bgRef": "library/unsplash-v7daTKlZzaw.jpg",
+    "bg": "linear-gradient(160deg,#1a1508,#2c2212)",
+    "scrim": 0.45,
+    "display": "Cinzel",
+    "body": "Cormorant Garamond",
+    "quoteFont": "Cormorant Garamond",
+    "title": "#f5f0e8",
+    "sub": "#d4c9ac",
+    "bodyColor": "#e8dfc8",
+    "accent": "#c9a96e",
+    "accentText": "#1a1508",
+    "kicker": "#c9a96e",
+    "titleUpper": true,
+    "serif": true
+  }
+}

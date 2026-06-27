@@ -117,6 +117,9 @@ export default function OperatorView({
   const [scriptureStyle, setScriptureStyle] = useState(null);     // verse style_json | null
   const [scriptureRefStyle, setScriptureRefStyle] = useState(null); // reference style_json | null
   const [scriptureBgPath, setScriptureBgPath] = useState(null);   // resolved media path | null
+  // Split (compare) view — show every live verse in a SECOND translation alongside
+  // the primary. Toggled in the Scriptures tab; read live like the styles above.
+  const [scriptureSplit, setScriptureSplit] = useState({ enabled: false, versionId: null, abbrev: '', name: '' });
   const [slideBgPath, setSlideBgPath] = useState(null);           // global presentation/slide bg | null
   const [songGlobalBgPath, setSongGlobalBgPath] = useState(null); // live global song default bg | null
   const [ltFontScale, setLtFontScale] = useState(1);              // global lower-third font scale (fraction)
@@ -140,6 +143,17 @@ export default function OperatorView({
     // Global lower-third font scale (percent → fraction); mirrors output/lowerthird.js.
     const ltPct = Number(await window.cue.settings.get('lowerthird_font_scale'));
     setLtFontScale(isFinite(ltPct) && ltPct > 0 ? ltPct / 100 : 1);
+    // Split-verse (compare) setting — a second translation shown alongside the live
+    // verse. Resolve the chosen version's abbrev/name once so the live path doesn't.
+    const splitEnabled = (await window.cue.settings.get('scripture_split_enabled')) === '1';
+    const splitVersionId = Number(await window.cue.settings.get('scripture_split_version_id')) || null;
+    let split = { enabled: splitEnabled, versionId: splitVersionId, abbrev: '', name: '' };
+    if (splitVersionId) {
+      const sv = (await window.cue.bible.versions()).find((x) => x.id === splitVersionId);
+      if (sv) { split.abbrev = sv.abbrev; split.name = sv.name; }
+      else split.versionId = null; // version was deleted — fall back to single
+    }
+    setScriptureSplit(split);
   }, []);
   useEffect(() => { loadScriptureDefaults(); }, [loadScriptureDefaults, bgRefreshTick]);
 
@@ -189,9 +203,12 @@ export default function OperatorView({
       bookNum: passage.bookNum, bookName: passage.bookName, chapter: v0.chapter, verse: v0.verse, text: v0.text,
     };
   };
+  // Always call the LATEST handleScriptureLive (it closes over live scripture style /
+  // background / split state, which load after mount) — mirrors shortcutRef below.
+  const scriptureLiveRef = useRef(null);
   const goLiveFromPassage = useCallback((passage) => {
     const v = passageToVerse(passage);
-    if (v) handleScriptureLive(v);
+    if (v) scriptureLiveRef.current?.(v);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -638,6 +655,9 @@ export default function OperatorView({
       // Scripture attribution sits bottom-right; song copyright stays centred.
       copyrightAlign: item.item_type === 'scripture' ? 'right' : undefined,
       copyrightStyle: item.item_type === 'scripture' ? scriptureRefStyle : undefined,
+      // Split (compare) view baked into a rundown scripture item — output templates
+      // render the two stacked translations; null for everything else.
+      scriptureVerses: slide.splitVerses || null,
       backgroundPath: resolveBackground(item),
       styleJson: slide.style_json ? JSON.parse(slide.style_json) : null,
     };
@@ -798,7 +818,7 @@ export default function OperatorView({
 
   // Build a synthetic single-verse scripture item (the same shape the monitors +
   // buildPayload expect) — shared by the live and preview-staging paths.
-  function makeScriptureItem(v, idSuffix) {
+  function makeScriptureItem(v, idSuffix, splitVerses) {
     const ref = `${v.bookName} ${v.chapter}:${v.verse}`;
     const slide = {
       id: `scripture-${idSuffix}-${v.bookNum}-${v.chapter}-${v.verse}`,
@@ -806,15 +826,37 @@ export default function OperatorView({
       content: v.text,
       copyright: `${ref} (${v.versionAbbrev})`,
       style_json: null,
+      // When split (compare) is active, carry both translations so the live monitor
+      // mirrors the audience output. Null in the normal single-version case.
+      splitVerses: splitVerses || null,
     };
     return { id: `__scripture_${idSuffix}__`, item_type: 'scripture', scriptureSlides: [slide], scripture: { reference: ref } };
+  }
+
+  // Resolve the same verse in the split (secondary) translation. Returns the two-block
+  // [{text,attribution}] array, or null when split is off / unavailable so callers fall
+  // back to the single-version path. Verses are matched by number across translations.
+  async function resolveSplitVerses(v) {
+    const sp = scriptureSplit;
+    if (!sp.enabled || !sp.versionId || sp.versionId === v.versionId) return null;
+    const ref = `${v.bookName} ${v.chapter}:${v.verse}`;
+    try {
+      const data = await window.cue.bible.verses(sp.versionId, v.bookNum, v.chapter);
+      const sv = data?.verses?.find((x) => x.verse === v.verse);
+      if (!sv || !sv.text) return null;
+      return [
+        { text: v.text, attribution: `${ref} (${v.versionAbbrev})` },
+        { text: sv.text, attribution: `${ref} (${sp.abbrev})` },
+      ];
+    } catch { return null; }
   }
 
   // Send a single scripture verse live, straight from the Scriptures tab. This is
   // a non-rundown live source, so it clears any live rundown item and renders the
   // live monitor from a synthetic scripture item.
-  function handleScriptureLive(v) {
+  async function handleScriptureLive(v) {
     const ref = `${v.bookName} ${v.chapter}:${v.verse}`;
+    const splitVerses = await resolveSplitVerses(v);
     const payload = {
       type: 'content',
       sectionLabel: ref,
@@ -827,13 +869,17 @@ export default function OperatorView({
       copyrightStyle: scriptureRefStyle,
       backgroundPath: scriptureBgPath,
       styleJson: scriptureStyle,
+      // Two-translation compare view; output templates render stacked blocks when
+      // present, else fall back to `text`/`copyright`. Live monitor mirrors via the item.
+      scriptureVerses: splitVerses,
     };
     window.cue.output.go(payload);
     setPreviewScripture(null);
-    setLiveScripture({ item: makeScriptureItem(v, 'live') });
+    setLiveScripture({ item: makeScriptureItem(v, 'live', splitVerses) });
     setLiveItemId(null);
     setLiveSlideIdx(0);
   }
+  scriptureLiveRef.current = handleScriptureLive;
 
   // Stage a detected verse into the PREVIEW monitor (high-confidence reference,
   // auto-action 'preview'). GO promotes it to live via handleScriptureLive.

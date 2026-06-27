@@ -41,6 +41,11 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, detectAr
   const [showOnline, setShowOnline] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
+  // Split (compare) view — show every live verse in a second translation alongside
+  // the primary. Persisted to settings; OperatorView reads it live to build the payload.
+  const [splitEnabled, setSplitEnabled] = useState(false);
+  const [splitVersionId, setSplitVersionId] = useState(null);
+
   const bookInputRef = useRef(null);
   const chapterInputRef = useRef(null);
   const verseInputRef = useRef(null);
@@ -57,6 +62,39 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, detectAr
   }, []);
 
   useEffect(() => { loadVersions(); }, [loadVersions]);
+
+  // Load the persisted split-view setting once on mount.
+  useEffect(() => {
+    (async () => {
+      setSplitEnabled((await window.cue.settings.get('scripture_split_enabled')) === '1');
+      setSplitVersionId(Number(await window.cue.settings.get('scripture_split_version_id')) || null);
+    })();
+  }, []);
+
+  // Persist split state and notify OperatorView (same reload hook as the style editor)
+  // so the change reaches the live payload immediately.
+  const persistSplit = useCallback(async (enabled, secondaryId) => {
+    await window.cue.settings.set('scripture_split_enabled', enabled ? '1' : '');
+    await window.cue.settings.set('scripture_split_version_id', secondaryId != null ? String(secondaryId) : '');
+    onStyleSaved?.();
+  }, [onStyleSaved]);
+
+  function toggleSplit() {
+    // Default the secondary to the first translation that isn't the active one.
+    const next = !splitEnabled;
+    let secondary = splitVersionId;
+    if (next && (secondary == null || secondary === versionId)) {
+      secondary = versions.find((v) => v.id !== versionId)?.id ?? null;
+      setSplitVersionId(secondary);
+    }
+    setSplitEnabled(next);
+    persistSplit(next, secondary);
+  }
+
+  function changeSplitVersion(id) {
+    setSplitVersionId(id);
+    persistSplit(splitEnabled, id);
+  }
 
   // Focus the book field as soon as the Scriptures tab opens so the operator can
   // start typing a reference immediately (mounts fresh each time the tab is shown).
@@ -275,11 +313,33 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, detectAr
     listRef.current?.focus();
   }
 
-  function addVerseToRundown(idx) {
+  // When split (compare) view is ON, bake the secondary translation into the passage
+  // so the rundown item renders as a split verse — captured AT ADD TIME, so toggling
+  // split later never rewrites items already in the rundown. Verses are matched by
+  // number; if none resolve in the second translation, the single-version passage is
+  // kept unchanged.
+  async function withSplit(passage) {
+    if (!splitEnabled || !splitVersionId || splitVersionId === versionId) return passage;
+    const sv = versions.find((v) => v.id === splitVersionId);
+    if (!sv) return passage;
+    try {
+      const chapters = [...new Set(passage.verses.map((v) => v.chapter))];
+      const byKey = new Map();
+      for (const ch of chapters) {
+        const data = await window.cue.bible.verses(splitVersionId, passage.bookNum, ch);
+        for (const v of (data?.verses || [])) byKey.set(`${v.chapter}:${v.verse}`, v.text);
+      }
+      const verses = passage.verses.map((v) => ({ ...v, splitText: byKey.get(`${v.chapter}:${v.verse}`) ?? null }));
+      if (!verses.some((v) => v.splitText)) return passage;
+      return { ...passage, verses, split: { versionId: sv.id, versionAbbrev: sv.abbrev, versionName: sv.name } };
+    } catch { return passage; }
+  }
+
+  async function addVerseToRundown(idx) {
     if (!chapterData || !chapterData.verses.length || !version) return;
     const v = chapterData.verses[idx >= 0 ? idx : 0];
     if (!v) return;
-    onAdd?.({
+    onAdd?.(await withSplit({
       versionId,
       versionAbbrev: version.abbrev,
       versionName: version.name,
@@ -288,12 +348,12 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, detectAr
       reference: `${chapterData.bookName} ${v.chapter}:${v.verse}`,
       versesPerSlide: 1,
       verses: [{ chapter: v.chapter, verse: v.verse, text: v.text }],
-    });
+    }));
   }
 
-  function addChapterToRundown() {
+  async function addChapterToRundown() {
     if (!chapterData || !chapterData.verses.length || !version) return;
-    onAdd?.({
+    onAdd?.(await withSplit({
       versionId,
       versionAbbrev: version.abbrev,
       versionName: version.name,
@@ -302,7 +362,7 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, detectAr
       reference: `${chapterData.bookName} ${chapterData.chapter}`,
       versesPerSlide: 1,
       verses: chapterData.verses.map((v) => ({ chapter: v.chapter, verse: v.verse, text: v.text })),
-    });
+    }));
   }
 
   function handleAddToRundown() { addVerseToRundown(selectedIdx); }
@@ -358,21 +418,24 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, detectAr
             );
           })}
         </div>
-        <div className="flex flex-col gap-xs m-sm shrink-0">
+        {/* Import + Appearance — equal-width row at the bottom of the left rail */}
+        <div className="flex shrink-0 border-t border-outline-variant/30">
           <button
             onClick={() => setShowEditor(true)}
-            className="flex items-center justify-center gap-xs px-sm py-xs rounded-lg border border-outline-variant/40 bg-surface-container text-on-surface-variant text-label-sm font-label-sm hover:border-primary/50 hover:text-primary transition-colors cursor-pointer"
+            title="Appearance — scripture text & reference style"
+            className="flex-1 flex items-center justify-center gap-xs py-sm text-label-sm font-label-sm text-on-surface-variant hover:text-primary hover:bg-surface-variant transition-colors cursor-pointer border-r border-outline-variant/30"
           >
-            <span className="material-symbols-outlined text-[14px]">format_paint</span>
-            Appearance
+            <span className="material-symbols-outlined text-[15px]">format_paint</span>
+            Theme
           </button>
           <button
-            onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setImportMenu({ x: r.left, y: r.bottom + 4 }); }}
+            onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setImportMenu({ x: r.right - 160, y: r.bottom + 4 }); }}
             disabled={importing}
-            className="flex items-center justify-center gap-xs px-sm py-xs rounded-lg border border-outline-variant/40 bg-surface-container text-on-surface-variant text-label-sm font-label-sm hover:border-primary/50 hover:text-primary transition-colors cursor-pointer disabled:opacity-50"
+            title="Import a translation (online or file)"
+            className="flex-1 flex items-center justify-center gap-xs py-sm text-label-sm font-label-sm text-on-surface-variant hover:text-primary hover:bg-surface-variant transition-colors cursor-pointer disabled:opacity-50"
           >
-            <span className="material-symbols-outlined text-[14px]">upload</span>
-            {importing ? 'Importing…' : 'Import…'}
+            <span className="material-symbols-outlined text-[15px]">{importing ? 'hourglass_empty' : 'upload'}</span>
+            Import
           </button>
         </div>
       </div>
@@ -446,6 +509,39 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, detectAr
             className={`${REF_INPUT} w-16 text-center`}
             autoComplete="off"
           />
+
+          {/* Split (compare) view — toggle + inline second-translation picker. Moved
+              off the cramped left rail into the reference bar's free space. */}
+          <div className="ml-sm pl-sm border-l border-outline-variant/30 flex items-center gap-xs">
+            <button
+              onClick={toggleSplit}
+              title="Split view — show every live verse in two translations at once (full screen + lower third)"
+              className={`flex items-center gap-xs px-sm h-9 rounded-lg text-label-sm font-label-sm font-bold uppercase tracking-[0.05em] border transition-colors cursor-pointer ${
+                splitEnabled
+                  ? 'bg-primary/15 border-primary/50 text-primary'
+                  : 'bg-surface-container border-outline-variant/40 text-on-surface-variant hover:border-primary/50 hover:text-primary'
+              }`}
+            >
+              <span className="material-symbols-outlined text-[16px]" style={splitEnabled ? { fontVariationSettings: "'FILL' 1" } : undefined}>vertical_split</span>
+              Split
+            </button>
+            {splitEnabled && (
+              versions.filter((v) => v.id !== versionId).length > 0 ? (
+                <select
+                  value={splitVersionId ?? ''}
+                  onChange={(e) => changeSplitVersion(Number(e.target.value) || null)}
+                  title="Second translation shown alongside the live verse"
+                  className="bg-surface-container-lowest border border-outline-variant/50 rounded-lg px-sm h-9 max-w-[7rem] text-body-sm text-on-surface outline-none focus:border-primary cursor-pointer"
+                >
+                  {versions.filter((v) => v.id !== versionId).map((v) => (
+                    <option key={v.id} value={v.id}>{v.abbrev}</option>
+                  ))}
+                </select>
+              ) : (
+                <span className="text-[10px] text-on-surface-variant/60 max-w-[7rem] leading-tight">Import a 2nd translation</span>
+              )
+            )}
+          </div>
 
           <div className="flex-1" />
 

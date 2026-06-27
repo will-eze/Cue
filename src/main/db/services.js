@@ -11,6 +11,7 @@ function resolveScripture(item) {
   try {
     const passage = JSON.parse(item.content);
     const vps = Math.max(1, passage.versesPerSlide || 1);
+    const split = passage.split || null; // baked second translation (compare view)
     const slides = [];
     for (let i = 0; i < passage.verses.length; i += vps) {
       const group = passage.verses.slice(i, i + vps);
@@ -19,12 +20,22 @@ function resolveScripture(item) {
       const ref = group.length > 1
         ? `${passage.bookName} ${first.chapter}:${first.verse}-${last.verse}`
         : `${passage.bookName} ${first.chapter}:${first.verse}`;
+      // Split (compare) view: carry both translations so output + monitor stack them.
+      // Only when the secondary text actually resolved for this group's verses.
+      let splitVerses = null;
+      if (split && group.some((v) => v.splitText)) {
+        splitVerses = [
+          { text: group.map((v) => v.text).join('\n'), attribution: `${ref} (${passage.versionAbbrev})` },
+          { text: group.map((v) => v.splitText || '').join('\n'), attribution: `${ref} (${split.versionAbbrev})` },
+        ];
+      }
       slides.push({
         id: `${item.id}-${i}`,
         type: ref,                              // shown as the slide label
         content: group.map((v) => v.text).join('\n'),
         copyright: `${ref} (${passage.versionAbbrev})`,
         style_json: null,
+        splitVerses,
       });
     }
     return { scripture: passage, scriptureSlides: slides, title: passage.reference };

@@ -560,6 +560,23 @@ function fileHead(fp) {
   finally { fs.closeSync(fd); }
 }
 
+// Parse a raw lyric blob (scraped from the web, or pasted) into Cue sections,
+// reusing the SAME header/blank-line parser as file import + Paste Song so a
+// scraped song splits into verses/chorus/etc. exactly like every other path.
+// Returns [{ type, content }]; an empty array when nothing usable parsed.
+export function parseLyricsToSections(rawText) {
+  const text = String(rawText || '')
+    .replace(/\r\n?/g, '\n')
+    .split('\n').map((l) => l.replace(/[ \t]+$/g, '')).join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  if (!text) return [];
+  return parseSections(text).map((s) => ({
+    type: ALLOWED_TYPES.has(s.type) ? s.type : 'verse',
+    content: s.content,
+  }));
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 // Parse each file into a preview object. Never throws — a per-file failure is
