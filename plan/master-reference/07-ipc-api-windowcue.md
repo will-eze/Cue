@@ -82,14 +82,14 @@ All renderer↔main communication is via `ipcRenderer.invoke` / `ipcMain.handle`
 | `media.setMuted(muted)` | void | Toggle program (audience) audio. Stage + operator preview stay silent regardless. |
 | `media.setLoop(loop)` | void | Toggle native looping of the live clip live, without restarting it. Sets `transport.loop` + broadcasts; output players make `<video>.loop` follow `transport.loop` (`media-player.js`). The operator's transport-bar loop button persists `media_loop` (`services.setItemLoop`) alongside this so it sticks for the rundown badge + next GO. |
 | `media.setRate(rate)` | void | Operator playback speed (e.g. 0.25–2). Rebases `startAt` so position is continuous; becomes the baseline the ±6% convergence nudge multiplies around. |
-| `graphic.show({name,title,style,target,autoDismissSec})` | void | Show the name/title lower-third bug. `target` ∈ `'all'\|'screen'\|'ndi'`. `autoDismissSec>0` self-hides after that many seconds (main-owned one-shot timer per slot+kind; §13). |
+| `graphic.show({name,title,style,target,autoDismissSec,bgPath?,bgFit?})` | void | Show the name/title lower-third bug. `target` ∈ `'all'\|'screen'\|'ndi'`. `autoDismissSec>0` self-hides after that many seconds (main-owned one-shot timer per slot+kind; §13). `bgPath` = absolute media path for a full-screen background video/image behind the bug; `bgFit` = `'cover'`\|`'contain'` (default `'cover'`). |
 | `graphic.hide()` | void | Hide the name/title bug. |
-| `graphic.showCustom({html,target,autoDismissSec})` | void | Show a custom-HTML graphic (placeholders already substituted). `autoDismissSec>0` self-hides. |
+| `graphic.showCustom({html,target,autoDismissSec,bgPath?,bgFit?})` | void | Show a custom-HTML graphic (placeholders already substituted). `autoDismissSec>0` self-hides. `bgPath`/`bgFit` same as above. |
 | `graphic.hideCustom()` | void | Hide the custom graphic. |
-| `ticker.show({text,speed,style,target,autoDismissSec})` | void | Show the scrolling ticker. `autoDismissSec>0` self-hides. |
+| `ticker.show({text,speed,style,target,autoDismissSec,bgPath?,bgFit?})` | void | Show the scrolling ticker. `autoDismissSec>0` self-hides. `bgPath`/`bgFit` same as above. |
 | `ticker.hide()` | void | Hide the ticker. |
-| `countdown.show({id,mode,source,durationSec,targetClock,format,showSeconds,label,endMessage,style,target})` | void | Show a self-ticking countdown/count-up/clock. Main resolves the anchor (`endsAt` for `mode:'countdown'`, `startAt` for `'countup'`); the output template owns the per-second tick. `style` = `{time, message}`. |
-| `countdown.hide()` | void | Hide the countdown/clock. |
+| `countdown.show({id,mode,source,durationSec,targetClock,format,showSeconds,label,endMessage,onEnd,onEndMediaId,style,target,bgPath?,bgFit?})` | void | Show a self-ticking countdown/count-up/clock. Main resolves the anchor (`endsAt` for `mode:'countdown'`, `startAt` for `'countup'`); the output template owns the per-second tick. `style` = `{time, message}`. `onEnd` = `'hold'`\|`'clear'`\|`'overflow'`\|`'loop'`\|`'media'` (see §5 graphics table). Main arms `cdEndTimer` for `clear`/`loop`/`media`; resolves `onEndMediaId` → `onEndMediaPath` from DB before broadcasting. `bgPath`/`bgFit` same as above. |
+| `countdown.hide()` | void | Hide the countdown/clock. Clears any pending `cdEndTimer`. |
 | `overlay.get()` | `{nameTitle, ticker, custom, countdown}` | Current overlay snapshot. |
 | `stage.message(text)` | void | Set/clear the confidence-monitor presenter **immediate** message (`''` clears). Takes precedence over scheduled messages on the bar. |
 | `stage.timer(action, seconds?)` | void | Presenter countdown: `action` ∈ `'set'(seconds) \| 'start' \| 'pause' \| 'reset'`. |

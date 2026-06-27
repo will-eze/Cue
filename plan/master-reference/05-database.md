@@ -9,7 +9,7 @@
 
 ### Migration system
 
-`schema.js` creates `db_version` table (single integer row) on first run and applies pending migrations in order inside a transaction. **Never delete `db_version`** — it is required to exist before any user-facing build. Current version: **27**. Migrations run with foreign keys disabled, so table-rebuild migrations (v6, v7, v11, v16, v20, v21, v23) do not cascade-delete referencing rows.
+`schema.js` creates `db_version` table (single integer row) on first run and applies pending migrations in order inside a transaction. **Never delete `db_version`** — it is required to exist before any user-facing build. Current version: **28**. Migrations run with foreign keys disabled, so table-rebuild migrations (v6, v7, v11, v16, v20, v21, v23) do not cascade-delete referencing rows.
 
 | Version | Change |
 |---|---|
@@ -40,6 +40,7 @@
 | v25 | Per-song background lock: added `songs.background_locked` (INTEGER NOT NULL DEFAULT 0). Top of the background resolution cascade (§9) — a locked song's `default_background_id` is pinned above the per-slot override and the live global default, and the bulk apply actions skip it. A protect+pin flag, not a media reference, so no `media.findUnused()` entry |
 | v26 | Apostrophe-insensitive song search: `songs_fts` triggers and a one-time reindex now **strip** apostrophes (straight `'`, curly `' '`, modifier `ʼ`, by `char()` codepoint) from `title`/`author`/`content` as they enter the index. The default unicode61 tokenizer otherwise splits an apostrophe, indexing `God's` as `god`+`s` so a query for `Gods` never matched. The query side strips the same set (`db/songs.js` `search()` + `_norm`), so both collapse `God's` → `gods`. No schema columns change — triggers + index content only |
 | v27 | Customisable WYSIWYG stage display: added `output_channels.stage_layout_json` (TEXT). A stage/confidence channel's layout is now a free-form set of absolutely-positioned elements (currentText / nextText / clock / timer / elapsedTimer / videoCountdown / message / staticText), each in % of 1920×1080. `NULL` → the built-in default layout reproduced in both `manager.js` and `stage.js`. Reusable named layouts live in the `stage_presets` setting (plain ALTER — no table rebuild) |
+| v28 | Background media on broadcast graphics: added `graphics.background_media_id INTEGER REFERENCES media_assets(id) ON DELETE SET NULL`. An optional full-screen video/image rendered behind the overlay text (e.g. countdown + video loop behind the clock). `NULL` = no background (overlay transparent as before). `ON DELETE SET NULL` means deleting a media asset clears the reference without removing the graphic. `graphics.list()` and `graphics.get()` JOIN to `media_assets` to expose `background_path`/`background_filename`. Also adds countdown `onEnd` action field (in `style_json`): `'hold'`\|`'clear'`\|`'overflow'`\|`'loop'`\|`'media'` (see graphics table below). |
 
 ### All tables
 
@@ -159,7 +160,7 @@ active INTEGER NOT NULL DEFAULT 1
 
 **Lower-third content modes** (`show_program` × `show_graphics`): both=1/1 (Lyrics + Graphics), 1/0 (Lyrics Only), 0/1 (Graphics Only). Flipping these two flags is a **runtime** change — `setChannelContentMode` messages the existing window via `content:mode` rather than recreating it, so the NDI sender is never dropped. Structural changes (template/type/monitors/active) still rebuild the window via `syncChannel`. The flags reach the window as `?program=` / `?graphics=` query params on first load and as `content:mode` events thereafter.
 
-#### `graphics` (v10–v12, v16 — broadcast graphics)
+#### `graphics` (v10–v12, v16, v28 — broadcast graphics)
 ```sql
 id INTEGER PRIMARY KEY AUTOINCREMENT
 kind TEXT NOT NULL CHECK(kind IN ('lower_third','ticker','custom','countdown'))
@@ -171,11 +172,14 @@ html TEXT                      -- custom kind: HTML + inline <style> with {{plac
 speed INTEGER NOT NULL DEFAULT 100   -- ticker crawl speed (px/s)
 style_json TEXT                -- v12: per-graphic appearance (see below)
 target TEXT NOT NULL DEFAULT 'all'   -- v12: saved default destination ('all'|'screen'|'ndi')
+background_media_id INTEGER REFERENCES media_assets(id) ON DELETE SET NULL  -- v28: optional full-screen bg media
 order_index INTEGER NOT NULL DEFAULT 0
 created_at DATETIME, updated_at DATETIME
 ```
 
-`style_json` shape — **lower_third**: `{ name: <style incl. textBox + ltBar>, title: <style> }` (the `name` style's `textBox` is the draggable/resizable position box, `ltBar` is the bar background). **ticker**: a flat style + `{ bar:{color,opacity}|null, position:'bottom'|'top' }`. **custom**: `null` (raw HTML), or `{ autoDismissSec }` when auto-dismiss is set. lower_third and ticker also carry an optional top-level `autoDismissSec` (>0 = self-hide N seconds after airing; §13). **countdown** (v16): `{ mode:'countdown'|'countup'|'clock', source:'duration'|'target', durationSec, targetClock:'HH:MM', format:'24h'|'12h', showSeconds, endMessage, time:<style incl. textBox + ltBar>, message:<style> }` — the `text` column holds the optional label ("Service starts in").
+`list()` and `get()` JOIN to `media_assets` and expose `background_path`/`background_filename` alongside the `graphics` columns. `media.findUnused()` includes both `graphics.background_media_id` (FK column) and `style_json.onEndMediaId` (countdown only — scanned from JSON, no FK).
+
+`style_json` shape — **lower_third**: `{ name: <style incl. textBox + ltBar>, title: <style>, bgFit?:'cover'|'contain' }` (the `name` style's `textBox` is the draggable/resizable position box, `ltBar` is the bar background). **ticker**: a flat style + `{ bar:{color,opacity}|null, position:'bottom'|'top', bgFit? }`. **custom**: `null` (raw HTML), or `{ autoDismissSec?, bgFit? }`. lower_third and ticker also carry an optional top-level `autoDismissSec` (>0 = self-hide N seconds after airing; §13). **countdown** (v16+v28): `{ mode:'countdown'|'countup'|'clock', source:'duration'|'target', durationSec, targetClock:'HH:MM', format:'24h'|'12h', showSeconds, endMessage, onEnd:'hold'|'clear'|'overflow'|'loop'|'media', onEndMediaId:<media_assets.id>|null, time:<style incl. textBox + ltBar>, message:<style>, bgFit? }` — the `text` column holds the optional label ("Service starts in"). `onEnd` actions: `hold` = freeze display at 0:00; `clear` = hide the graphic; `overflow` = keep ticking past zero with a `+` prefix; `loop` = restart from the same authoring spec; `media` = transition to a fullscreen clip (`onEndMediaId`). Main arms a `cdEndTimer` per `countdownShow` for `clear`/`loop`/`media` actions (`hold`/`overflow` are template-only and need no main-process side-effect).
 
 #### `scenes` (v24 — one-press multi-output state recall)
 ```sql
@@ -280,7 +284,7 @@ Known keys:
 
 #### `db_version`
 ```sql
-version INTEGER NOT NULL       -- current: 27
+version INTEGER NOT NULL       -- current: 28
 ```
 
 ---

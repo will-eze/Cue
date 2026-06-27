@@ -93,6 +93,10 @@ let stagePruneTimer = null;
 const OVERLAY_KINDS = ['screen', 'ndi', 'stream'];
 const emptySlot = () => ({ screen: null, ndi: null, stream: null });
 let overlay = { nameTitle: emptySlot(), ticker: emptySlot(), custom: emptySlot(), countdown: emptySlot() };
+// One-shot timer for countdown end-actions (clear / next / loop). Replaced on each
+// countdownShow; cleared on countdownHide. Only set when onEnd is not 'hold'/'overflow'
+// (those are template-only and need no main-process action).
+let cdEndTimer = null;
 
 // The destination kinds a `target` touches: 'all' → every kind; a string → that one;
 // an array → exactly those.
@@ -1735,7 +1739,7 @@ function dismissFields(data) {
 
 export function graphicShow(data) {
   const value = data && (data.name || data.title)
-    ? { id: data.id ?? null, name: data.name ?? '', title: data.title ?? '', style: data.style ?? null, target: data.target || 'all', ...dismissFields(data) }
+    ? { id: data.id ?? null, name: data.name ?? '', title: data.title ?? '', style: data.style ?? null, target: data.target || 'all', bgPath: data.bgPath || null, bgFit: data.bgFit || null, ...dismissFields(data) }
     : null;
   setSlot('nameTitle', value, data && data.target);
   applyDismiss('nameTitle', value, value && value.autoDismissSec, data && data.target);
@@ -1750,7 +1754,7 @@ export function graphicHide(target) {
 
 export function tickerShow(data) {
   const value = data && data.text
-    ? { id: data.id ?? null, text: data.text, speed: Number.isFinite(data.speed) ? data.speed : 100, style: data.style ?? null, target: data.target || 'all', ...dismissFields(data) }
+    ? { id: data.id ?? null, text: data.text, speed: Number.isFinite(data.speed) ? data.speed : 100, style: data.style ?? null, target: data.target || 'all', bgPath: data.bgPath || null, bgFit: data.bgFit || null, ...dismissFields(data) }
     : null;
   setSlot('ticker', value, data && data.target);
   applyDismiss('ticker', value, value && value.autoDismissSec, data && data.target);
@@ -1765,7 +1769,7 @@ export function tickerHide(target) {
 
 export function customShow(data) {
   const value = data && data.html
-    ? { id: data.id ?? null, html: String(data.html), target: data.target || 'all', ...dismissFields(data) }
+    ? { id: data.id ?? null, html: String(data.html), target: data.target || 'all', bgPath: data.bgPath || null, bgFit: data.bgFit || null, ...dismissFields(data) }
     : null;
   setSlot('custom', value, data && data.target);
   applyDismiss('custom', value, value && value.autoDismissSec, data && data.target);
@@ -1799,10 +1803,15 @@ export function countdownShow(data) {
     mode:    data.mode,
     label:   data.label ?? '',
     endMessage: data.endMessage ?? '',
+    onEnd:   data.onEnd || 'hold',
     format:  data.format || '24h',
     showSeconds: data.showSeconds !== false,
     style:   data.style ?? null,
     target:  data.target || 'all',
+    bgPath:  data.bgPath || null,
+    bgFit:   data.bgFit || null,
+    onEndMediaId:   data.onEndMediaId || null,
+    onEndMediaPath: null, // resolved below
     // Retain the authoring spec (alongside the resolved anchor below) so a Scene can
     // re-resolve the timer to a FRESH anchor on recall (a stored absolute endsAt would
     // be stale by the time the scene is applied). Ignored by the output template.
@@ -1817,11 +1826,52 @@ export function countdownShow(data) {
   } else if (data.mode === 'countup') {
     slot.startAt = Date.now();
   }
+  // Resolve onEndMediaPath from the DB so the output template doesn't need DB access.
+  if (slot.onEnd === 'media' && slot.onEndMediaId) {
+    const row = getDb().prepare('SELECT path FROM media_assets WHERE id = ?').get(Number(slot.onEndMediaId));
+    slot.onEndMediaPath = row ? row.path : null;
+  }
   setSlot('countdown', slot, data.target);
+  // Arm an end-action timer for countdown mode. 'hold' and 'overflow' are
+  // template-only (no main-process side-effect), so only arm for the others.
+  if (cdEndTimer) { clearTimeout(cdEndTimer); cdEndTimer = null; }
+  if (slot.mode === 'countdown' && slot.onEnd !== 'hold' && slot.onEnd !== 'overflow') {
+    const delay = slot.endsAt - Date.now();
+    if (delay >= 0) {
+      const capturedSlot = { ...slot };
+      cdEndTimer = setTimeout(() => { cdEndTimer = null; handleCountdownEnd(capturedSlot); }, delay);
+    }
+  }
   broadcastGraphic();
 }
 
+function handleCountdownEnd(slot) {
+  switch (slot.onEnd) {
+    case 'clear':
+      countdownHide(slot.target);
+      break;
+    case 'loop':
+      // Re-fire from the same authoring spec — endsAt gets a fresh resolution.
+      countdownShow(slot);
+      break;
+    case 'media':
+      if (slot.onEndMediaPath) {
+        // Transition to fullscreen media: keep the slot (so the background layer
+        // stays active) but null out `mode` so the countdown text elements hide.
+        // The output template and operator preview both key on mode to show text.
+        setSlot('countdown', { ...slot, mode: null, bgPath: slot.onEndMediaPath, bgFit: 'cover' }, slot.target);
+        broadcastGraphic();
+      } else {
+        countdownHide(slot.target);
+      }
+      break;
+    default:
+      break;
+  }
+}
+
 export function countdownHide(target) {
+  if (cdEndTimer) { clearTimeout(cdEndTimer); cdEndTimer = null; }
   setSlot('countdown', null, target);
   broadcastGraphic();
 }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import GraphicsEditor, { GraphicsPresetModal, presetToGraphic, fillPlaceholders, flatTextCss, buildBarBg, cdSampleText, CD_DEFAULT_BOX, TIME_BASE, MSG_BASE } from '../components/GraphicsEditor';
 import { CHANNEL_MODES, channelMode, modeToFlags } from '../utils/channelMode';
+import { mediaUrl } from '../utils/mediaUrl';
 
 const FRAME_W = 1920, FRAME_H = 1080;
 const DEFAULT_BOX = { x: 4, y: 70, w: 55, h: 22 };
@@ -100,15 +101,18 @@ export default function GraphicsPanel() {
     const target = resolveTarget(g);
     const style = parseStyle(g);
     const autoDismissSec = Number(style.autoDismissSec) || 0;
-    if (g.kind === 'lower_third') window.cue.output.graphic.show({ id: g.id, name: g.name, title: g.title, style, target, autoDismissSec });
-    else if (g.kind === 'ticker') window.cue.output.ticker.show({ id: g.id, text: g.text, speed: g.speed, style, target, autoDismissSec });
+    const bgPath = g.background_path || null;
+    const bgFit  = style.bgFit || null;
+    if (g.kind === 'lower_third') window.cue.output.graphic.show({ id: g.id, name: g.name, title: g.title, style, target, autoDismissSec, bgPath, bgFit });
+    else if (g.kind === 'ticker') window.cue.output.ticker.show({ id: g.id, text: g.text, speed: g.speed, style, target, autoDismissSec, bgPath, bgFit });
     else if (g.kind === 'countdown') window.cue.output.countdown.show({
       id: g.id, mode: style.mode, source: style.source, durationSec: style.durationSec,
       targetClock: style.targetClock, format: style.format, showSeconds: style.showSeconds,
-      label: g.text || '', endMessage: style.endMessage || '',
-      style: { time: style.time, message: style.message }, target,
+      label: g.text || '', endMessage: style.endMessage || '', onEnd: style.onEnd || 'hold',
+      onEndMediaId: style.onEndMediaId || null,
+      style: { time: style.time, message: style.message }, target, bgPath, bgFit,
     });
-    else if (g.kind === 'custom') window.cue.output.graphic.showCustom({ id: g.id, html: fillPlaceholders(g.html, g), target, autoDismissSec });
+    else if (g.kind === 'custom') window.cue.output.graphic.showCustom({ id: g.id, html: fillPlaceholders(g.html, g), target, autoDismissSec, bgPath, bgFit });
   }
   // Which destination kinds this saved graphic is currently live on (match by id,
   // not content — otherwise two graphics sharing a body would both light up). Ad-hoc
@@ -494,9 +498,18 @@ function GraphicThumb({ g }) {
     );
   }
 
+  const bgPath   = g.background_path || null;
+  const bgFit    = parseStyle(g).bgFit || 'cover';
+  const bgIsVideo = bgPath && /\.(mp4|mov|webm|avi)$/i.test(bgPath.toLowerCase());
+
   return (
     <div ref={wrapRef} className="w-full aspect-video relative overflow-hidden border-b border-outline-variant/20"
-      style={{ backgroundImage: 'repeating-conic-gradient(#16181c 0% 25%, #1d2024 0% 50%)', backgroundSize: '20px 20px' }}>
+      style={bgPath ? { background: '#000' } : { backgroundImage: 'repeating-conic-gradient(#16181c 0% 25%, #1d2024 0% 50%)', backgroundSize: '20px 20px' }}>
+      {bgPath && (
+        bgIsVideo
+          ? <video src={mediaUrl(bgPath)} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: bgFit }} autoPlay loop muted playsInline />
+          : <img src={mediaUrl(bgPath)} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: bgFit }} alt="" />
+      )}
       <div style={{ width: FRAME_W, height: FRAME_H, transform: `scale(${scale})`, transformOrigin: 'top left', position: 'absolute', inset: 0 }}>
         {inner}
       </div>

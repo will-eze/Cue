@@ -4,6 +4,9 @@ import { FormattingToolbar, DEFAULT_STYLE, styleIsDefault } from './SongEditor';
 import UndoRedoButtons from './UndoRedoButtons';
 import useEditHistory, { useUndoRedoKeys } from '../utils/useEditHistory';
 import { useFonts } from '../utils/fonts';
+import MediaPickerModal from './MediaPickerModal';
+import MediaThumb from './MediaThumb';
+import { mediaUrl } from '../utils/mediaUrl';
 
 function esc(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -82,7 +85,7 @@ function freshTimeStyle() {
 function freshMsgStyle() {
   return { ...DEFAULT_STYLE, align: 'center', fontSize: 36, color: '#adc6ff', bold: false };
 }
-const FRESH_CD = { mode: 'countdown', source: 'duration', durationSec: 300, targetClock: '11:00', format: '24h', showSeconds: true, endMessage: '' };
+const FRESH_CD = { mode: 'countdown', source: 'duration', durationSec: 300, targetClock: '11:00', format: '24h', showSeconds: true, endMessage: '', onEnd: 'hold', onEndMediaId: null, onEndMediaPath: null };
 
 const CD_MODES = [
   { id: 'countdown', label: 'Countdown', icon: 'timer' },
@@ -190,10 +193,18 @@ function resizeBox(s, hx, hy, dx, dy) {
 
 // ── Previews ───────────────────────────────────────────────────────────────────
 
-function ScaledFrame({ children, wrapRef, scale, contentGuide = false }) {
+function ScaledFrame({ children, wrapRef, scale, contentGuide = false, bgMedia = null }) {
+  const bgPath = bgMedia?.path;
+  const bgFit  = bgMedia?.fit || 'cover';
+  const bgIsVideo = bgPath && /\.(mp4|mov|webm|avi)$/i.test(bgPath.toLowerCase());
   return (
     <div ref={wrapRef} className="w-full aspect-video relative overflow-hidden rounded-lg"
-      style={{ backgroundImage: 'repeating-conic-gradient(#1a1a1a 0% 25%, #222 0% 50%)', backgroundSize: '28px 28px' }}>
+      style={bgPath ? { background: '#000' } : { backgroundImage: 'repeating-conic-gradient(#1a1a1a 0% 25%, #222 0% 50%)', backgroundSize: '28px 28px' }}>
+      {bgPath && (
+        bgIsVideo
+          ? <video src={mediaUrl(bgPath)} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: bgFit }} autoPlay loop muted playsInline />
+          : <img src={mediaUrl(bgPath)} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: bgFit }} alt="" />
+      )}
       <div style={{ width: FRAME_W, height: FRAME_H, transform: `scale(${scale})`, transformOrigin: 'top left', position: 'absolute', inset: 0 }}>
         {/* Content-window safe-area guide — boxes align within it (drag goes anywhere). */}
         {contentGuide && (
@@ -225,7 +236,7 @@ function useScale(wrapRef) {
 }
 
 // Draggable/resizable name/title bug preview.
-function BugPreview({ name, title, nameStyle, titleStyle, onBoxChange }) {
+function BugPreview({ name, title, nameStyle, titleStyle, onBoxChange, bgMedia = null }) {
   const wrapRef = useRef(null);
   const [scale, scaleRef] = useScale(wrapRef);
   const box = nameStyle?.textBox || { ...DEFAULT_BOX };
@@ -245,7 +256,7 @@ function BugPreview({ name, title, nameStyle, titleStyle, onBoxChange }) {
   const vAlign = nameStyle?.verticalAlign || 'bottom';
 
   return (
-    <ScaledFrame wrapRef={wrapRef} scale={scale} contentGuide>
+    <ScaledFrame wrapRef={wrapRef} scale={scale} contentGuide bgMedia={bgMedia}>
       {/* The bug box */}
       <div style={{
         position: 'absolute', left: `${bL}px`, top: `${bT}px`, width: `${bW}px`, height: `${bH}px`,
@@ -285,7 +296,7 @@ function BugPreview({ name, title, nameStyle, titleStyle, onBoxChange }) {
 
 // Draggable/resizable countdown/clock preview that ticks live, so the operator
 // sees the real digits and animation cadence before taking it.
-function CountdownPreview({ cd, timeStyle, msgStyle, label, onBoxChange }) {
+function CountdownPreview({ cd, timeStyle, msgStyle, label, onBoxChange, bgMedia = null }) {
   const wrapRef = useRef(null);
   const [scale, scaleRef] = useScale(wrapRef);
   const box = timeStyle?.textBox || { ...CD_DEFAULT_BOX };
@@ -306,9 +317,13 @@ function CountdownPreview({ cd, timeStyle, msgStyle, label, onBoxChange }) {
   else if (cd.mode === 'countup') timeText = fmtDuration((Date.now() - anchorRef.current) / 1000);
   else {
     const rem = (anchorRef.current - Date.now()) / 1000;
-    timeText = rem <= 0 ? (cd.endMessage ? '' : '0:00') : fmtDuration(rem);
+    if (rem <= 0) {
+      timeText = cd.onEnd === 'overflow' ? '+' + fmtDuration((Date.now() - anchorRef.current) / 1000) : '0:00';
+    } else {
+      timeText = fmtDuration(Math.ceil(rem));
+    }
   }
-  const showEndMsg = cd.mode === 'countdown' && (anchorRef.current - Date.now()) / 1000 <= 0 && cd.endMessage;
+  const showEndMsg = cd.mode === 'countdown' && (anchorRef.current - Date.now()) / 1000 <= 0 && cd.onEnd === 'hold';
 
   function startDrag(e, start, onMove) {
     e.preventDefault(); e.stopPropagation();
@@ -326,7 +341,7 @@ function CountdownPreview({ cd, timeStyle, msgStyle, label, onBoxChange }) {
   const hAlign = timeStyle?.align === 'left' ? 'flex-start' : timeStyle?.align === 'right' ? 'flex-end' : 'center';
 
   return (
-    <ScaledFrame wrapRef={wrapRef} scale={scale} contentGuide>
+    <ScaledFrame wrapRef={wrapRef} scale={scale} contentGuide bgMedia={bgMedia}>
       <div style={{
         position: 'absolute', left: `${bL}px`, top: `${bT}px`, width: `${bW}px`, height: `${bH}px`,
         background: buildBarBg(timeStyle?.ltBar), padding: '16px 32px', boxSizing: 'border-box',
@@ -334,9 +349,9 @@ function CountdownPreview({ cd, timeStyle, msgStyle, label, onBoxChange }) {
         justifyContent: vAlign === 'top' ? 'flex-start' : vAlign === 'bottom' ? 'flex-end' : 'center',
         alignItems: hAlign,
       }}>
-        {(label || showEndMsg) && (
-          <div style={flatTextCss(msgStyle, MSG_BASE)}>{showEndMsg ? cd.endMessage : label}</div>
-        )}
+        {(showEndMsg ? (cd.endMessage || label) : label) ? (
+          <div style={flatTextCss(msgStyle, MSG_BASE)}>{showEndMsg ? (cd.endMessage || label) : label}</div>
+        ) : null}
         <div style={{ ...flatTextCss(timeStyle, TIME_BASE), whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{timeText}</div>
       </div>
 
@@ -365,7 +380,7 @@ function CountdownPreview({ cd, timeStyle, msgStyle, label, onBoxChange }) {
   );
 }
 
-function TickerPreview({ text, tickerStyle, speed = 100 }) {
+function TickerPreview({ text, tickerStyle, speed = 100, bgMedia = null }) {
   const wrapRef = useRef(null);
   const [scale] = useScale(wrapRef);
   const innerRef = useRef(null);
@@ -389,7 +404,7 @@ function TickerPreview({ text, tickerStyle, speed = 100 }) {
   }, [content, tickerStyle, speed]);
 
   return (
-    <ScaledFrame wrapRef={wrapRef} scale={scale}>
+    <ScaledFrame wrapRef={wrapRef} scale={scale} bgMedia={bgMedia}>
       <div style={{ position: 'absolute', left: 0, right: 0, [top ? 'top' : 'bottom']: 0, height: 72,
         background: barBg, borderTop: top ? 'none' : '3px solid #4d8eff', borderBottom: top ? '3px solid #4d8eff' : 'none',
         display: 'flex', alignItems: 'center', overflow: 'hidden' }}>
@@ -649,9 +664,14 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
       tickerStyle: { ...freshTickerStyle(), ...(graphic?.kind === 'ticker' ? parsed : {}) },
       cd: { ...FRESH_CD, mode: parsed.mode || FRESH_CD.mode, source: parsed.source || FRESH_CD.source,
         durationSec: parsed.durationSec ?? FRESH_CD.durationSec, targetClock: parsed.targetClock || FRESH_CD.targetClock,
-        format: parsed.format || FRESH_CD.format, showSeconds: parsed.showSeconds !== false, endMessage: parsed.endMessage || '' },
+        format: parsed.format || FRESH_CD.format, showSeconds: parsed.showSeconds !== false, endMessage: parsed.endMessage || '',
+        onEnd: parsed.onEnd || 'hold',
+        onEndMediaId: parsed.onEndMediaId || null, onEndMediaPath: parsed.onEndMediaPath || null },
       timeStyle: { ...freshTimeStyle(), ...(parsed.time    || {}) },
       msgStyle:  { ...freshMsgStyle(),  ...(parsed.message || {}) },
+      bgMediaId:   graphic?.background_media_id || null,
+      bgMediaPath: graphic?.background_path     || null,
+      bgFit:       parsed.bgFit || 'cover',
     };
   }, [graphic]);
   const docH = useEditHistory(initialDraft);
@@ -661,6 +681,8 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
   const [target, setTarget] = useState('name'); // editing target — LT: 'name'|'title'; countdown: 'time'|'message'
   const [replayKey, setReplayKey] = useState(0);
   const [showGallery, setShowGallery] = useState(false);
+  const [showBgPicker, setShowBgPicker] = useState(false);
+  const [showEndMediaPicker, setShowEndMediaPicker] = useState(false);
   const htmlRef = useRef(null);
 
   // Apply a built-in design to the current draft. It's a STYLE preset, so keep the
@@ -705,20 +727,23 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
     // Auto-dismiss (name/title, ticker, custom) rides in style_json — no schema column,
     // same as how the countdown stashes mode/durationSec. 0 = sticky → omit the key.
     const dis = (isLT || isTK || isCustom) && draft.autoDismissSec > 0 ? { autoDismissSec: draft.autoDismissSec } : {};
+    // bgFit stored in style_json only when background media is set (non-default fit).
+    const bgFitKey = draft.bgMediaId && draft.bgFit !== 'cover' ? { bgFit: draft.bgFit } : {};
     let style_json = null;
-    if (isLT) style_json = { name: draft.nameStyle, title: draft.titleStyle, ...dis };
+    if (isLT) style_json = { name: draft.nameStyle, title: draft.titleStyle, ...dis, ...bgFitKey };
     else if (isTK) {
       // tickerStyle absorbs the whole style_json on load (incl. a stored autoDismissSec),
       // so drop the stale key before re-folding the current toggle state.
       const { autoDismissSec: _drop, ...tickerBase } = draft.tickerStyle;
-      style_json = { ...tickerBase, ...dis };
-    } else if (isCD) style_json = { ...draft.cd, time: draft.timeStyle, message: draft.msgStyle };
-    else if (isCustom && dis.autoDismissSec) style_json = dis;
+      style_json = { ...tickerBase, ...dis, ...bgFitKey };
+    } else if (isCD) style_json = { ...draft.cd, time: draft.timeStyle, message: draft.msgStyle, ...bgFitKey };
+    else if (isCustom) style_json = dis.autoDismissSec || Object.keys(bgFitKey).length ? { ...dis, ...bgFitKey } : null;
 
     const payload = {
       kind: draft.kind, label: draft.label, name: draft.name, title: draft.title,
       text: draft.text, html: draft.html, speed: draft.speed, target: draft.target,
       style_json,
+      background_media_id: draft.bgMediaId || null,
     };
     if (isEdit) await window.cue.graphics.update(graphic.id, payload);
     else await window.cue.graphics.create(payload);
@@ -928,10 +953,60 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
                           className="bg-surface-container-lowest border border-outline-variant/40 rounded-lg px-sm py-1.5 text-body-md text-on-surface focus:outline-none focus:border-primary" />
                       </Field>
                     )}
-                    <Field label="End message (at zero)">
-                      <input value={draft.cd.endMessage} onChange={(e) => setCd({ endMessage: e.target.value })} placeholder="e.g. Starting now"
-                        className="w-full bg-surface-container-lowest border border-outline-variant/40 rounded-lg px-sm py-1.5 text-body-md text-on-surface focus:outline-none focus:border-primary" />
+                    <Field label="On end">
+                      <div className="flex items-center gap-xs flex-wrap">
+                        {[
+                          { id: 'hold',     label: 'Hold',      icon: 'pause_circle',        desc: 'Freeze at 0:00' },
+                          { id: 'clear',    label: 'Clear',     icon: 'visibility_off',      desc: 'Hide the graphic' },
+                          { id: 'overflow', label: 'Overflow',  icon: 'expand_circle_down',  desc: 'Keep counting past zero' },
+                          { id: 'media',    label: 'Play media', icon: 'play_circle',          desc: 'Switch to a selected image or video' },
+                          { id: 'loop',     label: 'Loop',      icon: 'loop',                desc: 'Restart from beginning' },
+                        ].map((o) => (
+                          <button key={o.id} onClick={() => setCd({ onEnd: o.id })}
+                            title={o.desc}
+                            className={`flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] border transition-colors cursor-pointer ${
+                              draft.cd.onEnd === o.id ? 'bg-primary/15 border-primary/50 text-primary' : 'bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
+                            }`}>
+                            <span className="material-symbols-outlined text-[14px]">{o.icon}</span>{o.label}
+                          </button>
+                        ))}
+                      </div>
                     </Field>
+                    {draft.cd.onEnd === 'hold' && (
+                      <Field label="End message (at zero)">
+                        <input value={draft.cd.endMessage} onChange={(e) => setCd({ endMessage: e.target.value })} placeholder="e.g. Starting now"
+                          className="w-full bg-surface-container-lowest border border-outline-variant/40 rounded-lg px-sm py-1.5 text-body-md text-on-surface focus:outline-none focus:border-primary" />
+                      </Field>
+                    )}
+                    {draft.cd.onEnd === 'media' && (
+                      <Field label="Media to play">
+                        <div className="flex items-start gap-sm">
+                          {draft.cd.onEndMediaPath ? (
+                            <div className="w-24 aspect-video rounded overflow-hidden border border-outline-variant/40 shrink-0 relative bg-black">
+                              <MediaThumb path={draft.cd.onEndMediaPath} className="w-full h-full object-cover" />
+                            </div>
+                          ) : (
+                            <div className="w-24 aspect-video rounded border border-outline-variant/30 flex items-center justify-center bg-surface-container shrink-0">
+                              <span className="material-symbols-outlined text-outline-variant text-2xl">play_circle</span>
+                            </div>
+                          )}
+                          <div className="flex flex-col gap-xs">
+                            <button onClick={() => setShowEndMediaPicker(true)}
+                              className="flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] border bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface cursor-pointer transition-colors">
+                              <span className="material-symbols-outlined text-[14px]">video_library</span>
+                              {draft.cd.onEndMediaPath ? 'Change' : 'Pick media'}
+                            </button>
+                            {draft.cd.onEndMediaPath && (
+                              <button onClick={() => setCd({ onEndMediaId: null, onEndMediaPath: null })}
+                                className="flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] border bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-error cursor-pointer transition-colors">
+                                <span className="material-symbols-outlined text-[14px]">close</span>
+                                Clear
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </Field>
+                    )}
                   </>
                 )}
 
@@ -1042,6 +1117,46 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
                 </div>
               </Field>
             )}
+
+            {/* Background media — optional full-screen video/image behind the overlay. */}
+            <Field label="Background media">
+              <div className="flex items-start gap-sm">
+                {draft.bgMediaPath ? (
+                  <div className="w-24 aspect-video rounded overflow-hidden border border-outline-variant/40 shrink-0 relative bg-black">
+                    <MediaThumb path={draft.bgMediaPath} className="w-full h-full object-cover" />
+                  </div>
+                ) : (
+                  <div className="w-24 aspect-video rounded border border-outline-variant/30 flex items-center justify-center bg-surface-container shrink-0">
+                    <span className="material-symbols-outlined text-outline-variant text-2xl">wallpaper</span>
+                  </div>
+                )}
+                <div className="flex flex-col gap-xs">
+                  <button onClick={() => setShowBgPicker(true)}
+                    className="flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] border bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface cursor-pointer transition-colors">
+                    <span className="material-symbols-outlined text-[14px]">video_library</span>
+                    {draft.bgMediaPath ? 'Change' : 'Set media'}
+                  </button>
+                  {draft.bgMediaPath && (
+                    <button onClick={() => set({ bgMediaId: null, bgMediaPath: null })}
+                      className="flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] border bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-error cursor-pointer transition-colors">
+                      <span className="material-symbols-outlined text-[14px]">close</span>
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+              {draft.bgMediaPath && (
+                <div className="flex items-center gap-xs mt-xs">
+                  <span className="text-[9px] font-mono text-on-surface-variant/50 uppercase tracking-[0.06em]">Fit</span>
+                  {[{ id: 'cover', label: 'Cover' }, { id: 'contain', label: 'Contain' }].map((o) => (
+                    <button key={o.id} onClick={() => set({ bgFit: o.id })}
+                      className={`px-md py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] border transition-colors cursor-pointer ${
+                        draft.bgFit === o.id ? 'bg-primary/15 border-primary/50 text-primary' : 'bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
+                      }`}>{o.label}</button>
+                  ))}
+                </div>
+              )}
+            </Field>
           </div>
 
           {/* Preview */}
@@ -1059,15 +1174,18 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
               {isCustom ? (
                 <CustomPreview draft={draft} replayKey={replayKey} />
               ) : isTK ? (
-                <TickerPreview text={draft.text} tickerStyle={draft.tickerStyle} speed={draft.speed} />
+                <TickerPreview text={draft.text} tickerStyle={draft.tickerStyle} speed={draft.speed}
+                  bgMedia={draft.bgMediaPath ? { path: draft.bgMediaPath, fit: draft.bgFit } : null} />
               ) : isCD ? (
                 <CountdownPreview cd={draft.cd} timeStyle={draft.timeStyle} msgStyle={draft.msgStyle} label={draft.text}
-                  onBoxChange={(box) => set({ timeStyle: { ...draft.timeStyle, textBox: box } })} />
+                  onBoxChange={(box) => set({ timeStyle: { ...draft.timeStyle, textBox: box } })}
+                  bgMedia={draft.bgMediaPath ? { path: draft.bgMediaPath, fit: draft.bgFit } : null} />
               ) : (
                 <BugPreview
                   name={draft.name} title={draft.title}
                   nameStyle={draft.nameStyle} titleStyle={draft.titleStyle}
                   onBoxChange={(box) => set({ nameStyle: { ...draft.nameStyle, textBox: box } })}
+                  bgMedia={draft.bgMediaPath ? { path: draft.bgMediaPath, fit: draft.bgFit } : null}
                 />
               )}
             </div>
@@ -1087,6 +1205,26 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
 
     {showGallery && (
       <GraphicsPresetModal lockKind={draft.kind} onPick={applyPresetStyle} onClose={() => setShowGallery(false)} />
+    )}
+    {showBgPicker && (
+      <MediaPickerModal
+        initialId={draft.bgMediaId}
+        onClose={() => setShowBgPicker(false)}
+        onSelect={(asset) => {
+          set({ bgMediaId: asset ? asset.id : null, bgMediaPath: asset ? asset.path : null });
+          setShowBgPicker(false);
+        }}
+      />
+    )}
+    {showEndMediaPicker && (
+      <MediaPickerModal
+        initialId={draft.cd.onEndMediaId}
+        onClose={() => setShowEndMediaPicker(false)}
+        onSelect={(asset) => {
+          setCd({ onEndMediaId: asset ? asset.id : null, onEndMediaPath: asset ? asset.path : null });
+          setShowEndMediaPicker(false);
+        }}
+      />
     )}
     </>,
     document.body

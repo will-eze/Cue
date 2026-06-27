@@ -120,6 +120,11 @@ export function findUnused() {
   addAll(db.prepare('SELECT DISTINCT background_id          AS id FROM themes          WHERE background_id          IS NOT NULL').all());
   addAll(db.prepare('SELECT DISTINCT background_id          AS id FROM presentation_slides    WHERE background_id IS NOT NULL').all());
   addAll(db.prepare('SELECT DISTINCT background_id          AS id FROM presentation_templates WHERE background_id IS NOT NULL').all());
+  addAll(db.prepare('SELECT DISTINCT background_media_id    AS id FROM graphics               WHERE background_media_id IS NOT NULL').all());
+  // onEndMediaId is stored inside style_json for countdown graphics (no FK column).
+  for (const { style_json } of db.prepare("SELECT style_json FROM graphics WHERE kind='countdown' AND style_json IS NOT NULL").all()) {
+    try { const s = JSON.parse(style_json); if (s.onEndMediaId) referenced.add(Number(s.onEndMediaId)); } catch {}
+  }
   // Image elements reference media by id inside elements_json (not an FK column).
   for (const r of db.prepare('SELECT elements_json FROM presentation_slides UNION ALL SELECT elements_json FROM presentation_templates').all()) {
     for (const id of collectImageMediaIds(r.elements_json)) referenced.add(id);

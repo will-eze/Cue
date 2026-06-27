@@ -10,22 +10,34 @@ import { getDb } from './schema.js';
 
 export function list() {
   return getDb()
-    .prepare('SELECT * FROM graphics ORDER BY order_index, id')
+    .prepare(`
+      SELECT g.*, m.path AS background_path, m.filename AS background_filename
+      FROM graphics g
+      LEFT JOIN media_assets m ON m.id = g.background_media_id
+      ORDER BY g.order_index, g.id
+    `)
     .all();
 }
 
 export function get(id) {
-  return getDb().prepare('SELECT * FROM graphics WHERE id = ?').get(id);
+  return getDb()
+    .prepare(`
+      SELECT g.*, m.path AS background_path, m.filename AS background_filename
+      FROM graphics g
+      LEFT JOIN media_assets m ON m.id = g.background_media_id
+      WHERE g.id = ?
+    `)
+    .get(id);
 }
 
 export function create(data) {
   const db = getDb();
-  const { kind, label, name, title, text, html, speed, style_json, target } = data;
+  const { kind, label, name, title, text, html, speed, style_json, target, background_media_id } = data;
   const maxOrder = db.prepare('SELECT COALESCE(MAX(order_index), -1) AS m FROM graphics').get().m;
   const { lastInsertRowid } = db
     .prepare(
-      `INSERT INTO graphics (kind, label, name, title, text, html, speed, style_json, target, order_index)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO graphics (kind, label, name, title, text, html, speed, style_json, target, background_media_id, order_index)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       kind,
@@ -37,16 +49,17 @@ export function create(data) {
       Number.isFinite(speed) ? speed : 100,
       style_json ? (typeof style_json === 'string' ? style_json : JSON.stringify(style_json)) : null,
       target || 'ndi',
+      background_media_id ? Number(background_media_id) : null,
       maxOrder + 1
     );
   return Number(lastInsertRowid);
 }
 
 export function update(id, data) {
-  const { kind, label, name, title, text, html, speed, style_json, target } = data;
+  const { kind, label, name, title, text, html, speed, style_json, target, background_media_id } = data;
   getDb()
     .prepare(
-      `UPDATE graphics SET kind=?, label=?, name=?, title=?, text=?, html=?, speed=?, style_json=?, target=?, updated_at=datetime('now') WHERE id=?`
+      `UPDATE graphics SET kind=?, label=?, name=?, title=?, text=?, html=?, speed=?, style_json=?, target=?, background_media_id=?, updated_at=datetime('now') WHERE id=?`
     )
     .run(
       kind,
@@ -58,6 +71,7 @@ export function update(id, data) {
       Number.isFinite(speed) ? speed : 100,
       style_json ? (typeof style_json === 'string' ? style_json : JSON.stringify(style_json)) : null,
       target || 'ndi',
+      background_media_id ? Number(background_media_id) : null,
       id
     );
 }

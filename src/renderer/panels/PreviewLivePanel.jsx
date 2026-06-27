@@ -28,8 +28,16 @@ function OverlayCountdown({ cd }) {
   else if (cd.mode === 'countup') timeText = fmtGfxDuration((Date.now() - cd.startAt) / 1000);
   else {
     const rem = (cd.endsAt - Date.now()) / 1000;
-    if (rem <= 0) { timeText = cd.endMessage ? '' : '0:00'; if (cd.endMessage) msgText = cd.endMessage; }
-    else timeText = fmtGfxDuration(rem);
+    if (rem <= 0) {
+      if (cd.onEnd === 'overflow') {
+        timeText = '+' + fmtGfxDuration(-rem);
+      } else {
+        timeText = '0:00';
+        msgText = cd.endMessage || cd.label || '';
+      }
+    } else {
+      timeText = fmtGfxDuration(Math.ceil(rem));
+    }
   }
 
   return (
@@ -53,6 +61,12 @@ function GraphicsOverlayLayer({ overlay }) {
   const nt = overlay.nameTitle, tk = overlay.ticker, cu = overlay.custom, cd = overlay.countdown;
   if (!nt && !tk && !cu && !cd) return null;
 
+  // Background media: priority countdown > custom > nameTitle > ticker (mirrors graphics-overlay.js).
+  const bgSlot = (cd && cd.bgPath && cd) || (cu && cu.bgPath && cu) || (nt && nt.bgPath && nt) || (tk && tk.bgPath && tk) || null;
+  const bgUrl  = bgSlot ? mediaUrl(bgSlot.bgPath) : null;
+  const bgFit  = bgSlot?.bgFit || 'cover';
+  const bgIsVideo = bgSlot?.bgPath && /\.(mp4|mov|webm|avi)$/i.test(bgSlot.bgPath.toLowerCase());
+
   let bug = null;
   if (nt) {
     const st = nt.style || {};
@@ -73,6 +87,11 @@ function GraphicsOverlayLayer({ overlay }) {
 
   return (
     <>
+      {bgUrl && (
+        bgIsVideo
+          ? <video src={bgUrl} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: bgFit }} autoPlay loop muted playsInline />
+          : <img src={bgUrl} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: bgFit }} alt="" />
+      )}
       {bug}
       {tk && <OverlayTicker tk={tk} />}
       {cd && cd.mode && <OverlayCountdown cd={cd} />}

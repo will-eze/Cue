@@ -768,6 +768,16 @@ const migrations = [
       ALTER TABLE output_channels ADD COLUMN stage_layout_json TEXT;
     `);
   },
+
+  // v28 — Background media on broadcast graphics. An optional full-screen
+  // video/image rendered behind the overlay text (e.g. countdown + video background).
+  // NULL = no background (the overlay is transparent as before). ON DELETE SET NULL
+  // so deleting a media asset clears the reference without removing the graphic.
+  function v28(database) {
+    database.exec(`
+      ALTER TABLE graphics ADD COLUMN background_media_id INTEGER REFERENCES media_assets(id) ON DELETE SET NULL;
+    `);
+  },
 ];
 
 function runMigrations() {

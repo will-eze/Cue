@@ -14,10 +14,28 @@
   let showGfx = new URLSearchParams(location.search).get('graphics') !== '0';
   let lastOverlay = null; // cached so re-enabling restores the current graphics
 
+  // Mirrors fullscreen.js pathToUrl: respects CUE_MEDIA_BASE for Remote Output.
+  function pathToUrl(p) {
+    if (!p) return null;
+    const normalized = p.replace(/\\/g, '/');
+    const pathPart = normalized.startsWith('/') ? normalized : '/' + normalized;
+    const base = (typeof window !== 'undefined' && window.CUE_MEDIA_BASE) || 'cue-media://localhost';
+    const suffix = (typeof window !== 'undefined' && window.CUE_MEDIA_SUFFIX) || '';
+    return base + pathPart.split('/').map(encodeURIComponent).join('/') + suffix;
+  }
+
+  function isVideoPath(p) {
+    if (!p) return false;
+    return /\.(mp4|mov|webm|avi)$/i.test(p.split('?')[0]);
+  }
+
   // ── Inject base layout (keyframes + ticker crawl + fallback look) ───────────
   const style = document.createElement('style');
   style.textContent = `
     #cue-gfx { position: fixed; inset: 0; pointer-events: none; z-index: 2147483000; }
+    #cue-gfx #gfx-media-bg { display: none; position: absolute; inset: 0; overflow: hidden; }
+    #cue-gfx #gfx-media-bg video,
+    #cue-gfx #gfx-media-bg img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
     #cue-gfx #lt-namebar {
       display: none; position: absolute; box-sizing: border-box;
       flex-direction: column; overflow: hidden;
@@ -56,12 +74,16 @@
   const root = document.createElement('div');
   root.id = 'cue-gfx';
   root.innerHTML =
+    '<div id="gfx-media-bg"><video id="gfx-bg-video" autoplay loop muted playsinline></video><img id="gfx-bg-img" alt=""></div>' +
     '<div id="lt-namebar"><div id="nt-name"></div><div id="nt-title"></div></div>' +
     '<div id="lt-ticker"><div id="ticker-inner"></div></div>' +
     '<div id="lt-countdown"><div id="cd-msg"></div><div id="cd-time"></div></div>' +
     '<div id="lt-custom"></div>';
   document.body.appendChild(root);
 
+  const bgDiv       = root.querySelector('#gfx-media-bg');
+  const bgVideo     = root.querySelector('#gfx-bg-video');
+  const bgImg       = root.querySelector('#gfx-bg-img');
   const namebar     = root.querySelector('#lt-namebar');
   const ntName      = root.querySelector('#nt-name');
   const ntTitle     = root.querySelector('#nt-title');
@@ -220,12 +242,20 @@
     // countdown
     const remainingSec = (c.endsAt - Date.now()) / 1000;
     if (remainingSec <= 0) {
-      cdTime.textContent = c.endMessage ? '' : '0:00';
+      if (c.onEnd === 'overflow') {
+        // Keep ticking past zero with a '+' prefix; don't clear the interval.
+        const elapsed = -remainingSec;
+        cdTime.textContent = '+' + fmtDuration(elapsed);
+        cdMsg.textContent  = c.label || '';
+        return;
+      }
+      cdTime.textContent = '0:00';
       cdMsg.textContent  = c.endMessage || c.label || '';
       if (cdTimer) { clearInterval(cdTimer); cdTimer = null; } // reached zero — stop ticking
       return;
     }
-    cdTime.textContent = fmtDuration(remainingSec);
+    // Ceil so a 5-second countdown shows 5 → 4 → 3 → 2 → 1 (not 4 → … → 0:00).
+    cdTime.textContent = fmtDuration(Math.ceil(remainingSec));
   }
 
   function setCountdown(c) {
@@ -286,11 +316,57 @@
     }
   }
 
+  // ── Full-screen background media (video or image behind the overlay text) ──────
+  let bgActivePath = null;
+
+  function setGfxBackground(path, fit) {
+    const url = pathToUrl(path);
+    if (!url) {
+      if (bgActivePath) {
+        bgDiv.style.display = 'none';
+        bgVideo.pause();
+        bgVideo.removeAttribute('src');
+        bgImg.removeAttribute('src');
+        bgActivePath = null;
+      }
+      return;
+    }
+    bgDiv.style.display = 'block';
+    const objFit = fit || 'cover';
+    bgVideo.style.objectFit = objFit;
+    bgImg.style.objectFit   = objFit;
+    if (isVideoPath(path)) {
+      bgImg.style.display   = 'none';
+      bgVideo.style.display = 'block';
+      if (bgActivePath !== path) {
+        bgActivePath = path;
+        bgVideo.src = url;
+        bgVideo.load();
+        bgVideo.play().catch(() => {});
+      }
+    } else {
+      bgVideo.style.display = 'none';
+      bgImg.style.display   = 'block';
+      if (bgActivePath !== path) {
+        bgActivePath = path;
+        bgImg.src = url;
+      }
+    }
+  }
+
   function apply(o) {
     setNameTitle(o && o.nameTitle);
     setTicker(o && o.ticker);
     setCountdown(o && o.countdown);
     setCustom(o && o.custom);
+
+    // Background media: first active slot wins, priority: countdown > custom > nameTitle > ticker
+    const bgSlot = (o && o.countdown && o.countdown.bgPath && o.countdown) ||
+                   (o && o.custom    && o.custom.bgPath    && o.custom)    ||
+                   (o && o.nameTitle && o.nameTitle.bgPath && o.nameTitle) ||
+                   (o && o.ticker    && o.ticker.bgPath    && o.ticker)    ||
+                   null;
+    setGfxBackground(bgSlot ? bgSlot.bgPath : null, bgSlot ? bgSlot.bgFit : null);
   }
 
   window.cueOutput.onGraphicUpdate(function (o) {
