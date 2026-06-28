@@ -5,7 +5,7 @@ import BackgroundLibrary from './BackgroundLibrary.jsx';
 
 const typeFromKey = (k) => k.includes('song') ? 'song' : k.includes('scripture') ? 'scripture' : 'slide';
 
-function BackgroundPicker({ label, settingKey }) {
+function BackgroundPicker({ label, settingKey, onChanged }) {
   const [assetId, setAssetId] = useState(null);
   const [asset, setAsset] = useState(null);
 
@@ -28,6 +28,7 @@ function BackgroundPicker({ label, settingKey }) {
       await window.cue.settings.setGlobalBackground(type, imported[0].id);
       setAssetId(imported[0].id);
       setAsset(imported[0]);
+      onChanged?.();
     }
   }
 
@@ -36,6 +37,7 @@ function BackgroundPicker({ label, settingKey }) {
     await window.cue.settings.setGlobalBackground(type, null);
     setAssetId(null);
     setAsset(null);
+    onChanged?.();
   }
 
   return (
@@ -79,10 +81,12 @@ function BackgroundPicker({ label, settingKey }) {
   );
 }
 
-export default function BackgroundSettings({ activeServiceId }) {
+export default function BackgroundSettings({ activeServiceId, onBackgroundDefaultChanged }) {
   const toast = useToast();
   const [services, setServices] = useState([]);
   const [selectedServiceId, setSelectedServiceId] = useState(null);
+  const [loopMode, setLoopMode] = useState('blend'); // 'blend' | 'jump'
+  const [loopBlendSecs, setLoopBlendSecs] = useState(2.0);
 
   useEffect(() => {
     window.cue.services.list().then((list) => {
@@ -90,12 +94,24 @@ export default function BackgroundSettings({ activeServiceId }) {
       const defaultId = activeServiceId ?? (list.length > 0 ? list[0].id : null);
       setSelectedServiceId(defaultId);
     });
+    window.cue.settings.get('bg_loop_mode').then((v) => { if (v) setLoopMode(v); });
+    window.cue.settings.get('bg_loop_blend_secs').then((v) => { if (v != null) setLoopBlendSecs(Number(v)); });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keep the selector in sync if the operator switches rundowns while Settings is open.
   useEffect(() => {
     if (activeServiceId != null) setSelectedServiceId(activeServiceId);
   }, [activeServiceId]);
+
+  function handleLoopModeChange(mode) {
+    setLoopMode(mode);
+    window.cue.settings.set('bg_loop_mode', mode);
+  }
+
+  function handleLoopBlendChange(secs) {
+    setLoopBlendSecs(secs);
+    window.cue.settings.set('bg_loop_blend_secs', secs);
+  }
 
   function showFeedback(msg) { toast.success(msg); }
 
@@ -125,6 +141,70 @@ export default function BackgroundSettings({ activeServiceId }) {
         Background Defaults
       </h2>
 
+      {/* Background priority cascade */}
+      <div className="bg-surface-container border border-outline-variant/30 rounded-xl p-md space-y-sm">
+        <h3 className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em]">Background Priority — Highest to Lowest</h3>
+        <div className="space-y-xs">
+          {[
+            { rank: '1', label: 'Locked pin', desc: 'Song has "Lock background" enabled — nothing can override it.' },
+            { rank: '2', label: 'Slot override', desc: 'A background explicitly set on this rundown slot (drag-and-drop or right-click → Set Background).' },
+            { rank: '3', label: "Song's own default", desc: "The background saved on the song itself (set via Song Editor or Bulk Apply)." },
+            { rank: '4', label: 'Global default (below)', desc: 'The per-type default set here. Applies live to every item still on the fallback — change it and it takes effect instantly.' },
+            { rank: '5', label: 'Black', desc: 'Nothing set anywhere — output shows a black screen.' },
+          ].map(({ rank, label, desc }) => (
+            <div key={rank} className="flex items-start gap-sm py-xs border-b border-outline-variant/10 last:border-0">
+              <span className="shrink-0 w-5 h-5 rounded-full bg-primary/10 text-primary text-label-sm font-label-sm font-bold flex items-center justify-center tabular-nums">{rank}</span>
+              <div>
+                <span className="text-body-sm font-semibold text-on-surface">{label}</span>
+                <span className="text-body-sm text-on-surface-variant"> — {desc}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Video loop behaviour */}
+      <div className="bg-surface-container-high p-lg rounded-xl border border-outline-variant/30 space-y-md">
+        <div>
+          <h3 className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em]">Video Loop</h3>
+          <p className="text-body-sm text-on-surface-variant/70 mt-xs">
+            How background videos behave at the loop point.
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-sm">
+          {[
+            { id: 'blend', label: 'Smooth blend', desc: 'Crossfade end → start' },
+            { id: 'jump',  label: 'Jump cut',     desc: 'Restart immediately' },
+          ].map((opt) => (
+            <button
+              key={opt.id}
+              onClick={() => handleLoopModeChange(opt.id)}
+              className={`px-md py-sm rounded-lg border-2 text-left transition-all cursor-pointer ${
+                loopMode === opt.id
+                  ? 'border-primary bg-primary/8'
+                  : 'border-outline-variant/30 bg-surface-container-low hover:border-outline-variant/60'
+              }`}
+            >
+              <div className={`text-label-sm font-label-sm font-bold ${loopMode === opt.id ? 'text-primary' : 'text-on-surface'}`}>{opt.label}</div>
+              <div className="text-body-sm text-on-surface-variant/70 mt-[2px]">{opt.desc}</div>
+            </button>
+          ))}
+        </div>
+        <div className={`flex items-center gap-lg ${loopMode !== 'blend' ? 'opacity-40 pointer-events-none' : ''}`}>
+          <span className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em] shrink-0">Blend duration</span>
+          <input
+            type="range"
+            min={0.5}
+            max={5}
+            step={0.5}
+            value={loopBlendSecs}
+            onChange={(e) => handleLoopBlendChange(Number(e.target.value))}
+            className="flex-1 accent-primary cursor-pointer"
+          />
+          <span className="text-label-sm font-label-sm text-primary tabular-nums w-12 text-right">{loopBlendSecs.toFixed(1)} s</span>
+        </div>
+      </div>
+
       {/* Global default pickers */}
       <div className="bg-surface-container-high p-lg rounded-xl border border-outline-variant/30 space-y-md">
         <div>
@@ -135,9 +215,9 @@ export default function BackgroundSettings({ activeServiceId }) {
           </p>
         </div>
         <div className="flex gap-md">
-          <BackgroundPicker label="Songs" settingKey="global_bg_song_id" />
-          <BackgroundPicker label="Scripture" settingKey="global_bg_scripture_id" />
-          <BackgroundPicker label="Slides" settingKey="global_bg_slide_id" />
+          <BackgroundPicker label="Songs" settingKey="global_bg_song_id" onChanged={onBackgroundDefaultChanged} />
+          <BackgroundPicker label="Scripture" settingKey="global_bg_scripture_id" onChanged={onBackgroundDefaultChanged} />
+          <BackgroundPicker label="Slides" settingKey="global_bg_slide_id" onChanged={onBackgroundDefaultChanged} />
         </div>
       </div>
 

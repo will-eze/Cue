@@ -562,6 +562,22 @@ function transitionFor(kind) {
   };
 }
 
+function bgLoopBlendSecs() {
+  try {
+    const row = getDb().prepare('SELECT value FROM settings WHERE key = ?').get('bg_loop_blend_secs');
+    if (row) return Math.max(0.5, Math.min(10, Number(JSON.parse(row.value))));
+  } catch {}
+  return 2.0;
+}
+
+function bgLoopMode() {
+  try {
+    const row = getDb().prepare('SELECT value FROM settings WHERE key = ?').get('bg_loop_mode');
+    if (row) return JSON.parse(row.value) === 'jump' ? 'jump' : 'blend';
+  } catch {}
+  return 'blend';
+}
+
 // ── Display state machine ─────────────────────────────────────────────────────
 
 // Send the current display state to a single window only.
@@ -599,7 +615,7 @@ function sendStateToWindow(win, channel) {
   }
 
   // content
-  win.webContents.send('slide:update', { ...state.livePayload, type: 'content', transport: { ...transport }, ltFontScale: ltFontScaleFraction() });
+  win.webContents.send('slide:update', { ...state.livePayload, type: 'content', transport: { ...transport }, ltFontScale: ltFontScaleFraction(), bgLoopMode: bgLoopMode(), bgLoopBlendSecs: bgLoopBlendSecs() });
 }
 
 function emitSlides() {
@@ -665,8 +681,10 @@ function emitSlides() {
   }
 
   // displayMode === 'content'
+  const loopMode = bgLoopMode();
+  const blendSecs = bgLoopBlendSecs();
   for (const win of getAllOutputWindows()) {
-    win.webContents.send('slide:update', { ...state.livePayload, type: 'content', transport: { ...transport }, transition, ltFontScale: ltFontScaleFraction() });
+    win.webContents.send('slide:update', { ...state.livePayload, type: 'content', transport: { ...transport }, transition, ltFontScale: ltFontScaleFraction(), bgLoopMode: loopMode, bgLoopBlendSecs: blendSecs });
   }
 }
 
@@ -701,7 +719,7 @@ function buildMirrorSlide() {
     return { type: 'logo', logoPath: resolveLogo({}), logoScaleMode, text: null, backgroundPath: null, copyright: null, sectionLabel: null, transition };
   }
   // content
-  return { ...state.livePayload, type: 'content', transport: { ...transport }, transition, ltFontScale: ltFontScaleFraction() };
+  return { ...state.livePayload, type: 'content', transport: { ...transport }, transition, ltFontScale: ltFontScaleFraction(), bgLoopMode: bgLoopMode(), bgLoopBlendSecs: bgLoopBlendSecs() };
 }
 
 function emitProgramChange(delta) {

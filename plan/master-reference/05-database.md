@@ -275,6 +275,8 @@ Known keys:
 | `stream_studio` | object | Stream Studio inputs + live layout `{videoDeviceId,videoLabel,audioDeviceId,audioLabel,audioMode:'external'\|'mixed',layout}` where `layout` is the free-form box model `{feed:{visible,x,y,w,h,fit},program:{visible,x,y,w,h,fit},front,lyricsOverFeed}`. Device labels persist because deviceIds re-salt per session/origin. Machine-specific |
 | `stream_presets` | array | Saved stream layout presets `[{id,name,layout}]` (same `layout` shape as `stream_studio.layout`). Applied live from the Stream tab; edited in StreamLayoutEditor |
 | `stage_presets` | array | Saved stage display layout presets `[{id,name,elements:[…]}]`. Each `elements` array is the same free-form element spec as `stage_layout_json` (% positions + per-type props). CRUD via `output.stage.getPresets/savePreset/deletePreset`. |
+| `bg_loop_mode` | `'blend'`\|`'jump'` | How background videos loop at the loop point. `'blend'` (default) crossfades end→start using two `<video>` elements; `'jump'` uses native `loop` for an immediate cut. Sent as `bgLoopMode` on every `slide:update` payload; `fullscreen.js` reads it on each update and re-mounts the video when the mode changes |
+| `bg_loop_blend_secs` | number | Crossfade duration for `blend` mode (0.5–10, default 2.0). Sent as `bgLoopBlendSecs` on every `slide:update` payload; clamped in main before dispatch |
 
 **localStorage keys** (UI state only — not in DB):
 | Key | Description |

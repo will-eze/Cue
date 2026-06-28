@@ -150,7 +150,7 @@ function SettingsFooter() {
   );
 }
 
-export default function SettingsView({ activeServiceId, onRundownCleared, onRundownDeleted, onLibraryCleared, initialSection = null, sectionNonce = 0 }) {
+export default function SettingsView({ activeServiceId, onRundownCleared, onRundownDeleted, onLibraryCleared, onBackgroundDefaultChanged, initialSection = null, sectionNonce = 0 }) {
   const scrollRef = useRef(null);
   const sectionRefs = useRef({});
   const [active, setActive] = useState(initialSection || SECTIONS[0].id);
@@ -235,7 +235,7 @@ export default function SettingsView({ activeServiceId, onRundownCleared, onRund
 
         <section ref={setRef('channels')} data-section="channels" className="scroll-mt-lg"><OutputChannels /></section>
         <section ref={setRef('logo')} data-section="logo" className="scroll-mt-lg"><LogoSettings /></section>
-        <section ref={setRef('background')} data-section="background" className="scroll-mt-lg"><BackgroundSettings activeServiceId={activeServiceId} /></section>
+        <section ref={setRef('background')} data-section="background" className="scroll-mt-lg"><BackgroundSettings activeServiceId={activeServiceId} onBackgroundDefaultChanged={onBackgroundDefaultChanged} /></section>
         <section ref={setRef('themes')} data-section="themes" className="scroll-mt-lg"><ThemeSettings /></section>
         <section ref={setRef('transitions')} data-section="transitions" className="scroll-mt-lg"><TransitionSettings /></section>
         <section ref={setRef('lowerthird')} data-section="lowerthird" className="scroll-mt-lg"><LowerthirdSettings /></section>

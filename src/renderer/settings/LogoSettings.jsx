@@ -28,7 +28,7 @@ export default function LogoSettings() {
 
   async function handlePickLogo() {
     const result = await window.cue.dialog.openFile({
-      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'] }],
+      filters: [{ name: 'Images & Videos', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'mp4', 'webm', 'mov'] }],
       properties: ['openFile'],
     });
     if (result.canceled || !result.filePaths.length) return;
@@ -56,11 +56,19 @@ export default function LogoSettings() {
         {/* Logo preview */}
         <div className="w-32 h-32 rounded bg-background flex items-center justify-center p-md border border-outline-variant/30 relative group shrink-0">
           {globalLogoAsset ? (
-            <img
-              src={mediaUrl(globalLogoAsset.path)}
-              className="w-full h-full object-contain"
-              alt="Logo"
-            />
+            globalLogoAsset.type === 'video' ? (
+              <video
+                src={mediaUrl(globalLogoAsset.path)}
+                className="w-full h-full object-contain"
+                autoPlay loop muted playsInline
+              />
+            ) : (
+              <img
+                src={mediaUrl(globalLogoAsset.path)}
+                className="w-full h-full object-contain"
+                alt="Logo"
+              />
+            )
           ) : (
             <span className="material-symbols-outlined text-outline-variant text-3xl">image</span>
           )}
@@ -71,7 +79,7 @@ export default function LogoSettings() {
           <div>
             <h4 className="text-headline-md font-semibold text-on-surface">Global Brand Mark</h4>
             <p className="text-body-md text-on-surface-variant mt-xs">
-              PNG or SVG with transparent background. Min 512px. Shown on all channels when Logo is pressed.
+              Image (PNG/SVG) or video (MP4/WebM/MOV). Transparent background recommended for images. Shown on all channels when Logo is pressed.
             </p>
           </div>
           <div className="flex gap-sm">

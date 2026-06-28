@@ -300,6 +300,7 @@ export default function App() {
             setBgRefreshTick((t) => t + 1);
           }}
           onLibraryCleared={() => setBgRefreshTick((t) => t + 1)}
+          onBackgroundDefaultChanged={() => setBgRefreshTick((t) => t + 1)}
         /></ErrorBoundary>}
       </div>
     </div>

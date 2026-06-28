@@ -176,12 +176,12 @@ function parseSections(rawText, { stripAnnotations = false } = {}) {
   const KW = 'verse|chorus|bridge|pre[-\\s]?chorus|prechorus|tag|intro|outro|refrain';
   const HEADER_PATTERNS = [
     new RegExp('^\\[(.{1,40}?)\\]\\s*:?\\s*$'),
-    new RegExp(`^(${KW})\\s*\\d*\\s*:$`, 'i'),
-    new RegExp(`^(${KW})\\s*\\d*$`, 'i'),
+    new RegExp(`^(${KW})\\s*\\d*[a-z]?\\s*:$`, 'i'),
+    new RegExp(`^(${KW})\\s*\\d*[a-z]?$`, 'i'),
     // EW: a known section word trailed by a directive — "Verse 1 - All",
-    // "Chorus (Men)", "Chorus: Women", "Verse 1 Solo- Devine" (voice-part words
+    // "Chorus (Men)", "Chorus: Women", "Verse 1a Solo- Devine" (voice-part words
     // between the number and the separator) — keeps the section word, drops the rest.
-    ...(stripAnnotations ? [new RegExp(`^(${KW})\\s*\\d*(?:\\s+[A-Za-z][A-Za-z'’]*){0,4}\\s*[-–—:/(].*$`, 'i')] : []),
+    ...(stripAnnotations ? [new RegExp(`^(${KW})\\s*\\d*[a-z]?(?:\\s+[A-Za-z][A-Za-z'']*){0,4}\\s*[-–—:/(].*$`, 'i')] : []),
   ];
   const TYPE_MAP = {
     verse: 'verse', v: 'verse', chorus: 'chorus', ch: 'chorus', refrain: 'refrain',

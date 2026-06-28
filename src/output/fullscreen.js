@@ -102,7 +102,20 @@ function buildShadow(shadow, noDefault = false) {
   return `${shadow.x ?? 0}px ${shadow.y ?? 2}px ${shadow.blur ?? 16}px ${shadow.color ?? '#000'}`;
 }
 
+// Scale authored 1920×1080 px values to the current viewport size.
+// Uses min(x,y) so the design fits without stretching on any aspect ratio.
+function viewportScale() {
+  return Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+}
+
+// Last-rendered lyric/scripture style — stored so the resize handler can re-apply
+// scaled px values without re-triggering slide transitions.
+let _liveStyle = null;
+let _liveCopyrightStyle = null;
+let _liveCopyrightDefaultAlign = 'center';
+
 function applyStyle(s) {
+  _liveStyle = s;
   // Background scrim (transparent→black) — clamp 0..1; clear when there's no slide.
   if (scrim) scrim.style.opacity = String(Math.max(0, Math.min(1, (s && s.bgScrim) || 0)));
   if (!s) {
@@ -110,6 +123,8 @@ function applyStyle(s) {
     textEl.style.cssText   = '';
     return;
   }
+
+  const vs = viewportScale();
 
   // Position/size the text box
   const tb = s.textBox;
@@ -127,20 +142,20 @@ function applyStyle(s) {
   textWrap.style.boxSizing = 'border-box';
   textWrap.style.padding   = '0';
 
-  // Text styles
+  // Text styles — px values scaled to the current output resolution
   textEl.style.fontFamily      = s.fontFamily   || '';
   textEl.style.textAlign       = s.align        || 'center';
   textEl.style.fontWeight      = s.bold         ? '700' : '400';
   textEl.style.fontStyle       = s.italic       ? 'italic' : 'normal';
   textEl.style.textDecoration  = s.underline    ? 'underline' : 'none';
-  textEl.style.fontSize        = s.fontSize     ? s.fontSize + 'px' : '';
+  textEl.style.fontSize        = s.fontSize     ? Math.round(s.fontSize * vs) + 'px' : '';
   textEl.style.color           = s.color        || '';
   textEl.style.lineHeight      = s.lineSpacing  ? String(s.lineSpacing) : '';
   textEl.style.letterSpacing   = s.letterSpacing ? s.letterSpacing + 'em' : '';
   textEl.style.textTransform   = s.uppercase    ? 'uppercase' : 'none';
   textEl.style.textShadow      = buildShadow(s.textShadow);
   textEl.style.webkitTextStroke = (s.textStroke && s.textStroke.enabled)
-    ? `${s.textStroke.width ?? 2}px ${s.textStroke.color ?? '#000'}`
+    ? `${Math.round((s.textStroke.width ?? 2) * vs)}px ${s.textStroke.color ?? '#000'}`
     : '';
   textEl.style.whiteSpace = 'pre-wrap';
   textEl.style.wordBreak  = 'break-word';
@@ -152,12 +167,13 @@ function applyStyle(s) {
 // so a single short verse pair never blows up larger than normal scripture.
 let lastSplitMax = 0;
 function fitSplitText(maxPx) {
+  const vs = viewportScale();
   const maxH = textWrap.clientHeight;
-  const cap = Math.max(22, maxPx);
+  const cap = Math.max(Math.round(22 * vs), Math.round(maxPx * vs));
   if (!maxH) { textEl.style.fontSize = cap + 'px'; return; }
   textEl.style.fontSize = cap + 'px';
   if (textEl.scrollHeight <= maxH) return;
-  let lo = 22, hi = cap;
+  let lo = Math.round(22 * vs), hi = cap;
   while (hi - lo > 1) {
     const mid = (lo + hi) >> 1;
     textEl.style.fontSize = mid + 'px';
@@ -165,8 +181,6 @@ function fitSplitText(maxPx) {
   }
   textEl.style.fontSize = lo + 'px';
 }
-// Refit a live split verse when the output window is resized (the box height changes).
-window.addEventListener('resize', () => { if (lastSplitMax) fitSplitText(lastSplitMax); });
 
 function showLogo(p, scaleMode) {
   if (!p) { logoWrap.innerHTML = ''; logoWrap.className = ''; return; }
@@ -184,16 +198,124 @@ function hideLogo() {
   logoWrap.className = '';
 }
 
+// ── Background video loop-blend ───────────────────────────────────────────────
+// For muted background videos only: crossfade the near-end frame into a fresh
+// copy playing from the start so the loop feels continuous rather than a jump cut.
+// Two <video> elements (active + standby) swap roles on each cycle. This is safe
+// for background (always muted) and does not affect the transport-synced foreground
+// player (which keeps native `loop` for gapless audio).
+let LOOP_BLEND_SECS = 2.0; // updated per slide:update payload (bg_loop_blend_secs setting)
+let LOOP_MODE = 'blend';   // 'blend' | 'jump', updated per slide:update payload
+let _bgController = null;
+
+function destroyBgController() {
+  if (_bgController) { _bgController.destroy(); _bgController = null; }
+}
+
+function createLoopBlendBackground(url) {
+  function makeVid() {
+    const v = document.createElement('video');
+    v.setAttribute('playsinline', '');
+    v.muted = true;
+    v.preload = 'auto';
+    Object.assign(v.style, { position: 'absolute', inset: '0', width: '100%', height: '100%', objectFit: 'cover' });
+    v.src = url;
+    bg.appendChild(v);
+    return v;
+  }
+
+  let active = makeVid();
+  let standby = makeVid();
+  active.style.opacity = '1';
+  standby.style.opacity = '0';
+
+  let blending = false;
+  let destroyed = false;
+
+  function startBlend() {
+    if (blending || destroyed) return;
+    blending = true;
+    standby.currentTime = 0;
+    standby.play().catch(() => {});
+    const t = LOOP_BLEND_SECS + 's';
+    active.style.transition  = `opacity ${t} linear`;
+    active.style.opacity     = '0';
+    standby.style.transition = `opacity ${t} linear`;
+    standby.style.opacity    = '1';
+  }
+
+  function onEnded() {
+    if (destroyed) return;
+    // Swap roles: standby (now at full opacity, playing) becomes active.
+    const old = active;
+    active  = standby;
+    standby = old;
+    // Reset old active: instant opacity reset, pause, rewind.
+    standby.style.transition = '';
+    standby.style.opacity    = '0';
+    standby.pause();
+    active.style.transition = '';
+    active.style.opacity    = '1';
+    blending = false;
+    old.removeEventListener('timeupdate', onTimeUpdate);
+    old.removeEventListener('ended',      onEnded);
+    active.addEventListener('timeupdate', onTimeUpdate);
+    active.addEventListener('ended',      onEnded);
+  }
+
+  function onTimeUpdate() {
+    if (blending || destroyed) return;
+    const dur = active.duration;
+    if (!Number.isFinite(dur) || dur <= LOOP_BLEND_SECS) return;
+    if (dur - active.currentTime < LOOP_BLEND_SECS) startBlend();
+  }
+
+  active.addEventListener('timeupdate', onTimeUpdate);
+  active.addEventListener('ended',      onEnded);
+  active.play().catch(() => {});
+
+  return {
+    destroy() {
+      destroyed = true;
+      active.removeEventListener('timeupdate', onTimeUpdate);
+      active.removeEventListener('ended',      onEnded);
+      standby.removeEventListener('timeupdate', onTimeUpdate);
+      standby.removeEventListener('ended',      onEnded);
+      active.pause();  active.src  = '';
+      standby.pause(); standby.src = '';
+    },
+  };
+}
+
 // Media path wins; otherwise fall back to a theme's CSS gradient/solid (bgCss,
 // from style_json) so a license-free authored background renders with no asset.
+let _lastBgPath = null;
+
 function setBackground(path, bgCss) {
+  if (path && path === _lastBgPath) return; // same video already playing — don't restart
+  _lastBgPath = path || null;
+  destroyBgController();
   bg.style.background = '';
   if (path) {
     const url = pathToUrl(path);
     const ext = path.split('.').pop().toLowerCase();
-    bg.innerHTML = ['mp4','webm','mov','avi','m4v','mkv'].includes(ext)
-      ? `<video autoplay loop muted playsinline src="${url}"></video>`
-      : `<img src="${url}" alt="" />`;
+    bg.innerHTML = '';
+    if (['mp4','webm','mov','avi','m4v','mkv'].includes(ext)) {
+      if (LOOP_MODE === 'jump') {
+        const v = document.createElement('video');
+        v.setAttribute('playsinline', '');
+        v.muted = true;
+        v.autoplay = true;
+        v.loop = true;
+        Object.assign(v.style, { position: 'absolute', inset: '0', width: '100%', height: '100%', objectFit: 'cover' });
+        v.src = url;
+        bg.appendChild(v);
+      } else {
+        _bgController = createLoopBlendBackground(url);
+      }
+    } else {
+      bg.innerHTML = `<img src="${url}" alt="" />`;
+    }
     return;
   }
   bg.innerHTML = '';
@@ -215,6 +337,8 @@ function clearForegroundMedia() {
 }
 
 function setForegroundMedia(media, transport) {
+  destroyBgController();
+  _lastBgPath = null;
   clearForegroundMedia();
   bg.style.background = '';
   bg.innerHTML = '';
@@ -257,9 +381,12 @@ function setForegroundMedia(media, transport) {
 // element. Empty values fall back to the stylesheet defaults; resets cleanly for
 // songs (which pass no copyrightStyle).
 function applyCopyrightStyle(el, cs, defaultAlign) {
+  _liveCopyrightStyle = cs;
+  _liveCopyrightDefaultAlign = defaultAlign || 'center';
+  const vs = viewportScale();
   el.style.textAlign       = (cs && cs.align) || defaultAlign || 'center';
   el.style.fontFamily      = cs?.fontFamily || '';
-  el.style.fontSize        = cs?.fontSize ? cs.fontSize + 'px' : '';
+  el.style.fontSize        = cs?.fontSize ? Math.round(cs.fontSize * vs) + 'px' : Math.round(20 * vs) + 'px';
   el.style.color           = cs?.color || '';
   el.style.fontWeight      = cs?.bold ? '700' : '';
   el.style.fontStyle       = cs?.italic ? 'italic' : '';
@@ -269,7 +396,7 @@ function applyCopyrightStyle(el, cs, defaultAlign) {
   el.style.textShadow      = cs?.textShadow?.enabled
     ? `${cs.textShadow.x ?? 0}px ${cs.textShadow.y ?? 2}px ${cs.textShadow.blur ?? 16}px ${cs.textShadow.color ?? '#000'}` : '';
   el.style.webkitTextStroke = cs?.textStroke?.enabled
-    ? `${cs.textStroke.width ?? 2}px ${cs.textStroke.color ?? '#000'}` : '';
+    ? `${Math.round((cs.textStroke.width ?? 2) * vs)}px ${cs.textStroke.color ?? '#000'}` : '';
   // Position: free (anchored at x%,y%) or default (bottom band, symmetric inset).
   if (cs?.pos) {
     el.style.left = cs.pos.x + '%';
@@ -284,10 +411,10 @@ function applyCopyrightStyle(el, cs, defaultAlign) {
     el.style.left = '';
     el.style.top = '';
     el.style.right = '';
-    el.style.bottom = '';
+    el.style.bottom = Math.round(40 * vs) + 'px';
     el.style.whiteSpace = '';
-    el.style.paddingLeft = '60px';
-    el.style.paddingRight = '60px';
+    el.style.paddingLeft = Math.round(60 * vs) + 'px';
+    el.style.paddingRight = Math.round(60 * vs) + 'px';
   }
 }
 
@@ -301,6 +428,13 @@ function scaleSlideCanvas() {
   slideEls.style.transform = `scale(${window.innerWidth / 1920}, ${window.innerHeight / 1080})`;
 }
 window.addEventListener('resize', scaleSlideCanvas);
+// Re-apply viewport-scaled px values on resize. Order matters: applyStyle first
+// (sets provisional font size), then fitSplitText last (overrides for split verses).
+window.addEventListener('resize', () => {
+  if (_liveStyle) applyStyle(_liveStyle);
+  if (_liveCopyrightStyle !== null) applyCopyrightStyle(copyright, _liveCopyrightStyle, _liveCopyrightDefaultAlign);
+});
+window.addEventListener('resize', () => { if (lastSplitMax) fitSplitText(lastSplitMax); });
 
 function hideElements() {
   slideEls.classList.remove('active');
@@ -405,6 +539,8 @@ function renderSlide(payload) {
   if (type === 'logo') {
     clearForegroundMedia();
     hideElements();
+    destroyBgController();
+    _lastBgPath = null;
     bg.innerHTML = '';
     applyStyle(null);
     textEl.innerHTML = '';
@@ -469,6 +605,12 @@ function renderSlide(payload) {
 }
 
 window.cueOutput.onSlideUpdate((payload) => {
+  // Sync loop settings from the payload. A mode change invalidates the cached path
+  // so the next setBackground() re-mounts the video in the new mode.
+  if (payload.bgLoopMode === 'jump' || payload.bgLoopMode === 'blend') {
+    if (payload.bgLoopMode !== LOOP_MODE) { LOOP_MODE = payload.bgLoopMode; _lastBgPath = null; }
+  }
+  if (typeof payload.bgLoopBlendSecs === 'number' && payload.bgLoopBlendSecs > 0) LOOP_BLEND_SECS = payload.bgLoopBlendSecs;
   // Hard-cut (no transition) whenever a video is on either side: the outgoing stage
   // already shows one, or the incoming payload brings one (Option 2 — see transitions.js).
   const involvesVideo = !!(stageEl && stageEl.querySelector('video')) || payloadHasVideo(payload);
