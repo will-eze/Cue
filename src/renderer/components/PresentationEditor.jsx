@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import { useModalGuard } from '../utils/modalGuard';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
 } from '@dnd-kit/core';
@@ -259,6 +260,7 @@ function SlideThumb({ slide, idx, active, onClick, onContext }) {
 }
 
 export default function PresentationEditor({ presentationId, onClose, onSave }) {
+  useModalGuard();
   const fonts = useFonts();
   // Undoable working document: title + the slides array (each slide's elements).
   // Slide selection (cur) and element selection (selId) are ephemeral UI, kept out
@@ -280,6 +282,7 @@ export default function PresentationEditor({ presentationId, onClose, onSave }) 
   const [ctxMenu, setCtxMenu] = useState(null);
   const [saving, setSaving] = useState(false);
   const [newSlideOpen, setNewSlideOpen] = useState(false);
+  const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
   const [applyOpen, setApplyOpen] = useState(false);
   const [downloadingBg, setDownloadingBg] = useState(false);
   const canvasRef = useRef(null);
@@ -363,6 +366,17 @@ export default function PresentationEditor({ presentationId, onClose, onSave }) 
       if (needsDl) setDownloadingBg(false);
     }
   }
+  // Add a slide from a saved presentation template (uses the template's elements directly).
+  async function addTemplateSlide(templateId) {
+    setNewSlideOpen(false);
+    const tpl = await window.cue.presentationTemplates.get(templateId);
+    if (!tpl) return;
+    const nextIdx = slides.length;
+    const els = Array.isArray(tpl.elements) ? tpl.elements.map((e) => ({ ...e, id: newId() })) : [];
+    setSlides((arr) => [...arr, { _key: newId(), label: tpl.name || null, background_id: tpl.background_id || null, background_path: tpl.background_path || null, elements: els }]);
+    setCur(nextIdx);
+  }
+
   // Re-skin existing slides with a theme: this slide, or the whole deck.
   async function applyTheme(themeEntry, scope) {
     const needsDl = themeEntry?.tokens?.bgRef && !themeEntry.background_id && themeEntry.id !== '__plain';
@@ -507,6 +521,7 @@ export default function PresentationEditor({ presentationId, onClose, onSave }) 
             {slide?.background_path && <AddBtn icon="hide_image" label="Clear BG" onClick={() => patchSlide({ background_id: null, background_path: null })} />}
             <div className="ml-auto" />
             <AddBtn icon="palette" label="Apply Theme" onClick={() => setApplyOpen(true)} />
+            <AddBtn icon="bookmark_add" label="Save as Template" onClick={() => setSaveTemplateOpen(true)} />
           </div>
           <div className="flex-1 min-h-0 flex items-center justify-center p-lg overflow-hidden">
             <div ref={canvasRef} onPointerDown={() => { setSelId(null); setEditingId(null); }}
@@ -543,15 +558,30 @@ export default function PresentationEditor({ presentationId, onClose, onSave }) 
             <Inspector el={selected} fonts={fonts} onChange={patchElement} onDelete={deleteSelected}
               onFront={bringToFront} onBack={sendToBack} onReplaceImage={() => setPicker('element')} />
           ) : (
-            <div className="p-md text-label-sm font-label-sm text-on-surface-variant uppercase tracking-widest">
-              Select an element to edit · {slide?.elements.length || 0} element(s)
+            <div className="p-md flex flex-col gap-md">
+              <div className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-widest">
+                {slide?.elements.length || 0} element{slide?.elements.length === 1 ? '' : 's'} · click to select
+              </div>
+              <label className="flex flex-col gap-xs">
+                <span className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em]">Slide label</span>
+                <input
+                  type="text"
+                  value={slide?.label || ''}
+                  onChange={(e) => patchSlide({ label: e.target.value.trim() || null })}
+                  placeholder="e.g. Verse 1, Title slide…"
+                  className="bg-surface-container-lowest border border-outline-variant/40 rounded px-sm py-xs text-body-md text-on-surface outline-none focus:border-primary"
+                />
+              </label>
             </div>
           )}
         </div>
       </div>
 
-      {newSlideOpen && <NewSlideModal currentElements={slide?.elements} onAdd={addThemedSlide} onClose={() => setNewSlideOpen(false)} />}
+      {newSlideOpen && <NewSlideModal currentElements={slide?.elements} onAdd={addThemedSlide} onAddTemplate={addTemplateSlide} onClose={() => setNewSlideOpen(false)} />}
       {applyOpen && <ApplyThemeModal hasSlide={!!slide} onApply={applyTheme} onClose={() => setApplyOpen(false)} />}
+      {saveTemplateOpen && slide && (
+        <SaveTemplateModal elements={slide.elements} backgroundId={slide.background_id} onClose={() => setSaveTemplateOpen(false)} />
+      )}
       {picker && <MediaPickerModal onSelect={onPickMedia} onClose={() => setPicker(null)} />}
       {ctxMenu && createPortal(
         <>
@@ -631,16 +661,69 @@ function useEscape(onClose) {
   }, [onClose]);
 }
 
+// Small modal to name and save the current slide as a named template.
+function SaveTemplateModal({ elements, backgroundId, onClose }) {
+  const [name, setName] = useState('');
+  const [saved, setSaved] = useState(false);
+  useEscape(onClose);
+
+  async function doSave() {
+    if (!name.trim()) return;
+    await window.cue.presentationTemplates.create({ name: name.trim(), elements, background_id: backgroundId || null });
+    setSaved(true);
+    setTimeout(onClose, 1000);
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60" onMouseDown={onClose}>
+      <div className="w-80 bg-surface-container-low border border-outline-variant/30 rounded-xl shadow-2xl p-md flex flex-col gap-sm" onMouseDown={(e) => e.stopPropagation()}>
+        <h3 className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface flex items-center gap-xs">
+          <span className="material-symbols-outlined text-primary text-[18px]">bookmark_add</span>Save as Template
+        </h3>
+        {saved ? (
+          <p className="text-body-sm text-tertiary flex items-center gap-xs">
+            <span className="material-symbols-outlined text-[16px]">check_circle</span>Saved!
+          </p>
+        ) : (
+          <>
+            <input
+              autoFocus
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') doSave(); if (e.key === 'Escape') onClose(); }}
+              placeholder="Template name…"
+              className="w-full px-sm py-xs bg-surface-container-lowest border border-outline-variant/50 rounded text-body-sm text-on-surface outline-none focus:border-primary"
+            />
+            <div className="flex gap-xs justify-end">
+              <button onClick={onClose} className="px-md py-xs text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface cursor-pointer rounded transition-colors">Cancel</button>
+              <button onClick={doSave} disabled={!name.trim()}
+                className="px-md py-xs text-label-sm font-label-sm bg-primary-container text-on-primary rounded cursor-pointer hover:brightness-110 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+                Save
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 // New-slide modal: pick a theme (left rail, incl. "No theme") → see it across every
 // layout as tiles (right) → click a theme×layout tile to add that slide. Defaults the
 // selected theme to the deck's current one (detected from the active slide) so adding
 // slides stays within the chosen theme pack — the rail still lets you switch.
-function NewSlideModal({ currentElements, onAdd, onClose }) {
+function NewSlideModal({ currentElements, onAdd, onAddTemplate, onClose }) {
   const themes = usePresentationThemes();
+  const [templates, setTemplates] = useState([]);
   const [query, setQuery] = useState('');
   const [selId, setSelId] = useState('__plain');
   const seeded = useRef(false);
   useEscape(onClose);
+
+  useEffect(() => {
+    window.cue.presentationTemplates.list().then(setTemplates);
+  }, []);
 
   // Once themes load, default the selection to the deck's current theme (one-shot, so
   // it doesn't fight the user's own rail clicks afterward).
@@ -674,8 +757,28 @@ function NewSlideModal({ currentElements, onAdd, onClose }) {
           </button>
         </div>
         <div className="flex-1 min-h-0 flex">
-          {/* Theme rail */}
+          {/* Theme + Templates rail */}
           <div className="w-60 shrink-0 border-r border-outline-variant/30 overflow-y-auto custom-scrollbar p-sm flex flex-col gap-xs">
+            {templates.length > 0 && (
+              <>
+                <p className="text-[9px] font-label-sm uppercase tracking-widest text-on-surface-variant/50 px-xs pt-xs pb-[2px]">My Templates</p>
+                {templates.map((tpl) => {
+                  const tid = `__tpl_${tpl.id}`;
+                  const els = Array.isArray(tpl.elements) ? tpl.elements : (() => { try { return JSON.parse(tpl.elements_json || '[]'); } catch { return []; } })();
+                  return (
+                    <button key={tid} onClick={() => setSelId(tid)}
+                      className={`flex items-center gap-sm p-xs rounded-lg border text-left transition-colors ${selId === tid ? 'border-primary/60 bg-primary/10' : 'border-transparent hover:bg-surface-variant'}`}>
+                      <div className="w-24 shrink-0">
+                        <StaticSlide elements={els} />
+                      </div>
+                      <span className="text-label-sm font-mono text-on-surface truncate min-w-0">{tpl.name}</span>
+                    </button>
+                  );
+                })}
+                <div className="h-px bg-outline-variant/20 my-xs" />
+                <p className="text-[9px] font-label-sm uppercase tracking-widest text-on-surface-variant/50 px-xs pb-[2px]">Themes</p>
+              </>
+            )}
             {list.map((t) => (
               <button key={t.id} onClick={() => setSelId(t.id)}
                 className={`flex items-center gap-sm p-xs rounded-lg border text-left transition-colors ${t.id === selId ? 'border-primary/60 bg-primary/10' : 'border-transparent hover:bg-surface-variant'}`}>
@@ -684,21 +787,41 @@ function NewSlideModal({ currentElements, onAdd, onClose }) {
               </button>
             ))}
           </div>
-          {/* Layout tiles for the selected theme */}
-          <div className="flex-1 min-w-0 overflow-y-auto custom-scrollbar p-lg">
-            <p className="text-[10px] font-label-sm uppercase tracking-widest text-on-surface-variant/60 mb-sm">{sel?.name} · pick a layout</p>
-            <div className="grid gap-md" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
-              {PRES_LAYOUTS.map((l) => (
-                <div key={l.id} role="button" tabIndex={0}
-                  onClick={() => onAdd(sel, l.id)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAdd(sel, l.id); } }}
-                  className="bg-surface-container border border-outline-variant/30 rounded-xl overflow-hidden flex flex-col cursor-pointer hover:border-primary/50 hover:ring-1 hover:ring-primary/30 active:scale-[0.99] transition-all">
-                  <div className="p-sm pb-0"><StaticSlide {...themePreviewProps(sel, l.id)} /></div>
-                  <div className="px-md py-sm"><span className="text-label-sm font-mono text-on-surface truncate">{l.name}</span></div>
+          {/* Right panel: template preview OR layout tiles */}
+          {selId.startsWith('__tpl_') ? (() => {
+            const tplId = Number(selId.replace('__tpl_', ''));
+            const tpl = templates.find((t) => t.id === tplId);
+            if (!tpl) return null;
+            const els = Array.isArray(tpl.elements) ? tpl.elements : (() => { try { return JSON.parse(tpl.elements_json || '[]'); } catch { return []; } })();
+            return (
+              <div className="flex-1 min-w-0 overflow-y-auto custom-scrollbar p-lg flex flex-col items-center justify-center gap-lg">
+                <p className="text-[10px] font-label-sm uppercase tracking-widest text-on-surface-variant/60">{tpl.name} · template</p>
+                <div className="w-full max-w-md">
+                  <StaticSlide elements={els} />
                 </div>
-              ))}
+                <button
+                  onClick={() => onAddTemplate(tplId)}
+                  className="px-lg py-sm bg-primary-container text-on-primary text-label-sm font-label-sm rounded-lg cursor-pointer hover:brightness-110 active:scale-95 transition-all">
+                  Use Template
+                </button>
+              </div>
+            );
+          })() : (
+            <div className="flex-1 min-w-0 overflow-y-auto custom-scrollbar p-lg">
+              <p className="text-[10px] font-label-sm uppercase tracking-widest text-on-surface-variant/60 mb-sm">{sel?.name} · pick a layout</p>
+              <div className="grid gap-md" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
+                {PRES_LAYOUTS.map((l) => (
+                  <div key={l.id} role="button" tabIndex={0}
+                    onClick={() => onAdd(sel, l.id)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAdd(sel, l.id); } }}
+                    className="bg-surface-container border border-outline-variant/30 rounded-xl overflow-hidden flex flex-col cursor-pointer hover:border-primary/50 hover:ring-1 hover:ring-primary/30 active:scale-[0.99] transition-all">
+                    <div className="p-sm pb-0"><StaticSlide {...themePreviewProps(sel, l.id)} /></div>
+                    <div className="px-md py-sm"><span className="text-label-sm font-mono text-on-surface truncate">{l.name}</span></div>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>,

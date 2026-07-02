@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useToast } from '../components/Toast';
 import { FixedSizeList as List } from 'react-window';
-import SongPreviewModal from '../components/SongPreviewModal';
 import SongImportModal from '../components/SongImportModal';
 import SongListImportModal from '../components/SongListImportModal';
 import SongScrapeModal from '../components/SongScrapeModal';
@@ -18,13 +18,29 @@ import AddYouTubeModal from '../components/AddYouTubeModal';
 import { mediaUrl } from '../utils/mediaUrl';
 import { looksLikeYouTube } from '../utils/youtube';
 
+function formatDuration(ms) {
+  const s = Math.round(ms / 1000);
+  const m = Math.floor(s / 60);
+  const h = Math.floor(m / 60);
+  if (h > 0) return `${h}:${String(m % 60).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+  return `${m}:${String(s % 60).padStart(2, '0')}`;
+}
+
+function formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
 function SongRow({ index, style, data }) {
-  const { songs, selectedId, onSelect, onDoubleClick, onContextMenu } = data;
+  const { songs, selectedId, highlightIdx, onSelect, onDoubleClick, onContextMenu } = data;
   const song = songs[index];
   const isSelected = selectedId === song.id;
+  const isHighlighted = index === highlightIdx;
   const clickTimer = useRef(null);
 
-  // Rows unmount/remount constantly under react-window virtualization; without
+  // SongRow mounts/unmounts constantly under react-window virtualization; without
   // this, the pending single-click timer leaks on every fast scroll.
   useEffect(() => () => { if (clickTimer.current) clearTimeout(clickTimer.current); }, []);
 
@@ -51,13 +67,14 @@ function SongRow({ index, style, data }) {
         padding: '0 12px',
         cursor: 'pointer',
         borderBottom: '1px solid rgba(66,71,84,0.3)',
-        background: isSelected ? 'rgba(77,142,255,0.1)' : undefined,
+        background: isHighlighted ? 'rgba(77,142,255,0.18)' : isSelected ? 'rgba(77,142,255,0.1)' : undefined,
+        boxShadow: isHighlighted ? 'inset 0 0 0 1px rgba(77,142,255,0.45)' : undefined,
         transition: 'background 80ms',
       }}
       onClick={handleClick}
       onContextMenu={(e) => onContextMenu(e, song)}
-      onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = 'rgba(51,53,57,0.5)'; }}
-      onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = ''; }}
+      onMouseEnter={(e) => { if (!isSelected && !isHighlighted) e.currentTarget.style.background = 'rgba(51,53,57,0.5)'; }}
+      onMouseLeave={(e) => { if (!isSelected && !isHighlighted) e.currentTarget.style.background = ''; }}
     >
       <span className="material-symbols-outlined text-[16px] text-outline-variant shrink-0">music_note</span>
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -104,21 +121,9 @@ function SongRow({ index, style, data }) {
   );
 }
 
-function MediaGrid({ assets, onDelete, onSetBackground, onAddToRundown, onSetPreviewBackground }) {
+function MediaGrid({ assets, onDelete, onSetBackground, onAddToRundown, onApplyBackground, onSetPreviewBackground, previewSongLabel }) {
   const [contextMenu, setContextMenu] = useState(null);
-  // Single-click adds to the rundown; double-click sets the previewed song's
-  // background. A short timer disambiguates: the single-click action waits, and a
-  // double-click cancels it before it fires.
-  const clickTimer = useRef(null);
-  useEffect(() => () => { if (clickTimer.current) clearTimeout(clickTimer.current); }, []);
-  function handleSingleClick(id) {
-    if (clickTimer.current) clearTimeout(clickTimer.current);
-    clickTimer.current = setTimeout(() => { clickTimer.current = null; onAddToRundown?.(id); }, 220);
-  }
-  function handleDoubleClick(id) {
-    if (clickTimer.current) { clearTimeout(clickTimer.current); clickTimer.current = null; }
-    onSetPreviewBackground?.(id);
-  }
+  const [selectedId, setSelectedId] = useState(null);
 
   return (
     <div className="flex-1 overflow-y-auto p-md">
@@ -133,12 +138,17 @@ function MediaGrid({ assets, onDelete, onSetBackground, onAddToRundown, onSetPre
             <div
               key={asset.id}
               className="group cursor-pointer"
-              title="Click to add to rundown · double-click to set the previewed song's background"
-              onClick={() => handleSingleClick(asset.id)}
-              onDoubleClick={() => handleDoubleClick(asset.id)}
+              title="Single-click to select · double-click to set as background of the selected rundown item(s) · drag onto a rundown item to set its background · right-click to add to rundown"
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData('cue/assetid', String(asset.id));
+                e.dataTransfer.effectAllowed = 'copy';
+              }}
+              onClick={() => setSelectedId(asset.id)}
+              onDoubleClick={() => onApplyBackground?.(asset.id)}
               onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, asset }); }}
             >
-              <div className="aspect-video rounded bg-black border border-outline-variant overflow-hidden mb-xs relative">
+              <div className={`aspect-video rounded bg-black overflow-hidden mb-xs relative border ${selectedId === asset.id ? 'border-primary' : 'border-outline-variant'}`}>
                 {asset.type === 'audio' ? (
                   <div className="w-full h-full bg-surface-container-high flex items-center justify-center">
                     <span className="text-label-sm font-label-sm text-outline-variant">AUD</span>
@@ -151,6 +161,21 @@ function MediaGrid({ assets, onDelete, onSetBackground, onAddToRundown, onSetPre
                       <div className="absolute bottom-1 right-1 bg-black/50 px-1 rounded text-[8px] text-white font-label-sm">VID</div>
                     )}
                   </>
+                )}
+                {/* Metadata strip — visible on hover */}
+                {(asset.duration_ms != null || asset.size_bytes != null) && (
+                  <div className="absolute inset-x-0 bottom-0 bg-black/70 px-1 py-[2px] flex items-center justify-between gap-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                    {asset.duration_ms != null && (
+                      <span className="text-[8px] text-white/80 tabular-nums font-label-sm">
+                        {formatDuration(asset.duration_ms)}
+                      </span>
+                    )}
+                    {asset.size_bytes != null && (
+                      <span className="text-[8px] text-white/60 tabular-nums font-label-sm ml-auto">
+                        {formatBytes(asset.size_bytes)}
+                      </span>
+                    )}
+                  </div>
                 )}
               </div>
               <p className="text-[10px] text-on-surface truncate">{asset.filename}</p>
@@ -165,8 +190,13 @@ function MediaGrid({ assets, onDelete, onSetBackground, onAddToRundown, onSetPre
           items={[
             { label: 'Add to Rundown', onClick: () => { onAddToRundown?.(contextMenu.asset.id); setContextMenu(null); } },
             { separator: true },
+            previewSongLabel
+              ? { label: `Set Background for "${previewSongLabel}"`, onClick: () => { onSetPreviewBackground?.(contextMenu.asset.id); setContextMenu(null); } }
+              : { label: 'Set Background for Preview Item', disabled: true, onClick: null },
+            { separator: true },
             { label: 'Set as Global Song Background', onClick: () => { onSetBackground('song', contextMenu.asset); setContextMenu(null); } },
             { label: 'Set as Global Slide Background', onClick: () => { onSetBackground('slide', contextMenu.asset); setContextMenu(null); } },
+            { label: 'Set as Global Scripture Background', onClick: () => { onSetBackground('scripture', contextMenu.asset); setContextMenu(null); } },
             { separator: true },
             { label: 'Delete', danger: true, onClick: () => { onDelete(contextMenu.asset); setContextMenu(null); } },
           ]}
@@ -176,9 +206,60 @@ function MediaGrid({ assets, onDelete, onSetBackground, onAddToRundown, onSetPre
   );
 }
 
+const SECTION_TYPE_LABELS = { verse: 'Verse', chorus: 'Chorus', bridge: 'Bridge', 'pre-chorus': 'Pre-Chorus', tag: 'Tag', intro: 'Intro', outro: 'Outro' };
+
+function SongPreviewStrip({ song, onClose, onEdit, onAddToRundown }) {
+  const [fullSong, setFullSong] = useState(null);
+  useEffect(() => {
+    setFullSong(null);
+    window.cue.songs.get(song.id).then(setFullSong);
+  }, [song.id]);
+  return (
+    <div className="shrink-0 border-t border-outline-variant/30 bg-surface-container" style={{ maxHeight: 200 }}>
+      <div className="flex items-center justify-between px-md py-xs bg-surface-container-high border-b border-outline-variant/20">
+        <div className="min-w-0">
+          <div className="text-label-sm font-bold text-on-surface truncate">{song.title}</div>
+          {song.author && <div className="text-[10px] text-on-surface-variant uppercase tracking-[0.04em] truncate">{song.author}</div>}
+        </div>
+        <div className="flex gap-xs shrink-0 ml-sm">
+          <button onClick={() => onAddToRundown(song.id)} className="px-sm py-[3px] rounded text-[10px] font-label-sm font-bold uppercase tracking-[0.04em] bg-primary text-on-primary hover:brightness-110 cursor-pointer">Add</button>
+          <button onClick={() => onEdit(fullSong || song)} className="px-sm py-[3px] rounded text-[10px] font-label-sm uppercase tracking-[0.04em] bg-surface-container-high border border-outline-variant/40 text-on-surface-variant hover:bg-surface-variant cursor-pointer">Edit</button>
+          <button onClick={onClose} className="w-6 h-6 flex items-center justify-center rounded text-on-surface-variant/60 hover:text-on-surface hover:bg-surface-variant cursor-pointer">
+            <span className="material-symbols-outlined text-[14px]">close</span>
+          </button>
+        </div>
+      </div>
+      <div className="overflow-y-auto custom-scrollbar" style={{ maxHeight: 132 }}>
+        {!fullSong ? (
+          <div className="px-md py-sm text-[10px] text-on-surface-variant/50 uppercase tracking-[0.05em]">Loading…</div>
+        ) : !fullSong.sections?.length ? (
+          <div className="px-md py-sm text-[10px] text-on-surface-variant/50 uppercase tracking-[0.05em]">No lyrics</div>
+        ) : (
+          <div className="px-md py-xs divide-y divide-outline-variant/10">
+            {fullSong.sections.map((s, i) => {
+              const text = (s.content || '').split('⁂')[0].trim();
+              if (!text) return null;
+              return (
+                <div key={i} className="py-xs">
+                  <div className="text-[9px] text-on-surface-variant/60 uppercase tracking-[0.06em] font-label-sm mb-[2px]">
+                    {SECTION_TYPE_LABELS[s.type] || s.type}
+                  </div>
+                  <div className="text-[11px] text-on-surface leading-snug line-clamp-2">{text}</div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
 const TAB_ORDER = ['songs', 'media', 'scripture', 'presentations', 'graphics', 'scenes'];
 
-export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAddScripture, onScriptureLive, onScriptureStyleSaved, onBackgroundDefaultChanged, onAddMedia, onSetPreviewBackground, onAddYouTube, onAddPresentation, onSongSave, refreshTick = 0, focusSearchRef, cycleTabRef, detectArmed, detectActive, detectDownloadPct, onToggleDetect }) {
+export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAddScripture, onScriptureLive, onScripturePreview, onScriptureStyleSaved, onBackgroundDefaultChanged, onAddMedia, onApplyMediaBackground, onSetPreviewBackground, previewSongLabel, onAddYouTube, onAddPresentation, onSongSave, refreshTick = 0, focusSearchRef, cycleTabRef, detectArmed, detectActive, detectDownloadPct, onToggleDetect }) {
+  const toast = useToast();
   const [tab, setTab] = useState('songs');
   const [searchQuery, setSearchQuery] = useState('');
   const [songs, setSongs] = useState([]);
@@ -188,10 +269,12 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
   const [editSong, setEditSong] = useState(null);
   const [songContextMenu, setSongContextMenu] = useState(null);
   const [listHeight, setListHeight] = useState(300);
+  const [highlightIdx, setHighlightIdx] = useState(-1);
   const containerRef = useRef(null);
   const searchInputRef = useRef(null);
   const ghsSearchRef = useRef(null);
   const searchDebounce = useRef(null);
+  const listRef = useRef(null);
 
   // Expose a focus function so OperatorView can trigger search focus via keyboard
   // (S key). Only one of the two inputs is mounted at a time — the GHS number
@@ -222,6 +305,7 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
   }, [cycleTabRef]);
 
   const [mediaAssets, setMediaAssets] = useState([]);
+  const [mediaSearch, setMediaSearch] = useState('');
   const [folderTree, setFolderTree] = useState([]);
   const [activeFolderId, setActiveFolderId] = useState(null);
   const [importing, setImporting] = useState(false);
@@ -303,6 +387,21 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
 
   useEffect(() => { handleSearch(searchQuery); }, [searchQuery, handleSearch]);
 
+  // Reset highlight whenever the query or active tab changes.
+  useEffect(() => { setHighlightIdx(-1); }, [searchQuery, tab]);
+
+  // Clamp highlight after a debounce refresh shrinks the list.
+  useEffect(() => {
+    setHighlightIdx((i) => (i <= 0 ? i : Math.min(i, songs.length - 1)));
+  }, [songs]);
+
+  // Scroll the highlighted row into view using react-window's imperative API.
+  useEffect(() => {
+    if (highlightIdx >= 0 && listRef.current) {
+      listRef.current.scrollToItem(highlightIdx, 'smart');
+    }
+  }, [highlightIdx]);
+
   const filteredSongs = selectedTagIds.length === 0
     ? songs
     : songs.filter((s) => selectedTagIds.every((tid) => (s.tags || []).some((t) => t.id === tid)));
@@ -347,19 +446,42 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
   }
 
   async function handleDeleteSong(song) {
-    if (!confirm(`Delete "${song.title}"? This cannot be undone.`)) return;
+    const full = await window.cue.songs.get(song.id);
     const result = await window.cue.songs.delete(song.id);
     if (result.hasReferences) {
-      alert(`"${song.title}" is used in ${result.count} rundown item(s). Remove it from all rundowns first.`);
-    } else {
-      loadSongs();
+      toast.error(`Can't delete — "${song.title}" is in ${result.count} rundown${result.count !== 1 ? 's' : ''}. Remove it from all rundowns first.`);
+      return;
     }
+    loadSongs();
+    toast.show({
+      message: `"${song.title}" deleted`,
+      kind: 'info',
+      duration: 6000,
+      action: {
+        label: 'Undo',
+        onClick: async () => {
+          // Lossless restore: sections keep their per-run styling, plus tags,
+          // the song's own default background, and the lock flag.
+          const newId = await window.cue.songs.create({
+            title: full.title,
+            author: full.author,
+            copyright: full.copyright,
+            sections: (full.sections || []).map((s) => ({ type: s.type, content: s.content, style_json: s.style_json })),
+            tagIds: (full.tags || []).map((t) => t.id),
+          });
+          if (full.default_background_id) await window.cue.songs.setBackground(newId, full.default_background_id);
+          if (full.background_locked) await window.cue.songs.setLock(newId, true);
+          loadSongs();
+        },
+      },
+    });
   }
 
   async function handleDuplicateSong(song) {
     const full = await window.cue.songs.get(song.id);
     await window.cue.songs.create({ title: full.title + ' (copy)', author: full.author, copyright: full.copyright, sections: full.sections.map((s) => ({ type: s.type, content: s.content })) });
     loadSongs();
+    toast.success(`Duplicate of "${song.title}" created`);
   }
 
   async function handleImportSongs() {
@@ -388,7 +510,7 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
       const preview = await window.cue.songs.importGhs();
       setImportPreview(preview);
     } catch (e) {
-      alert('Could not load the GHS hymnal: ' + e.message);
+      toast.error('Could not load the GHS hymnal: ' + e.message);
     } finally {
       setParsingSongs(false);
     }
@@ -409,9 +531,30 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
   }
 
   async function handleDeleteMedia(asset) {
-    if (!confirm(`Delete "${asset.filename}"? This cannot be undone.`)) return;
     await window.cue.media.delete(asset.id);
     loadMedia();
+    toast.show({ message: `"${asset.filename}" deleted`, kind: 'info', duration: 4000 });
+  }
+
+  async function handleDeletePresentation(pres) {
+    const full = await window.cue.presentations.get(pres.id);
+    await window.cue.presentations.delete(pres.id);
+    loadPresentations();
+    toast.show({
+      message: `"${pres.title}" deleted`,
+      kind: 'info',
+      duration: 6000,
+      action: {
+        label: 'Undo',
+        onClick: async () => {
+          await window.cue.presentations.create({
+            title: full.title,
+            slides: (full.slides || []).map((s) => ({ label: s.label, background_id: s.background_id, elements: s.elements })),
+          });
+          loadPresentations();
+        },
+      },
+    });
   }
 
   async function handleSetBackground(type, asset) {
@@ -477,6 +620,29 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
                 placeholder="Search songs…"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    setHighlightIdx((i) => Math.min(i + 1, displaySongs.length - 1));
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    setHighlightIdx((i) => Math.max(i - 1, -1));
+                  } else if (e.key === 'Enter') {
+                    const idx = highlightIdx >= 0 ? highlightIdx : (searchQuery.trim() ? 0 : -1);
+                    if (idx >= 0 && idx < displaySongs.length) {
+                      onAddToRundown(displaySongs[idx].id);
+                      searchInputRef.current?.select();
+                    }
+                  } else if (e.key === 'Escape') {
+                    e.stopPropagation();
+                    if (searchQuery) {
+                      setSearchQuery('');
+                      setHighlightIdx(-1);
+                    } else {
+                      searchInputRef.current?.blur();
+                    }
+                  }
+                }}
               />
             </div>
           )}
@@ -625,7 +791,7 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
       {tab === 'songs' && (
         <div className="flex flex-1 min-h-0">
           {/* Folder/tag tree */}
-          <div className="w-56 border-r border-outline-variant/30 overflow-y-auto shrink-0">
+          <div className="w-56 border-r border-outline-variant/30 overflow-y-auto shrink-0 flex-shrink-0">
             <ul className="text-label-sm font-label-sm text-on-surface-variant flex flex-col gap-xs p-sm">
               <li
                 className={`flex items-center gap-sm p-sm rounded cursor-pointer transition-colors ${
@@ -649,15 +815,17 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
                     style={active ? { background: `${tag.colour || '#333539'}25` } : {}}
                   >
                     <span className="w-[8px] h-[8px] rounded-full shrink-0" style={{ background: tag.colour || '#8c909f' }} />
-                    <span className="truncate">{tag.name}</span>
+                    <span className="truncate flex-1">{tag.name}</span>
+                    {tag.song_count != null && <span className="text-[10px] text-on-surface-variant/50 shrink-0 ml-auto">{tag.song_count}</span>}
                   </li>
                 );
               })}
             </ul>
           </div>
 
-          {/* Song list */}
-          <div ref={containerRef} className="flex-1 min-w-0 overflow-hidden">
+          {/* Song list + inline preview strip */}
+          <div className="flex-1 flex flex-col min-h-0 min-w-0">
+          <div ref={containerRef} className="flex-1 min-h-0 overflow-hidden">
             {displaySongs.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full gap-xs text-outline-variant px-lg text-center">
                 <span className="material-symbols-outlined text-4xl">{searchQuery || ghsQuery ? 'search_off' : 'library_music'}</span>
@@ -672,12 +840,14 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
               </div>
             ) : (
               <List
+                ref={listRef}
                 height={listHeight}
                 itemCount={displaySongs.length}
                 itemSize={46}
                 itemData={{
                   songs: displaySongs,
                   selectedId: previewSong?.id,
+                  highlightIdx,
                   onSelect: setPreviewSong,
                   onDoubleClick: (songId) => onAddToRundown(songId),
                   onContextMenu: (e, song) => { e.preventDefault(); setSongContextMenu({ x: e.clientX, y: e.clientY, song }); },
@@ -688,6 +858,15 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
                 {SongRow}
               </List>
             )}
+          </div>
+          {previewSong && (
+            <SongPreviewStrip
+              song={previewSong}
+              onClose={() => setPreviewSong(null)}
+              onEdit={(song) => { setPreviewSong(null); setEditSong(song); }}
+              onAddToRundown={onAddToRundown}
+            />
+          )}
           </div>
         </div>
       )}
@@ -712,7 +891,28 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
               ))}
             </ul>
           </div>
-          <MediaGrid assets={mediaAssets} onDelete={handleDeleteMedia} onSetBackground={handleSetBackground} onAddToRundown={onAddMedia} onSetPreviewBackground={onSetPreviewBackground} />
+          <div className="flex flex-col flex-1 min-h-0 min-w-0">
+            <div className="shrink-0 px-md pt-sm pb-xs border-b border-outline-variant/20">
+              <div className="relative">
+                <span className="material-symbols-outlined absolute left-sm top-1/2 -translate-y-1/2 text-on-surface-variant text-[15px]">search</span>
+                <input
+                  className="w-full bg-surface-container-lowest border border-outline-variant/30 rounded-full pl-xl pr-md py-1 text-label-sm font-label-sm focus:outline-none text-on-surface"
+                  placeholder="Search media…"
+                  value={mediaSearch}
+                  onChange={(e) => setMediaSearch(e.target.value)}
+                />
+              </div>
+            </div>
+            <MediaGrid
+              assets={mediaSearch.trim() ? mediaAssets.filter((a) => a.filename.toLowerCase().includes(mediaSearch.trim().toLowerCase())) : mediaAssets}
+              onDelete={handleDeleteMedia}
+              onSetBackground={handleSetBackground}
+              onAddToRundown={onAddMedia}
+              onApplyBackground={onApplyMediaBackground}
+              onSetPreviewBackground={onSetPreviewBackground}
+              previewSongLabel={previewSongLabel}
+            />
+          </div>
         </div>
       )}
 
@@ -721,6 +921,7 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
         <ScripturePanel
           onAdd={onAddScripture}
           onGoLive={onScriptureLive}
+          onPreview={onScripturePreview}
           onStyleSaved={onScriptureStyleSaved}
           detectArmed={detectArmed}
           detectActive={detectActive}
@@ -731,25 +932,27 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
 
       {/* Presentations tab */}
       {tab === 'presentations' && (
-        <div className="flex-1 min-h-0 overflow-y-auto p-md">
-          {presentations.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full gap-sm text-outline-variant">
-              <span className="material-symbols-outlined text-4xl">slideshow</span>
-              <span className="text-label-sm font-label-sm uppercase tracking-widest">No Presentations Yet</span>
-            </div>
-          ) : (
-            <div className="grid gap-md" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
-              {presentations.map((p) => (
-                <PresentationCard
-                  key={p.id}
-                  pres={p}
-                  onEdit={() => setEditPresentation({ id: p.id })}
-                  onAddToRundown={() => onAddPresentation?.(p.id)}
-                  onContextMenu={(e) => { e.preventDefault(); setPresContext({ x: e.clientX, y: e.clientY, pres: p }); }}
-                />
-              ))}
-            </div>
-          )}
+        <div className="flex flex-col flex-1 min-h-0">
+          <div className="flex-1 min-h-0 overflow-y-auto p-md">
+            {presentations.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full gap-sm text-outline-variant">
+                <span className="material-symbols-outlined text-4xl">slideshow</span>
+                <span className="text-label-sm font-label-sm uppercase tracking-widest">No Presentations Yet</span>
+              </div>
+            ) : (
+              <div className="grid gap-md" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
+                {presentations.map((p) => (
+                  <PresentationCard
+                    key={p.id}
+                    pres={p}
+                    onEdit={() => setEditPresentation({ id: p.id })}
+                    onAddToRundown={() => onAddPresentation?.(p.id)}
+                    onContextMenu={(e) => { e.preventDefault(); setPresContext({ x: e.clientX, y: e.clientY, pres: p }); }}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -791,16 +994,12 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
             { label: 'Add to Rundown', onClick: () => { onAddPresentation?.(presContext.pres.id); setPresContext(null); } },
             { label: 'Edit', onClick: () => { setEditPresentation({ id: presContext.pres.id }); setPresContext(null); } },
             { separator: true },
-            { label: 'Delete', danger: true, onClick: async () => { await window.cue.presentations.delete(presContext.pres.id); setPresContext(null); loadPresentations(); } },
+            { label: 'Delete', danger: true, onClick: () => { handleDeletePresentation(presContext.pres); setPresContext(null); } },
           ]}
         />
       )}
 
-      {previewSong && (
-        <SongPreviewModal song={previewSong} onClose={() => setPreviewSong(null)}
-          onEdit={(song) => { setPreviewSong(null); setEditSong(song); }}
-          onAddToRundown={(songId) => { onAddToRundown(songId); setPreviewSong(null); }} />
-      )}
+      {/* SongPreviewModal removed from click path — lyrics now shown in inline strip */}
       {editSong !== null && (
         <SongEditor song={editSong.id ? editSong : null}
           onClose={() => setEditSong(null)}
@@ -840,8 +1039,6 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
   );
 }
 
-// Single-click opens the editor; double-click adds to rundown without also firing the
-// single-click action (timer-based disambiguation, same pattern as SongRow / MediaGrid).
 function PresentationCard({ pres, onEdit, onAddToRundown, onContextMenu }) {
   const clickTimer = useRef(null);
   useEffect(() => () => { if (clickTimer.current) clearTimeout(clickTimer.current); }, []);
@@ -850,11 +1047,11 @@ function PresentationCard({ pres, onEdit, onAddToRundown, onContextMenu }) {
     if (clickTimer.current) {
       clearTimeout(clickTimer.current);
       clickTimer.current = null;
-      onAddToRundown();
+      onAddToRundown?.();
     } else {
       clickTimer.current = setTimeout(() => {
         clickTimer.current = null;
-        onEdit();
+        onEdit?.();
       }, 220);
     }
   }

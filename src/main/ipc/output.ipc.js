@@ -131,6 +131,8 @@ export function registerOutputIpc() {
   // ── Stage display ──────────────────────────────────────────────────────────
   ipcMain.handle('output:stage:message', (_e, text) => outputManager.setStageMessage(text));
   ipcMain.handle('output:stage:timer',   (_e, action, seconds) => outputManager.stageTimerCmd(action, seconds));
+  ipcMain.handle('output:stage:timer:get',       ()       => outputManager.getStageTimer());
+  ipcMain.handle('output:stage:message:get',     ()       => outputManager.getStageMessage());
   ipcMain.handle('output:stage:schedule:get',    ()       => outputManager.getStageSchedule());
   ipcMain.handle('output:stage:schedule:add',    (_e, m)  => outputManager.scheduleStageMessage(m));
   ipcMain.handle('output:stage:schedule:remove', (_e, id) => outputManager.unscheduleStageMessage(id));

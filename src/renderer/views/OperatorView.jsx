@@ -9,6 +9,7 @@ import { sectionLabelAt, expandSongSections } from '../utils/sectionLabels';
 import { useToast } from '../components/Toast';
 import ShortcutsOverlay from '../components/ShortcutsOverlay';
 import CommandPalette from '../components/CommandPalette';
+import { hasOpenModal } from '../utils/modalGuard';
 
 const isMac = window.cue.platform === 'darwin';
 
@@ -87,7 +88,8 @@ function useResizeV(containerRef, storageKey, defaultPct = 62) {
 
 export default function OperatorView({
   transportRef, onStateChange, displayMode = 'idle', liveMediaStartAt = null, bgRefreshTick = 0,
-  activeServiceId, onServiceChange, onToggleLive,
+  activeServiceId, onServiceChange, onToggleLive, outputsEnabled = true, outputWindows = 0,
+  viewActive = true,
 }) {
   const toast = useToast();
   const [helpOpen, setHelpOpen] = useState(false);       // ? keyboard-shortcut overlay
@@ -383,40 +385,48 @@ export default function OperatorView({
   const overlayOpenRef = useRef(false);
   overlayOpenRef.current = helpOpen || paletteOpen;
 
+  // Mirror viewActive into a ref so the keydown listener sees it without re-binding.
+  const viewActiveRef = useRef(viewActive);
+  viewActiveRef.current = viewActive;
+
+  // Debounce the "no output windows" toast so repeated GO presses don't stack toasts.
+  const outputWarnRef = useRef(0);
+
   useEffect(() => {
-    const hasPreview = !!(serviceData?.items?.find((i) => i.id === previewItemId));
-    onStateChange?.({ isLive: !!liveItemId || !!liveScripture, canGo: hasPreview });
-  }, [liveItemId, liveScripture, previewItemId, serviceData]); // eslint-disable-line react-hooks/exhaustive-deps
+    // canGo is true for a staged rundown item OR a detected/previewed scripture verse.
+    const hasPreview = !!(serviceData?.items?.find((i) => i.id === previewItemId)) || !!previewScripture;
+    onStateChange?.({ isLive: !!liveItemId || !!liveScripture, canGo: hasPreview, micActive: detectArmed && !!captureActive });
+  }, [liveItemId, liveScripture, previewItemId, previewScripture, serviceData, detectArmed, captureActive]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     function onKeyDown(e) {
-      // Command palette — toggled from anywhere, even mid-typing. Uses the OS modifier
-      // (⌘ on macOS, Ctrl elsewhere) regardless of the configurable shortcut modifier.
-      if ((isMac ? e.metaKey : e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'k') {
+      // Stand down while any modal owns the screen (editors, pickers, context menus)
+      // so Esc/Space/G don't fire transport actions under an open overlay.
+      if (hasOpenModal()) return;
+
+      // Command palette — operator-view only (don't open it from Settings/Stream/etc.).
+      // Uses the OS modifier (⌘/Ctrl) regardless of the configurable shortcut modifier.
+      if (viewActiveRef.current && (isMac ? e.metaKey : e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'k') {
         e.preventDefault(); setPaletteOpen((v) => !v); return;
       }
       // While the palette / help overlay is open it owns the keyboard (it handles its
       // own Esc/arrows); don't let operator shortcuts fire underneath it.
       if (overlayOpenRef.current) return;
 
-      // Library tab navigation: ⌘. forward, ⌘, backward (Ctrl on non-mac). Uses the OS
-      // modifier, so it works regardless of the configurable shortcut modifier.
-      if ((isMac ? e.metaKey : e.ctrlKey) && !e.altKey && !e.shiftKey && (e.key === '.' || e.key === ',')) {
+      // Library tab navigation: ⌘. forward, ⌘, backward — operator-view only.
+      if (viewActiveRef.current && (isMac ? e.metaKey : e.ctrlKey) && !e.altKey && !e.shiftKey && (e.key === '.' || e.key === ',')) {
         e.preventDefault(); cycleLibraryTabRef.current?.(e.key === '.' ? 1 : -1); return;
       }
 
       const el = document.activeElement;
       if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
 
-      // `?` opens the shortcut cheatsheet (Shift+/). After the input guard so it can
-      // still be typed into text fields.
-      if (e.key === '?') { e.preventDefault(); setHelpOpen((v) => !v); return; }
+      // `?` opens the shortcut cheatsheet (Shift+/). Operator-view only.
+      if (viewActiveRef.current && e.key === '?') { e.preventDefault(); setHelpOpen((v) => !v); return; }
 
-      // ⌘A / Ctrl+A → select all rundown items. Keyed on the OS clipboard modifier
-      // (independent of the configurable shortcut modifier), and only when nothing is
-      // text-selected — the input guard above already excludes text fields, and an
-      // active text selection defers to the native select-all (clipboard rule).
-      if ((isMac ? e.metaKey : e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'a') {
+      // ⌘A / Ctrl+A → select all rundown items. Operator-view only; defers to native
+      // select-all when there's a live text selection (clipboard rule).
+      if (viewActiveRef.current && (isMac ? e.metaKey : e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'a') {
         if (window.getSelection()?.toString()) return;
         e.preventDefault(); shortcutRef.current.handleSelectAll(); return;
       }
@@ -445,12 +455,17 @@ export default function OperatorView({
         return;
       }
 
-      // Number keys 1–9 recall a Scene (multi-output state). Suppressed in inputs by
-      // the guard above; no modifier so it never collides with the GO/CLEAR shortcuts.
+      // Number keys 1–9 recall a Scene — active from any view so a director can
+      // fire a scene without switching back to the Operator tab.
       if (/^[1-9]$/.test(e.key)) {
         const scene = scenesRef.current.find((s) => s.hotkey === e.key);
         if (scene) { e.preventDefault(); window.cue.scenes.apply(scene); return; }
       }
+
+      // All remaining bare keys only fire when the operator view is visible —
+      // prevents Space/Esc/G from invisibly changing the live program from
+      // Settings, Stream, Multiview, or Stage views.
+      if (!viewActiveRef.current) return;
 
       // Positional verse/slide jump (Q W E R …) — only when armed. Jumps the LIVE
       // item straight to slide N and airs it (direct on-air navigation). The key
@@ -517,11 +532,13 @@ export default function OperatorView({
   // re-runs on every live slide/item change, so each advance restarts the countdown.
   // Scripture-live (synthetic) and items without an interval are skipped. The timer
   // calls the latest handler via shortcutRef so it always sees current live state.
+  const [autoAdvanceStartAt, setAutoAdvanceStartAt] = useState(null);
   useEffect(() => {
-    if (liveScripture || !liveItemId) return;
+    if (liveScripture || !liveItemId) { setAutoAdvanceStartAt(null); return; }
     const item = serviceData?.items?.find((i) => i.id === liveItemId);
     const secs = item?.advance_seconds;
-    if (!secs || secs <= 0) return;
+    if (!secs || secs <= 0) { setAutoAdvanceStartAt(null); return; }
+    setAutoAdvanceStartAt(Date.now());
     const t = setTimeout(() => shortcutRef.current.handleAutoAdvance(), secs * 1000);
     return () => clearTimeout(t);
   }, [liveItemId, liveSlideIdx, liveScripture, serviceData]);
@@ -637,11 +654,12 @@ export default function OperatorView({
       };
     }
     // Presentation slide — a multi-element canvas (text/image/shape). The output
-    // template + operator monitor render the `elements` array; no single text block.
+    // template + operator monitor render the `elements` array; `text` is populated
+    // from the first text element so stage/confidence monitors can display content.
     if (item.item_type === 'presentation') {
       return {
         ...base,
-        text: '', copyright: null, styleJson: null,
+        text: slide.content || '', copyright: null, styleJson: null,
         backgroundPath: resolveBackground(item, slide),
         elements: slide.elements || [],
       };
@@ -724,12 +742,28 @@ export default function OperatorView({
   async function handleBulkDelete() {
     const ids = [...selectedIds];
     if (!ids.length) return;
+    // Snapshot the items in their original order before deleting so undo can re-add.
+    const itemsToDelete = (serviceData?.items || []).filter((i) => ids.includes(i.id));
+    const snapshot = itemsToDelete.map((it) => ({
+      item_type: it.item_type, ref_id: it.ref_id ?? null,
+      content: it.content ?? null, background_override_id: it.background_override_id ?? null,
+    }));
     for (const id of ids) await window.cue.services.removeItem(id);
     if (selectedIds.has(previewItemId)) setPreviewItemId(null);
     if (selectedIds.has(liveItemId)) setLiveItemId(null);
     setSelectedIds(new Set());
     refreshService();
-    toast.show({ message: `${ids.length} item${ids.length !== 1 ? 's' : ''} removed from rundown`, duration: 4000 });
+    toast.show({
+      message: `${ids.length} item${ids.length !== 1 ? 's' : ''} removed`,
+      duration: 6000,
+      action: {
+        label: 'Undo',
+        onClick: async () => {
+          await window.cue.services.addItems(activeServiceId, snapshot);
+          refreshService();
+        },
+      },
+    });
   }
 
   // Bulk apply a background to the selected song/scripture items. Locked songs and
@@ -805,7 +839,11 @@ export default function OperatorView({
   function handleGo() {
     // A staged detected verse promotes through the scripture-live path, not the
     // rundown payload path (it's a non-rundown synthetic item).
-    if (previewScripture) { handleScriptureLive(previewScripture.verse); return; }
+    if (previewScripture) {
+      handleScriptureLive(previewScripture.verse);
+      warnIfNoOutputs();
+      return;
+    }
     if (!previewItem) return;
     const payload = buildPayload(previewItem, previewSlideIdx);
     if (payload) {
@@ -813,6 +851,24 @@ export default function OperatorView({
       setLiveItemId(previewItem.id);
       setLiveSlideIdx(previewSlideIdx);
       setLiveScripture(null);
+      warnIfNoOutputs();
+    }
+  }
+
+  // Show a one-per-8s toast when GO fires but no output windows are open.
+  function warnIfNoOutputs() {
+    if (outputWindows !== 0) return;
+    const now = Date.now();
+    if (now - outputWarnRef.current < 8000) return;
+    outputWarnRef.current = now;
+    if (!outputsEnabled) {
+      toast.show({
+        message: "Outputs are off — the audience can't see this.",
+        duration: 6000,
+        action: { label: 'Turn on outputs', onClick: () => onToggleLive?.() },
+      });
+    } else {
+      toast.show({ message: 'No output windows are open — check Output Channels in Settings.', duration: 6000 });
     }
   }
 
@@ -1116,7 +1172,6 @@ export default function OperatorView({
           const newItemId = await window.cue.services.addItem(serviceIdAtRemoval, {
             item_type: item.item_type,
             ref_id: item.ref_id,
-            notes: item.notes,
             content: item.content,
             background_override_id: item.background_override_id ?? null,
           });
@@ -1201,6 +1256,14 @@ export default function OperatorView({
   // background cascade so the row thumbnail + output update together). Locked songs
   // are skipped with a notice; the confirmation toast carries an Undo that restores
   // the prior override.
+  // Double-clicking a media asset applies it as the background of the selected
+  // rundown item(s): the multi-selection if one exists, otherwise the previewed
+  // item. Mirrors the pre-"unified-click" behaviour so operators can bulk-apply.
+  async function handleApplyMediaBackground(assetId) {
+    if (selectedIds.size > 0) { await handleBulkSetBackground(assetId); return; }
+    await handleSetPreviewBackground(assetId);
+  }
+
   async function handleSetPreviewBackground(assetId) {
     const item = serviceData?.items?.find((i) => i.id === previewItemId);
     if (!item) { toast.show({ message: 'Select a song to preview first', duration: 3000 }); return; }
@@ -1226,6 +1289,23 @@ export default function OperatorView({
           refreshService();
         },
       },
+    });
+  }
+
+  async function handleSetRundownItemBackground(itemId, assetId) {
+    const item = serviceData?.items?.find((i) => i.id === itemId);
+    if (!item || (item.item_type !== 'song' && item.item_type !== 'scripture')) return;
+    if (item.song?.background_locked) {
+      toast.show({ message: `"${item.song.title}" background is locked`, duration: 4000 }); return;
+    }
+    const label = item.song?.title || item.scripture?.reference || 'item';
+    const prevOverrideId = item.background_override?.id ?? null;
+    await window.cue.services.setItemBackground(itemId, assetId);
+    refreshService();
+    toast.show({
+      message: `Background set for "${label}"`,
+      duration: 6000,
+      action: { label: 'Undo', onClick: async () => { await window.cue.services.setItemBackground(itemId, prevOverrideId); refreshService(); } },
     });
   }
 
@@ -1294,19 +1374,43 @@ export default function OperatorView({
     if (!activeServiceId) return;
     const svc = services.find((s) => s.id === activeServiceId);
     if (!svc) return;
-    await window.cue.services.update(activeServiceId, { title: newTitle, date: svc.date, notes: svc.notes });
+    await window.cue.services.update(activeServiceId, { title: newTitle, date: svc.date });
     const list = await window.cue.services.list();
     setServices(list);
   }
 
   async function handleDeleteService() {
     if (!activeServiceId) return;
-    await window.cue.services.delete(activeServiceId);
+    const deletedId = activeServiceId;
+    // Snapshot the service and its items before deletion so undo can restore.
+    // Mirrors the DangerZone approach: same fields, same re-create pattern.
+    const svc = services.find((s) => s.id === deletedId);
+    const name = svc?.title || 'Rundown';
+    const full = await window.cue.services.get(deletedId);
+    const snapshot = (full?.items || []).map((it) => ({
+      item_type: it.item_type, ref_id: it.ref_id ?? null,
+      content: it.content ?? null, background_override_id: it.background_override_id ?? null,
+    }));
+    await window.cue.services.delete(deletedId);
     if (previewItemId) setPreviewItemId(null);
     if (liveItemId) setLiveItemId(null);
     const list = await window.cue.services.list();
     setServices(list);
     onServiceChange(list.length > 0 ? list[0].id : null);
+    toast.show({
+      message: `"${name}" deleted`,
+      duration: 8000,
+      action: {
+        label: 'Undo',
+        onClick: async () => {
+          const newId = await window.cue.services.create({ title: name, date: svc?.date || new Date().toISOString().split('T')[0] });
+          if (snapshot.length) await window.cue.services.addItems(newId, snapshot);
+          const restored = await window.cue.services.list();
+          setServices(restored);
+          onServiceChange(newId);
+        },
+      },
+    });
   }
 
   function handleRestartMedia() {
@@ -1377,7 +1481,11 @@ export default function OperatorView({
             onDeleteService={handleDeleteService}
             onRefresh={refreshService}
             onSongEdited={() => setSongEditTick((t) => t + 1)}
+            onSetItemBackground={handleSetRundownItemBackground}
             resolveItemBg={resolveBackground}
+            liveSlideIdx={liveSlideIdx}
+            liveSlideCount={getSlides(liveItem).length}
+            autoAdvanceStartAt={autoAdvanceStartAt}
           />
         </div>
 
@@ -1412,6 +1520,13 @@ export default function OperatorView({
             onSetLiveChannelIdx={setLiveChannelIdx}
             onToggleLoop={handleToggleLoop}
             jumpKeys={jumpArmed ? JUMP_KEYS : null}
+            jumpArmed={jumpArmed}
+            onToggleJumpArmed={async () => {
+              const next = !jumpArmed;
+              setJumpArmed(next);
+              shortcutsRef.current.armJump = next;
+              await window.cue.settings.set('shortcut_arm_jump', next);
+            }}
           />
         </div>
       </div>
@@ -1446,6 +1561,7 @@ export default function OperatorView({
           onAddManyToRundown={handleAddManyToRundown}
           onAddScripture={handleAddScripture}
           onScriptureLive={handleScriptureLive}
+          onScripturePreview={stageScripturePreview}
           onScriptureStyleSaved={loadScriptureDefaults}
           onBackgroundDefaultChanged={loadScriptureDefaults}
           detectArmed={detectArmed}
@@ -1453,7 +1569,15 @@ export default function OperatorView({
           detectDownloadPct={detectDownloadPct}
           onToggleDetect={onToggleDetect}
           onAddMedia={handleAddMedia}
+          onApplyMediaBackground={handleApplyMediaBackground}
           onSetPreviewBackground={handleSetPreviewBackground}
+          previewSongLabel={
+            previewItem?.item_type === 'song'
+              ? (previewItem.song?.title || previewItem.title || null)
+              : previewItem?.item_type === 'scripture'
+              ? (previewItem.scripture?.reference || previewItem.title || 'Scripture')
+              : null
+          }
           onAddYouTube={handleAddYouTube}
           onAddPresentation={handleAddPresentation}
           onSongSave={refreshService}

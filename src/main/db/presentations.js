@@ -118,7 +118,6 @@ export function get(id) {
       label: s.label,
       background_id: s.background_id,
       background_path: bg?.path || null,
-      notes: s.notes,
       elements: resolveElements(parseElements(s.elements_json), mediaMap),
     };
   });
@@ -127,8 +126,8 @@ export function get(id) {
 
 function insertSlides(db, presentationId, slides) {
   const stmt = db.prepare(`
-    INSERT INTO presentation_slides (presentation_id, order_index, label, background_id, elements_json, notes)
-    VALUES (?,?,?,?,?,?)
+    INSERT INTO presentation_slides (presentation_id, order_index, label, background_id, elements_json)
+    VALUES (?,?,?,?,?)
   `);
   (slides || []).forEach((s, i) => {
     const elements = Array.isArray(s.elements) ? s.elements : [];
@@ -137,8 +136,7 @@ function insertSlides(db, presentationId, slides) {
       i,
       s.label || null,
       s.background_id || null,
-      JSON.stringify(elements),
-      s.notes || null
+      JSON.stringify(elements)
     );
   });
 }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { SlidePreview, DEFAULT_STYLE } from './SongEditor';
+import { useModalGuard } from '../utils/modalGuard';
 import { sortThemes } from '../utils/themeSort';
 
 // Reusable "click a theme to apply it" picker — a grid of live theme previews
@@ -36,6 +37,7 @@ function PickCard({ theme, bgThumb, onPick }) {
 }
 
 export default function ThemePickerModal({ onPick, onClose, category = 'song' }) {
+  useModalGuard();
   const [themes, setThemes] = useState([]);
   const [bgThumbs, setBgThumbs] = useState({});
   const [query, setQuery] = useState('');

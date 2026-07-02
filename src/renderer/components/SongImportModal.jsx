@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useModalGuard } from '../utils/modalGuard';
 
 const FORMAT_BADGE = {
   OpenLyrics:   'text-primary border-primary/40 bg-primary/10',
@@ -13,6 +14,7 @@ const FORMAT_BADGE = {
 // (one entry per file). The operator can deselect songs and edit titles before
 // committing. Failed files are shown but cannot be selected.
 export default function SongImportModal({ preview, onCancel, onImported }) {
+  useModalGuard();
   const rows = React.useMemo(
     () => (preview || []).map((p, i) => ({ ...p, _id: i, title: p.title || 'Untitled' })),
     [preview]

@@ -43,7 +43,7 @@ function ConfirmButton({ label, confirmLabel = 'Yes, delete', disabled = false, 
   );
 }
 
-export default function DangerZone({ activeServiceId, onRundownCleared, onRundownDeleted, onLibraryCleared, onMediaCleared }) {
+export default function DangerZone({ activeServiceId, onRundownCleared, onRundownDeleted, onRundownRestored, onLibraryCleared, onMediaCleared }) {
   const toast = useToast();
   const [services, setServices] = useState([]);
   const [clearServiceId, setClearServiceId] = useState(null);
@@ -76,7 +76,7 @@ export default function DangerZone({ activeServiceId, onRundownCleared, onRundow
     if (!items.length) { toast.info(`"${name}" is already empty`); return; }
     // Snapshot (in order) so the clear can be undone by re-adding every item.
     const snapshot = items.map((it) => ({
-      item_type: it.item_type, ref_id: it.ref_id ?? null, notes: it.notes ?? null,
+      item_type: it.item_type, ref_id: it.ref_id ?? null,
       content: it.content ?? null, background_override_id: it.background_override_id ?? null,
     }));
     for (const item of items) await window.cue.services.removeItem(item.id);
@@ -94,11 +94,30 @@ export default function DangerZone({ activeServiceId, onRundownCleared, onRundow
   async function handleDeleteRundown() {
     if (!deleteServiceId) return;
     const deletedId = deleteServiceId;
-    const name = services.find((s) => s.id === deletedId)?.title || 'Rundown';
+    const svc = services.find((s) => s.id === deletedId);
+    const name = svc?.title || 'Rundown';
+    // Snapshot items before deletion so we can undo.
+    const full = await window.cue.services.get(deletedId);
+    const snapshot = (full?.items || []).map((it) => ({
+      item_type: it.item_type, ref_id: it.ref_id ?? null,
+      content: it.content ?? null, background_override_id: it.background_override_id ?? null,
+    }));
     await window.cue.services.delete(deletedId);
     onRundownDeleted?.(deletedId);
     loadServices();
-    toast.success(`"${name}" deleted`);
+    toast.show({
+      message: `"${name}" deleted`,
+      duration: 8000,
+      action: {
+        label: 'Undo',
+        onClick: async () => {
+          const newId = await window.cue.services.create({ title: name, date: svc?.date || new Date().toISOString().split('T')[0] });
+          if (snapshot.length) await window.cue.services.addItems(newId, snapshot);
+          onRundownRestored?.(newId);
+          loadServices();
+        },
+      },
+    });
   }
 
   async function handleClearLibrary() {

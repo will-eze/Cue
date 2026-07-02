@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { splitSectionContent } from '../utils/sectionLabels';
+import { useModalGuard } from '../utils/modalGuard';
 
 const TYPE_LABELS = {
   verse: 'Verse', chorus: 'Chorus', bridge: 'Bridge',
@@ -8,6 +9,7 @@ const TYPE_LABELS = {
 };
 
 export default function SongPreviewModal({ song, onClose, onEdit, onAddToRundown }) {
+  useModalGuard();
   const [fullSong, setFullSong] = useState(null);
 
   useEffect(() => {

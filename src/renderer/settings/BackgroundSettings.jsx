@@ -87,6 +87,8 @@ export default function BackgroundSettings({ activeServiceId, onBackgroundDefaul
   const [selectedServiceId, setSelectedServiceId] = useState(null);
   const [loopMode, setLoopMode] = useState('blend'); // 'blend' | 'jump'
   const [loopBlendSecs, setLoopBlendSecs] = useState(2.0);
+  const [confirmApplyToRundown, setConfirmApplyToRundown] = useState(false);
+  const [confirmApplyToAll, setConfirmApplyToAll] = useState(false);
 
   useEffect(() => {
     window.cue.services.list().then((list) => {
@@ -116,20 +118,29 @@ export default function BackgroundSettings({ activeServiceId, onBackgroundDefaul
   function showFeedback(msg) { toast.success(msg); }
 
   async function handleApplyToRundown() {
-    if (!selectedServiceId) { alert('No rundown selected.'); return; }
+    if (!selectedServiceId) { toast.error('No rundown selected.'); return; }
     const id = await window.cue.settings.get('global_bg_song_id');
-    if (!id) { alert('Set a global song background first.'); return; }
-    const svc = services.find((s) => s.id === selectedServiceId);
-    if (!confirm(`Override the background for all songs in "${svc?.title || 'this rundown'}"?\nThis replaces any per-slot background overrides. Locked songs are skipped.`)) return;
+    if (!id) { toast.error('Set a global song background first.'); return; }
+    setConfirmApplyToRundown(true);
+  }
+
+  async function confirmApplyToRundownAction() {
+    setConfirmApplyToRundown(false);
+    const id = await window.cue.settings.get('global_bg_song_id');
     const count = await window.cue.services.applyBackgroundToRundown(selectedServiceId, id);
-    if (!count) { alert('No song items found in this rundown. Make sure songs are added first.'); return; }
+    if (!count) { toast.error('No song items found in this rundown. Make sure songs are added first.'); return; }
     showFeedback(`Applied to ${count} song${count !== 1 ? 's' : ''} in rundown`);
   }
 
   async function handleApplyToAllSongs() {
     const id = await window.cue.settings.get('global_bg_song_id');
-    if (!id) { alert('Set a global song background first.'); return; }
-    if (!confirm("Write this background to every song in the library?\nThis sets each song's own default and clears their slot overrides. Locked songs are skipped.")) return;
+    if (!id) { toast.error('Set a global song background first.'); return; }
+    setConfirmApplyToAll(true);
+  }
+
+  async function confirmApplyToAllAction() {
+    setConfirmApplyToAll(false);
+    const id = await window.cue.settings.get('global_bg_song_id');
     await window.cue.settings.applyBackgroundToAll('song', id);
     showFeedback('Written to all songs in library');
   }
@@ -190,7 +201,10 @@ export default function BackgroundSettings({ activeServiceId, onBackgroundDefaul
             </button>
           ))}
         </div>
-        <div className={`flex items-center gap-lg ${loopMode !== 'blend' ? 'opacity-40 pointer-events-none' : ''}`}>
+        <div
+          className={`flex items-center gap-lg ${loopMode !== 'blend' ? 'opacity-40 pointer-events-none' : ''}`}
+          title={loopMode !== 'blend' ? 'Select "Smooth blend" above to configure blend duration' : undefined}
+        >
           <span className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em] shrink-0">Blend duration</span>
           <input
             type="range"
@@ -253,13 +267,21 @@ export default function BackgroundSettings({ activeServiceId, onBackgroundDefaul
             ) : (
               <span className="text-label-sm font-label-sm text-on-surface-variant italic">No rundowns</span>
             )}
-            <button
-              onClick={handleApplyToRundown}
-              disabled={!selectedServiceId || services.length === 0}
-              className="px-md py-xs text-label-sm font-label-sm font-bold bg-primary/10 border border-primary/30 text-primary rounded-lg hover:bg-primary/20 hover:border-primary/50 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              Apply
-            </button>
+            {confirmApplyToRundown ? (
+              <div className="flex items-center gap-sm shrink-0">
+                <span className="text-[10px] font-mono text-error uppercase tracking-[0.04em] shrink-0">Override songs?</span>
+                <button onClick={confirmApplyToRundownAction} className="text-[10px] font-mono text-error hover:text-error/70 cursor-pointer uppercase tracking-[0.04em] border border-error/40 px-sm py-[2px] rounded transition-colors">Yes</button>
+                <button onClick={() => setConfirmApplyToRundown(false)} className="text-[10px] font-mono text-on-surface-variant hover:text-on-surface cursor-pointer uppercase tracking-[0.04em] transition-colors">No</button>
+              </div>
+            ) : (
+              <button
+                onClick={handleApplyToRundown}
+                disabled={!selectedServiceId || services.length === 0}
+                className="px-md py-xs text-label-sm font-label-sm font-bold bg-primary/10 border border-primary/30 text-primary rounded-lg hover:bg-primary/20 hover:border-primary/50 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Apply
+              </button>
+            )}
           </div>
         </div>
 
@@ -271,12 +293,20 @@ export default function BackgroundSettings({ activeServiceId, onBackgroundDefaul
               Hardcodes this background onto every song in the library and clears their slot overrides, so the choice sticks even if you change the global later. Locked songs are skipped.
             </p>
           </div>
-          <button
-            onClick={handleApplyToAllSongs}
-            className="shrink-0 px-md py-xs text-label-sm font-label-sm font-bold bg-primary/10 border border-primary/30 text-primary rounded-lg hover:bg-primary/20 hover:border-primary/50 active:scale-95 transition-all cursor-pointer"
-          >
-            Apply to all songs
-          </button>
+          {confirmApplyToAll ? (
+            <div className="flex items-center gap-sm shrink-0">
+              <span className="text-[10px] font-mono text-error uppercase tracking-[0.04em] shrink-0">Write to all songs?</span>
+              <button onClick={confirmApplyToAllAction} className="text-[10px] font-mono text-error hover:text-error/70 cursor-pointer uppercase tracking-[0.04em] border border-error/40 px-sm py-[2px] rounded transition-colors">Yes</button>
+              <button onClick={() => setConfirmApplyToAll(false)} className="text-[10px] font-mono text-on-surface-variant hover:text-on-surface cursor-pointer uppercase tracking-[0.04em] transition-colors">No</button>
+            </div>
+          ) : (
+            <button
+              onClick={handleApplyToAllSongs}
+              className="shrink-0 px-md py-xs text-label-sm font-label-sm font-bold bg-primary/10 border border-primary/30 text-primary rounded-lg hover:bg-primary/20 hover:border-primary/50 active:scale-95 transition-all cursor-pointer"
+            >
+              Apply to all songs
+            </button>
+          )}
         </div>
       </div>
 

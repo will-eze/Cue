@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import MediaPickerModal from './MediaPickerModal';
+import { useModalGuard } from '../utils/modalGuard';
 import ThemePickerModal from './ThemePickerModal';
 import UndoRedoButtons from './UndoRedoButtons';
 import useEditHistory, { useUndoRedoKeys } from '../utils/useEditHistory';
@@ -1163,6 +1164,7 @@ function PasteView({ onParse, onCancel }) {
 // ─── Main editor ──────────────────────────────────────────────────────────
 
 export default function SongEditor({ song, onClose, onSave }) {
+  useModalGuard();
   const toast = useToast();
   // Undoable working document: the song fields, sections, style, background, lock
   // and tag selection. Ephemeral UI (active section, preview, modals, saving) stays

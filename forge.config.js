@@ -219,6 +219,14 @@ module.exports = {
       name: '@electron-forge/maker-dmg',
       config: { name: 'Cue', icon: './assets/icon.icns' },
     },
+    {
+      name: '@electron-forge/maker-deb',
+      config: { options: { name: 'cue', productName: 'Cue', icon: './assets/icon.png' } },
+    },
+    {
+      name: '@electron-forge/maker-rpm',
+      config: { options: { name: 'cue', productName: 'Cue', icon: './assets/icon.png' } },
+    },
   ],
   plugins: [
     {

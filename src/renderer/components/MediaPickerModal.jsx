@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import MediaThumb from './MediaThumb';
+import { useModalGuard } from '../utils/modalGuard';
 
 export default function MediaPickerModal({ onSelect, onClose, initialId = null }) {
+  useModalGuard();
   const [assets, setAssets] = useState([]);
   const [selectedId, setSelectedId] = useState(initialId);
   const fileInputRef = useRef(null);
@@ -12,6 +14,13 @@ export default function MediaPickerModal({ onSelect, onClose, initialId = null }
       setAssets(all.filter((a) => a.type === 'image' || a.type === 'video'))
     );
   }, []);
+
+  // Escape closes the picker — consistent with SongPreviewModal's pattern.
+  useEffect(() => {
+    function handleKey(e) { if (e.key === 'Escape') onClose(); }
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [onClose]);
 
   async function handleImport(e) {
     const files = Array.from(e.target.files);

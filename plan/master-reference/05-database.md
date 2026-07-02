@@ -9,7 +9,7 @@
 
 ### Migration system
 
-`schema.js` creates `db_version` table (single integer row) on first run and applies pending migrations in order inside a transaction. **Never delete `db_version`** — it is required to exist before any user-facing build. Current version: **28**. Migrations run with foreign keys disabled, so table-rebuild migrations (v6, v7, v11, v16, v20, v21, v23) do not cascade-delete referencing rows.
+`schema.js` creates `db_version` table (single integer row) on first run and applies pending migrations in order inside a transaction. **Never delete `db_version`** — it is required to exist before any user-facing build. Current version: **29**. Migrations run with foreign keys disabled, so table-rebuild migrations (v6, v7, v11, v16, v20, v21, v23) do not cascade-delete referencing rows.
 
 | Version | Change |
 |---|---|
@@ -41,6 +41,7 @@
 | v26 | Apostrophe-insensitive song search: `songs_fts` triggers and a one-time reindex now **strip** apostrophes (straight `'`, curly `' '`, modifier `ʼ`, by `char()` codepoint) from `title`/`author`/`content` as they enter the index. The default unicode61 tokenizer otherwise splits an apostrophe, indexing `God's` as `god`+`s` so a query for `Gods` never matched. The query side strips the same set (`db/songs.js` `search()` + `_norm`), so both collapse `God's` → `gods`. No schema columns change — triggers + index content only |
 | v27 | Customisable WYSIWYG stage display: added `output_channels.stage_layout_json` (TEXT). A stage/confidence channel's layout is now a free-form set of absolutely-positioned elements (currentText / nextText / clock / timer / elapsedTimer / videoCountdown / message / staticText), each in % of 1920×1080. `NULL` → the built-in default layout reproduced in both `manager.js` and `stage.js`. Reusable named layouts live in the `stage_presets` setting (plain ALTER — no table rebuild) |
 | v28 | Background media on broadcast graphics: added `graphics.background_media_id INTEGER REFERENCES media_assets(id) ON DELETE SET NULL`. An optional full-screen video/image rendered behind the overlay text (e.g. countdown + video loop behind the clock). `NULL` = no background (overlay transparent as before). `ON DELETE SET NULL` means deleting a media asset clears the reference without removing the graphic. `graphics.list()` and `graphics.get()` JOIN to `media_assets` to expose `background_path`/`background_filename`. Also adds countdown `onEnd` action field (in `style_json`): `'hold'`\|`'clear'`\|`'overflow'`\|`'loop'`\|`'media'` (see graphics table below). |
+| v29 | File size on media assets: added `media_assets.size_bytes INTEGER`. Populated at import time via `fs.statSync` so the media grid can show file size without a live filesystem stat. `duration_ms` is also now populated at import time (via ffmpeg probe — `spawnSync(ffmpeg, ['-v','error','-i',filePath])` parses the `Duration:` line) rather than being reserved. `findUnused()` reads both columns from the DB directly. |
 
 ### All tables
 
@@ -100,7 +101,8 @@ filename TEXT NOT NULL         -- original filename for display
 path TEXT NOT NULL UNIQUE      -- absolute path inside userData/media/
 type TEXT NOT NULL CHECK(type IN ('image','video','audio'))
 folder_id INTEGER REFERENCES media_folders(id) ON DELETE SET NULL
-duration_ms INTEGER            -- not populated by import, reserved
+duration_ms INTEGER            -- v29: populated at import via ffmpeg probe (video/audio); null for images
+size_bytes INTEGER             -- v29: populated at import via fs.statSync; null for pre-v29 rows
 created_at DATETIME DEFAULT (datetime('now'))
 ```
 
@@ -286,7 +288,7 @@ Known keys:
 
 #### `db_version`
 ```sql
-version INTEGER NOT NULL       -- current: 28
+version INTEGER NOT NULL       -- current: 29
 ```
 
 ---

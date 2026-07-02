@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useModalGuard } from '../utils/modalGuard';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
 } from '@dnd-kit/core';
@@ -15,7 +16,9 @@ import SongEditor from '../components/SongEditor';
 import PresentationEditor from '../components/PresentationEditor';
 import MediaThumb from '../components/MediaThumb';
 
-function SortableItem({ item, index, bgPath, isPreview, isLive, isSelected, onClick, onDoubleClick, onContextMenu }) {
+function SortableItem({ item, index, bgPath, isPreview, isLive, isSelected, liveSlideIdx, liveSlideCount, autoAdvanceStartAt, onClick, onDoubleClick, onContextMenu, onSetItemBackground }) {
+  const [isDragOver, setIsDragOver] = useState(false);
+  const canDropBg = item.item_type === 'song' || item.item_type === 'scripture';
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: item.id });
 
@@ -47,6 +50,17 @@ function SortableItem({ item, index, bgPath, isPreview, isLive, isSelected, onCl
     : item.item_type === 'youtube' ? 'YouTube'
     : 'Slide';
 
+  // Live countdown for the auto-advance badge — ticks every second while live.
+  const [, forceAdvTick] = useState(0);
+  useEffect(() => {
+    if (!isLive || !autoAdvanceStartAt || !item.advance_seconds) return;
+    const id = setInterval(() => forceAdvTick((n) => n + 1), 500);
+    return () => clearInterval(id);
+  }, [isLive, autoAdvanceStartAt, item.advance_seconds]);
+  const advanceRemaining = (isLive && autoAdvanceStartAt && item.advance_seconds > 0)
+    ? Math.max(0, Math.ceil(item.advance_seconds - (Date.now() - autoAdvanceStartAt) / 1000))
+    : null;
+
   const typeIcon = item.item_type === 'song' ? 'music_note'
     : item.item_type === 'media' ? 'play_circle'
     : item.item_type === 'scripture' ? 'menu_book'
@@ -74,13 +88,26 @@ function SortableItem({ item, index, bgPath, isPreview, isLive, isSelected, onCl
       onClick={onClick}
       onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
+      onDragOver={(e) => {
+        if (!canDropBg || !e.dataTransfer.types.includes('cue/assetid')) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+        setIsDragOver(true);
+      }}
+      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setIsDragOver(false); }}
+      onDrop={(e) => {
+        setIsDragOver(false);
+        if (!canDropBg) return;
+        const assetId = Number(e.dataTransfer.getData('cue/assetid'));
+        if (assetId) { e.preventDefault(); onSetItemBackground?.(item.id, assetId); }
+      }}
       className={`flex items-center gap-sm px-sm cursor-pointer border-b border-outline-variant/20 group ${
         isLive ? 'tally-live' : isPreview ? 'tally-preview' : 'tally-idle hover:bg-surface-variant'
-      } ${isSelected ? 'ring-1 ring-inset ring-primary/70 bg-primary/5' : ''}`}
+      } ${isSelected ? 'ring-1 ring-inset ring-primary/70 bg-primary/5' : ''} ${isDragOver ? 'ring-2 ring-inset ring-primary bg-primary/10' : ''}`}
     >
       {/* Drag handle */}
       <button
-        className="drag-handle shrink-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+        className="drag-handle shrink-0 flex items-center justify-center opacity-20 group-hover:opacity-100 transition-opacity"
         style={{ width: 14, color: '#424754' }}
         onClick={(e) => e.stopPropagation()}
         {...attributes}
@@ -173,20 +200,24 @@ function SortableItem({ item, index, bgPath, isPreview, isLive, isSelected, onCl
             LOOP
           </span>
         )}
+        {isLive && liveSlideCount > 1 && (
+          <span className="font-label-sm text-[9px] tracking-wider text-secondary/80 tabular-nums">
+            {liveSlideIdx + 1}/{liveSlideCount}
+          </span>
+        )}
         {item.advance_seconds > 0 && (
           <span
-            className="flex items-center gap-[2px] font-label-sm text-[9px] tracking-wider bg-surface-variant text-on-surface-variant px-xs py-[2px] rounded uppercase"
+            className={`flex items-center gap-[2px] font-label-sm text-[9px] tracking-wider px-xs py-[2px] rounded uppercase tabular-nums ${
+              advanceRemaining != null
+                ? 'bg-tertiary/15 text-tertiary border border-tertiary/30'
+                : 'bg-surface-variant text-on-surface-variant'
+            }`}
             title={item.advance_loop === 'item' ? 'Auto-advance · loops this item' : 'Auto-advance · continues rundown'}
           >
             <span className="material-symbols-outlined text-[11px] leading-none">
               {item.advance_loop === 'item' ? 'repeat_one' : 'timer'}
             </span>
-            {item.advance_seconds}s
-          </span>
-        )}
-        {item.notes && (
-          <span className="font-label-sm text-[9px] tracking-wider bg-surface-variant text-on-surface-variant px-xs py-[2px] rounded uppercase">
-            NOTE
+            {advanceRemaining != null ? `${advanceRemaining}s` : `${item.advance_seconds}s`}
           </span>
         )}
       </div>
@@ -204,6 +235,7 @@ const LOOP_MODES = [
 ];
 
 function AutoAdvanceModal({ item, onApply, onClose }) {
+  useModalGuard();
   const [secs, setSecs] = useState(item.advance_seconds > 0 ? String(item.advance_seconds) : '');
   const [loop, setLoop] = useState(item.advance_loop === 'item' ? 'item' : 'rundown');
   // Default on (matches the column default) so a brand-new auto-advance wraps.
@@ -313,10 +345,11 @@ function AutoAdvanceModal({ item, onApply, onClose }) {
 export default function RundownPanel({
   services, activeServiceId, serviceData, previewItemId, liveItemId,
   selectedIds = new Set(),
+  liveSlideIdx = 0, liveSlideCount = 0, autoAdvanceStartAt = null,
   onSelectService, onClickItem, onToggleSelect, onRangeSelect, onSetSelection, onClearSelection,
   onBulkDelete, onBulkSetBackground,
   onDoubleClickItem, onReorder, onRemoveItem, onDuplicate,
-  onAddService, onRenameService, onDeleteService, onRefresh, onSongEdited, resolveItemBg,
+  onAddService, onRenameService, onDeleteService, onRefresh, onSongEdited, onSetItemBackground, resolveItemBg,
 }) {
   const toast = useToast();
   const [contextMenu, setContextMenu] = useState(null);
@@ -349,6 +382,21 @@ export default function RundownPanel({
   // When the selection clears (e.g. after a bulk delete), drop the inline confirm.
   useEffect(() => { if (selectedIds.size < 2) setConfirmBulkDelete(false); }, [selectedIds]);
 
+  // ContextMenu key opens the context menu for the current preview item without a mouse.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== 'ContextMenu' || !previewItemId) return;
+      const el = listRef.current?.querySelector(`[data-item-id="${previewItemId}"]`);
+      if (!el) return;
+      e.preventDefault();
+      const r = el.getBoundingClientRect();
+      const it = (serviceData?.items || []).find((i) => i.id === previewItemId);
+      if (it) setContextMenu({ x: r.left + 40, y: r.bottom, item: it });
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [previewItemId, serviceData]);
+
   // Click outside the rundown panel deselects. Disabled while the bulk background
   // picker is open (it's a portal'd modal that operates ON the selection, so clicking
   // it must not wipe what it's about to apply to). Row/marquee/bar clicks are inside
@@ -361,6 +409,23 @@ export default function RundownPanel({
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, [selectedIds, bulkBgPicker, onClearSelection]);
+
+  // Scroll the live row into view when the live item changes (Space at a boundary,
+  // auto-advance, network remote). block:'nearest' is a no-op when already visible.
+  useEffect(() => {
+    if (!liveItemId) return;
+    listRef.current
+      ?.querySelector(`[data-item-id="${liveItemId}"]`)
+      ?.scrollIntoView({ block: 'nearest' });
+  }, [liveItemId]);
+
+  // Scroll the preview row into view when arrow-key navigation moves to a new item.
+  useEffect(() => {
+    if (!previewItemId) return;
+    listRef.current
+      ?.querySelector(`[data-item-id="${previewItemId}"]`)
+      ?.scrollIntoView({ block: 'nearest' });
+  }, [previewItemId]);
 
   const items = serviceData?.items || [];
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -443,7 +508,7 @@ export default function RundownPanel({
   async function handleExportPdf() {
     if (!activeServiceId || exporting) return;
     if (typeof window.cue?.services?.exportPdf !== 'function') {
-      window.alert('PDF export is unavailable — restart the app to load the latest version.');
+      toast.error('PDF export is unavailable — restart the app to load the latest version.');
       return;
     }
     setExporting(true);
@@ -451,7 +516,7 @@ export default function RundownPanel({
       await window.cue.services.exportPdf(activeServiceId);
     } catch (err) {
       console.error('Rundown PDF export failed:', err);
-      window.alert(`Couldn't export the rundown PDF:\n${err?.message || err}`);
+      toast.error(`Couldn't export the rundown PDF: ${err?.message || err}`);
     } finally {
       setExporting(false);
     }
@@ -664,9 +729,13 @@ export default function RundownPanel({
                   isPreview={item.id === previewItemId}
                   isLive={item.id === liveItemId}
                   isSelected={selectedIds.has(item.id)}
+                  liveSlideIdx={item.id === liveItemId ? liveSlideIdx : 0}
+                  liveSlideCount={item.id === liveItemId ? liveSlideCount : 0}
+                  autoAdvanceStartAt={item.id === liveItemId ? autoAdvanceStartAt : null}
                   onClick={(e) => handleRowClick(item, e)}
                   onDoubleClick={() => onDoubleClickItem(item)}
                   onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, item }); }}
+                  onSetItemBackground={onSetItemBackground}
                 />
               ))}
             </SortableContext>
@@ -796,6 +865,42 @@ export default function RundownPanel({
                 : 'Auto-Advance…',
               onClick: () => { setAdvanceForItem(contextMenu.item); setContextMenu(null); },
             },
+            ...(services.filter((s) => s.id !== activeServiceId).length > 0 ? [
+              { separator: true },
+              {
+                label: 'Copy to Service ›',
+                submenu: services.filter((s) => s.id !== activeServiceId).map((s) => ({
+                  label: s.title,
+                  onClick: async () => {
+                    const item = contextMenu.item;
+                    await window.cue.services.addItems(s.id, [{
+                      item_type: item.item_type, ref_id: item.ref_id ?? null,
+                      content: item.content ?? null,
+                      background_override_id: item.background_override_id ?? null,
+                    }]);
+                    setContextMenu(null);
+                    toast.success(`Copied to "${s.title}"`);
+                  },
+                })),
+              },
+              {
+                label: 'Move to Service ›',
+                submenu: services.filter((s) => s.id !== activeServiceId).map((s) => ({
+                  label: s.title,
+                  onClick: async () => {
+                    const item = contextMenu.item;
+                    await window.cue.services.addItems(s.id, [{
+                      item_type: item.item_type, ref_id: item.ref_id ?? null,
+                      content: item.content ?? null,
+                      background_override_id: item.background_override_id ?? null,
+                    }]);
+                    onRemoveItem(item.id);
+                    setContextMenu(null);
+                    toast.success(`Moved to "${s.title}"`);
+                  },
+                })),
+              },
+            ] : []),
             { separator: true },
             {
               label: 'Remove from Rundown',

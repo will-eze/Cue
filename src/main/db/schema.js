@@ -778,6 +778,11 @@ const migrations = [
       ALTER TABLE graphics ADD COLUMN background_media_id INTEGER REFERENCES media_assets(id) ON DELETE SET NULL;
     `);
   },
+
+  // v29 — File size stored on import so the media grid can show it without an fs.stat.
+  function v29(database) {
+    database.exec(`ALTER TABLE media_assets ADD COLUMN size_bytes INTEGER;`);
+  },
 ];
 
 function runMigrations() {

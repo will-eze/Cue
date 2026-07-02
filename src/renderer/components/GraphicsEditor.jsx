@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import { useModalGuard } from '../utils/modalGuard';
 import { FormattingToolbar, DEFAULT_STYLE, styleIsDefault } from './SongEditor';
 import UndoRedoButtons from './UndoRedoButtons';
 import useEditHistory, { useUndoRedoKeys } from '../utils/useEditHistory';
@@ -640,6 +641,7 @@ export function presetToGraphic(preset) {
 // ── Editor ─────────────────────────────────────────────────────────────────────
 
 export default function GraphicsEditor({ graphic, onClose, onSaved }) {
+  useModalGuard();
   const isEdit = !!graphic?.id;
   const fonts = useFonts();
 

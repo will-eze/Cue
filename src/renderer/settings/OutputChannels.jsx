@@ -10,6 +10,7 @@ export default function OutputChannels() {
   const [newChannel, setNewChannel] = useState({ name: '', type: 'screen', template: 'fullscreen', ndi_fps: 30, ndi_width: 1920, ndi_height: 1080, ndi_audio_muted: 1 });
   const [audioOutputs, setAudioOutputs] = useState([]);       // physical output devices
   const [audioDevice, setAudioDevice] = useState(null);       // {deviceId,label,groupId} | null (= system default)
+  const [ndiErrors, setNdiErrors] = useState({});             // channelId → error string
 
   const load = useCallback(async () => {
     const [chs, mons, scrs] = await Promise.all([
@@ -23,6 +24,22 @@ export default function OutputChannels() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    const offErr = window.cue.on('output:ndi-sender-error', ({ channelId, error }) => {
+      setNdiErrors((prev) => ({ ...prev, [channelId]: error }));
+    });
+    // A later successful (re)create clears the stale banner for that channel.
+    const offOk = window.cue.on('output:ndi-sender-ok', ({ channelId }) => {
+      setNdiErrors((prev) => {
+        if (!(channelId in prev)) return prev;
+        const next = { ...prev };
+        delete next[channelId];
+        return next;
+      });
+    });
+    return () => { offErr(); offOk(); };
+  }, []);
 
   const triedUnlockRef = useRef(false);
 
@@ -111,7 +128,6 @@ export default function OutputChannels() {
   }
 
   async function handleDeleteChannel(id) {
-    if (!confirm('Delete this channel and remove all its assigned screens?')) return;
     await window.cue.output.channels.delete(id);
     load();
   }
@@ -329,6 +345,7 @@ export default function OutputChannels() {
               onDelete={() => handleDeleteChannel(ch.id)}
               onAddMonitor={(display) => handleAddMonitor(ch.id, display)}
               onRemoveMonitor={handleRemoveMonitor}
+              ndiError={ndiErrors[ch.id] || null}
             />
           ))}
         </div>
@@ -339,10 +356,11 @@ export default function OutputChannels() {
 
 // ─── Channel Card ────────────────────────────────────────────────────────────
 
-function ChannelCard({ channel, monitors, screens, assignedBounds, onUpdate, onDelete, onAddMonitor, onRemoveMonitor }) {
+function ChannelCard({ channel, monitors, screens, assignedBounds, onUpdate, onDelete, onAddMonitor, onRemoveMonitor, ndiError }) {
   const [editing, setEditing] = useState(false);
   const [editData, setEditData] = useState({});
   const [showScreenPicker, setShowScreenPicker] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const isActive = !!channel.active;
 
   function startEdit() {
@@ -450,19 +468,40 @@ function ChannelCard({ channel, monitors, screens, assignedBounds, onUpdate, onD
             >
               <span className="material-symbols-outlined text-[15px]">edit</span>
             </button>
-            <button
-              onClick={onDelete}
-              className="text-on-surface-variant hover:text-error cursor-pointer transition-colors p-xs rounded hover:bg-error/10"
-              title="Delete channel"
-            >
-              <span className="material-symbols-outlined text-[15px]">delete</span>
-            </button>
+            {confirmingDelete ? (
+              <>
+                <span className="text-[10px] font-mono text-error uppercase tracking-[0.04em] shrink-0">Delete?</span>
+                <button
+                  onClick={() => { setConfirmingDelete(false); onDelete(); }}
+                  className="text-[10px] font-mono text-error hover:text-error/70 cursor-pointer uppercase tracking-[0.04em] border border-error/40 px-sm py-[2px] rounded transition-colors"
+                >Yes</button>
+                <button
+                  onClick={() => setConfirmingDelete(false)}
+                  className="text-[10px] font-mono text-on-surface-variant hover:text-on-surface cursor-pointer uppercase tracking-[0.04em] transition-colors"
+                >No</button>
+              </>
+            ) : (
+              <button
+                onClick={() => setConfirmingDelete(true)}
+                className="text-on-surface-variant hover:text-error cursor-pointer transition-colors p-xs rounded hover:bg-error/10"
+                title="Delete channel"
+              >
+                <span className="material-symbols-outlined text-[15px]">delete</span>
+              </button>
+            )}
           </div>
         )}
       </div>
 
       {/* Monitors area — NDI channels don't use physical screens */}
       {isNdi ? (
+        <>
+        {ndiError && (
+          <div className="mx-md mt-sm flex items-start gap-sm bg-error-container/20 border border-error/40 rounded-lg px-md py-sm">
+            <span className="material-symbols-outlined text-[14px] text-error shrink-0 mt-[1px]">error</span>
+            <span className="text-body-sm text-error flex-1">NDI sender failed: {ndiError}</span>
+          </div>
+        )}
         <div className="px-md py-sm flex items-center justify-between gap-md border-t border-outline-variant/10">
           <div className="flex items-center gap-sm text-on-surface-variant text-label-sm font-label-sm">
             <span className="material-symbols-outlined text-[14px] text-tertiary">wifi_tethering</span>
@@ -483,6 +522,7 @@ function ChannelCard({ channel, monitors, screens, assignedBounds, onUpdate, onD
             {channel.ndi_audio_muted ? 'Audio Muted' : 'Audio On'}
           </button>
         </div>
+        </>
       ) : (
       <div className="p-md">
         {monitors.length === 0 && !showScreenPicker ? (

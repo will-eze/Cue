@@ -4,6 +4,8 @@ import { app } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
+import { spawnSync } from 'child_process';
+import { ffmpegPath } from '../youtube/bin.js';
 
 export function getMediaDir() {
   return path.join(app.getPath('userData'), 'media');
@@ -36,6 +38,19 @@ function detectType(ext) {
   return 'image';
 }
 
+// Probe video/audio duration using ffmpeg header-read (fast — no decode).
+// Returns milliseconds, or null if ffmpeg is unavailable or probing fails.
+function probeDurationMs(filePath) {
+  const ff = ffmpegPath();
+  if (!ff) return null;
+  try {
+    const r = spawnSync(ff, ['-v', 'error', '-i', filePath], { encoding: 'utf8', timeout: 8000 });
+    const m = (r.stderr || '').match(/Duration:\s+(\d+):(\d+):(\d+(?:\.\d+)?)/);
+    if (!m) return null;
+    return Math.round((Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3])) * 1000);
+  } catch { return null; }
+}
+
 export function importFiles(filePaths) {
   const db = getDb();
   const mediaDir = ensureMediaDir();
@@ -48,9 +63,12 @@ export function importFiles(filePaths) {
       fs.copyFileSync(src, destPath);
       const type = detectType(ext);
       const filename = path.basename(src);
-      const { lastInsertRowid } = db.prepare('INSERT INTO media_assets (filename, path, type) VALUES (?,?,?)')
-        .run(filename, destPath, type);
-      results.push({ id: Number(lastInsertRowid), filename, path: destPath, type });
+      const durationMs = (type === 'video' || type === 'audio') ? probeDurationMs(destPath) : null;
+      let sizeBytes = null;
+      try { sizeBytes = fs.statSync(destPath).size; } catch {}
+      const { lastInsertRowid } = db.prepare('INSERT INTO media_assets (filename, path, type, duration_ms, size_bytes) VALUES (?,?,?,?,?)')
+        .run(filename, destPath, type, durationMs, sizeBytes);
+      results.push({ id: Number(lastInsertRowid), filename, path: destPath, type, duration_ms: durationMs, size_bytes: sizeBytes });
     }
   })();
   return results;

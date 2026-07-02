@@ -39,7 +39,6 @@ contextBridge.exposeInMainWorld('cue', {
     addItems: (serviceId, items) => ipcRenderer.invoke('services:addItems', serviceId, items),
     removeItem: (itemId) => ipcRenderer.invoke('services:removeItem', itemId),
     setItemBackground: (itemId, mediaId) => ipcRenderer.invoke('services:setItemBackground', itemId, mediaId),
-    setItemNotes: (itemId, notes) => ipcRenderer.invoke('services:setItemNotes', itemId, notes),
     setItemLoop:  (itemId, loop)  => ipcRenderer.invoke('services:setItemLoop',  itemId, loop),
     setItemAdvance: (itemId, seconds, loop, wrap) => ipcRenderer.invoke('services:setItemAdvance', itemId, seconds, loop, wrap),
     duplicateItem: (itemId) => ipcRenderer.invoke('services:duplicateItem', itemId),
@@ -97,9 +96,11 @@ contextBridge.exposeInMainWorld('cue', {
       stop: () => ipcRenderer.invoke('output:multiview:stop'),
     },
     stage: {
-      message: (text)           => ipcRenderer.invoke('output:stage:message', text),
-      timer:   (action, seconds) => ipcRenderer.invoke('output:stage:timer', action, seconds),
-      getSchedule: ()           => ipcRenderer.invoke('output:stage:schedule:get'),
+      message:    (text)           => ipcRenderer.invoke('output:stage:message', text),
+      timer:      (action, seconds) => ipcRenderer.invoke('output:stage:timer', action, seconds),
+      getTimer:   ()               => ipcRenderer.invoke('output:stage:timer:get'),
+      getMessage: ()               => ipcRenderer.invoke('output:stage:message:get'),
+      getSchedule: ()              => ipcRenderer.invoke('output:stage:schedule:get'),
       schedule:    (msg)        => ipcRenderer.invoke('output:stage:schedule:add', msg),
       unschedule:  (id)         => ipcRenderer.invoke('output:stage:schedule:remove', id),
       // Customisable WYSIWYG layout (per channel) + reusable named presets.
@@ -281,11 +282,11 @@ contextBridge.exposeInMainWorld('cue', {
   on: (channel, callback) => {
     const allowed = [
       'output:unresolved-channels', 'output:state-changed',
-      'output:ndi-unavailable',
+      'output:ndi-unavailable', 'output:ndi-sender-error', 'output:ndi-sender-ok',
       'output:multiview-captures',
       'output:media-transport',
       'output:overlay-changed',
-      'stage:schedule', 'stage:layout',
+      'stage:schedule', 'stage:layout', 'stage:timer', 'stage:message',
       'shortcut:next', 'shortcut:prev',
       'remote:command',
       'youtube:status',

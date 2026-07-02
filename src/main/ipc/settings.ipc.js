@@ -31,7 +31,11 @@ export function registerSettingsIpc() {
       filters: [{ name: 'Cue Backup', extensions: ['cuebackup'] }],
     });
     if (result.canceled || !result.filePath) return { ok: false, canceled: true };
-    return backup.exportBackup(result.filePath);
+    try {
+      return await backup.exportBackup(result.filePath);
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
   });
 
   ipcMain.handle('settings:importBackup', async (e) => {
@@ -42,13 +46,16 @@ export function registerSettingsIpc() {
       filters: [{ name: 'Cue Backup', extensions: ['cuebackup'] }],
     });
     if (result.canceled || !result.filePaths?.[0]) return { ok: false, canceled: true };
-
-    const res = await backup.importBackup(result.filePaths[0]);
-    // Relaunch so every process (renderer, output windows) re-reads the restored
-    // database and media. Deferred a beat so this IPC reply reaches the renderer
-    // and its toast paints before the window is torn down.
-    if (res.ok) setTimeout(() => { app.relaunch(); app.exit(0); }, 400);
-    return res;
+    try {
+      const res = await backup.importBackup(result.filePaths[0]);
+      // Relaunch so every process (renderer, output windows) re-reads the restored
+      // database and media. Deferred a beat so this IPC reply reaches the renderer
+      // and its toast paints before the window is torn down.
+      if (res.ok) setTimeout(() => { app.relaunch(); app.exit(0); }, 400);
+      return res;
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
   });
 
   // Factory reset — wipe every trace of user state (cue.db + media/) and relaunch.

@@ -113,7 +113,8 @@ function TriggerRow({ trigger, value, onChange }) {
       </div>
 
       {/* Duration + easing — irrelevant when Cut, so dim them */}
-      <div className={`flex items-center gap-lg ${value.type === 'none' ? 'opacity-40 pointer-events-none' : ''}`}>
+      <div className={`flex items-center gap-lg ${value.type === 'none' ? 'opacity-40 pointer-events-none' : ''}`}
+        title={value.type === 'none' ? 'Choose a transition above to configure duration and easing' : undefined}>
         <div className="flex-1">
           <div className="flex items-center justify-between mb-xs">
             <span className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em]">Duration</span>

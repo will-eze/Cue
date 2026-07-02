@@ -56,7 +56,6 @@ export default function ScenesPanel() {
   function take(scene) { window.cue.scenes.apply(scene); }
 
   async function remove(scene) {
-    if (!confirm(`Delete scene "${scene.name}"?`)) return;
     await window.cue.scenes.delete(scene.id);
     load(); notifyChanged();
   }
@@ -102,6 +101,7 @@ export default function ScenesPanel() {
 }
 
 function SceneCard({ scene, onTake, onEdit, onDelete }) {
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const overlay = scene.overlay_json ? safeParse(scene.overlay_json) : null;
   const chips = overlayChips(overlay);
   const program = PROGRAM_OPTS.find((p) => p.id === scene.program) || PROGRAM_OPTS[0];
@@ -117,12 +117,28 @@ function SceneCard({ scene, onTake, onEdit, onDelete }) {
           <div className="text-body-lg text-on-surface font-medium truncate">{scene.name}</div>
         </div>
         <div className="flex items-center gap-xs opacity-0 group-hover:opacity-100 transition-opacity">
-          <button onClick={onEdit} title="Edit" className="w-6 h-6 flex items-center justify-center rounded text-on-surface-variant hover:text-primary cursor-pointer">
-            <span className="material-symbols-outlined text-[15px]">edit</span>
-          </button>
-          <button onClick={onDelete} title="Delete" className="w-6 h-6 flex items-center justify-center rounded text-on-surface-variant hover:text-error cursor-pointer">
-            <span className="material-symbols-outlined text-[15px]">delete</span>
-          </button>
+          {confirmingDelete ? (
+            <>
+              <span className="text-[10px] font-mono text-error uppercase tracking-[0.04em] shrink-0">Delete?</span>
+              <button
+                onClick={() => { setConfirmingDelete(false); onDelete(); }}
+                className="text-[10px] font-mono text-error hover:text-error/70 cursor-pointer uppercase tracking-[0.04em] border border-error/40 px-sm py-[2px] rounded transition-colors"
+              >Yes</button>
+              <button
+                onClick={() => setConfirmingDelete(false)}
+                className="text-[10px] font-mono text-on-surface-variant hover:text-on-surface cursor-pointer uppercase tracking-[0.04em] transition-colors"
+              >No</button>
+            </>
+          ) : (
+            <>
+              <button onClick={onEdit} title="Edit" className="w-6 h-6 flex items-center justify-center rounded text-on-surface-variant hover:text-primary cursor-pointer">
+                <span className="material-symbols-outlined text-[15px]">edit</span>
+              </button>
+              <button onClick={() => setConfirmingDelete(true)} title="Delete" className="w-6 h-6 flex items-center justify-center rounded text-on-surface-variant hover:text-error cursor-pointer">
+                <span className="material-symbols-outlined text-[15px]">delete</span>
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -165,6 +181,7 @@ function SceneCard({ scene, onTake, onEdit, onDelete }) {
 function SceneEditor({ scene, onClose, onSaved }) {
   const [name, setName] = useState(scene?.name || '');
   const [hotkey, setHotkey] = useState(scene?.hotkey || '');
+  const [capturingKey, setCapturingKey] = useState(false);
   const [program, setProgram] = useState(scene?.program || 'none');
   const [audio, setAudio] = useState(audioFromRow(scene?.audio_muted));
   const [manageOverlay, setManageOverlay] = useState(scene ? !!scene.overlay_json : true);
@@ -218,12 +235,16 @@ function SceneEditor({ scene, onClose, onSaved }) {
 
         <div className="flex-1 overflow-y-auto custom-scrollbar p-lg flex flex-col gap-lg min-h-0">
           {/* Capture */}
-          <button onClick={captureNow}
-            className="flex items-center justify-center gap-sm px-md py-sm rounded-lg border border-primary/50 bg-primary/10 text-primary hover:bg-primary/15 cursor-pointer">
-            <span className="material-symbols-outlined text-[18px]">photo_camera</span>
-            <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] font-bold">Capture current output</span>
-          </button>
-          {captured && <div className="text-[11px] font-mono text-tertiary -mt-sm">Snapshotted the live output state.</div>}
+          <div className="flex flex-col gap-xs">
+            <button onClick={captureNow}
+              className="flex items-center justify-center gap-sm px-md py-sm rounded-lg border border-primary/50 bg-primary/10 text-primary hover:bg-primary/15 cursor-pointer">
+              <span className="material-symbols-outlined text-[18px]">photo_camera</span>
+              <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] font-bold">Capture current output</span>
+            </button>
+            <div className="text-[11px] font-mono text-on-surface-variant/50">
+              {captured ? <span className="text-tertiary">Snapshotted the live output state.</span> : 'Replaces this scene with a snapshot of the current live overlay, program layer, and audio state.'}
+            </div>
+          </div>
 
           {/* Name + hotkey */}
           <div className="flex gap-md">
@@ -234,11 +255,37 @@ function SceneEditor({ scene, onClose, onSaved }) {
             </label>
             <label className="flex flex-col gap-xs w-28">
               <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant">Hotkey</span>
-              <select value={hotkey} onChange={(e) => setHotkey(e.target.value)}
-                className="bg-surface-container-lowest border border-outline-variant/40 rounded-lg px-sm h-9 text-body-md text-on-surface focus:outline-none focus:border-primary cursor-pointer">
-                <option value="">None</option>
-                {['1','2','3','4','5','6','7','8','9'].map((k) => <option key={k} value={k}>{k}</option>)}
-              </select>
+              {capturingKey ? (
+                <button
+                  autoFocus
+                  onKeyDown={(e) => {
+                    // Stop the digit reaching the operator's document keydown handler —
+                    // otherwise assigning "3" would ALSO recall scene 3 to live output
+                    // (the focus guard there only excludes INPUT/TEXTAREA, not buttons).
+                    e.preventDefault(); e.stopPropagation();
+                    if (e.key === 'Escape') { setCapturingKey(false); return; }
+                    if (/^[1-9]$/.test(e.key)) { setHotkey(e.key); setCapturingKey(false); }
+                  }}
+                  onBlur={() => setCapturingKey(false)}
+                  className="h-9 rounded-lg border-2 border-primary bg-primary/10 text-primary text-label-sm font-label-sm font-bold uppercase tracking-[0.05em] cursor-pointer text-center animate-pulse"
+                >
+                  Press 1–9…
+                </button>
+              ) : (
+                <button
+                  onClick={() => setCapturingKey(true)}
+                  className="h-9 rounded-lg border border-outline-variant/40 bg-surface-container-lowest text-body-md text-on-surface hover:border-primary/60 cursor-pointer text-center"
+                >
+                  {hotkey || '—'}
+                  {hotkey && (
+                    <span
+                      onClick={(e) => { e.stopPropagation(); setHotkey(''); }}
+                      className="ml-xs text-[11px] text-on-surface-variant/60 hover:text-error cursor-pointer"
+                      title="Clear hotkey"
+                    >✕</span>
+                  )}
+                </button>
+              )}
             </label>
           </div>
 
@@ -280,10 +327,13 @@ function SceneEditor({ scene, onClose, onSaved }) {
         </div>
 
         <div className="flex items-center gap-sm px-lg h-14 border-t border-outline-variant/30 shrink-0">
-          <button onClick={testNow}
-            className="flex items-center gap-xs px-md py-1.5 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] bg-surface-container border border-outline-variant/40 text-on-surface-variant hover:text-on-surface cursor-pointer">
-            <span className="material-symbols-outlined text-[14px]">play_arrow</span> Test
-          </button>
+          <div className="flex flex-col gap-0">
+            <button onClick={testNow}
+              className="flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] bg-surface-container border border-outline-variant/40 text-on-surface-variant hover:text-on-surface cursor-pointer">
+              <span className="material-symbols-outlined text-[14px]">play_arrow</span> Test
+            </button>
+            <span className="text-[9px] font-mono text-on-surface-variant/40 px-xs">Updates live output</span>
+          </div>
           <button onClick={onClose} className="ml-auto px-md py-1.5 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant hover:text-on-surface cursor-pointer">Cancel</button>
           <button onClick={save} disabled={!name.trim()}
             className="px-lg py-1.5 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] font-bold bg-primary text-on-primary hover:brightness-110 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">Save</button>

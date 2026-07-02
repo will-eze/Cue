@@ -102,8 +102,19 @@ export default function ShortcutsOverlay({ onClose }) {
             <Row keys={['?']} desc="Show / hide this cheatsheet" />
           </Group>
         </div>
-        <div className="px-lg py-sm border-t border-outline-variant/20 text-[11px] text-on-surface-variant/60">
-          Bare G / Esc fire on a single press only when armed (Settings → Shortcuts). The {mod}-shortcuts always work.
+        <div className="px-lg py-sm border-t border-outline-variant/20 flex items-center justify-between gap-md">
+          <span className="text-[11px] text-on-surface-variant/60">
+            Bare G / Esc fire on a single press only when armed (Settings → Shortcuts). The {mod}-shortcuts always work.
+          </span>
+          <button
+            onClick={() => {
+              ['layout_h_pct', 'layout_v_pct'].forEach((k) => localStorage.removeItem(k));
+              window.location.reload();
+            }}
+            className="shrink-0 text-[11px] text-on-surface-variant/50 hover:text-on-surface-variant cursor-pointer underline underline-offset-2 transition-colors"
+          >
+            Reset panel layout
+          </button>
         </div>
       </div>
     </div>

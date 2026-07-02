@@ -17,6 +17,8 @@ let state = 'idle';            // idle | starting | live | reconnecting | error
 let stopping = false;
 let videoBackpressure = false; // drop video frames (never audio) while stdin is full
 let reconnectTimer = null;
+let retryCount = 0;
+const MAX_RETRIES = 5;
 // Health counters (cumulative since the current launch). A rising droppedFrames count
 // means the encoder/network can't keep up — surfaced in the Stream tab.
 let droppedFrames = 0;
@@ -109,7 +111,9 @@ async function launch() {
     stderr += d.toString();
     if (stderr.length > 8000) stderr = stderr.slice(-8000);
     // ffmpeg prints "frame=" progress once it is encoding/pushing — treat as live.
-    if (state === 'starting' && stderr.includes('frame=')) setState('live');
+    // A successful (re)connect clears the retry budget so the 5-attempt cap counts
+    // CONSECUTIVE failures, not occasional blips over a long, healthy stream.
+    if (state === 'starting' && stderr.includes('frame=')) { setState('live'); retryCount = 0; }
   });
 
   proc.on('error', (e) => { setState('error', e.message); cleanup(); });
@@ -117,9 +121,15 @@ async function launch() {
     const wasStopping = stopping;
     cleanup();
     if (wasStopping) { setState('idle'); return; }
-    // Unexpected exit while streaming → reconnect with a short backoff.
-    setState('reconnecting', `ffmpeg exited (${signal || code}). ${stderr.slice(-300)}`);
-    reconnectTimer = setTimeout(() => { if (!stopping) launch(); }, 3000);
+    // Unexpected exit while streaming → reconnect with exponential backoff, capped at 5 retries.
+    retryCount++;
+    if (retryCount > MAX_RETRIES) {
+      setState('error', `Stream stopped after ${MAX_RETRIES} reconnect attempts. ${stderr.slice(-200)}`);
+      return;
+    }
+    const backoffMs = Math.min(3000 * Math.pow(2, retryCount - 1), 30000);
+    setState('reconnecting', `ffmpeg exited (${signal || code}). Retry ${retryCount}/${MAX_RETRIES} in ${Math.round(backoffMs / 1000)}s…`);
+    reconnectTimer = setTimeout(() => { if (!stopping) launch(); }, backoffMs);
   });
 
   return { ok: true, encoder };
@@ -142,6 +152,7 @@ export async function start(o, statusCb) {
   opts = o;
   onStatus = statusCb || null;
   stopping = false;
+  retryCount = 0;
   return launch();
 }
 

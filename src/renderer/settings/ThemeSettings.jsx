@@ -398,6 +398,7 @@ function ThemeCard({ theme, services, onEdit, onDelete, onApplied, bgThumb, song
   const [selectedServiceId, setSelectedServiceId] = useState(services[0]?.id ?? null);
   const [applyBg, setApplyBg] = useState(true);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmApplyAll, setConfirmApplyAll] = useState(false);
   const [feedback, setFeedback] = useState(null);
 
   const isBuiltin = !!theme.builtin;
@@ -446,7 +447,6 @@ function ThemeCard({ theme, services, onEdit, onDelete, onApplied, bgThumb, song
   }
 
   async function handleApplyToAllSongs() {
-    if (!confirm(`Apply theme "${theme.name}" to every song in the library?\nThis overwrites each song's style while preserving inline text formatting.`)) return;
     try {
       await toast.promise(
         window.cue.themes.applyToAllSongs(theme.id, applyBg),
@@ -557,12 +557,20 @@ function ThemeCard({ theme, services, onEdit, onDelete, onApplied, bgThumb, song
           </button>
         </div>
 
-        <button
-          onClick={handleApplyToAllSongs}
-          className="w-full text-[9px] font-mono text-on-surface-variant/60 hover:text-on-surface border border-outline-variant/20 hover:border-outline-variant rounded px-sm py-[3px] transition-colors cursor-pointer uppercase tracking-[0.05em]"
-        >
-          Apply to all songs
-        </button>
+        {confirmApplyAll ? (
+          <div className="flex items-center gap-sm">
+            <span className="text-[9px] font-mono text-error uppercase tracking-[0.04em] flex-1 truncate">Apply to all songs?</span>
+            <button onClick={() => { setConfirmApplyAll(false); handleApplyToAllSongs(); }} className="text-[9px] font-mono text-error hover:text-error/70 cursor-pointer uppercase tracking-[0.04em] border border-error/40 px-sm py-[2px] rounded transition-colors shrink-0">Yes</button>
+            <button onClick={() => setConfirmApplyAll(false)} className="text-[9px] font-mono text-on-surface-variant hover:text-on-surface cursor-pointer uppercase tracking-[0.04em] transition-colors shrink-0">No</button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setConfirmApplyAll(true)}
+            className="w-full text-[9px] font-mono text-on-surface-variant/60 hover:text-on-surface border border-outline-variant/20 hover:border-outline-variant rounded px-sm py-[3px] transition-colors cursor-pointer uppercase tracking-[0.05em]"
+          >
+            Apply to all songs
+          </button>
+        )}
         </>)}
 
         {feedback && (

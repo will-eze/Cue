@@ -231,10 +231,15 @@ function createMonitorWindow(channel, monitor) {
   // Re-dispatch current display state once the template JS is ready.
   // Without this, IPC sent before onSlideUpdate is registered is silently dropped.
   win.webContents.once('did-finish-load', () => {
+    // macOS Sequoia no longer honours fullscreen:true in the BrowserWindow constructor
+    // when alwaysOnTop is also set — assert it explicitly after the window is shown.
+    if (!win.isFullScreen()) win.setFullScreen(true);
     sendStateToWindow(win, channel);
     if (channel.template === 'stage') sendStageState(win, channel);
     else sendGraphicToWindow(win, 'screen'); // fullscreen + lower-third carry the overlay
   });
+  // Re-enter fullscreen if the user accidentally exits (e.g. Escape key, green button).
+  win.on('leave-full-screen', () => { if (!win.isDestroyed()) win.setFullScreen(true); });
   return win;
 }
 
@@ -261,7 +266,10 @@ function createNdiWindow(channel) {
   // soon as grandi.send() resolves, independently of the window render lifecycle.
   // (Gating this on did-finish-load caused the sender to never be created on
   // macOS because transparent+hidden windows may not initialize a render surface.)
-  ndi.createSender(channel.id, channel.name);
+  ndi.createSender(channel.id, channel.name).then((err) => {
+    if (err) notifyMainWindow('output:ndi-sender-error', { channelId: channel.id, error: err });
+    else notifyMainWindow('output:ndi-sender-ok', { channelId: channel.id });
+  });
 
   const preload = getOutputPreloadPath();
   const win = new BrowserWindow({
@@ -1500,6 +1508,11 @@ export function setStageMessage(text) {
   for (const win of getAllStageWindows()) {
     win.webContents.send('stage:message', { text: stageState.message });
   }
+  notifyMainWindow('stage:message', { text: stageState.message });
+}
+
+export function getStageMessage() {
+  return { text: stageState.message };
 }
 
 // Persist the global lower-third font scale (percent) and push it live so any
@@ -1508,11 +1521,9 @@ export function setStageMessage(text) {
 export function setLowerthirdFontScale(pct) {
   const n = Math.max(1, Math.min(150, Math.round(Number(pct) || 100)));
   lowerthirdFontScale = n;
-  try {
-    getDb().prepare(
-      'INSERT INTO settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value'
-    ).run('lowerthird_font_scale', JSON.stringify(n));
-  } catch {}
+  getDb().prepare(
+    'INSERT INTO settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value'
+  ).run('lowerthird_font_scale', JSON.stringify(n));
   // Re-broadcast the current slide (no transition) so live L3 windows re-style now.
   if (state.displayMode === 'content' && state.livePayload) {
     for (const win of getAllOutputWindows()) {
@@ -1554,6 +1565,11 @@ export function stageTimerCmd(action, seconds) {
   for (const win of getAllStageWindows()) {
     win.webContents.send('stage:timer', { ...t });
   }
+  notifyMainWindow('stage:timer', { ...t });
+}
+
+export function getStageTimer() {
+  return { ...stageState.timer };
 }
 
 // ── Stage display layout (per-channel) + presets ──────────────────────────────
@@ -1573,7 +1589,7 @@ const DEFAULT_STAGE_LAYOUT = {
     { id: 'timer',   type: 'timer',          x: 34.5, y: 2.5, w: 31,   h: 12, showBar: true },
     { id: 'video',   type: 'videoCountdown', x: 67,  y: 2.5,  w: 30.5, h: 12 },
     { id: 'current', type: 'currentText',    x: 2.5, y: 16,   w: 95,   h: 54, align: 'center', color: '#ffffff', fit: 'auto', showRef: true },
-    { id: 'next',    type: 'nextText',       x: 2.5, y: 71.5, w: 95,   h: 14, color: 'rgba(255,255,255,0.4)' },
+    { id: 'next',    type: 'nextText',       x: 2.5, y: 71.5, w: 95,   h: 14, color: 'rgba(255,255,255,0.4)', align: 'center' },
     { id: 'message', type: 'message',        x: 2.5, y: 87.5, w: 95,   h: 10, align: 'center' },
   ],
 };
@@ -1650,9 +1666,7 @@ export function getStageLayout(channelId) {
 
 export function setStageLayout(channelId, layout) {
   const norm = normalizeStageLayout(layout);
-  try {
-    getDb().prepare('UPDATE output_channels SET stage_layout_json = ? WHERE id = ?').run(JSON.stringify(norm), channelId);
-  } catch {}
+  getDb().prepare('UPDATE output_channels SET stage_layout_json = ? WHERE id = ?').run(JSON.stringify(norm), channelId);
   const msg = { channelId: Number(channelId), elements: norm.elements };
   for (const win of getChannelStageWindows(channelId)) {
     try { win.webContents.send('stage:layout', msg); } catch {}

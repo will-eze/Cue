@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { useModalGuard } from '../utils/modalGuard';
 import MediaPickerModal from './MediaPickerModal';
 import ThemePickerModal from './ThemePickerModal';
 import UndoRedoButtons from './UndoRedoButtons';
@@ -24,6 +25,7 @@ const SAMPLE_TEXT =
 const SAMPLE_REF = 'John 3:16';
 
 export default function ScriptureEditor({ onClose, onSave }) {
+  useModalGuard();
   const toast = useToast();
   // Undoable working document: verse style, reference style, default background.
   // The target toggle / preview template / modals below are ephemeral UI, not history.

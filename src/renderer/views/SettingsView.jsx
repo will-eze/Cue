@@ -137,8 +137,18 @@ function SettingsFooter() {
           </>
         )}
       </div>
-      <div className="flex items-center gap-md">
+      <div className="flex items-end gap-md">
         <UpdateChecker />
+        <button
+          onClick={() => {
+            ['layout_h_pct', 'layout_v_pct', 'cue.graphics.destOverride'].forEach((k) => localStorage.removeItem(k));
+            window.location.reload();
+          }}
+          title="Clear saved panel sizes and reload"
+          className="bg-surface-container text-on-surface-variant px-lg py-sm rounded text-label-sm font-label-sm hover:bg-surface-container-high hover:text-on-surface transition-all cursor-pointer"
+        >
+          Reset Layout
+        </button>
         <button
           onClick={() => window.cue.settings.openDataFolder()}
           className="bg-surface-container text-on-surface px-lg py-sm rounded text-label-sm font-label-sm hover:bg-surface-container-high transition-all cursor-pointer"
@@ -150,7 +160,7 @@ function SettingsFooter() {
   );
 }
 
-export default function SettingsView({ activeServiceId, onRundownCleared, onRundownDeleted, onLibraryCleared, onBackgroundDefaultChanged, initialSection = null, sectionNonce = 0 }) {
+export default function SettingsView({ activeServiceId, onRundownCleared, onRundownDeleted, onRundownRestored, onLibraryCleared, onBackgroundDefaultChanged, initialSection = null, sectionNonce = 0 }) {
   const scrollRef = useRef(null);
   const sectionRefs = useRef({});
   const [active, setActive] = useState(initialSection || SECTIONS[0].id);
@@ -252,6 +262,7 @@ export default function SettingsView({ activeServiceId, onRundownCleared, onRund
             activeServiceId={activeServiceId}
             onRundownCleared={onRundownCleared}
             onRundownDeleted={onRundownDeleted}
+            onRundownRestored={onRundownRestored}
             onLibraryCleared={onLibraryCleared}
           />
         </section>

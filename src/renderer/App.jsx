@@ -26,7 +26,7 @@ export default function App() {
   const [bgRefreshTick, setBgRefreshTick] = useState(0);
   const [activeServiceId, setActiveServiceId] = useState(null);
   const [ndiWarning, setNdiWarning] = useState(false);
-  const [headerState, setHeaderState] = useState({ isLive: false, canGo: false });
+  const [headerState, setHeaderState] = useState({ isLive: false, canGo: false, micActive: false });
   const [outputWindows, setOutputWindows] = useState(0);
   const [outputsEnabled, setOutputsEnabled] = useState(true);
   const [displayMode, setDisplayMode] = useState('idle');
@@ -43,6 +43,18 @@ export default function App() {
   // Register user-installed @font-face rules once so editor previews and the
   // live/preview monitors render custom families (refreshed after a font import).
   useEffect(() => { injectUserFontFaces(); }, [bgRefreshTick]);
+
+  // Stage panel keyboard shortcut (backtick)
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== '`' || e.metaKey || e.ctrlKey || e.altKey) return;
+      const el = document.activeElement;
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
+      setStageOpen((v) => !v);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
 
   // Close stage panel on outside click
   useEffect(() => {
@@ -163,7 +175,11 @@ export default function App() {
         </div>
 
         <span className="w-px h-3 bg-outline-variant/40 shrink-0" />
-        <div className="flex items-center gap-xs">
+        <button
+          onClick={outputWindows === 0 ? () => window.cue.output.setLive(true) : undefined}
+          title={outputWindows === 0 ? 'Click to open output windows' : `${outputWindows} output window${outputWindows !== 1 ? 's' : ''} open`}
+          className={`flex items-center gap-xs ${outputWindows === 0 ? 'cursor-pointer hover:opacity-80 transition-opacity' : 'cursor-default'}`}
+        >
           <span
             className={`material-symbols-outlined text-[14px] ${outputWindows > 0 ? 'text-tertiary' : 'text-outline-variant'}`}
             style={{ fontVariationSettings: "'FILL' 1" }}
@@ -173,9 +189,15 @@ export default function App() {
           <span className={`text-label-sm font-label-sm uppercase tracking-[0.05em] ${outputWindows > 0 ? 'text-tertiary' : 'text-on-surface-variant/50'}`}>
             {outputWindows > 0 ? `${outputWindows} output${outputWindows !== 1 ? 's' : ''}` : 'No outputs'}
           </span>
-        </div>
+        </button>
         <span className="w-px h-3 bg-outline-variant/40 shrink-0" />
         <span className="text-label-sm font-timecode-lg text-on-surface tabular-nums">{clock}</span>
+        {headerState.micActive && (
+          <div className="flex items-center gap-xs px-sm py-[2px] bg-tertiary/10 border border-tertiary/30 rounded text-tertiary text-label-sm font-label-sm" title="Scripture detection listening">
+            <span className="material-symbols-outlined text-[13px]" style={{ fontVariationSettings: "'FILL' 1" }}>mic</span>
+            <span className="w-[5px] h-[5px] rounded-full bg-tertiary animate-pulse" />
+          </div>
+        )}
 
         {ndiWarning && (
           <div className="flex items-center gap-xs px-sm py-1 bg-error-container/30 border border-error/30 rounded text-label-sm font-label-sm text-error ml-sm">
@@ -196,7 +218,13 @@ export default function App() {
         <button
           onClick={() => transportRef.current.go()}
           disabled={!headerState.canGo}
-          title="GO — send preview to live (G)"
+          title={
+            !headerState.canGo
+              ? 'Select a rundown item to preview first'
+              : outputWindows === 0
+              ? 'No output windows open — enable outputs with the Live button'
+              : 'GO — send preview to live (G)'
+          }
           className="h-7 px-lg text-headline-md font-display-lg font-extrabold uppercase tracking-widest bg-tertiary text-on-tertiary rounded transition-all active:scale-95 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed hover:opacity-90"
         >
           GO
@@ -283,7 +311,9 @@ export default function App() {
               activeServiceId={activeServiceId}
               onServiceChange={setActiveServiceId}
               outputsEnabled={outputsEnabled}
+              outputWindows={outputWindows}
               onToggleLive={() => window.cue.output.setLive(!outputsEnabled)}
+              viewActive={view === 'operator'}
             />
           </ErrorBoundary>
         </div>
@@ -299,6 +329,7 @@ export default function App() {
             if (activeServiceId === deletedId) setActiveServiceId(null);
             setBgRefreshTick((t) => t + 1);
           }}
+          onRundownRestored={(newId) => { setActiveServiceId(newId); setBgRefreshTick((t) => t + 1); }}
           onLibraryCleared={() => setBgRefreshTick((t) => t + 1)}
           onBackgroundDefaultChanged={() => setBgRefreshTick((t) => t + 1)}
         /></ErrorBoundary>}
@@ -355,6 +386,27 @@ function StagePanel() {
   const [remaining, setRemaining] = useState(600); // displayed countdown
   const [running, setRunning] = useState(false);
   const [stageMsg, setStageMsg] = useState('');
+  const [msgPresets, setMsgPresets] = useState([]);
+
+  // Load + persist stage message presets (stored as JSON in settings).
+  useEffect(() => {
+    window.cue.settings.get('stage_message_presets').then((v) => {
+      if (Array.isArray(v)) setMsgPresets(v);
+    });
+  }, []);
+
+  function savePreset(text) {
+    if (!text.trim() || msgPresets.includes(text)) return;
+    const next = [...msgPresets, text];
+    setMsgPresets(next);
+    window.cue.settings.set('stage_message_presets', next);
+  }
+
+  function deletePreset(text) {
+    const next = msgPresets.filter((p) => p !== text);
+    setMsgPresets(next);
+    window.cue.settings.set('stage_message_presets', next);
+  }
 
   // Scheduled messages — list lives in main (absolute epoch anchors); we mirror it.
   const [schedule, setSchedule]   = useState([]);
@@ -378,6 +430,41 @@ function StagePanel() {
     const off = window.cue.on('stage:schedule', ({ scheduled }) => setSchedule(scheduled || []));
     const id  = setInterval(() => setNowTick(Date.now()), 1000);
     return () => { alive = false; off && off(); clearInterval(id); };
+  }, []);
+
+  // ── Seed timer + message from main on mount; stay in sync with push events ──
+  // applyTimerState: given the canonical timer object from main, rehydrate local UI
+  // without touching the IPC command flow (Set/Start/Pause/Reset still send the
+  // same commands as before; this only seeds state when the popover first opens or
+  // when main pushes an update from another source).
+  function applyTimerState(t) {
+    if (!t || t.totalSeconds <= 0) return; // no timer configured yet — leave defaults
+    const total = t.totalSeconds;
+    setMins(Math.floor(total / 60));
+    setSecs(total % 60);
+    if (t.running && t.startedAt) {
+      const rem = Math.max(0, t.remainingSeconds - (Date.now() - t.startedAt) / 1000);
+      setRemaining(rem);
+      setRunning(true);
+      startTick(rem);
+    } else {
+      const rem = t.remainingSeconds ?? total;
+      setRemaining(rem);
+      setRunning(false);
+      stopTick();
+    }
+  }
+
+  useEffect(() => {
+    let alive = true;
+    // Fetch initial state
+    window.cue.output.stage.getTimer().then((t) => { if (alive) applyTimerState(t); });
+    window.cue.output.stage.getMessage().then((m) => { if (alive && m?.text) setStageMsg(m.text); });
+    // Stay in sync with changes from any source (including our own commands echoed back)
+    const offTimer = window.cue.on('stage:timer', (t) => { if (alive) applyTimerState(t); });
+    const offMsg   = window.cue.on('stage:message', ({ text }) => { if (alive) setStageMsg(text ?? ''); });
+    return () => { alive = false; offTimer(); offMsg(); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function stopTick() {
@@ -549,6 +636,28 @@ function StagePanel() {
         {/* ── Message ── */}
         <div>
           <p className="text-[10px] font-mono uppercase tracking-[0.1em] text-outline mb-sm">Stage Message</p>
+          {/* Presets */}
+          {msgPresets.length > 0 && (
+            <div className="flex flex-wrap gap-[4px] mb-sm">
+              {msgPresets.map((preset) => (
+                <div key={preset} className="group flex items-center gap-[2px] bg-surface-container-high border border-outline-variant/40 rounded px-[6px] py-[2px]">
+                  <button
+                    onClick={() => { window.cue.output.stage.message(preset); }}
+                    className="text-[10px] font-mono text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer max-w-[140px] truncate"
+                    title={preset}
+                  >
+                    {preset}
+                  </button>
+                  <button
+                    onClick={() => deletePreset(preset)}
+                    className="opacity-0 group-hover:opacity-70 hover:!opacity-100 text-on-surface-variant hover:text-error cursor-pointer transition-all ml-[2px]"
+                  >
+                    <span className="material-symbols-outlined text-[10px]">close</span>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           <textarea
             value={stageMsg}
             onChange={(e) => setStageMsg(e.target.value)}
@@ -561,6 +670,14 @@ function StagePanel() {
             <button onClick={sendMsg} disabled={!stageMsg.trim()}
               className="flex-1 h-7 text-[10px] font-mono uppercase tracking-[0.05em] bg-primary-container/70 border border-primary/40 text-primary hover:bg-primary-container rounded transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed">
               Send
+            </button>
+            <button
+              onClick={() => savePreset(stageMsg.trim())}
+              disabled={!stageMsg.trim() || msgPresets.includes(stageMsg.trim())}
+              title="Save as preset"
+              className="h-7 px-sm text-[10px] font-mono uppercase tracking-[0.05em] bg-surface-container-high border border-outline-variant/40 text-on-surface-variant hover:border-outline-variant hover:text-on-surface rounded transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              + Preset
             </button>
             <button onClick={clearMsg}
               className="h-7 px-sm text-[10px] font-mono uppercase tracking-[0.05em] bg-surface-container-high border border-outline-variant/40 text-on-surface-variant hover:border-outline-variant hover:text-on-surface rounded transition-colors cursor-pointer">

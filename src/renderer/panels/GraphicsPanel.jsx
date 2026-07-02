@@ -44,8 +44,15 @@ export default function GraphicsPanel() {
   const [quickTicker, setQuickTicker] = useState('');
   const [quickStyleId, setQuickStyleId] = useState(null); // saved ticker whose style the quick ticker borrows (null = plain default)
   const [quickDismiss, setQuickDismiss] = useState(0); // auto-dismiss seconds for the quick ticker (0 = sticky)
-  const [dest, setDest] = useState([]); // live destination override (kind set; [] = default)
-  const toggleDest = (id) => setDest((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+  const [dest, setDest] = useState(() => {
+    try { const s = localStorage.getItem('cue.graphics.destOverride'); return s ? JSON.parse(s) : []; } catch { return []; }
+  });
+  const toggleDest = (id) => setDest((prev) => {
+    const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+    localStorage.setItem('cue.graphics.destOverride', JSON.stringify(next));
+    return next;
+  });
+  const [confirmClearAll, setConfirmClearAll] = useState(false);
   const [ltChannels, setLtChannels] = useState([]); // lower-third channels (for the mode switcher)
 
   const load = useCallback(() => { window.cue.graphics.list().then(setGraphics); }, []);
@@ -86,7 +93,6 @@ export default function GraphicsPanel() {
   const quickTarget = () => destToTarget(dest, 'ndi');
 
   async function remove(g) {
-    if (!confirm(`Delete "${g.label || g.name || g.text || 'graphic'}"?`)) return;
     await window.cue.graphics.delete(g.id);
     load();
   }
@@ -175,7 +181,7 @@ export default function GraphicsPanel() {
         {/* Live destination override — Default, or any combination of kinds */}
         <div className="ml-md flex items-center gap-[2px] bg-surface-container rounded-lg p-[3px]" title="Where graphics are sent — In-Room = screens, Online = NDI, Stream = the broadcast composite. Combine any.">
           <span className="material-symbols-outlined text-[14px] text-on-surface-variant/50 ml-1">send</span>
-          <button onClick={() => setDest([])}
+          <button onClick={() => { setDest([]); localStorage.setItem('cue.graphics.destOverride', '[]'); }}
             className={`flex items-center gap-xs px-sm py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] transition-colors cursor-pointer ${
               dest.length === 0 ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'
             }`}>
@@ -193,10 +199,20 @@ export default function GraphicsPanel() {
 
         <div className="ml-auto flex items-center gap-sm">
           {anyLive && (
-            <button onClick={clearAll}
-              className="flex items-center gap-xs px-md py-xs rounded text-label-sm font-label-sm uppercase tracking-[0.05em] bg-surface-container-high border border-secondary/50 text-secondary hover:bg-surface-variant cursor-pointer">
-              <span className="material-symbols-outlined text-[14px]">block</span> Clear All
-            </button>
+            confirmClearAll ? (
+              <div className="flex items-center gap-xs">
+                <span className="text-[10px] font-mono text-error uppercase tracking-[0.04em] shrink-0">Clear all?</span>
+                <button onClick={() => { setConfirmClearAll(false); clearAll(); }}
+                  className="text-[10px] font-mono text-error hover:text-error/70 cursor-pointer uppercase tracking-[0.04em] border border-error/40 px-sm py-[2px] rounded transition-colors">Yes</button>
+                <button onClick={() => setConfirmClearAll(false)}
+                  className="text-[10px] font-mono text-on-surface-variant hover:text-on-surface cursor-pointer uppercase tracking-[0.04em] transition-colors">No</button>
+              </div>
+            ) : (
+              <button onClick={() => setConfirmClearAll(true)}
+                className="flex items-center gap-xs px-md py-xs rounded text-label-sm font-label-sm uppercase tracking-[0.05em] bg-surface-container-high border border-secondary/50 text-secondary hover:bg-surface-variant cursor-pointer">
+                <span className="material-symbols-outlined text-[14px]">block</span> Clear All
+              </button>
+            )
           )}
           <button onClick={() => setGallery(true)}
             className="flex items-center gap-xs px-md py-xs rounded text-label-sm font-label-sm bg-surface-container-high border border-outline-variant/40 text-on-surface-variant hover:text-on-surface cursor-pointer">
@@ -354,6 +370,7 @@ function useDismissCountdown(dismissAt) {
 }
 
 function GraphicCard({ g, liveOn = [], dismissAt = null, destLabel, onTake, onClear, onEdit, onDelete }) {
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const live = liveOn.length > 0;
   const dismissIn = useDismissCountdown(dismissAt);
   // Where it's live: multiple kinds → "Live", else name the single destination.
@@ -391,13 +408,28 @@ function GraphicCard({ g, liveOn = [], dismissAt = null, destLabel, onTake, onCl
         )}
         <span className="absolute top-1.5 right-1.5 px-sm py-[2px] rounded bg-background/70 text-on-surface-variant text-[9px] font-label-sm uppercase tracking-[0.06em]">{destLabel}</span>
         {/* Hover actions */}
-        <div className="absolute bottom-1.5 right-1.5 flex items-center gap-xs opacity-0 group-hover:opacity-100 transition-opacity">
-          <button onClick={onEdit} title="Edit" className="w-6 h-6 flex items-center justify-center rounded bg-background/70 text-on-surface-variant hover:text-primary cursor-pointer">
-            <span className="material-symbols-outlined text-[15px]">edit</span>
-          </button>
-          <button onClick={onDelete} title="Delete" className="w-6 h-6 flex items-center justify-center rounded bg-background/70 text-on-surface-variant hover:text-error cursor-pointer">
-            <span className="material-symbols-outlined text-[15px]">delete</span>
-          </button>
+        <div className="absolute bottom-1.5 right-1.5 flex items-center gap-xs opacity-30 group-hover:opacity-100 transition-opacity">
+          {confirmingDelete ? (
+            <>
+              <button
+                onClick={() => { setConfirmingDelete(false); onDelete(); }}
+                className="px-sm py-[2px] rounded bg-error text-white text-[10px] font-mono uppercase tracking-[0.04em] cursor-pointer hover:bg-error/80 transition-colors"
+              >Yes</button>
+              <button
+                onClick={() => setConfirmingDelete(false)}
+                className="px-sm py-[2px] rounded bg-background/70 text-on-surface-variant text-[10px] font-mono uppercase tracking-[0.04em] cursor-pointer hover:text-on-surface transition-colors"
+              >No</button>
+            </>
+          ) : (
+            <>
+              <button onClick={onEdit} title="Edit" className="w-6 h-6 flex items-center justify-center rounded bg-background/70 text-on-surface-variant hover:text-primary cursor-pointer">
+                <span className="material-symbols-outlined text-[15px]">edit</span>
+              </button>
+              <button onClick={() => setConfirmingDelete(true)} title="Delete" className="w-6 h-6 flex items-center justify-center rounded bg-background/70 text-on-surface-variant hover:text-error cursor-pointer">
+                <span className="material-symbols-outlined text-[15px]">delete</span>
+              </button>
+            </>
+          )}
         </div>
       </div>
 

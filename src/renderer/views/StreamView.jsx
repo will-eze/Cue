@@ -314,6 +314,17 @@ export default function StreamView() {
               className="w-full flex items-center justify-center gap-xs h-10 rounded-lg text-label-sm font-label-sm font-bold uppercase bg-secondary text-on-secondary hover:brightness-110 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
               <span className="material-symbols-outlined text-[18px]">sensors</span>{busy ? 'Starting…' : 'Go Live'}
             </button>
+          ) : status.state === 'error' ? (
+            <div className="flex gap-sm">
+              <button onClick={goLive} disabled={busy || !cfg.server || !cfg.key}
+                className="flex-1 flex items-center justify-center gap-xs h-10 rounded-lg text-label-sm font-label-sm font-bold uppercase bg-secondary text-on-secondary hover:brightness-110 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
+                <span className="material-symbols-outlined text-[18px]">refresh</span>Reconnect
+              </button>
+              <button onClick={stop} disabled={busy}
+                className="flex items-center justify-center gap-xs px-md h-10 rounded-lg text-label-sm font-label-sm font-bold uppercase bg-surface-container-high border border-error/40 text-error hover:bg-error/10 active:scale-95 transition-all cursor-pointer disabled:opacity-40">
+                <span className="material-symbols-outlined text-[18px]">stop_circle</span>Stop
+              </button>
+            </div>
           ) : (
             <button onClick={stop} disabled={busy}
               className="w-full flex items-center justify-center gap-xs h-10 rounded-lg text-label-sm font-label-sm font-bold uppercase bg-error text-on-error hover:brightness-110 active:scale-95 transition-all cursor-pointer disabled:opacity-40">

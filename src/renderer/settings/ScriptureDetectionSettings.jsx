@@ -28,13 +28,18 @@ export default function ScriptureDetectionSettings() {
   const [versions, setVersions] = useState([]);
   const [busy, setBusy] = useState(false);
 
+  const [deviceError, setDeviceError] = useState('');
+
   const load = useCallback(async () => {
     setCfg(await window.cue.scriptureDetect.getConfig());
     setVersions(await window.cue.bible.versions());
     try {
       const list = await navigator.mediaDevices.enumerateDevices();
       setDevices(list.filter((d) => d.kind === 'audioinput'));
-    } catch { /* permission not yet granted */ }
+      setDeviceError('');
+    } catch {
+      setDeviceError('Microphone access denied — grant permission in System Preferences → Privacy → Microphone, then reopen Settings.');
+    }
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -99,16 +104,20 @@ export default function ScriptureDetectionSettings() {
         </Row>
 
         <Row label="Audio Input" hint="Service / line feed to listen to">
-          <select
-            value={cfg.deviceId || ''}
-            onChange={(e) => apply({ deviceId: e.target.value || null })}
-            className={SELECT}
-          >
-            <option value="">System default</option>
-            {devices.map((d) => (
-              <option key={d.deviceId} value={d.deviceId}>{d.label || `Input ${d.deviceId.slice(0, 6)}`}</option>
-            ))}
-          </select>
+          {deviceError ? (
+            <p className="text-body-sm text-error leading-snug">{deviceError}</p>
+          ) : (
+            <select
+              value={cfg.deviceId || ''}
+              onChange={(e) => apply({ deviceId: e.target.value || null })}
+              className={SELECT}
+            >
+              <option value="">System default</option>
+              {devices.map((d) => (
+                <option key={d.deviceId} value={d.deviceId}>{d.label || `Input ${d.deviceId.slice(0, 6)}`}</option>
+              ))}
+            </select>
+          )}
         </Row>
 
         <Row label="CPU Model" hint="On-device Whisper for the CPU engine (fallback)">

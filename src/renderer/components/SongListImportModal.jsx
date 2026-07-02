@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import SongEditor from './SongEditor';
+import { useModalGuard } from '../utils/modalGuard';
 
 const CONFIDENCE_META = {
   exact: { icon: 'check_circle', cls: 'text-tertiary', label: 'Exact' },
@@ -278,6 +279,7 @@ function PreviewPane({ song, loading }) {
 }
 
 export default function SongListImportModal({ onCancel, onAddManyToRundown }) {
+  useModalGuard();
   const [step, setStep] = useState('input'); // 'input' | 'matching' | 'results' | 'adding'
   const [text, setText] = useState('');
   const [rows, setRows] = useState([]);

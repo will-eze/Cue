@@ -32,7 +32,7 @@ const DEFAULT_ELEMENTS = [
   { id: 'timer',   type: 'timer',          x: 34.5, y: 2.5, w: 31,   h: 12, showBar: true },
   { id: 'video',   type: 'videoCountdown', x: 67,  y: 2.5,  w: 30.5, h: 12 },
   { id: 'current', type: 'currentText',    x: 2.5, y: 16,   w: 95,   h: 54, align: 'center', color: '#ffffff', fit: 'auto', showRef: true },
-  { id: 'next',    type: 'nextText',       x: 2.5, y: 71.5, w: 95,   h: 14, color: 'rgba(255,255,255,0.4)' },
+  { id: 'next',    type: 'nextText',       x: 2.5, y: 71.5, w: 95,   h: 14, color: 'rgba(255,255,255,0.4)', align: 'center' },
   { id: 'message', type: 'message',        x: 2.5, y: 87.5, w: 95,   h: 10, align: 'center' },
 ];
 
@@ -149,7 +149,7 @@ const BUILDERS = {
     const text = document.createElement('span');
     text.className = 'next-text';
     text.style.color = spec.color || 'rgba(255,255,255,0.4)';
-    text.style.textAlign = spec.align || 'left';
+    text.style.textAlign = spec.align || 'center';
     box.appendChild(text);
     node.refs.text = text;
   },

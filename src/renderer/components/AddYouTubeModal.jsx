@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { looksLikeYouTube } from '../utils/youtube';
+import { useModalGuard } from '../utils/modalGuard';
 
 // Paste a YouTube URL → speculative download starts immediately (before Confirm) to
 // steal lead time. Confirm adds the cue; if the URL was edited between paste and
@@ -8,6 +9,7 @@ import { looksLikeYouTube } from '../utils/youtube';
 // `initialUrl` pre-fills the field (e.g. a link detected in the clipboard) and kicks
 // the speculative resolve immediately — editing it cancels-and-switches like a paste.
 export default function AddYouTubeModal({ onClose, onConfirm, initialUrl = '' }) {
+  useModalGuard();
   const [url, setUrl] = useState('');
   const [status, setStatus] = useState(null); // latest youtube:status snapshot for the prefetched URL
   const [cookieBrowser, setCookieBrowser] = useState(''); // '' = login off, else 'chrome'|'firefox'|…

@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import { useModalGuard } from '../utils/modalGuard';
 
 // Browse + download Bible translations from the online catalog (getbible.net v2).
 // Multi-select, then download → import into the library. Licence responsibility
 // rests with the operator: the warning is shown but no version is blocked.
 
 export default function OnlineBibleModal({ onClose, onImported }) {
+  useModalGuard();
   const [versions, setVersions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');

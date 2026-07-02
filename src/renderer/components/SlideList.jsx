@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { sectionLabels } from '../utils/sectionLabels';
 
 export default function SlideList({ slides, activeIdx, onSelect, onDoubleClick, variant = 'preview', jumpKeys = null }) {
@@ -7,8 +7,19 @@ export default function SlideList({ slides, activeIdx, onSelect, onDoubleClick, 
   // with a per-part `_label`; other lists (scripture) derive labels from type.
   const computed = sectionLabels(slides, { abbrev: true });
 
+  const containerRef = useRef(null);
+
+  // Scroll the active slide into view whenever activeIdx changes.
+  // block:'nearest' is unobtrusive — no-op when the slide is already visible.
+  useEffect(() => {
+    if (activeIdx == null || activeIdx < 0) return;
+    containerRef.current
+      ?.querySelector(`[data-idx="${activeIdx}"]`)
+      ?.scrollIntoView({ block: 'nearest' });
+  }, [activeIdx]);
+
   return (
-    <div className="flex flex-col gap-sm p-sm">
+    <div ref={containerRef} className="flex flex-col gap-sm p-sm">
       {slides.map((slide, idx) => {
         const label = slide._labelAbbr ?? computed[idx];
         const isActive = idx === activeIdx;
@@ -18,6 +29,7 @@ export default function SlideList({ slides, activeIdx, onSelect, onDoubleClick, 
         return (
           <button
             key={slide._key ?? slide.id ?? idx}
+            data-idx={idx}
             onClick={() => onSelect(idx)}
             onDoubleClick={onDoubleClick ? () => onDoubleClick(idx) : undefined}
             className={`shrink-0 p-sm rounded text-left w-full cursor-pointer transition-all border-l-4 ${
@@ -49,7 +61,7 @@ export default function SlideList({ slides, activeIdx, onSelect, onDoubleClick, 
                 </span>
               )}
             </p>
-            <p className="text-[14px] text-on-surface leading-tight whitespace-pre-wrap max-h-24 overflow-hidden">
+            <p className="text-[14px] text-on-surface leading-tight whitespace-pre-wrap">
               {slide.content}
             </p>
           </button>

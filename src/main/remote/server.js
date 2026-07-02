@@ -31,6 +31,7 @@ let config = { enabled: false, port: 7373, lan: false, token: null, viewToken: n
 let getStateFn = () => ({});
 let commandHandler = () => {};
 let getProgramFn = () => ({ slide: null, transport: null, overlay: null });
+let graphicFns = null; // { graphicShow, graphicHide, tickerShow, tickerHide, customHide, countdownShow, countdownHide }
 
 // Rundown snapshot pushed from the renderer so remote clients can list and
 // SELECT items. Kept here (not the DB) because the operator's live/preview
@@ -44,10 +45,11 @@ const outputSseClients = new Set();
 
 const ACTIONS = ['go', 'clear', 'logo', 'next', 'prev', 'live', 'select'];
 
-export function configure({ getState, onCommand, getProgram }) {
+export function configure({ getState, onCommand, getProgram, graphics }) {
   if (getState)   getStateFn = getState;
   if (onCommand)  commandHandler = onCommand;
   if (getProgram) getProgramFn = getProgram;
+  if (graphics)   graphicFns = graphics;
 }
 
 // ── Remote output (program mirror) ────────────────────────────────────────────
@@ -284,6 +286,47 @@ function handleRequest(req, res) {
     }
     dispatch(cmd, res);
     return;
+  }
+
+  // ── Broadcast-graphics bus control ───────────────────────────────────────────
+  // POST /api/graphic/show   { name, title?, target?, autoDismissSec? }
+  // POST /api/graphic/hide   { target? }
+  // POST /api/ticker/show    { text, speed?, target?, autoDismissSec? }
+  // POST /api/ticker/hide    { target? }
+  // POST /api/countdown/show { mode, durationSec?, targetClock?, source?, label?, onEnd?, target? }
+  // POST /api/countdown/hide { target? }
+  // POST /api/graphics/clear-all
+  function graphicOk(res) {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
+  }
+  function graphicErr(res, msg) {
+    res.writeHead(503, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: msg }));
+  }
+  if (path.startsWith('/api/graphic/') || path.startsWith('/api/ticker/') || path.startsWith('/api/countdown/') || path === '/api/graphics/clear-all') {
+    if (!graphicFns) { graphicErr(res, 'graphics not available'); return; }
+    if (path === '/api/graphics/clear-all' && (req.method === 'POST' || req.method === 'GET')) {
+      graphicFns.graphicHide('all');
+      graphicFns.tickerHide('all');
+      graphicFns.customHide('all');
+      graphicFns.countdownHide('all');
+      graphicOk(res);
+      return;
+    }
+    if (req.method === 'POST') {
+      readBody(req, (body) => {
+        const data = safeJson(body) || {};
+        if (path === '/api/graphic/show')    { graphicFns.graphicShow(data);     graphicOk(res); }
+        else if (path === '/api/graphic/hide')    { graphicFns.graphicHide(data.target || 'all');   graphicOk(res); }
+        else if (path === '/api/ticker/show')     { graphicFns.tickerShow(data);      graphicOk(res); }
+        else if (path === '/api/ticker/hide')     { graphicFns.tickerHide(data.target || 'all');    graphicOk(res); }
+        else if (path === '/api/countdown/show')  { graphicFns.countdownShow(data);   graphicOk(res); }
+        else if (path === '/api/countdown/hide')  { graphicFns.countdownHide(data.target || 'all'); graphicOk(res); }
+        else { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'not found' })); }
+      });
+      return;
+    }
   }
 
   res.writeHead(404, { 'Content-Type': 'application/json' });

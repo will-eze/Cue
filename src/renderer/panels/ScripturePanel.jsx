@@ -17,7 +17,7 @@ const REF_INPUT =
   'bg-surface-container-lowest border border-outline-variant/50 rounded-lg px-sm h-9 ' +
   'text-body-md text-on-surface outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-all';
 
-export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, detectArmed, detectActive, detectDownloadPct, onToggleDetect }) {
+export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, onPreview, detectArmed, detectActive, detectDownloadPct, onToggleDetect }) {
   const [versions, setVersions] = useState([]);
   const [versionId, setVersionId] = useState(null);
   const [books, setBooks] = useState([]);
@@ -175,14 +175,17 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, detectAr
     if (!book) { setError(`No book matching "${typed}".`); return false; }
     if (bookInputRef.current) bookInputRef.current.value = book.book_name;
     bookTypedRef.current = book.book_name;
+    const sameBook = book.book_num === bookNum;
     setBookNum(book.book_num);
     setBookName(book.book_name);
     const chs = await window.cue.bible.chapters(versionId, book.book_num);
     setChapters(chs);
-    const ch = chs[0] ?? 1;
-    setChapter(String(ch));
-    setVerseNum('1');
-    await loadChapter(book.book_num, ch, 1);
+    if (!sameBook) {
+      const ch = chs[0] ?? 1;
+      setChapter(String(ch));
+      setVerseNum('1');
+      await loadChapter(book.book_num, ch, 1);
+    }
     return true;
   }
 
@@ -264,6 +267,29 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, detectAr
     if (e.key === 'ArrowDown') { e.preventDefault(); e.stopPropagation(); navigateLive(1); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); e.stopPropagation(); navigateLive(-1); }
     else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); if (selectedIdx >= 0) emitLive(chapterData, selectedIdx); }
+    else if ((e.key === 'p' || e.key === 'P') && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault(); e.stopPropagation();
+      if (selectedIdx >= 0 && onPreview) emitPreview(chapterData, selectedIdx);
+    }
+  }
+
+  function emitPreview(data, idx) {
+    const v = data?.verses?.[idx];
+    if (!v || !onPreview) return;
+    onPreview({
+      versionId,
+      versionAbbrev: version?.abbrev ?? '',
+      versionName: version?.name ?? '',
+      bookNum: data.bookNum,
+      bookName: data.bookName,
+      chapter: v.chapter,
+      verse: v.verse,
+      text: v.text,
+    });
+    setSelectedIdx(idx);
+    setChapter(String(v.chapter));
+    setVerseNum(String(v.verse));
+    listRef.current?.focus();
   }
 
   // Enter anywhere in the reference bar sends the selected verse live.
@@ -367,8 +393,6 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, detectAr
 
   function handleAddToRundown() { addVerseToRundown(selectedIdx); }
 
-  const hasLive = !!liveKey;
-
   return (
     <div className="flex flex-1 min-h-0">
       {/* ── Translations rail ─────────────────────────────────────────────── */}
@@ -458,10 +482,10 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, detectAr
               onBlur={() => setTimeout(() => setShowBookMenu(false), 120)}
               onKeyDown={(e) => {
                 if (e.key === 'Tab' || e.key === ':' || e.key === '/' ) {
-                  e.preventDefault(); commitBook().then(() => chapterInputRef.current?.focus());
+                  e.preventDefault(); commitBook().then(() => { setTimeout(() => { chapterInputRef.current?.focus(); chapterInputRef.current?.select(); }, 0); });
                 } else if (e.key === 'Enter') {
                   e.preventDefault();
-                  commitBook().then((ok) => { if (ok) chapterInputRef.current?.focus(); });
+                  commitBook().then((ok) => { if (ok) setTimeout(() => { chapterInputRef.current?.focus(); chapterInputRef.current?.select(); }, 0); });
                 } else if (e.key === 'Escape') { setShowBookMenu(false); }
               }}
               className={`${REF_INPUT} w-44`}
@@ -472,7 +496,7 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, detectAr
                 {bookMatches.map((b) => (
                   <button
                     key={b.book_num}
-                    onMouseDown={(e) => { e.preventDefault(); commitBook(b.book_name).then(() => chapterInputRef.current?.focus()); }}
+                    onMouseDown={(e) => { e.preventDefault(); commitBook(b.book_name).then(() => { setTimeout(() => { chapterInputRef.current?.focus(); chapterInputRef.current?.select(); }, 0); }); }}
                     className="block w-full text-left px-sm py-xs text-body-sm text-on-surface hover:bg-surface-variant transition-colors cursor-pointer"
                   >
                     {b.book_name}
@@ -490,9 +514,11 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, detectAr
             type="text" inputMode="numeric" placeholder="Ch"
             value={chapter}
             onChange={handleChapterChange}
+            onFocus={(e) => e.target.select()}
             onKeyDown={(e) => {
               if (e.key === 'Tab' || e.key === ':') { e.preventDefault(); verseInputRef.current?.focus(); verseInputRef.current?.select(); }
               else if (e.key === 'Enter') { e.preventDefault(); handleRefBarEnter(); }
+              else if ((e.key === 'p' || e.key === 'P') && !e.ctrlKey && !e.metaKey) { e.preventDefault(); if (selectedIdx >= 0) emitPreview(chapterData, selectedIdx); }
             }}
             className={`${REF_INPUT} w-16 text-center`}
             autoComplete="off"
@@ -505,10 +531,34 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, detectAr
             type="text" inputMode="numeric" placeholder="V"
             value={verseNum}
             onChange={handleVerseChange}
-            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleRefBarEnter(); } }}
+            onFocus={(e) => e.target.select()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { e.preventDefault(); handleRefBarEnter(); }
+              else if ((e.key === 'p' || e.key === 'P') && !e.ctrlKey && !e.metaKey) { e.preventDefault(); if (selectedIdx >= 0) emitPreview(chapterData, selectedIdx); }
+            }}
             className={`${REF_INPUT} w-16 text-center`}
             autoComplete="off"
           />
+
+          {/* Previous / Next verse nav */}
+          <div className="flex items-center gap-[2px]">
+            <button
+              onClick={() => navigateLive(-1)}
+              disabled={!chapterData}
+              title="Previous verse (←)"
+              className="flex items-center justify-center w-7 h-7 rounded border border-outline-variant/40 bg-surface-container text-on-surface-variant hover:text-primary hover:border-primary/50 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <span className="material-symbols-outlined text-[14px]">chevron_left</span>
+            </button>
+            <button
+              onClick={() => navigateLive(1)}
+              disabled={!chapterData}
+              title="Next verse (→)"
+              className="flex items-center justify-center w-7 h-7 rounded border border-outline-variant/40 bg-surface-container text-on-surface-variant hover:text-primary hover:border-primary/50 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <span className="material-symbols-outlined text-[14px]">chevron_right</span>
+            </button>
+          </div>
 
           {/* Split (compare) view — toggle + inline second-translation picker. Moved
               off the cramped left rail into the reference bar's free space. */}
@@ -566,14 +616,28 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, detectAr
             </button>
           )}
 
+          {onPreview && (
+            <button
+              onClick={() => { if (selectedIdx >= 0) emitPreview(chapterData, selectedIdx); }}
+              disabled={selectedIdx < 0}
+              title="Stage selected verse to the preview monitor without going live (P)"
+              className="flex items-center gap-xs px-md h-9 rounded-lg bg-primary/10 border border-primary/40 text-primary text-label-sm font-label-sm font-bold uppercase tracking-[0.05em] hover:bg-primary/20 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <span className="material-symbols-outlined text-[16px]">visibility</span>
+              Preview
+            </button>
+          )}
+
           <button
             onClick={() => { if (selectedIdx >= 0) emitLive(chapterData, selectedIdx); }}
             disabled={selectedIdx < 0}
+            title="Send selected verse to live output (Enter)"
             className="flex items-center gap-xs px-md h-9 rounded-lg bg-tertiary-container text-on-tertiary text-label-sm font-label-sm font-bold uppercase tracking-[0.05em] hover:brightness-110 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <span className="material-symbols-outlined text-[16px]">slideshow</span>
             Go Live
           </button>
+
           <button
             onClick={handleAddToRundown}
             disabled={selectedIdx < 0}
@@ -587,13 +651,6 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, detectAr
         {error && (
           <div className="px-md py-xs text-body-sm text-error border-b border-outline-variant/20 shrink-0">{error}</div>
         )}
-
-        {/* Column header */}
-        <div className="flex items-center gap-md px-md py-xs bg-surface-container-high border-b border-outline-variant/30 text-[10px] font-label-sm text-on-surface-variant uppercase tracking-[0.06em] shrink-0">
-          <span className="w-12 shrink-0">Trans</span>
-          <span className="w-28 shrink-0">Reference</span>
-          <span className="flex-1 min-w-0">Scripture</span>
-        </div>
 
         {/* Verse list */}
         <div
@@ -619,9 +676,6 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, detectAr
                     isSelected ? 'bg-primary/10' : 'hover:bg-surface-variant/50'
                   }`}
                 >
-                  <span className="w-12 shrink-0 text-[10px] font-label-sm uppercase tracking-[0.04em] text-on-surface-variant pt-[2px] truncate" title={version?.abbrev}>
-                    {version?.abbrev}
-                  </span>
                   <span className={`w-28 shrink-0 text-label-sm font-label-sm pt-[1px] ${isLive ? 'text-secondary' : 'text-primary'}`}>
                     {chapterData.bookName} {v.chapter}:{v.verse}
                     {isLive && <span className="ml-xs text-[9px] align-top">● LIVE</span>}
@@ -642,15 +696,6 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, detectAr
           )}
         </div>
 
-        {/* Status bar */}
-        <div className="flex items-center justify-between px-md py-xs border-t border-outline-variant/30 bg-surface-container-high text-[10px] font-label-sm uppercase tracking-[0.05em] shrink-0">
-          <span className="text-on-surface-variant">
-            {chapterData ? `${chapterData.bookName} ${chapterData.chapter} · ${chapterData.verses.length} verses` : 'No passage loaded'}
-          </span>
-          <span className={hasLive ? 'text-secondary' : 'text-on-surface-variant/50'}>
-            {hasLive ? '● Scripture Live' : 'Idle'}
-          </span>
-        </div>
       </div>
 
       {showEditor && (
@@ -665,6 +710,7 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, detectAr
           x={contextMenu.x} y={contextMenu.y}
           onClose={() => setContextMenu(null)}
           items={[
+            ...(onPreview ? [{ label: 'Preview', onClick: () => { emitPreview(chapterData, contextMenu.idx); setContextMenu(null); } }] : []),
             { label: 'Send Live', onClick: () => { emitLive(chapterData, contextMenu.idx); setContextMenu(null); } },
             { separator: true },
             { label: 'Add Verse to Rundown', onClick: () => { addVerseToRundown(contextMenu.idx); setContextMenu(null); } },

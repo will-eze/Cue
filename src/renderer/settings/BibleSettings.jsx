@@ -59,6 +59,7 @@ export default function BibleSettings() {
         >
           <span className="material-symbols-outlined text-[14px]">upload</span>
           {importing ? 'Importing…' : 'Import Translation'}
+          <span className="material-symbols-outlined text-[14px]">expand_more</span>
         </button>
       </div>
 

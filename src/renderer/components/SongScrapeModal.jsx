@@ -1,10 +1,12 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { useModalGuard } from '../utils/modalGuard';
 
 // Online Song Finder — search the web by title/artist, fetch + clean the lyrics,
 // edit them in place, then save into the library. All scraping happens in main
 // (window.cue.songs.scrape*); this is purely the search → pick → edit → save UI.
 export default function SongScrapeModal({ onClose, onSaved }) {
+  useModalGuard();
   const [title, setTitle] = useState('');
   const [artist, setArtist] = useState('');
   const [searching, setSearching] = useState(false);

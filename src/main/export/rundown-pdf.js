@@ -80,11 +80,20 @@ function renderItem(item, index) {
     </article>`;
   }
 
-  // Media / presentation / youtube — no printable lyric text, but keep the
-  // running order intact with a single labelled line.
+  if (item.item_type === 'presentation' && item.presentation) {
+    const slideLabels = (item.slides || [])
+      .filter((s) => s.label)
+      .map((s) => `<li>${esc(s.label)}</li>`)
+      .join('');
+    return `<article class="item presentation">
+      <h2>${num}${esc(item.presentation.title)}</h2>
+      ${slideLabels ? `<ul class="slides">${slideLabels}</ul>` : '<div class="empty">(no slides)</div>'}
+    </article>`;
+  }
+
+  // Media / youtube — no printable lyric text, but keep the running order intact.
   const labelByType = {
     media: item.asset ? `Media — ${item.asset.filename}` : 'Media',
-    presentation: item.presentation ? `Presentation — ${item.presentation.title}` : 'Presentation',
     youtube: item.youtube?.title ? `YouTube — ${item.youtube.title}` : `YouTube — ${item.youtube?.url || ''}`,
   };
   const label = labelByType[item.item_type] || item.item_type;
@@ -132,6 +141,8 @@ function buildHtml(service) {
   .empty { color: #aaa; font-style: italic; }
   .placeholder h2 { font-weight: 400; }
   .ph { color: #888; font-style: italic; }
+  .presentation .slides { margin: 4px 0 0; padding-left: 1.2em; font-size: 10pt; color: #444; }
+  .presentation .slides li { margin-bottom: 1px; }
 </style></head>
 <body>
   <header>

@@ -48,7 +48,7 @@ export function isAvailable() {
 }
 
 export async function createSender(channelId, name) {
-  if (!ndiAvailable) return;
+  if (!ndiAvailable) return null;
   try {
     const sender = await grandi.send({
       name: `Cue - ${name}`,
@@ -57,8 +57,10 @@ export async function createSender(channelId, name) {
     });
     senders.set(channelId, { sender, inflight: false });
     console.log(`[NDI] Sender "${name}" ready as "${sender.sourcename()}"`);
+    return null;
   } catch (err) {
     console.error(`[NDI] Failed to create sender "${name}":`, err.message);
+    return err.message || 'NDI sender creation failed';
   }
 }
 

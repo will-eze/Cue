@@ -347,6 +347,17 @@ app.whenReady().then(async () => {
     // Program mirror: the current screen-kind program frame for a viewer that joins
     // the read-only /output surface.
     getProgram: () => outputManager.getProgramSnapshot(),
+    // Broadcast-graphics bus — lets Stream Deck / Companion fire graphics directly
+    // without going through the renderer IPC path.
+    graphics: {
+      graphicShow:    (d) => outputManager.graphicShow(d),
+      graphicHide:    (t) => outputManager.graphicHide(t),
+      tickerShow:     (d) => outputManager.tickerShow(d),
+      tickerHide:     (t) => outputManager.tickerHide(t),
+      customHide:     (t) => outputManager.customHide(t),
+      countdownShow:  (d) => outputManager.countdownShow(d),
+      countdownHide:  (t) => outputManager.countdownHide(t),
+    },
   });
   outputManager.setRemoteStateListener(() => remoteServer.pushState());
   // Push program bus deltas (slide / transport / overlay) to browser viewers.

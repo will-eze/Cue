@@ -270,7 +270,7 @@ const STAGE_DEFAULT_ELEMENTS = [
   { id: 'timer',   type: 'timer',          x: 34.5, y: 2.5, w: 31,   h: 12, showBar: true },
   { id: 'video',   type: 'videoCountdown', x: 67,  y: 2.5,  w: 30.5, h: 12 },
   { id: 'current', type: 'currentText',    x: 2.5, y: 16,   w: 95,   h: 54, align: 'center', color: '#ffffff', fit: 'auto', showRef: true },
-  { id: 'next',    type: 'nextText',       x: 2.5, y: 71.5, w: 95,   h: 14, color: 'rgba(255,255,255,0.4)' },
+  { id: 'next',    type: 'nextText',       x: 2.5, y: 71.5, w: 95,   h: 14, color: 'rgba(255,255,255,0.4)', align: 'center' },
   { id: 'message', type: 'message',        x: 2.5, y: 87.5, w: 95,   h: 10, align: 'center' },
 ];
 const alignJustify = (a) => (a === 'left' ? 'flex-start' : a === 'right' ? 'flex-end' : 'center');
@@ -317,6 +317,57 @@ function StageMonitor({ slide, item, slides, slideIdx, copyrightText, copyrightR
   );
 }
 
+// Auto-fit mirror of stage.js fitNode() for the currentText element.
+// Binary-searches the largest font-px that fits vertically — identical algorithm.
+function StageCurrentText({ el, live }) {
+  const boxRef  = useRef(null);
+  const textRef = useRef(null);
+  const refRef  = useRef(null);
+
+  useLayoutEffect(() => {
+    const box    = boxRef.current;
+    const textEl = textRef.current;
+    if (!box || !textEl) return;
+    if (el.fit === 'fixed') { textEl.style.fontSize = (el.fontPx || 88) + 'px'; return; }
+
+    const cs     = getComputedStyle(box);
+    let availH   = box.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - 4;
+    if (refRef.current) availH -= refRef.current.offsetHeight + 8;
+    if (availH <= 10) return;
+
+    const wCap  = box.clientWidth * 0.6;
+    const hiCap = Math.min(availH * 0.88, wCap, 400);
+
+    textEl.style.fontSize = hiCap + 'px';
+    if (textEl.scrollHeight <= availH) return;
+
+    let lo = 8, hi = hiCap;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) / 2;
+      textEl.style.fontSize = mid + 'px';
+      if (textEl.scrollHeight <= availH) lo = mid; else hi = mid;
+    }
+    textEl.style.fontSize = lo + 'px';
+  }, [live.currentText, live.refText, el.fit, el.fontPx]);
+
+  return (
+    <div ref={boxRef} style={{ width: '100%', height: '100%', position: 'relative', background: '#0c0e12', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2% 4%', overflow: 'hidden', textAlign: 'center' }}>
+      {live.isVideo ? (
+        live.transport?.active
+          ? <SyncedVideo src={mediaUrl(live.mediaPath)} transport={live.transport} loop={!!live.item?.media_loop} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
+          : <video src={mediaUrl(live.mediaPath)} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} autoPlay loop muted />
+      ) : !live.hideText && (
+        <>
+          {live.refText && el.showRef !== false && (
+            <div ref={refRef} style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: '1.5% 6% 0', textAlign: 'center', fontSize: 34, fontWeight: 600, letterSpacing: '0.04em', color: '#adc6ff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{live.refText}</div>
+          )}
+          <div ref={textRef} style={{ fontWeight: 700, lineHeight: 1.15, color: el.color || '#ffffff', whiteSpace: 'pre-wrap', wordBreak: 'break-word', textAlign: el.align || 'center', width: '100%', overflow: 'hidden' }}>{live.currentText}</div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // One positioned stage element, rendered at native scale with live content bound in.
 function StageElement({ el, live }) {
   const Bar = ({ label, value, valColor, children }) => (
@@ -342,27 +393,12 @@ function StageElement({ el, live }) {
       </div>
     );
     case 'nextText':       return (
-      <div style={{ width: '100%', height: '100%', background: '#0c0e12', display: 'flex', alignItems: 'baseline', justifyContent: alignJustify(el.align), gap: '1.5%', padding: '1.2% 4%', overflow: 'hidden' }}>
+      <div style={{ width: '100%', height: '100%', background: '#0c0e12', display: 'flex', alignItems: 'baseline', gap: '1.5%', padding: '1.2% 4%', overflow: 'hidden' }}>
         {el.label && <span style={{ flexShrink: 0, fontSize: 13, fontWeight: 500, letterSpacing: '0.18em', textTransform: 'uppercase', color: '#4d8eff', whiteSpace: 'nowrap' }}>{el.label}</span>}
-        <span style={{ fontSize: (el.fontPx || 26), fontWeight: 400, lineHeight: 1.3, color: el.color || 'rgba(255,255,255,0.4)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflow: 'hidden' }}>{live.nextText || '—'}</span>
+        <span style={{ flex: 1, minWidth: 0, fontSize: (el.fontPx || 26), fontWeight: 400, lineHeight: 1.3, color: el.color || 'rgba(255,255,255,0.4)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflow: 'hidden', textAlign: el.align || 'center' }}>{live.nextText || '—'}</span>
       </div>
     );
-    case 'currentText':    return (
-      <div style={{ width: '100%', height: '100%', position: 'relative', background: '#0c0e12', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2% 4%', overflow: 'hidden', textAlign: 'center' }}>
-        {live.isVideo ? (
-          live.transport?.active
-            ? <SyncedVideo src={mediaUrl(live.mediaPath)} transport={live.transport} loop={!!live.item?.media_loop} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
-            : <video src={mediaUrl(live.mediaPath)} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} autoPlay loop muted />
-        ) : !live.hideText && (
-          <>
-            {live.refText && el.showRef !== false && (
-              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: '1.5% 6% 0', textAlign: 'center', fontSize: 34, fontWeight: 600, letterSpacing: '0.04em', color: '#adc6ff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{live.refText}</div>
-            )}
-            <div style={{ fontWeight: 700, lineHeight: 1.15, color: el.color || '#ffffff', whiteSpace: 'pre-wrap', wordBreak: 'break-word', textAlign: el.align || 'center', width: '100%', fontSize: (el.fit === 'fixed' ? (el.fontPx || 88) : 88), overflow: 'hidden' }}>{live.currentText}</div>
-          </>
-        )}
-      </div>
-    );
+    case 'currentText':    return <StageCurrentText el={el} live={live} />;
     default: return null;
   }
 }
@@ -715,6 +751,8 @@ export default function PreviewLivePanel({
   allChannels = [], liveChannelIdx = 0, onSetLiveChannelIdx,
   onToggleLoop,
   jumpKeys = null,
+  jumpArmed = false,
+  onToggleJumpArmed,
 }) {
   const previewSlides = previewItem ? getSlides(previewItem) : [];
   const liveSlides    = liveItem    ? getSlides(liveItem)    : [];
@@ -979,6 +1017,22 @@ export default function PreviewLivePanel({
             </div>
           )}
 
+          {liveSlides.length > 1 && onToggleJumpArmed && (
+            <div className="flex items-center justify-end shrink-0 pr-xs">
+              <button
+                onClick={onToggleJumpArmed}
+                title="Toggle Q/W/E… verse-jump keys for the live item"
+                className={`flex items-center gap-xs text-[9px] font-mono uppercase tracking-[0.05em] px-xs py-[2px] rounded border transition-colors cursor-pointer ${
+                  jumpArmed
+                    ? 'bg-tertiary/10 border-tertiary/40 text-tertiary'
+                    : 'bg-surface-container border-outline-variant/30 text-on-surface-variant/60 hover:text-on-surface-variant'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[10px]">keyboard</span>
+                Jump {jumpArmed ? 'ON' : 'OFF'}
+              </button>
+            </div>
+          )}
           <div className="flex-1 overflow-y-auto pr-xs">
             {liveSlides.length > 0 ? (
               <SlideList

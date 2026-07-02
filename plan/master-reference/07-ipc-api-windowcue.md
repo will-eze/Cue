@@ -44,10 +44,10 @@ All renderer↔main communication is via `ipcRenderer.invoke` / `ipcMain.handle`
 | `update(id, data)` | void | — |
 | `delete(id)` | void | Cascades to service_items. |
 | `reorderItems(serviceId, orderedIds)` | void | Updates order_index for each id. |
-| `addItem(serviceId, item)` | `id` | item: `{item_type, ref_id, notes, content, background_override_id}` |
+| `addItem(serviceId, item)` | `id` | item: `{item_type, ref_id, content, background_override_id}` |
+| `addItems(serviceId, items)` | `[id]` | Bulk-add; same item shape. Used by undo flows (bulk delete, rundown delete). |
 | `removeItem(itemId)` | void | — |
 | `setItemBackground(itemId, mediaId\|null)` | void | Sets background_override_id. |
-| `setItemNotes(itemId, notes)` | void | — |
 | `setItemLoop(itemId, loop)` | void | Sets service_items.media_loop (0/1) — looping for a media item. |
 | `setItemAdvance(itemId, seconds, loop, wrap)` | void | Auto-advance config. `seconds>0` sets the interval (falsy clears it → manual, and NULLs `advance_loop`); `loop` = `'item'`\|`'rundown'`; `wrap` (bool, rundown mode) wraps to the first item at the end vs stops. |
 | `duplicateItem(itemId)` | `id` | Appends copy at end of rundown (carries advance config). |
@@ -92,7 +92,9 @@ All renderer↔main communication is via `ipcRenderer.invoke` / `ipcMain.handle`
 | `countdown.hide()` | void | Hide the countdown/clock. Clears any pending `cdEndTimer`. |
 | `overlay.get()` | `{nameTitle, ticker, custom, countdown}` | Current overlay snapshot. |
 | `stage.message(text)` | void | Set/clear the confidence-monitor presenter **immediate** message (`''` clears). Takes precedence over scheduled messages on the bar. |
+| `stage.getMessage()` | `{text}` | Read the current stage message (e.g. on Settings→Stage open, to prepopulate the field). |
 | `stage.timer(action, seconds?)` | void | Presenter countdown: `action` ∈ `'set'(seconds) \| 'start' \| 'pause' \| 'reset'`. |
+| `stage.getTimer()` | `{state, remaining, target}` | Read the current timer state (e.g. on Settings→Stage open). |
 | `stage.getLayout(channelId)` | `{elements:[…]}` | Per-channel WYSIWYG stage element layout. `NULL` column → returns the built-in `DEFAULT_STAGE_LAYOUT`. |
 | `stage.setLayout(channelId, layout)` | void | Persist `{elements:[…]}` to `output_channels.stage_layout_json` and broadcast `stage:layout` to every open window for that channel. |
 | `stage.getPresets()` | `[{id,name,elements:[…]}]` | Saved named stage layouts from the `stage_presets` setting. |
@@ -139,6 +141,8 @@ All renderer↔main communication is via `ipcRenderer.invoke` / `ipcMain.handle`
   transport: { active, startAt, pausedAt, loop, muted } | undefined,       // snapshot for media items
   elements: [ ...presentationElements ] | undefined,  // presentation slide — multi-element canvas (see §21)
   ltFontScale: number | undefined,  // global lower-third font scale as a FRACTION (e.g. 0.7); fullscreen.js ignores it, lowerthird.js multiplies its font size by it. Default 1 when absent.
+  bgLoopMode: 'blend' | 'jump' | undefined,  // background video loop strategy (§5 bg_loop_mode setting); fullscreen.js re-mounts video when mode changes.
+  bgLoopBlendSecs: number | undefined,        // crossfade duration for blend mode (0.5–10, default 2.0); clamped in main before dispatch.
 }
 ```
 
@@ -253,14 +257,14 @@ Browsable pool of curated 16:9 worship backgrounds shipped only as a manifest (`
 
 | Method | Returns | Notes |
 |---|---|---|
-| `import(filePaths)` | `[{id, filename, path, type}]` | Copies files to userData/media/. |
+| `import(filePaths)` | `[{id, filename, path, type, duration_ms, size_bytes}]` | Copies files to userData/media/. `duration_ms` set for video/audio via ffmpeg probe (null for images or if ffmpeg unavailable); `size_bytes` set for all via `fs.statSync`. |
 | `get(id)` | `media_asset \| null` | Single asset by ID. |
 | `list(folderId?)` | `[media_asset]` | `null`/`undefined` → root (folder_id IS NULL). Pass folder id for subfolder. |
 | `listAll()` | `[media_asset]` | Flat list of every asset across all folders. Used by the command palette's media search (`list` only returns one folder). |
 | `delete(id)` | void | Removes DB row and deletes file. |
 | `deleteMany(ids)` | `number` | Bulk-delete (rows + files); returns count removed. Used by the unused-media cleanup. |
 | `deleteAll()` | `number` | Wipes the whole media library (rows + folders + files) and resets the global media settings keys. Returns assets removed. Danger Zone "Clear media library". |
-| `findUnused()` | `[media_asset & {size_bytes}]` | Media referenced by nothing — not a song `default_background_id`, `service_items.background_override_id`, `output_channels.logo_override_id`, `themes.background_id`, nor a media-bearing `settings` key (`global_logo_id`, `global_bg_*_id`). Settings store ids as JSON-encoded ints, collected separately from the FK columns. Each row is stat'd for `size_bytes`. |
+| `findUnused()` | `[media_asset]` | Media referenced by nothing — not a song `default_background_id`, `service_items.background_override_id`, `output_channels.logo_override_id`, `themes.background_id`, nor a media-bearing `settings` key (`global_logo_id`, `global_bg_*_id`). Settings store ids as JSON-encoded ints, collected separately from the FK columns. `size_bytes` is read from the DB column (populated at import since v29). |
 | `getDiskUsage()` | `number` | Total bytes in userData/media/. |
 | `getMediaDir()` | `string` | Absolute path to userData/media/. |
 | `folders.create(name, parentId?)` | `id` | — |
@@ -385,10 +389,14 @@ Subscribe to main→renderer events. Returns an unsubscribe function — call it
 - `output:stream-preview` — ~10fps downscaled JPEG data-URL of the stream composite, for the Stream-tab monitor (preview only, not stream quality).
 - `output:stream-levels` — `{l, r}` stereo peak levels (0..1) from the stream audio mix, for the Stream-tab meters.
 - `output:ndi-unavailable` — fired if grandiose is not installed
+- `output:ndi-sender-error` — `{channelId, error}` fired if creating an NDI sender fails (e.g. SDK init error after the window is open)
+- `output:ndi-sender-ok` — `{channelId}` fired when the NDI sender is successfully created
 - `shortcut:next` / `shortcut:prev` — reserved for future hardware remote
 - `remote:command` — a network-control command `{action, itemId?, slideIdx?}` (action: go/clear/logo/next/prev/live/select). OperatorView dispatches it to the same handlers the keyboard uses, so the remote stays in sync with the UI.
 - `stage:schedule` — `{scheduled: [{id, text, showAt, clearAt}]}`, fired after any scheduled-stage-message add/remove/prune. The `StagePanel` pending list follows it; the stage output windows also receive it directly. Anchors are absolute epoch-ms (`clearAt:null` = open-ended).
 - `stage:layout` — `{channelId, elements:[…]}` fired after `stage.setLayout` and on window open (so a late-joining monitor receives the current layout). The `StageMonitor` in `PreviewLivePanel` subscribes per-channel to keep the operator preview in sync; stage output windows rebuild their DOM on receipt.
+- `stage:timer` — `{state, remaining, target}` fired after any `stage.timer()` call, so the stage settings panel can display the live timer state without polling.
+- `stage:message` — `{text}` fired after any `stage.message()` call, so the stage settings panel can reflect the live message without polling.
 - `update:progress` — `{received, total}` during an in-app update download. The SettingsView `UpdateChecker` shows it as a percentage. See §7 *In-app updater*.
 
 ---

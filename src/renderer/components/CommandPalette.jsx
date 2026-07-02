@@ -118,9 +118,33 @@ export default function CommandPalette({ onClose, onAddSong, onAddScripture, onA
         </div>
         <div ref={listRef} className="max-h-[50vh] overflow-auto py-xs">
           {results.length === 0 ? (
-            <p className="px-md py-lg text-center text-body-sm text-on-surface-variant/60">
-              {q ? 'No matches' : 'Type to search. Scripture refs like “John 3:16” add a passage.'}
-            </p>
+            q ? (
+              <p className="px-md py-lg text-center text-body-sm text-on-surface-variant/60">No matches</p>
+            ) : (
+              <div className="px-md py-md">
+                <p className="text-[10px] font-label-sm text-on-surface-variant/50 uppercase tracking-[0.08em] mb-sm">Keyboard Shortcuts</p>
+                <div className="grid grid-cols-2 gap-x-lg gap-y-xs text-[11px] text-on-surface-variant">
+                  {[
+                    [isMac ? '⌘G / G' : 'Ctrl+G / G', 'GO (send preview live)'],
+                    [isMac ? '⌘C / Esc' : 'Ctrl+C / Esc', 'Clear output'],
+                    [isMac ? '⌘L / L' : 'Ctrl+L / L', 'Toggle logo'],
+                    ['Space', 'Next live slide'],
+                    ['↑ / ↓', 'Navigate preview'],
+                    ['S', 'Focus song search'],
+                    ['1–9', 'Recall scene'],
+                    ['Q W E …', 'Jump to live slide'],
+                    ['?', 'Shortcut help overlay'],
+                    ['`', 'Stage controls'],
+                  ].map(([key, desc]) => (
+                    <div key={key} className="flex items-center gap-sm">
+                      <span className="font-mono text-on-surface bg-surface-container-high border border-outline-variant/30 rounded px-xs py-[1px] text-[10px] shrink-0">{key}</span>
+                      <span className="text-on-surface-variant/70">{desc}</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[10px] text-on-surface-variant/40 mt-sm">Type to search songs, scripture (e.g. "John 3:16"), scenes, presentations, and media.</p>
+              </div>
+            )
           ) : (
             results.map((r, i) => {
               const showCat = i === 0 || results[i - 1].category !== r.category;
