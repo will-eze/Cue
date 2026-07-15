@@ -36,6 +36,13 @@ export function registerSongsIpc() {
   ipcMain.handle('songs:setLock', h((_e, songId, locked) => songs.setLock(songId, locked)));
   ipcMain.handle('songs:deleteAll', h(() => songs.deleteAll()));
   ipcMain.handle('songs:applyStyleToSong', h((_e, songId, styleJson) => songs.applyStyleToSong(songId, styleJson)));
+
+  // CCLI usage reporting — log fires when a song goes live (deduped in db layer);
+  // report aggregates a date range for display/CSV export.
+  ipcMain.handle('songs:logUsage', h((_e, songId) => songs.logUsage(songId)));
+  ipcMain.handle('songs:usageReport', h((_e, fromIso, toIso) => songs.usageReport(fromIso, toIso)));
+  ipcMain.handle('songs:usageClear', h(() => songs.usageClear()));
+
   ipcMain.handle('tags:list', h(() => songs.listTags()));
   ipcMain.handle('tags:create', h((_e, data) => songs.createTag(data)));
   ipcMain.handle('tags:update', h((_e, id, data) => songs.updateTag(id, data)));

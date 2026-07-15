@@ -8,15 +8,18 @@ import SongEditor from '../components/SongEditor';
 import ContextMenu from '../components/ContextMenu';
 import ScripturePanel from './ScripturePanel';
 import GraphicsPanel from './GraphicsPanel';
-import ScenesPanel from './ScenesPanel';
+import ScenesAndOutputsPanel from './ScenesAndOutputsPanel';
 import MediaThumb from '../components/MediaThumb';
 import { StaticSlide } from '../components/SlideElements';
 import PresentationEditor from '../components/PresentationEditor';
 import PptxImportModal from '../components/PptxImportModal';
 import SermonImportModal from '../components/SermonImportModal';
+import SheetMusicImportModal from '../components/SheetMusicImportModal';
 import AddYouTubeModal from '../components/AddYouTubeModal';
 import { mediaUrl } from '../utils/mediaUrl';
 import { looksLikeYouTube } from '../utils/youtube';
+import { useModalGuard } from '../utils/modalGuard';
+import { useFocusTrap } from '../utils/useFocusTrap';
 
 function formatDuration(ms) {
   const s = Math.round(ms / 1000);
@@ -208,57 +211,267 @@ function MediaGrid({ assets, onDelete, onSetBackground, onAddToRundown, onApplyB
 
 const SECTION_TYPE_LABELS = { verse: 'Verse', chorus: 'Chorus', bridge: 'Bridge', 'pre-chorus': 'Pre-Chorus', tag: 'Tag', intro: 'Intro', outro: 'Outro' };
 
-function SongPreviewStrip({ song, onClose, onEdit, onAddToRundown }) {
+// Single-click on a library song opens this centred modal with the FULL song —
+// every section, unclamped — matching the classic Cue preview. (The `⁂` slide-split
+// marker is joined into a paragraph gap so a preview shows the whole section text.)
+function SongPreviewModal({ song, onClose, onEdit, onAddToRundown }) {
+  useModalGuard();
+  const panelRef = useRef(null);
+  useFocusTrap(panelRef);
   const [fullSong, setFullSong] = useState(null);
   useEffect(() => {
     setFullSong(null);
     window.cue.songs.get(song.id).then(setFullSong);
   }, [song.id]);
+  const author = song.author || fullSong?.author;
   return (
-    <div className="shrink-0 border-t border-outline-variant/30 bg-surface-container" style={{ maxHeight: 200 }}>
-      <div className="flex items-center justify-between px-md py-xs bg-surface-container-high border-b border-outline-variant/20">
-        <div className="min-w-0">
-          <div className="text-label-sm font-bold text-on-surface truncate">{song.title}</div>
-          {song.author && <div className="text-[10px] text-on-surface-variant uppercase tracking-[0.04em] truncate">{song.author}</div>}
-        </div>
-        <div className="flex gap-xs shrink-0 ml-sm">
-          <button onClick={() => onAddToRundown(song.id)} className="px-sm py-[3px] rounded text-[10px] font-label-sm font-bold uppercase tracking-[0.04em] bg-primary text-on-primary hover:brightness-110 cursor-pointer">Add</button>
-          <button onClick={() => onEdit(fullSong || song)} className="px-sm py-[3px] rounded text-[10px] font-label-sm uppercase tracking-[0.04em] bg-surface-container-high border border-outline-variant/40 text-on-surface-variant hover:bg-surface-variant cursor-pointer">Edit</button>
-          <button onClick={onClose} className="w-6 h-6 flex items-center justify-center rounded text-on-surface-variant/60 hover:text-on-surface hover:bg-surface-variant cursor-pointer">
-            <span className="material-symbols-outlined text-[14px]">close</span>
-          </button>
-        </div>
-      </div>
-      <div className="overflow-y-auto custom-scrollbar" style={{ maxHeight: 132 }}>
-        {!fullSong ? (
-          <div className="px-md py-sm text-[10px] text-on-surface-variant/50 uppercase tracking-[0.05em]">Loading…</div>
-        ) : !fullSong.sections?.length ? (
-          <div className="px-md py-sm text-[10px] text-on-surface-variant/50 uppercase tracking-[0.05em]">No lyrics</div>
-        ) : (
-          <div className="px-md py-xs divide-y divide-outline-variant/10">
-            {fullSong.sections.map((s, i) => {
-              const text = (s.content || '').split('⁂')[0].trim();
-              if (!text) return null;
-              return (
-                <div key={i} className="py-xs">
-                  <div className="text-[9px] text-on-surface-variant/60 uppercase tracking-[0.06em] font-label-sm mb-[2px]">
-                    {SECTION_TYPE_LABELS[s.type] || s.type}
-                  </div>
-                  <div className="text-[11px] text-on-surface leading-snug line-clamp-2">{text}</div>
-                </div>
-              );
-            })}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={song.title}
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
+        className="w-[560px] max-h-[80vh] bg-surface-container-high border border-outline-variant/40 rounded-xl ring-1 ring-white/5 shadow-2xl flex flex-col"
+      >
+        <div className="flex items-start justify-between gap-md px-lg py-md border-b border-outline-variant/20 shrink-0">
+          <div className="min-w-0">
+            <h2 className="text-body-lg text-on-surface font-medium truncate">{song.title}</h2>
+            {author && <div className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.04em] truncate mt-[2px]">{author}</div>}
+            {fullSong?.copyright && <div className="text-[10px] text-on-surface-variant/60 truncate mt-[2px]">{fullSong.copyright}</div>}
           </div>
-        )}
+          <div className="flex gap-xs shrink-0">
+            <button onClick={() => { onAddToRundown(song.id); onClose(); }} className="px-md py-[5px] rounded text-[10px] font-label-sm font-bold uppercase tracking-[0.04em] bg-primary text-on-primary hover:brightness-110 cursor-pointer">Add</button>
+            <button onClick={() => onEdit(fullSong || song)} className="px-md py-[5px] rounded text-[10px] font-label-sm uppercase tracking-[0.04em] bg-surface-container border border-outline-variant/40 text-on-surface-variant hover:bg-surface-variant cursor-pointer">Edit</button>
+            <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded text-on-surface-variant/60 hover:text-on-surface hover:bg-surface-variant cursor-pointer">
+              <span className="material-symbols-outlined text-[16px]">close</span>
+            </button>
+          </div>
+        </div>
+        <div className="overflow-y-auto custom-scrollbar px-lg py-md">
+          {!fullSong ? (
+            <div className="text-label-sm font-label-sm text-on-surface-variant/50 uppercase tracking-[0.05em]">Loading…</div>
+          ) : !fullSong.sections?.length ? (
+            <div className="text-label-sm font-label-sm text-on-surface-variant/50 uppercase tracking-[0.05em]">No lyrics</div>
+          ) : (
+            <div className="space-y-md">
+              {fullSong.sections.map((s, i) => {
+                const text = (s.content || '').split('⁂').map((t) => t.trim()).filter(Boolean).join('\n\n');
+                if (!text) return null;
+                return (
+                  <div key={i}>
+                    <div className="text-[10px] text-on-surface-variant/60 uppercase tracking-[0.06em] font-label-sm mb-xs">
+                      {SECTION_TYPE_LABELS[s.type] || s.type}
+                    </div>
+                    <div className="text-body-md text-on-surface leading-relaxed whitespace-pre-wrap">{text}</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
 
+// ── Live video inputs (NDI receive) ───────────────────────────────────────────
+// Discovers NDI sources on the network, previews the selected one (low-rate JPEG
+// thumbnails pushed by main's receiver — never a capture loop) and adds it to the
+// service as a `live-input` cue. The feed itself is pulled at GO time.
+function LiveInputsTab({ onAddLiveInput }) {
+  const [available, setAvailable] = useState(true);
+  const [enabled, setEnabled] = useState(true);
+  const [sources, setSources] = useState([]);
+  const [selected, setSelected] = useState(null); // sourceName
+  const [label, setLabel] = useState('');
+  const [frame, setFrame] = useState(null);
+  const [scanning, setScanning] = useState(true);
+
+  // First scan blocks briefly so the list isn't empty; then poll the live finder.
+  useEffect(() => {
+    let alive = true;
+    window.cue.liveInput.sources(1500).then((r) => {
+      if (!alive) return;
+      setAvailable(r.available);
+      setEnabled(r.enabled !== false);
+      setSources(r.sources);
+      setScanning(false);
+    });
+    const id = setInterval(() => {
+      window.cue.liveInput.sources(0).then((r) => {
+        if (!alive) return;
+        setAvailable(r.available);
+        setEnabled(r.enabled !== false);
+        setSources(r.sources);
+      });
+    }, 3000);
+    const offEnabled = window.cue.on('liveinput:enabled', (v) => setEnabled(!!v));
+    return () => { alive = false; clearInterval(id); offEnabled(); };
+  }, []);
+
+  // Preview the selected source (ref-counted in main).
+  useEffect(() => {
+    if (!selected || !enabled) return;
+    setFrame(null);
+    window.cue.liveInput.previewStart(selected);
+    const off = window.cue.on('liveinput:preview', (p) => {
+      if (p?.sourceName === selected) setFrame(p.dataUrl);
+    });
+    return () => { off(); window.cue.liveInput.previewStop(selected); };
+  }, [selected, enabled]);
+
+  async function toggleEnabled() {
+    const v = await window.cue.liveInput.setEnabled(!enabled);
+    setEnabled(v);
+    if (!v) { setSelected(null); setFrame(null); }
+  }
+
+  // The mid-service kill switch — always visible at the top of the tab.
+  const enableBar = (
+    <div className="flex items-center gap-sm px-md py-sm border-b border-outline-variant/20 shrink-0">
+      <button
+        onClick={toggleEnabled}
+        title={enabled ? 'Disable live video inputs (drops any live feed to black)' : 'Enable live video inputs'}
+        className={`relative w-9 h-5 rounded-full transition-colors cursor-pointer shrink-0 ${enabled ? 'bg-tertiary' : 'bg-surface-variant'}`}
+      >
+        <span className={`absolute top-[2px] w-4 h-4 rounded-full bg-white transition-all ${enabled ? 'left-[18px]' : 'left-[2px]'}`} />
+      </button>
+      <span className="text-label-sm font-label-sm text-on-surface">Live video inputs {enabled ? 'enabled' : 'disabled'}</span>
+      {!enabled && (
+        <span className="text-[11px] text-on-surface-variant/60">
+          — NDI receive is fully off: no discovery, no previews, live-video cues won't GO.
+        </span>
+      )}
+    </div>
+  );
+
+  // NDI source names look like "HOST (Source)". Default the cue label to the
+  // part in parentheses; fall back to the whole name.
+  function defaultLabel(name) {
+    const m = /\(([^)]+)\)\s*$/.exec(name || '');
+    return (m && m[1]) || name || '';
+  }
+
+  if (!available) {
+    return (
+      <div className="flex flex-col items-center justify-center flex-1 gap-xs text-outline-variant px-lg text-center">
+        <span className="material-symbols-outlined text-4xl">videocam_off</span>
+        <span className="text-label-sm font-label-sm uppercase tracking-widest">NDI Unavailable</span>
+        <span className="text-[11px] text-on-surface-variant/60 max-w-[280px] leading-snug">
+          NDI could not be initialised on this machine, so network video inputs are disabled.
+        </span>
+      </div>
+    );
+  }
+
+  if (!enabled) {
+    return (
+      <div className="flex flex-col flex-1 min-h-0">
+        {enableBar}
+        <div className="flex flex-col items-center justify-center flex-1 gap-xs text-outline-variant px-lg text-center">
+          <span className="material-symbols-outlined text-4xl">videocam_off</span>
+          <span className="text-label-sm font-label-sm uppercase tracking-widest">Live Inputs Disabled</span>
+          <span className="text-[11px] text-on-surface-variant/60 max-w-[300px] leading-snug">
+            NDI receive is switched off. Nothing is pulled from the network and live-video
+            cues are blocked from going live. Flip the switch above to re-enable.
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col flex-1 min-h-0">
+    {enableBar}
+    <div className="flex flex-1 min-h-0">
+      {/* Source list */}
+      <div className="w-72 border-r border-outline-variant/30 overflow-y-auto shrink-0 p-sm">
+        <div className="px-sm pb-xs text-[10px] uppercase tracking-[0.14em] text-on-surface-variant/60 font-label-sm">
+          NDI Sources on Network
+        </div>
+        {sources.length === 0 ? (
+          <div className="px-sm py-md text-[11px] text-on-surface-variant/60 leading-snug">
+            {scanning ? 'Scanning the network…' : 'No NDI sources found. Cameras, ATEM/OBS/vMix outputs and other machines running NDI tools will appear here automatically.'}
+          </div>
+        ) : (
+          <ul className="flex flex-col gap-xs">
+            {sources.map((s) => (
+              <li
+                key={s.name}
+                onClick={() => { setSelected(s.name); setLabel(defaultLabel(s.name)); }}
+                onDoubleClick={() => onAddLiveInput?.({ name: s.name, label: defaultLabel(s.name) })}
+                className={`flex items-center gap-sm p-sm rounded cursor-pointer transition-colors text-label-sm font-label-sm ${
+                  selected === s.name ? 'text-on-surface bg-primary/15 ring-1 ring-inset ring-primary/40' : 'text-on-surface-variant hover:bg-surface-variant'
+                }`}
+                title={s.name}
+              >
+                <span className="material-symbols-outlined text-[16px] shrink-0">videocam</span>
+                <span className="truncate">{s.name}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* Preview + add */}
+      <div className="flex-1 min-w-0 flex flex-col p-md gap-sm overflow-y-auto">
+        {selected ? (
+          <>
+            <div className="w-full max-w-[560px] aspect-video relative rounded-lg overflow-hidden bg-black border border-outline-variant/30 shrink-0">
+              {frame
+                ? <img src={frame} className="w-full h-full object-cover" alt="" />
+                : (
+                  <div className="absolute inset-0 flex items-center justify-center text-on-surface-variant/40 text-label-sm font-label-sm uppercase tracking-widest">
+                    Connecting…
+                  </div>
+                )}
+              <div className="absolute top-sm left-sm px-sm py-[3px] rounded bg-black/60 text-[10px] uppercase tracking-[0.12em] font-label-sm text-on-surface flex items-center gap-xs">
+                <span className={`w-[7px] h-[7px] rounded-full ${frame ? 'bg-tertiary' : 'bg-on-surface-variant'}`} />
+                Preview
+              </div>
+            </div>
+            <div className="flex items-center gap-sm max-w-[560px]">
+              <input
+                className="flex-1 bg-surface-container-lowest border border-outline-variant/30 rounded px-md py-xs text-label-sm font-label-sm focus:outline-none focus:border-primary text-on-surface"
+                placeholder="Cue name…"
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+              />
+              <button
+                onClick={() => onAddLiveInput?.({ name: selected, label: label.trim() || defaultLabel(selected) })}
+                className="bg-primary text-on-primary px-md py-xs rounded text-label-sm font-label-sm font-bold hover:brightness-110 active:scale-95 transition-all cursor-pointer flex items-center gap-xs shrink-0"
+              >
+                <span className="material-symbols-outlined text-[14px]">add</span>
+                Add to Service
+              </button>
+            </div>
+            <div className="text-[11px] text-on-surface-variant/60 max-w-[560px] leading-snug">
+              Adds a live video cue to the rundown. GO puts the feed full-frame on every output
+              (in-room, NDI and stream); Clear or the next slide releases it.
+            </div>
+          </>
+        ) : (
+          <div className="flex flex-col items-center justify-center flex-1 gap-xs text-outline-variant text-center">
+            <span className="material-symbols-outlined text-4xl">videocam</span>
+            <span className="text-label-sm font-label-sm uppercase tracking-widest">Live Video Inputs</span>
+            <span className="text-[11px] text-on-surface-variant/60 max-w-[300px] leading-snug">
+              Select an NDI source to preview it, then add it to the service as a live cue.
+              Double-click a source to add it straight away.
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+    </div>
+  );
+}
+
 const TAB_ORDER = ['songs', 'media', 'scripture', 'presentations', 'graphics', 'scenes'];
 
-export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAddScripture, onScriptureLive, onScripturePreview, onScriptureStyleSaved, onBackgroundDefaultChanged, onAddMedia, onApplyMediaBackground, onSetPreviewBackground, previewSongLabel, onAddYouTube, onAddPresentation, onSongSave, refreshTick = 0, focusSearchRef, cycleTabRef, detectArmed, detectActive, detectDownloadPct, onToggleDetect }) {
+export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAddScripture, onScriptureLive, onScripturePreview, onScriptureStyleSaved, onBackgroundDefaultChanged, onAddMedia, onApplyMediaBackground, onSetPreviewBackground, previewSongLabel, onAddYouTube, onAddLiveInput, onAddPresentation, onSongSave, refreshTick = 0, focusSearchRef, cycleTabRef, detectArmed, detectActive, detectDownloadPct, onToggleDetect }) {
   const toast = useToast();
   const [tab, setTab] = useState('songs');
   const [searchQuery, setSearchQuery] = useState('');
@@ -305,6 +518,7 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
   }, [cycleTabRef]);
 
   const [mediaAssets, setMediaAssets] = useState([]);
+  const [mediaSubTab, setMediaSubTab] = useState('files'); // 'files' | 'live'
   const [mediaSearch, setMediaSearch] = useState('');
   const [folderTree, setFolderTree] = useState([]);
   const [activeFolderId, setActiveFolderId] = useState(null);
@@ -312,6 +526,7 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
   const [importPreview, setImportPreview] = useState(null); // parsed song files awaiting confirm
   const [parsingSongs, setParsingSongs] = useState(false);
   const [importMenuOpen, setImportMenuOpen] = useState(false);
+  const [sheetImport, setSheetImport] = useState(false);
   const [ghsQuery, setGhsQuery] = useState(''); // GHS number quick-search
   const [presentations, setPresentations] = useState([]);
   const [editPresentation, setEditPresentation] = useState(null); // null=closed, {}=new, {id}=edit
@@ -574,7 +789,7 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
             Songs{tab === 'songs' && displaySongs.length > 0 ? ` · ${displaySongs.length}` : ''}
           </LibTab>
           <LibTab active={tab === 'media'} onClick={() => setTab('media')}>
-            Media{tab === 'media' && mediaAssets.length > 0 ? ` · ${mediaAssets.length}` : ''}
+            Media{tab === 'media' && mediaSubTab === 'files' && mediaAssets.length > 0 ? ` · ${mediaAssets.length}` : ''}
           </LibTab>
           <LibTab active={tab === 'scripture'} onClick={() => setTab('scripture')}>
             Scripture
@@ -702,6 +917,16 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
                       <span className="flex flex-col">
                         <span className="text-body-md text-on-surface">Paste Song List…</span>
                         <span className="text-label-sm font-label-sm text-on-surface-variant tracking-normal normal-case">Match a list of titles and add to rundown</span>
+                      </span>
+                    </button>
+                    <button
+                      onClick={() => { setImportMenuOpen(false); setSheetImport(true); }}
+                      className="w-full flex items-start gap-sm px-md py-sm text-left hover:bg-surface-variant transition-colors cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-[16px] text-primary mt-[1px]">music_note</span>
+                      <span className="flex flex-col">
+                        <span className="text-body-md text-on-surface">Import Sheet Music…</span>
+                        <span className="text-label-sm font-label-sm text-on-surface-variant tracking-normal normal-case">Read lyrics from a scan or PDF (offline OCR)</span>
                       </span>
                     </button>
                   </div>
@@ -860,7 +1085,7 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
             )}
           </div>
           {previewSong && (
-            <SongPreviewStrip
+            <SongPreviewModal
               song={previewSong}
               onClose={() => setPreviewSong(null)}
               onEdit={(song) => { setPreviewSong(null); setEditSong(song); }}
@@ -873,6 +1098,16 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
 
       {/* Media tab */}
       {tab === 'media' && (
+        <div className="flex flex-col flex-1 min-h-0">
+          {/* Media sub-tabs: on-disk Files vs Live video (NDI) inputs */}
+          <div className="flex items-center gap-xs px-md py-xs border-b border-outline-variant/20 shrink-0">
+            <MediaSubTab active={mediaSubTab === 'files'} onClick={() => setMediaSubTab('files')} icon="perm_media">Files</MediaSubTab>
+            <MediaSubTab active={mediaSubTab === 'live'} onClick={() => setMediaSubTab('live')} icon="videocam">Live Inputs</MediaSubTab>
+          </div>
+
+          {mediaSubTab === 'live' ? (
+            <LiveInputsTab onAddLiveInput={onAddLiveInput} />
+          ) : (
         <div className="flex flex-1 min-h-0">
           {/* Folder tree */}
           <div className="w-56 border-r border-outline-variant/30 overflow-y-auto shrink-0 p-sm">
@@ -913,6 +1148,8 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
               previewSongLabel={previewSongLabel}
             />
           </div>
+        </div>
+          )}
         </div>
       )}
 
@@ -958,7 +1195,7 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
 
       {tab === 'graphics' && <GraphicsPanel />}
 
-      {tab === 'scenes' && <ScenesPanel />}
+      {tab === 'scenes' && <ScenesAndOutputsPanel onBackgroundDefaultChanged={onBackgroundDefaultChanged} />}
 
       {editPresentation !== null && (
         <PresentationEditor
@@ -999,9 +1236,18 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
         />
       )}
 
+      {sheetImport && (
+        <SheetMusicImportModal
+          onClose={() => setSheetImport(false)}
+          onDone={(r) => {
+            setSheetImport(false);
+            setEditSong({ prefillTitle: r.title, prefillAuthor: r.author, prefillCopyright: r.copyright, prefillSections: r.sections });
+          }} />
+      )}
+
       {/* SongPreviewModal removed from click path — lyrics now shown in inline strip */}
       {editSong !== null && (
-        <SongEditor song={editSong.id ? editSong : null}
+        <SongEditor song={editSong.id ? editSong : ((editSong.prefillSections?.length || editSong.prefillTitle) ? editSong : null)}
           onClose={() => setEditSong(null)}
           onSave={() => { setEditSong(null); loadSongs(); window.cue.tags.list().then(setTags); onSongSave?.(); }} />
       )}
@@ -1088,6 +1334,23 @@ function LibTab({ active, onClick, children }) {
           : 'text-on-surface-variant hover:bg-surface-variant border-b-2 border-transparent'
       }`}
     >
+      {children}
+    </button>
+  );
+}
+
+// Pill sub-tab inside the Media panel (Files vs Live Inputs).
+function MediaSubTab({ active, onClick, icon, children }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-xs px-md py-1 rounded-full text-label-sm font-label-sm cursor-pointer transition-colors ${
+        active
+          ? 'bg-primary/15 text-primary ring-1 ring-inset ring-primary/40'
+          : 'text-on-surface-variant hover:bg-surface-variant'
+      }`}
+    >
+      <span className="material-symbols-outlined text-[15px]">{icon}</span>
       {children}
     </button>
   );

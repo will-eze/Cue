@@ -3,6 +3,7 @@ import path from 'path';
 import { getDb } from '../db/schema.js';
 import { get as getSetting, set as setSetting } from '../db/settings.js';
 import * as ndi from './ndi.js';
+import * as ndiInput from './ndi-input.js';
 import * as rtmp from '../stream/rtmp.js';
 import { ensureBinaries } from '../youtube/bin.js';
 import { resolveAnchors, pruneExpired, nextPruneDelay } from '../../shared/stage-schedule.js';
@@ -181,6 +182,19 @@ function getTemplatePath(template) {
   return path.join(app.getAppPath(), 'src', 'output', `${template}.html`);
 }
 
+// macOS Sequoia drops fullscreen:true (and a one-shot setFullScreen) when a window is
+// created while ANOTHER output window on the same display is still animating out of its
+// fullscreen Space — the new window then opens as a floating frameless panel with the
+// dock/menubar showing. Because it never entered fullscreen, `leave-full-screen` never
+// fires, so a single assertion can't self-heal. Retry until isFullScreen() sticks (the
+// outgoing Space animation can take up to ~1s), then stop. This is the reliable form of
+// the "assert setFullScreen after the window is shown" rule — keep it on every create.
+function enforceFullScreen(win, tries = 8) {
+  if (!win || win.isDestroyed() || win.isFullScreen()) return;
+  win.setFullScreen(true);
+  if (tries > 0) setTimeout(() => enforceFullScreen(win, tries - 1), 200);
+}
+
 function createMonitorWindow(channel, monitor) {
   if (!monitor.display_bounds) return null;
   const bounds = JSON.parse(monitor.display_bounds);
@@ -233,13 +247,18 @@ function createMonitorWindow(channel, monitor) {
   win.webContents.once('did-finish-load', () => {
     // macOS Sequoia no longer honours fullscreen:true in the BrowserWindow constructor
     // when alwaysOnTop is also set — assert it explicitly after the window is shown.
-    if (!win.isFullScreen()) win.setFullScreen(true);
+    // Retry-based (enforceFullScreen) so a rapid close→open on the same display (e.g. an
+    // output-preset recall) can't leave the new window as a floating panel.
+    enforceFullScreen(win);
     sendStateToWindow(win, channel);
     if (channel.template === 'stage') sendStageState(win, channel);
     else sendGraphicToWindow(win, 'screen'); // fullscreen + lower-third carry the overlay
   });
   // Re-enter fullscreen if the user accidentally exits (e.g. Escape key, green button).
   win.on('leave-full-screen', () => { if (!win.isDestroyed()) win.setFullScreen(true); });
+  // Template tag: live-input frames are only fanned out to program-video windows
+  // (fullscreen template); stage/lower-third windows never render full-frame video.
+  win._cueTemplate = channel.template || 'fullscreen';
   return win;
 }
 
@@ -310,6 +329,7 @@ function createNdiWindow(channel) {
     else sendGraphicToWindow(win, 'ndi'); // fullscreen + lower-third carry the overlay
     startNdiCapture(channel.id, win, channel);
   });
+  win._cueTemplate = channel.template || 'fullscreen';
   return win;
 }
 
@@ -514,6 +534,7 @@ export function closeAll() {
     if (win && !win.isDestroyed()) win.close();
   }
   windows.clear();
+  ndiInput.stopAll();
   stopStream();
 }
 
@@ -540,6 +561,91 @@ function getAllOutputWindows() {
   if (streamWin && !streamWin.isDestroyed()) wins.push(streamWin);
   return wins;
 }
+
+// ── Live video input (NDI receive) ────────────────────────────────────────────
+// Windows that render full-frame program video — live-input frames are fanned out
+// to exactly these. Stage/lower-third windows never paint program video, so they
+// are excluded (each frame is an ~8MB IPC copy; don't send it where it's ignored).
+function getLiveInputTargets() {
+  const wins = [];
+  for (const [, win] of windows) {
+    if (win && !win.isDestroyed() && (win._cueTemplate || 'fullscreen') === 'fullscreen') wins.push(win);
+  }
+  if (streamWin && !streamWin.isDestroyed()) wins.push(streamWin);
+  return wins;
+}
+
+// Master enable for the live-input (NDI receive) feature — the mid-service kill
+// switch. Persisted; default ON. When OFF: no receivers run, previews are
+// refused, GO of a live-input cue is soft-blocked in the renderer, and a feed
+// that is currently ON AIR is dropped to 'cleared' (black) rather than freezing
+// its last frame. No restart needed in either direction.
+export function getLiveInputsEnabled() {
+  return getSetting('live_inputs_enabled') !== false;
+}
+
+export function setLiveInputsEnabled(v) {
+  const enabled = !!v;
+  setSetting('live_inputs_enabled', enabled);
+  if (!enabled) {
+    if (state.displayMode === 'content' && state.livePayload?.liveInput) clear();
+    syncLiveInput();
+    ndiInput.stopAll(); // also tears down any operator previews immediately
+  } else {
+    syncLiveInput();
+  }
+  notifyMainWindow('liveinput:enabled', enabled);
+  return enabled;
+}
+
+// Keep the NDI receiver in lockstep with the display state machine: pull frames
+// only while a live-input payload is actually on program (content mode). Clear,
+// logo and idle all release the source (and its camera tally).
+function syncLiveInput() {
+  const src = (getLiveInputsEnabled() && outputsEnabled && state.displayMode === 'content')
+    ? state.livePayload?.liveInput?.sourceName || null
+    : null;
+  ndiInput.setProgramSource(src);
+}
+
+// Where live-input AUDIO goes: the single audible (primary) screen window plays
+// it in-room via Web Audio (same one-audible-window rule as program media), and
+// the stream compositor mixes it when its audio mode is 'mixed' (it gates that
+// itself in stream-feed.js — the window is locally muted either way).
+function getLiveAudioTargets() {
+  const wins = [];
+  const db = getDb();
+  const channels = db
+    .prepare("SELECT * FROM output_channels WHERE active = 1 AND type != 'ndi' ORDER BY id")
+    .all()
+    .filter((c) => c.template !== 'stage');
+  if (channels.length) {
+    const monitor = db
+      .prepare('SELECT * FROM channel_monitors WHERE channel_id = ? AND active = 1 ORDER BY id LIMIT 1')
+      .get(channels[0].id);
+    const win = monitor && windows.get(monitor.id);
+    if (win && !win.isDestroyed()) wins.push(win);
+  }
+  if (streamWin && !streamWin.isDestroyed()) wins.push(streamWin);
+  return wins;
+}
+
+// Route one planar Float32 PCM pull from the live input. NDI-out senders are fed
+// DIRECTLY from main — during a live input there is no media element for the
+// in-room tap to capture, so this is the NDI-audio source for that case.
+function routeLiveInputAudio(sourceName, planar, sampleRate, channels, samples) {
+  const msg = { sourceName, sampleRate, channels, samples, data: planar };
+  for (const win of getLiveAudioTargets()) {
+    try { if (!win.isDestroyed()) win.webContents.send('live:audio', msg); } catch {}
+  }
+  for (const id of audioEnabledNdi) ndi.sendAudio(id, planar, sampleRate, channels, samples);
+}
+
+ndiInput.configure({
+  getTargets: getLiveInputTargets,
+  notify: (channel, payload) => notifyMainWindow(channel, payload),
+  onAudioFrame: routeLiveInputAudio,
+});
 
 // ── Output transitions ────────────────────────────────────────────────────────
 // The operator picks a transition per trigger (slide / logo / clear) in Settings;
@@ -766,6 +872,7 @@ export function go(payload) {
   state.displayMode = 'content';
   state.preLogoMode = null;
   pendingTransition = transitionFor('slide');
+  syncLiveInput();
   sendCurrentState();
   broadcastTransport();
   notifyMainWindow('output:state-changed', getState());
@@ -786,6 +893,7 @@ export function clear() {
   }
 
   pendingTransition = transitionFor('clear');
+  syncLiveInput();
   sendCurrentState();
   notifyMainWindow('output:state-changed', getState());
 }
@@ -801,6 +909,7 @@ export function logo() {
   }
 
   pendingTransition = transitionFor('logo');
+  syncLiveInput();
   sendCurrentState();
   notifyMainWindow('output:state-changed', getState());
 }
@@ -1355,10 +1464,12 @@ export async function setOutputsEnabled(enabled) {
       if (win && !win.isDestroyed()) win.close();
     }
     windows.clear();
+    syncLiveInput(); // outputs off → release the NDI input (and its tally)
   } else {
     await reopenAllChannels();
     // Restore current display mode on newly opened windows.
     if (state.displayMode !== 'idle') sendCurrentState();
+    syncLiveInput();
   }
 
   notifyMainWindow('output:state-changed', getState());
@@ -1760,6 +1871,9 @@ function broadcastGraphic() {
   mirrorOverlay = overlayForKind('screen');
   emitProgramChange({ overlay: mirrorOverlay });
   notifyMainWindow('output:overlay-changed', { ...overlay });
+  // Push STATE to the network-control remote so its graphics list reflects what's
+  // live (notifyMainWindow only relays 'output:state-changed', not overlay changes).
+  if (remoteStateCb) { try { remoteStateCb(); } catch {} }
 }
 
 // A positive autoDismissSec auto-hides the graphic that many seconds after it airs;
@@ -1814,6 +1928,103 @@ export function customHide(target) {
   broadcastGraphic();
 }
 
+// ── Take a SAVED graphic live by id (network remote) ──────────────────────────
+// The phone/Companion remote can fire a stored graphic without the operator UI:
+// read the row (+ background join), parse its style, and dispatch to the matching
+// kind's show(). This mirrors GraphicsPanel.take() so remote + operator agree.
+// Minimal HTML-escape + placeholder fill (mirrors GraphicsEditor.fillPlaceholders,
+// the renderer helper the operator's custom-graphic Take path uses).
+function escHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function fillPlaceholders(html, vals = {}) {
+  return String(html || '')
+    .replace(/\{\{\s*name\s*\}\}/gi, escHtml(vals.name))
+    .replace(/\{\{\s*title\s*\}\}/gi, escHtml(vals.title))
+    .replace(/\{\{\s*text\s*\}\}/gi, escHtml(vals.text));
+}
+
+// `target` is optional — undefined falls back to the graphic's own saved destination
+// (defaults to 'ndi'). Returns false for an unknown id or unrecognised kind.
+export function graphicShowById(id, target) {
+  const g = getDb().prepare(`
+      SELECT gr.*, m.path AS background_path
+      FROM graphics gr LEFT JOIN media_assets m ON m.id = gr.background_media_id
+      WHERE gr.id = ?
+    `).get(Number(id));
+  if (!g) return false;
+  let style = {};
+  try { style = g.style_json ? JSON.parse(g.style_json) : {}; } catch {}
+  const tgt = target || g.target || 'ndi';
+  const autoDismissSec = Number(style.autoDismissSec) || 0;
+  const bgPath = g.background_path || null;
+  const bgFit = style.bgFit || null;
+  switch (g.kind) {
+    case 'lower_third':
+      graphicShow({ id: g.id, name: g.name, title: g.title, style, target: tgt, autoDismissSec, bgPath, bgFit });
+      return true;
+    case 'ticker':
+      tickerShow({ id: g.id, text: g.text, speed: g.speed, style, target: tgt, autoDismissSec, bgPath, bgFit });
+      return true;
+    case 'countdown':
+      countdownShow({
+        id: g.id, mode: style.mode, source: style.source, durationSec: style.durationSec,
+        targetClock: style.targetClock, format: style.format, showSeconds: style.showSeconds,
+        label: g.text || '', endMessage: style.endMessage || '', onEnd: style.onEnd || 'hold',
+        onEndMediaId: style.onEndMediaId || null,
+        audioMediaId: style.audioMediaId || null, audioLoop: !!style.audioLoop,
+        style: { time: style.time, message: style.message }, target: tgt, bgPath, bgFit,
+      });
+      return true;
+    case 'custom':
+      customShow({ id: g.id, html: fillPlaceholders(g.html, g), target: tgt, autoDismissSec, bgPath, bgFit });
+      return true;
+    default:
+      return false;
+  }
+}
+
+// Clear a saved graphic by id — hides its kind's slot on `target` (default 'all',
+// so it clears wherever it's live). Returns false for an unknown id/kind.
+export function graphicClearById(id, target = 'all') {
+  const g = getDb().prepare('SELECT kind FROM graphics WHERE id = ?').get(Number(id));
+  if (!g) return false;
+  switch (g.kind) {
+    case 'lower_third': graphicHide(target);   return true;
+    case 'ticker':      tickerHide(target);     return true;
+    case 'countdown':   countdownHide(target);  return true;
+    case 'custom':      customHide(target);     return true;
+    default: return false;
+  }
+}
+
+// The destination kinds where countdown `id` is the CURRENT live occupant, collapsed
+// to a fire target ('all' | one kind | array). null if it isn't live anywhere — so a
+// pause/resume never touches a different countdown running on another destination.
+function liveCountdownTarget(id) {
+  const n = Number(id);
+  const dests = OVERLAY_KINDS.filter((k) => overlay.countdown[k] && overlay.countdown[k].id === n);
+  if (!dests.length) return null;
+  if (dests.length === OVERLAY_KINDS.length) return 'all';
+  return dests.length === 1 ? dests[0] : dests;
+}
+
+// Pause / resume a live SAVED countdown by id (network remote). Only countdowns can be
+// paused; returns false if the id isn't a live countdown.
+export function graphicPauseById(id) {
+  const t = liveCountdownTarget(id);
+  if (!t) return false;
+  countdownPause(t);
+  return true;
+}
+export function graphicResumeById(id) {
+  const t = liveCountdownTarget(id);
+  if (!t) return false;
+  countdownResume(t);
+  return true;
+}
+
 // Next epoch-ms for a wall-clock "HH:MM" today; if already past, roll to tomorrow.
 function nextClockTime(hhmm) {
   const [h, m] = String(hhmm || '').split(':').map((n) => parseInt(n, 10));
@@ -1850,7 +2061,17 @@ export function countdownShow(data) {
     source:      data.source ?? null,
     targetClock: data.targetClock ?? null,
     durationSec: Number.isFinite(Number(data.durationSec)) ? Number(data.durationSec) : null,
+    // Optional in-room audio track that plays while the timer is live (tied to
+    // take/stop/pause). audioPath is resolved from the DB so the output template
+    // needs no DB access; the id/loop are retained for Scene re-fire.
+    audioMediaId: data.audioMediaId || null,
+    audioLoop:    !!data.audioLoop,
+    audioPath:    null, // resolved below
   };
+  if (slot.audioMediaId) {
+    const row = getDb().prepare('SELECT path FROM media_assets WHERE id = ?').get(Number(slot.audioMediaId));
+    slot.audioPath = row ? row.path : null;
+  }
   if (data.mode === 'countdown') {
     slot.endsAt = data.source === 'target'
       ? nextClockTime(data.targetClock)
@@ -1905,6 +2126,54 @@ function handleCountdownEnd(slot) {
 export function countdownHide(target) {
   if (cdEndTimer) { clearTimeout(cdEndTimer); cdEndTimer = null; }
   setSlot('countdown', null, target);
+  broadcastGraphic();
+}
+
+// Pause a live countdown/count-up: freeze the displayed time by stamping `frozenAt`
+// (a host-epoch timestamp, like endsAt/startAt) — the output template renders against
+// frozenAt instead of Date.now() while paused, so no per-second stream is needed (the
+// countdown guard rail holds). Clock mode has no elapsed to freeze, so it's skipped.
+// setSlot shares one value object across targeted kinds, so clone per kind before
+// mutating. Freeze the end-action timer too — it must not fire mid-pause.
+export function countdownPause(target) {
+  const now = Date.now();
+  let changed = false;
+  for (const kind of kindsForTarget(target)) {
+    const s = overlay.countdown[kind];
+    if (!s || !s.mode || s.mode === 'clock' || s.paused) continue;
+    overlay.countdown[kind] = { ...s, paused: true, frozenAt: now };
+    changed = true;
+  }
+  if (!changed) return;
+  if (cdEndTimer) { clearTimeout(cdEndTimer); cdEndTimer = null; }
+  broadcastGraphic();
+}
+
+// Resume a paused countdown/count-up: shift the anchor forward by the paused duration
+// so the remaining/elapsed time continues from where it froze, then re-arm the single
+// end-action timer against the resumed countdown (last one wins, matching countdownShow).
+export function countdownResume(target) {
+  const now = Date.now();
+  let resumed = null;
+  for (const kind of kindsForTarget(target)) {
+    const s = overlay.countdown[kind];
+    if (!s || !s.paused) continue;
+    const delta = now - (s.frozenAt || now);
+    const next = { ...s, paused: false, frozenAt: null };
+    if (typeof next.endsAt === 'number')  next.endsAt  += delta;
+    if (typeof next.startAt === 'number') next.startAt += delta;
+    overlay.countdown[kind] = next;
+    resumed = next;
+  }
+  if (!resumed) return;
+  if (cdEndTimer) { clearTimeout(cdEndTimer); cdEndTimer = null; }
+  if (resumed.mode === 'countdown' && resumed.onEnd !== 'hold' && resumed.onEnd !== 'overflow') {
+    const delay = resumed.endsAt - Date.now();
+    if (delay >= 0) {
+      const capturedSlot = { ...resumed };
+      cdEndTimer = setTimeout(() => { cdEndTimer = null; handleCountdownEnd(capturedSlot); }, delay);
+    }
+  }
   broadcastGraphic();
 }
 
@@ -1972,6 +2241,15 @@ function reviveSlotValue(name, v) {
     return Number(v.autoDismissSec) > 0 ? { ...v, dismissAt: Date.now() + Number(v.autoDismissSec) * 1000 } : v;
   }
   const s = { ...v };
+  // A recalled countdown always resumes running from a fresh anchor — never inherit a
+  // snapshotted paused/frozen state.
+  s.paused = false; s.frozenAt = null;
+  // Re-resolve the audio track path from its id (a snapshotted absolute path could be
+  // stale on another machine); the id is the source of truth.
+  if (s.audioMediaId) {
+    const row = getDb().prepare('SELECT path FROM media_assets WHERE id = ?').get(Number(s.audioMediaId));
+    s.audioPath = row ? row.path : null;
+  }
   if (s.mode === 'countup') {
     s.startAt = Date.now();
   } else if (s.mode === 'countdown') {

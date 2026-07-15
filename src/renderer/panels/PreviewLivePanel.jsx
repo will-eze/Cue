@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import SlideList from '../components/SlideList';
-import { renderWithRuns, copyrightCss } from '../components/SongEditor';
+import { renderWithRuns, copyrightCss, buildDecorationCss, buildBoxFillCss } from '../components/SongEditor';
 import { flatTextCss, buildBarBg as buildGraphicBarBg, fmtDuration as fmtGfxDuration, fmtClock as fmtGfxClock, CD_DEFAULT_BOX, TIME_BASE as GFX_TIME_BASE, MSG_BASE as GFX_MSG_BASE } from '../components/GraphicsEditor';
 import { mediaUrl } from '../utils/mediaUrl';
 
@@ -23,11 +23,13 @@ function OverlayCountdown({ cd }) {
   const vAlign = st.verticalAlign || 'center';
   const hAlign = st.align === 'left' ? 'flex-start' : st.align === 'right' ? 'flex-end' : 'center';
 
+  // While paused, freeze the readout against the frozen instant (mirrors graphics-overlay.js).
+  const now = cd.paused ? (cd.frozenAt || Date.now()) : Date.now();
   let timeText, msgText = cd.label || '';
-  if (cd.mode === 'clock') timeText = fmtGfxClock(new Date(), cd.format, cd.showSeconds);
-  else if (cd.mode === 'countup') timeText = fmtGfxDuration((Date.now() - cd.startAt) / 1000);
+  if (cd.mode === 'clock') timeText = fmtGfxClock(new Date(now), cd.format, cd.showSeconds);
+  else if (cd.mode === 'countup') timeText = fmtGfxDuration((now - cd.startAt) / 1000);
   else {
-    const rem = (cd.endsAt - Date.now()) / 1000;
+    const rem = (cd.endsAt - now) / 1000;
     if (rem <= 0) {
       if (cd.onEnd === 'overflow') {
         timeText = '+' + fmtGfxDuration(-rem);
@@ -436,14 +438,15 @@ function PresentationCanvas({ elements, backgroundPath, hideText }) {
             : 'none';
           return (
             <div key={el.id || i} style={{ ...box, display: 'flex', flexDirection: 'column',
-              justifyContent: s.verticalAlign === 'top' ? 'flex-start' : s.verticalAlign === 'bottom' ? 'flex-end' : 'center' }}>
+              justifyContent: s.verticalAlign === 'top' ? 'flex-start' : s.verticalAlign === 'bottom' ? 'flex-end' : 'center',
+              ...buildBoxFillCss(s.boxFill) }}>
               <div style={{ width: '100%', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                 fontFamily: s.fontFamily || undefined,
                 fontSize: (s.fontSize ?? 48) + 'px',
                 textAlign: s.align || 'center',
                 fontWeight: s.bold ? 700 : 400,
                 fontStyle: s.italic ? 'italic' : 'normal',
-                textDecoration: s.underline ? 'underline' : 'none',
+                textDecoration: buildDecorationCss(s),
                 textTransform: s.uppercase ? 'uppercase' : 'none',
                 color: s.color || '#ffffff',
                 lineHeight: s.lineSpacing ? String(s.lineSpacing) : '1.25',
@@ -522,6 +525,46 @@ function SplitVerses({ verses, baseStyle, maxFontPx, maxHeightPx, runs, scale = 
   );
 }
 
+// Live video input monitor — renders the low-rate JPEG thumbnail stream pushed by
+// main's NDI receiver (decoded frames pushed over IPC, NOT a screen-capture loop).
+// previewStart/Stop are ref-counted per source in main, so the preview and live
+// monitors can both subscribe to the same camera safely.
+function LiveInputMonitor({ liveInput }) {
+  const src = liveInput?.sourceName;
+  const [frame, setFrame] = useState(null);
+  const [connected, setConnected] = useState(false);
+  useEffect(() => {
+    if (!src) return;
+    setFrame(null);
+    setConnected(false);
+    window.cue.liveInput.previewStart(src);
+    const offPrev = window.cue.on('liveinput:preview', (p) => {
+      if (p?.sourceName === src) { setFrame(p.dataUrl); setConnected(true); }
+    });
+    const offStat = window.cue.on('liveinput:status', (p) => {
+      if (p?.sourceName === src) setConnected(!!p.connected);
+    });
+    return () => { offPrev(); offStat(); window.cue.liveInput.previewStop(src); };
+  }, [src]);
+  // Rendered inside the scaled 1920×1080 monitor canvas — px values are native-scale.
+  return (
+    <div style={{ position: 'absolute', inset: 0, background: '#000' }}>
+      {frame && <img src={frame} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />}
+      <div style={{ position: 'absolute', top: 32, left: 32, display: 'flex', alignItems: 'center', gap: 16, padding: '12px 22px', background: 'rgba(0,0,0,0.55)', borderRadius: 10 }}>
+        <span style={{ width: 16, height: 16, borderRadius: '50%', background: connected ? '#4ae176' : '#8c909f' }} />
+        <span style={{ fontSize: 30, fontWeight: 600, color: '#e2e2e8', letterSpacing: '0.04em' }}>
+          {liveInput?.name || src || 'Live Input'}
+        </span>
+      </div>
+      {!frame && (
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#424754', fontSize: 40, fontWeight: 600, letterSpacing: '0.12em' }}>
+          {src ? 'CONNECTING…' : 'NO SOURCE'}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroundPath, displayMode, channelTemplate, stageChannelId, ltFontScale = 1, transport, overlay, hideProgram }) {
   const wrapRef = useRef(null);
   const [scale, setScale] = useState(0.5);
@@ -541,6 +584,7 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
   const isLT   = channelTemplate === 'lowerthird';
   const isStage = channelTemplate === 'stage';
   const isPresentation = item?.item_type === 'presentation';
+  const isLiveInput = item?.item_type === 'live-input';
 
   // Attribution line — scripture slides carry "Book c:v (VERSION)", songs use the
   // song copyright. Scripture sits bottom-right; everything else stays centred.
@@ -572,7 +616,7 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
     textAlign:        style?.align || 'center',
     fontWeight:       style?.bold ? 700 : 400,
     fontStyle:        style?.italic ? 'italic' : 'normal',
-    textDecoration:   style?.underline ? 'underline' : 'none',
+    textDecoration:   buildDecorationCss(style),
     textTransform:    style?.uppercase ? 'uppercase' : 'none',
     color:            style?.color || '#ffffff',
     lineHeight:       style?.lineSpacing ? String(style.lineSpacing) : (isLT ? '1.2' : '1.25'),
@@ -595,7 +639,9 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
       {slide ? (
         <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
           <div style={{ width: NATIVE_W, height: NATIVE_H, transform: `scale(${scale})`, transformOrigin: 'top left', position: 'relative' }}>
-                {isPresentation ? (
+                {isLiveInput && !isStage ? (
+                  <LiveInputMonitor liveInput={slide.liveInput || item.liveInput} />
+                ) : isPresentation ? (
                   <PresentationCanvas
                     elements={slide.elements}
                     backgroundPath={slide.background_path || backgroundPath}
@@ -677,6 +723,8 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
                                     : style?.verticalAlign === 'bottom' ? 'flex-end'
                                     : 'center',
                       overflow: 'hidden',
+                      boxSizing: 'border-box',
+                      ...buildBoxFillCss(style?.boxFill),
                     }}>
                       {slide.splitVerses ? (
                         <SplitVerses verses={slide.splitVerses} baseStyle={textStyle} maxFontPx={baseFontPx} maxHeightPx={Math.round((tb.h / 100) * NATIVE_H)} runs={style?.runs} scale={1} attrColor={copyrightStyle?.color} />
@@ -753,6 +801,8 @@ export default function PreviewLivePanel({
   jumpKeys = null,
   jumpArmed = false,
   onToggleJumpArmed,
+  bareArmed = true,
+  onToggleBareArmed,
 }) {
   const previewSlides = previewItem ? getSlides(previewItem) : [];
   const liveSlides    = liveItem    ? getSlides(liveItem)    : [];
@@ -982,55 +1032,72 @@ export default function PreviewLivePanel({
             </div>
           )}
 
-          {/* Channel selector — only shown when 2+ channels */}
-          {multiChannel && (
-            <div className="flex items-center gap-xs flex-shrink-0 flex-wrap">
-              {allChannels.map((ch, idx) => {
-                const isSelected = idx === liveChannelIdx;
-                const isNdi = ch.type === 'ndi';
-                return (
+          {/* Monitor switches (scrollable, left) + Hotkeys/Jump arm toggles (fixed, right) */}
+          {(multiChannel || onToggleBareArmed || (liveSlides.length > 1 && onToggleJumpArmed)) && (
+            <div className="flex items-center gap-xs w-full min-w-0">
+              {multiChannel && (
+                <div className="flex items-center gap-xs flex-1 min-w-0 overflow-x-auto custom-scrollbar pb-[2px]">
+                  {allChannels.map((ch, idx) => {
+                    const isSelected = idx === liveChannelIdx;
+                    const isNdi = ch.type === 'ndi';
+                    return (
+                      <button
+                        key={ch.id}
+                        onClick={() => onSetLiveChannelIdx?.(idx)}
+                        title={`View ${ch.name}`}
+                        className={`flex items-center gap-xs px-sm h-6 rounded border text-[9px] font-mono uppercase tracking-[0.05em] transition-colors cursor-pointer flex-shrink-0 ${
+                          isSelected
+                            ? 'bg-primary/15 border-primary/50 text-primary'
+                            : 'bg-surface-container border-outline-variant/30 text-on-surface-variant hover:border-outline-variant hover:text-on-surface'
+                        }`}
+                      >
+                        {isNdi && (
+                          <span className={`w-[5px] h-[5px] rounded-full flex-shrink-0 ${isSelected ? 'bg-tertiary' : 'bg-outline-variant'}`} />
+                        )}
+                        {!isNdi && (
+                          <span className="material-symbols-outlined text-[10px]" style={{ fontVariationSettings: "'FILL' 1" }}>
+                            monitor
+                          </span>
+                        )}
+                        <span className="truncate max-w-[80px]">{ch.name}</span>
+                        {isNdi && (
+                          <span className={`text-[8px] ${isSelected ? 'text-primary/60' : 'text-outline-variant'}`}>NDI</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              <div className="flex items-center gap-xs shrink-0 ml-auto">
+                {onToggleBareArmed && (
                   <button
-                    key={ch.id}
-                    onClick={() => onSetLiveChannelIdx?.(idx)}
-                    title={`View ${ch.name}`}
-                    className={`flex items-center gap-xs px-sm h-6 rounded border text-[9px] font-mono uppercase tracking-[0.05em] transition-colors cursor-pointer flex-shrink-0 ${
-                      isSelected
-                        ? 'bg-primary/15 border-primary/50 text-primary'
-                        : 'bg-surface-container border-outline-variant/30 text-on-surface-variant hover:border-outline-variant hover:text-on-surface'
+                    onClick={onToggleBareArmed}
+                    title="Arm the bare transport keys (GO / Output / Clear). Disarmed, they're ignored so a stray keystroke can't air."
+                    className={`flex items-center gap-xs text-[9px] font-mono uppercase tracking-[0.05em] px-xs py-[2px] rounded border transition-colors cursor-pointer ${
+                      bareArmed
+                        ? 'bg-tertiary/10 border-tertiary/40 text-tertiary'
+                        : 'bg-surface-container border-outline-variant/30 text-on-surface-variant/60 hover:text-on-surface-variant'
                     }`}
                   >
-                    {isNdi && (
-                      <span className={`w-[5px] h-[5px] rounded-full flex-shrink-0 ${isSelected ? 'bg-tertiary' : 'bg-outline-variant'}`} />
-                    )}
-                    {!isNdi && (
-                      <span className="material-symbols-outlined text-[10px]" style={{ fontVariationSettings: "'FILL' 1" }}>
-                        monitor
-                      </span>
-                    )}
-                    <span className="truncate max-w-[80px]">{ch.name}</span>
-                    {isNdi && (
-                      <span className={`text-[8px] ${isSelected ? 'text-primary/60' : 'text-outline-variant'}`}>NDI</span>
-                    )}
+                    <span className="material-symbols-outlined text-[10px]">bolt</span>
+                    Hotkeys {bareArmed ? 'ON' : 'OFF'}
                   </button>
-                );
-              })}
-            </div>
-          )}
-
-          {liveSlides.length > 1 && onToggleJumpArmed && (
-            <div className="flex items-center justify-end shrink-0 pr-xs">
-              <button
-                onClick={onToggleJumpArmed}
-                title="Toggle Q/W/E… verse-jump keys for the live item"
-                className={`flex items-center gap-xs text-[9px] font-mono uppercase tracking-[0.05em] px-xs py-[2px] rounded border transition-colors cursor-pointer ${
-                  jumpArmed
-                    ? 'bg-tertiary/10 border-tertiary/40 text-tertiary'
-                    : 'bg-surface-container border-outline-variant/30 text-on-surface-variant/60 hover:text-on-surface-variant'
-                }`}
-              >
-                <span className="material-symbols-outlined text-[10px]">keyboard</span>
-                Jump {jumpArmed ? 'ON' : 'OFF'}
-              </button>
+                )}
+                {liveSlides.length > 1 && onToggleJumpArmed && (
+                  <button
+                    onClick={onToggleJumpArmed}
+                    title="Toggle Q/W/E… verse-jump keys for the live item"
+                    className={`flex items-center gap-xs text-[9px] font-mono uppercase tracking-[0.05em] px-xs py-[2px] rounded border transition-colors cursor-pointer ${
+                      jumpArmed
+                        ? 'bg-tertiary/10 border-tertiary/40 text-tertiary'
+                        : 'bg-surface-container border-outline-variant/30 text-on-surface-variant/60 hover:text-on-surface-variant'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-[10px]">keyboard</span>
+                    Jump {jumpArmed ? 'ON' : 'OFF'}
+                  </button>
+                )}
+              </div>
             </div>
           )}
           <div className="flex-1 overflow-y-auto pr-xs">

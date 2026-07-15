@@ -39,7 +39,8 @@ function renderWithRuns(text, runs) {
     const st = [];
     if (run.bold)       st.push('font-weight:700');
     if (run.italic)     st.push('font-style:italic');
-    if (run.underline)  st.push('text-decoration:underline');
+    const deco = [run.underline && 'underline', run.strikethrough && 'line-through'].filter(Boolean).join(' ');
+    if (deco)           st.push('text-decoration:' + deco);
     if (run.color)      st.push('color:' + run.color);
     if (run.fontFamily) st.push("font-family:" + String(run.fontFamily).replace(/"/g, "'"));
     if (run.fontSize)   st.push('font-size:' + Number(run.fontSize) + 'px');
@@ -102,6 +103,21 @@ function buildShadow(shadow, noDefault = false) {
   return `${shadow.x ?? 0}px ${shadow.y ?? 2}px ${shadow.blur ?? 16}px ${shadow.color ?? '#000'}`;
 }
 
+// underline + strikethrough combine into one text-decoration value.
+function buildDecoration(s) {
+  const deco = [s && s.underline && 'underline', s && s.strikethrough && 'line-through'].filter(Boolean).join(' ');
+  return deco || 'none';
+}
+
+// style.boxFill → rgba() background for the fill panel behind the text box.
+function boxFillBg(bf) {
+  const c = (bf && bf.color) || '#000000';
+  const r = parseInt(c.slice(1, 3), 16) || 0;
+  const g = parseInt(c.slice(3, 5), 16) || 0;
+  const b = parseInt(c.slice(5, 7), 16) || 0;
+  return `rgba(${r},${g},${b},${bf.opacity != null ? bf.opacity : 0.5})`;
+}
+
 // Scale authored 1920×1080 px values to the current viewport size.
 // Uses min(x,y) so the design fits without stretching on any aspect ratio.
 function viewportScale() {
@@ -140,14 +156,25 @@ function applyStyle(s) {
                                 : 'center';
   textWrap.style.overflow  = 'hidden';
   textWrap.style.boxSizing = 'border-box';
-  textWrap.style.padding   = '0';
+
+  // Box fill — colour panel behind the text box (legibility on busy backgrounds).
+  // px values (radius/padding) scale with the output resolution like font sizes.
+  if (s.boxFill && s.boxFill.enabled) {
+    textWrap.style.background   = boxFillBg(s.boxFill);
+    textWrap.style.borderRadius = Math.round((s.boxFill.radius != null ? s.boxFill.radius : 0) * vs) + 'px';
+    textWrap.style.padding      = Math.round((s.boxFill.pad != null ? s.boxFill.pad : 24) * vs) + 'px';
+  } else {
+    textWrap.style.background   = '';
+    textWrap.style.borderRadius = '';
+    textWrap.style.padding      = '0';
+  }
 
   // Text styles — px values scaled to the current output resolution
   textEl.style.fontFamily      = s.fontFamily   || '';
   textEl.style.textAlign       = s.align        || 'center';
   textEl.style.fontWeight      = s.bold         ? '700' : '400';
   textEl.style.fontStyle       = s.italic       ? 'italic' : 'normal';
-  textEl.style.textDecoration  = s.underline    ? 'underline' : 'none';
+  textEl.style.textDecoration  = buildDecoration(s);
   textEl.style.fontSize        = s.fontSize     ? Math.round(s.fontSize * vs) + 'px' : '';
   textEl.style.color           = s.color        || '';
   textEl.style.lineHeight      = s.lineSpacing  ? String(s.lineSpacing) : '';
@@ -377,6 +404,126 @@ function setForegroundMedia(media, transport) {
   if (window.CueStreamFeed) window.CueStreamFeed.onMediaElement(el);
 }
 
+// ── Live video input (NDI receive) ───────────────────────────────────────────
+// A full-frame canvas painted from main's framesync pull loop (live:frame bus).
+// Frames are RGBA at the source's native size; the canvas is cover-fitted like a
+// background video. Only the frames for the CURRENT payload's source are painted.
+let liveInputSource = null;
+let liveCanvas = null;
+let liveCtx = null;
+
+function clearLiveInput() {
+  liveInputSource = null;
+  if (liveCanvas) { liveCanvas.remove(); liveCanvas = null; liveCtx = null; }
+  destroyLiveAudio();
+}
+
+function setLiveInput(liveInput) {
+  const src = liveInput && liveInput.sourceName;
+  if (!src) { clearLiveInput(); return; }
+  if (src === liveInputSource && liveCanvas) return; // already showing this source
+  clearLiveInput();
+  liveInputSource = src;
+  liveCanvas = document.createElement('canvas');
+  Object.assign(liveCanvas.style, {
+    position: 'absolute', inset: '0', width: '100%', height: '100%', objectFit: 'cover',
+  });
+  bg.appendChild(liveCanvas);
+  liveCtx = liveCanvas.getContext('2d');
+}
+
+if (window.cueOutput.onLiveFrame) {
+  window.cueOutput.onLiveFrame((f) => {
+    if (!liveCtx || !f || f.sourceName !== liveInputSource) return;
+    const { w, h, stride, data } = f;
+    if (!w || !h || !data) return;
+    if (liveCanvas.width !== w || liveCanvas.height !== h) {
+      liveCanvas.width = w;
+      liveCanvas.height = h;
+    }
+    // data arrives as a Uint8Array; ImageData wants exactly w*h*4 clamped bytes.
+    // NDI rows can be padded (stride > w*4) — repack only in that case.
+    let pixels;
+    if (!stride || stride === w * 4) {
+      pixels = new Uint8ClampedArray(data.buffer, data.byteOffset, w * h * 4);
+    } else {
+      pixels = new Uint8ClampedArray(w * h * 4);
+      for (let y = 0; y < h; y++) {
+        pixels.set(new Uint8ClampedArray(data.buffer, data.byteOffset + y * stride, w * 4), y * w * 4);
+      }
+    }
+    liveCtx.putImageData(new ImageData(pixels, w, h), 0, 0);
+  });
+}
+
+// ── Live input audio ──────────────────────────────────────────────────────────
+// Planar Float32 PCM from main's framesync audio pump (live:audio), scheduled
+// back-to-back into a Web Audio graph behind a small jitter buffer. The graph
+// exits through a MediaStreamDestination → hidden <audio> element so the in-room
+// output-device picker (element setSinkId, matched by CueMediaPlayer) applies to
+// live audio exactly like program media. Main only sends this bus to the audible
+// window and the stream compositor; MUTE_AUDIO guards the rest.
+let liveAudio = null; // { ctx, gain, el, detachSink, nextAt }
+
+function ensureLiveAudio(sampleRate) {
+  if (liveAudio && liveAudio.ctx.sampleRate === sampleRate) return liveAudio;
+  destroyLiveAudio();
+  const ctx = new AudioContext({ sampleRate });
+  const gain = ctx.createGain();
+  const dest = ctx.createMediaStreamDestination();
+  gain.connect(dest);
+  const el = document.createElement('audio');
+  el.srcObject = dest.stream;
+  el.play().catch(() => {});
+  const detachSink = window.CueMediaPlayer && window.CueMediaPlayer.attachAuxAudio
+    ? window.CueMediaPlayer.attachAuxAudio(el) : null;
+  liveAudio = { ctx, gain, el, detachSink, nextAt: 0 };
+  window.__cueLiveAudioDebug = { ctx, gain }; // introspection/testing handle
+  return liveAudio;
+}
+
+function destroyLiveAudio() {
+  if (!liveAudio) return;
+  try { if (liveAudio.detachSink) liveAudio.detachSink(); } catch {}
+  try { liveAudio.el.pause(); liveAudio.el.srcObject = null; } catch {}
+  try { liveAudio.ctx.close(); } catch {}
+  liveAudio = null;
+  delete window.__cueLiveAudioDebug;
+}
+
+if (window.cueOutput.onLiveAudio) {
+  window.cueOutput.onLiveAudio((f) => {
+    if (!f || f.sourceName !== liveInputSource || !f.samples) return;
+    // Stream window: hand the PCM to the stream mixer ('mixed' mode gates there);
+    // the compositor window is locally muted, so never play it here too.
+    if (window.CueStreamFeed) {
+      if (window.CueStreamFeed.pushLivePcm) window.CueStreamFeed.pushLivePcm(f);
+      return;
+    }
+    if (MUTE_AUDIO) return;
+    const { sampleRate, channels, samples } = f;
+    const la = ensureLiveAudio(sampleRate);
+    const ctx = la.ctx;
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    // Copy to an aligned buffer (IPC hands us a Uint8Array view whose offset may
+    // not be float-aligned), then split the planar layout per channel.
+    const bytes = f.data;
+    const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + samples * channels * 4);
+    const all = new Float32Array(ab);
+    const buf = ctx.createBuffer(channels, samples, sampleRate);
+    for (let ch = 0; ch < channels; ch++) buf.copyToChannel(all.subarray(ch * samples, (ch + 1) * samples), ch);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(la.gain);
+    // Gapless scheduling: chunks queue back-to-back; (re)prime an ~80ms jitter
+    // buffer when the queue drained (start/underrun) so pulls never race the clock.
+    const now = ctx.currentTime;
+    if (la.nextAt < now + 0.02) la.nextAt = now + 0.08;
+    src.start(la.nextAt);
+    la.nextAt += buf.duration;
+  });
+}
+
 // Apply an optional reference/attribution style (scripture) to the #copyright
 // element. Empty values fall back to the stylesheet defaults; resets cleanly for
 // songs (which pass no copyrightStyle).
@@ -390,7 +537,7 @@ function applyCopyrightStyle(el, cs, defaultAlign) {
   el.style.color           = cs?.color || '';
   el.style.fontWeight      = cs?.bold ? '700' : '';
   el.style.fontStyle       = cs?.italic ? 'italic' : '';
-  el.style.textDecoration  = cs?.underline ? 'underline' : '';
+  el.style.textDecoration  = (cs?.underline || cs?.strikethrough) ? buildDecoration(cs) : '';
   el.style.textTransform   = cs?.uppercase ? 'uppercase' : '';
   el.style.letterSpacing   = cs?.letterSpacing ? cs.letterSpacing + 'em' : '';
   el.style.textShadow      = cs?.textShadow?.enabled
@@ -452,12 +599,19 @@ function textInnerCss(s) {
   if (s.fontFamily)    css.push('font-family:' + String(s.fontFamily).replace(/"/g, "'"));
   if (s.fontSize)      css.push('font-size:' + Number(s.fontSize) + 'px');
   if (s.italic)        css.push('font-style:italic');
-  if (s.underline)     css.push('text-decoration:underline');
+  if (s.underline || s.strikethrough) css.push('text-decoration:' + buildDecoration(s));
   if (s.color)         css.push('color:' + s.color);
   if (s.lineSpacing)   css.push('line-height:' + s.lineSpacing);
   if (s.letterSpacing) css.push('letter-spacing:' + s.letterSpacing + 'em');
   if (s.uppercase)     css.push('text-transform:uppercase');
   if (s.textStroke && s.textStroke.enabled) css.push(`-webkit-text-stroke:${s.textStroke.width ?? 2}px ${s.textStroke.color ?? '#000'}`);
+  // Box fill — panel behind the text element (canvas is native 1920×1080 px).
+  if (s.boxFill && s.boxFill.enabled) {
+    css.push('background:' + boxFillBg(s.boxFill));
+    css.push('border-radius:' + (s.boxFill.radius != null ? s.boxFill.radius : 0) + 'px');
+    css.push('padding:' + (s.boxFill.pad != null ? s.boxFill.pad : 24) + 'px');
+    css.push('box-sizing:border-box');
+  }
   return css.join(';');
 }
 
@@ -512,6 +666,7 @@ function isVideoPath(p) {
 // True if the INCOMING payload paints a video on the program layer.
 function payloadHasVideo(p) {
   if (!p) return false;
+  if (p.liveInput) return true; // live NDI input behaves like video: always hard-cut
   if (p.media && (p.media.type === 'video' || isVideoPath(p.media.path))) return true;
   if (isVideoPath(p.backgroundPath)) return true;
   if (isVideoPath(p.logoPath)) return true;
@@ -527,6 +682,7 @@ function renderSlide(payload) {
 
   if (type === 'clear') {
     clearForegroundMedia();
+    clearLiveInput();
     hideElements();
     setBackground(backgroundPath);
     hideLogo();
@@ -538,6 +694,7 @@ function renderSlide(payload) {
 
   if (type === 'logo') {
     clearForegroundMedia();
+    clearLiveInput();
     hideElements();
     destroyBgController();
     _lastBgPath = null;
@@ -549,9 +706,29 @@ function renderSlide(payload) {
     return;
   }
 
+  // Live video input (full-frame NDI feed painted from the live:frame bus).
+  if (payload.liveInput) {
+    clearForegroundMedia();
+    hideElements();
+    hideLogo();
+    applyStyle(null);
+    textEl.innerHTML = '';
+    copyright.textContent = '';
+    destroyBgController();
+    _lastBgPath = null;
+    // Keep the canvas when re-GOing the same source; otherwise reset the layer.
+    if (liveInputSource !== payload.liveInput.sourceName || !liveCanvas) {
+      bg.innerHTML = '';
+      bg.style.background = '';
+      setLiveInput(payload.liveInput);
+    }
+    return;
+  }
+
   // Foreground media item (full-frame video/audio/image, no text overlay)
   if (payload.media) {
     hideLogo();
+    clearLiveInput();
     hideElements();
     applyStyle(null);
     textEl.innerHTML = '';
@@ -563,6 +740,7 @@ function renderSlide(payload) {
   // Presentation slide — a multi-element canvas (text/image/shape), no lyric text.
   if (payload.elements) {
     clearForegroundMedia();
+    clearLiveInput();
     hideLogo();
     applyStyle(null);
     textEl.innerHTML = '';
@@ -574,6 +752,7 @@ function renderSlide(payload) {
 
   // Content slide
   clearForegroundMedia();
+  clearLiveInput();
   hideElements();
   hideLogo();
   setBackground(backgroundPath, styleJson?.bgCss);

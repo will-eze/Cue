@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
+import { buildSnapTargets, snapMove, snapEdge, nudgeFromKey, SnapGuides } from '../utils/snapping';
 
 // ── Stage Layout Editor ───────────────────────────────────────────────────────
 // A WYSIWYG editor for the free-form stage/confidence display. Elements are
@@ -7,27 +8,12 @@ import React, { useState, useCallback, useRef, useEffect, useLayoutEffect } from
 // stage output. Controlled component: `value` is the layout, `onChange` fires on every
 // edit (the parent debounces the live apply to the channel). Mirrors the drag/resize
 // math + handle pattern of StreamLayoutEditor, generalised from 2 fixed layers to an
-// arbitrary element list.
+// arbitrary element list. Smart-snap/guides come from the shared utils/snapping.js
+// (also used by the presentation, song and graphics editors) — hold Alt to bypass.
 
 const MIN = 5;     // smallest box edge (%)
-const SNAP = 1.4;  // snap threshold (% of frame) for edge/centre alignment
-const GRID = 0.5;  // fallback grid step when no smart-snap target is near
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const newId = () => 'el_' + Math.random().toString(36).slice(2, 9);
-
-// Snap a single value to the nearest target line within SNAP; returns the target or null.
-function snapVal(val, targets) {
-  let best = null, bestD = SNAP;
-  for (const t of targets) { const d = Math.abs(val - t); if (d < bestD) { bestD = d; best = t; } }
-  return best;
-}
-// Snap any of a box's candidate lines (left/centre/right, or top/middle/bottom) to the
-// nearest target; returns the {offset, line} of the closest hit, or null.
-function snapAxis(cands, targets) {
-  let off = null, bestD = SNAP, line = null;
-  for (const v of cands) for (const t of targets) { const d = Math.abs(v - t); if (d < bestD) { bestD = d; off = t - v; line = t; } }
-  return off == null ? null : { off, line };
-}
 
 // Largest 16:9 box (px) that fits the measured container — keeps the whole stage frame
 // on screen (incl. the bottom row) regardless of the panel's height.
@@ -128,21 +114,31 @@ export default function StageLayoutEditor({ value, onChange }) {
 
   const selEl = elements.find((e) => e.id === sel) || null;
 
+  // Arrow keys nudge the selected element (Shift = coarse); Delete removes it.
+  // Guarded so typing in the inspector's inputs never moves/deletes the box.
+  useEffect(() => {
+    if (!selEl) return;
+    const onKey = (e) => {
+      const t = document.activeElement?.tagName;
+      if (t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT' || document.activeElement?.isContentEditable) return;
+      if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); removeEl(selEl.id); return; }
+      const patch = nudgeFromKey(e, selEl);
+      if (patch) { e.preventDefault(); patchEl(selEl.id, patch); }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }); // re-bound each render so it always sees the latest elements
+
   // ── Pointer drag / resize on the canvas ─────────────────────────────────────
   const onPointerDown = (e, id, handle) => {
     e.preventDefault(); e.stopPropagation();
     setSel(id);
     const b = elements.find((el) => el.id === id);
     if (!b) return;
-    // Build snap target lines once per drag: canvas edges + thirds + every OTHER element's
-    // left/centre/right (vertical) and top/middle/bottom (horizontal).
-    const vT = [0, 50, 100, 33.333, 66.667], hT = [0, 50, 100, 33.333, 66.667];
-    for (const o of elements) {
-      if (o.id === id) continue;
-      vT.push(o.x, o.x + o.w / 2, o.x + o.w);
-      hT.push(o.y, o.y + o.h / 2, o.y + o.h);
-    }
-    dragRef.current = { id, handle, rect: canvasRef.current.getBoundingClientRect(), startX: e.clientX, startY: e.clientY, box: { ...b }, vT, hT };
+    // Build snap target lines once per drag: canvas edges + centre + thirds + every
+    // OTHER element's edges/centres on both axes.
+    const targets = buildSnapTargets({ others: elements.filter((o) => o.id !== id) });
+    dragRef.current = { id, handle, rect: canvasRef.current.getBoundingClientRect(), startX: e.clientX, startY: e.clientY, box: { ...b }, ...targets };
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
   };
@@ -152,19 +148,17 @@ export default function StageLayoutEditor({ value, onChange }) {
     const dy = ((e.clientY - d.startY) / d.rect.height) * 100;
     let { x, y, w, h } = d.box;
     const g = [];
+    const free = e.altKey; // Alt/Option = free positioning (no snap, no grid)
     if (d.handle === 'move') {
-      x += dx; y += dy;
-      const sv = snapAxis([x, x + w / 2, x + w], d.vT);
-      if (sv) { x += sv.off; g.push({ axis: 'v', pos: sv.line }); } else x = Math.round(x / GRID) * GRID;
-      const sh = snapAxis([y, y + h / 2, y + h], d.hT);
-      if (sh) { y += sh.off; g.push({ axis: 'h', pos: sh.line }); } else y = Math.round(y / GRID) * GRID;
-      x = clamp(x, 0, 100 - w);
-      y = clamp(y, 0, 100 - h);
+      const snapped = snapMove({ x: x + dx, y: y + dy, w, h }, d, { free });
+      x = clamp(snapped.x, 0, 100 - w);
+      y = clamp(snapped.y, 0, 100 - h);
+      g.push(...snapped.guides);
     } else {
-      if (d.handle.includes('e')) { w = clamp(w + dx, MIN, 100 - x); const s = snapVal(x + w, d.vT); if (s != null) { w = clamp(s - x, MIN, 100 - x); g.push({ axis: 'v', pos: s }); } }
-      if (d.handle.includes('s')) { h = clamp(h + dy, MIN, 100 - y); const s = snapVal(y + h, d.hT); if (s != null) { h = clamp(s - y, MIN, 100 - y); g.push({ axis: 'h', pos: s }); } }
-      if (d.handle.includes('w')) { let nx = clamp(x + dx, 0, x + w - MIN); const s = snapVal(nx, d.vT); if (s != null) { nx = clamp(s, 0, x + w - MIN); g.push({ axis: 'v', pos: nx }); } w += x - nx; x = nx; }
-      if (d.handle.includes('n')) { let ny = clamp(y + dy, 0, y + h - MIN); const s = snapVal(ny, d.hT); if (s != null) { ny = clamp(s, 0, y + h - MIN); g.push({ axis: 'h', pos: ny }); } h += y - ny; y = ny; }
+      if (d.handle.includes('e')) { w = clamp(w + dx, MIN, 100 - x); const s = snapEdge(x + w, d.vT, 'v', { free }); if (s.guide) { w = clamp(s.val - x, MIN, 100 - x); g.push(s.guide); } }
+      if (d.handle.includes('s')) { h = clamp(h + dy, MIN, 100 - y); const s = snapEdge(y + h, d.hT, 'h', { free }); if (s.guide) { h = clamp(s.val - y, MIN, 100 - y); g.push(s.guide); } }
+      if (d.handle.includes('w')) { let nx = clamp(x + dx, 0, x + w - MIN); const s = snapEdge(nx, d.vT, 'v', { free }); if (s.guide) { nx = clamp(s.val, 0, x + w - MIN); g.push(s.guide); } w += x - nx; x = nx; }
+      if (d.handle.includes('n')) { let ny = clamp(y + dy, 0, y + h - MIN); const s = snapEdge(ny, d.hT, 'h', { free }); if (s.guide) { ny = clamp(s.val, 0, y + h - MIN); g.push(s.guide); } h += y - ny; y = ny; }
     }
     const r = (n) => Math.round(n * 10) / 10;
     setGuides(g);
@@ -232,9 +226,7 @@ export default function StageLayoutEditor({ value, onChange }) {
                 onSelect={() => setSel(el.id)} onPointerDown={onPointerDown} />
             ))}
             {/* Alignment guides (only while dragging) */}
-            {guides.map((g, i) => g.axis === 'v'
-              ? <div key={i} className="absolute top-0 bottom-0 bg-primary pointer-events-none" style={{ left: `calc(${g.pos}% - 0.5px)`, width: 1, zIndex: 150 }} />
-              : <div key={i} className="absolute left-0 right-0 bg-primary pointer-events-none" style={{ top: `calc(${g.pos}% - 0.5px)`, height: 1, zIndex: 150 }} />)}
+            <SnapGuides guides={guides} />
             {elements.length === 0 && (
               <div className="absolute inset-0 flex items-center justify-center text-on-surface-variant/40 text-label-sm uppercase tracking-widest">No elements — add one or pick a layout</div>
             )}

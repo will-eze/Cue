@@ -11,6 +11,7 @@ import FontSettings from '../settings/FontSettings';
 import MediaCleanup from '../settings/MediaCleanup';
 import ShortcutSettings from '../settings/ShortcutSettings';
 import RemoteSettings from '../settings/RemoteSettings';
+import SongUsageSettings from '../settings/SongUsageSettings';
 import ScriptureDetectionSettings from '../settings/ScriptureDetectionSettings';
 import DataSettings from '../settings/DataSettings';
 import DangerZone from '../settings/DangerZone';
@@ -30,6 +31,7 @@ export const SECTIONS = [
   { id: 'fonts',      icon: 'font_download',   label: 'Fonts' },
   { id: 'media',      icon: 'cleaning_services', label: 'Media' },
   { id: 'shortcuts',  icon: 'keyboard',        label: 'Shortcuts' },
+  { id: 'usage',      icon: 'receipt_long',    label: 'CCLI' },
   { id: 'remote',     icon: 'cell_tower',      label: 'Remote' },
   { id: 'detect',     icon: 'hearing',         label: 'Detect' },
   { id: 'data',       icon: 'database',        label: 'Data' },
@@ -254,6 +256,7 @@ export default function SettingsView({ activeServiceId, onRundownCleared, onRund
         <section ref={setRef('fonts')} data-section="fonts" className="scroll-mt-lg"><FontSettings /></section>
         <section ref={setRef('media')} data-section="media" className="scroll-mt-lg"><MediaCleanup /></section>
         <section ref={setRef('shortcuts')} data-section="shortcuts" className="scroll-mt-lg"><ShortcutSettings /></section>
+        <section ref={setRef('usage')} data-section="usage" className="scroll-mt-lg"><SongUsageSettings /></section>
         <section ref={setRef('remote')} data-section="remote" className="scroll-mt-lg"><RemoteSettings /></section>
         <section ref={setRef('detect')} data-section="detect" className="scroll-mt-lg"><ScriptureDetectionSettings /></section>
         <section ref={setRef('data')} data-section="data" className="scroll-mt-lg"><DataSettings /></section>

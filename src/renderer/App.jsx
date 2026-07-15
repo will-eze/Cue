@@ -7,6 +7,7 @@ import SettingsView from './views/SettingsView';
 import TopBarTabs from './components/TopBarTabs';
 import ErrorBoundary from './components/ErrorBoundary';
 import { injectUserFontFaces } from './utils/fonts';
+import { hasOpenModal } from './utils/modalGuard';
 import { resolveAnchors, collides, overlapIds } from '../shared/stage-schedule.js';
 
 const platform = window.cue.platform; // 'darwin' | 'win32' | 'linux'
@@ -111,6 +112,24 @@ export default function App() {
     setSettingsNonce((n) => n + 1);
     setView('settings');
   }
+
+  // ⌘, / Ctrl+, — the universal "Preferences" accelerator: jump to Settings, or
+  // back to Operator if already there. Stands down while a modal/editor owns the
+  // screen so it can't yank the view out from under an open dialog. A ref keeps
+  // the always-mounted listener reading the current view + navigateTo.
+  const settingsShortcutRef = useRef(null);
+  settingsShortcutRef.current = () => navigateTo(view === 'settings' ? 'operator' : 'settings');
+  useEffect(() => {
+    const onKey = (e) => {
+      const mod = window.cue.platform === 'darwin' ? e.metaKey : e.ctrlKey;
+      if (!mod || e.altKey || e.shiftKey || e.key !== ',') return;
+      if (hasOpenModal()) return;
+      e.preventDefault();
+      settingsShortcutRef.current?.();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
 
   // The currently-active tab id, so exactly one tab highlights (a pinned subsection
   // wins over the base Settings tab when its section is the deep-link target).

@@ -9,8 +9,8 @@ All renderer↔main communication is via `ipcRenderer.invoke` / `ipcMain.handle`
 | `search(query)` | `[{id, title, author, tags}]` | FTS5 prefix search (apostrophe-insensitive, v26). Strict AND-prefix hits first, then a lyric-tolerant **OR-recall fallback** (`_rankByOverlap`) appends phrase/coverage-ranked songs strictly below them — so a misremembered or extra word in a typed/pasted lyric line still surfaces the song. Empty/null query returns all. See §16. |
 | `listAll()` | `[{id, title, author, copyright, default_background_id, tags:[...]}]` | Full list with tags. |
 | `get(id)` | `{id, title, author, copyright, default_background_id, background_path, sections:[...], tags:[...]}` | Full song with sections ordered by order_index. |
-| `create(data)` | `id` | data: `{title, author, copyright, sections:[{type,content,style_json}], tagIds:[]}` |
-| `update(id, data)` | void | Same shape as create. Sections rebuild replaces all existing. |
+| `create(data)` | `id` | data: `{title, author, copyright, sections:[{type,content,style_json}], tagIds:[], arrangement?}`. `arrangement` = 0-based section positions (§16). |
+| `update(id, data)` | void | Same shape as create. Sections rebuild replaces all existing; `arrangement` re-serialized against the new section count. |
 | `delete(id)` | `{hasReferences: bool, count: number}` | Refuses if referenced by service_items. |
 | `addTag(songId, tagId)` | void | — |
 | `removeTag(songId, tagId)` | void | — |
@@ -24,6 +24,9 @@ All renderer↔main communication is via `ipcRenderer.invoke` / `ipcMain.handle`
 | `scrapeSearch(query)` | `{ok, results:[{title,artist,url,provider}]}\|{ok:false,error}` | Online Song Finder — search Genius by title/artist; runs in main (no CSP/CORS issue). |
 | `scrapeFetch(candidate)` | `{ok,title,artist,sections:[…]}\|{ok:false,error}` | Fetch + clean lyrics for one search result (Genius / AZLyrics / arbitrary `url`); returns parsed sections ready for an editable preview before saving. |
 | `applyStyleToSong(songId, styleJson)` | void | Merges `styleJson` into every section of a song (preserving inline runs). |
+| `logUsage(songId)` | void | CCLI usage log. Fired by `OperatorView` on live-song change; dedupes per song within ~12h and snapshots title/author/copyright (v31, §05 `song_usage`). |
+| `usageReport(fromIso, toIso)` | `{rows:[{title, author, copyright, times_used, first_used, last_used}], total}` | Grouped play counts over a date range (inclusive) for the CCLI report (`SongUsageSettings.jsx`). |
+| `usageClear()` | void | Wipes the whole `song_usage` log (confirm-gated in the UI). |
 
 ### `window.cue.tags`
 
@@ -228,7 +231,27 @@ The graphic-fire methods (`window.cue.output.graphic.show/hide`, `ticker.show/hi
 | `reorder(orderedIds)` | void | Single transaction. |
 | `apply(scene)` | void | Accepts a DB row OR a live-preview object; `normalizeScene` → `outputManager.applyScene` drives the live bus atomically (§13). Used by number-key recall, the panel's Take, and the editor's Test. |
 
-### `window.cue.themes`
+### `window.cue.outputPresets` (v30 — save & recall the output RIG)
+
+| Method | Returns | Notes |
+|---|---|---|
+| `list()` | `[output_presets rows]` | Ordered by `order_index, id`. `includes_json`/`data_json` as strings. |
+| `get(id)` | `row` | — |
+| `create(data)` | `id` | `data` = `{ name, includes, data }` — `includes`/`data` objects (shape in §05). |
+| `update(id, data)` | void | Same shape as create. |
+| `delete(id)` | void | — |
+| `reorder(orderedIds)` | void | Single transaction. |
+
+Pure CRUD — there is **no `apply()`**. Recall is renderer-orchestrated: `OutputPresetsPanel` replays the snapshot through the existing settings IPC (`output.channels`, `output.monitors`, `output.stream`, `output.stage`, `settings.setGlobalBackground/setGlobalLogo`). See §05 `output_presets`.
+
+### `window.cue.liveInput` (v31 — NDI video receive; §14)
+
+| Method | Returns | Notes |
+|---|---|---|
+| `sources(waitMs)` | `[{name, urlAddress}]` | Discovered NDI senders (Cue's own senders filtered out — feedback guard). `waitMs` lets discovery settle. |
+| `available()` | `bool` | Whether the NDI receive runtime (`grandi`) loaded. |
+| `getEnabled()` / `setEnabled(v)` | `bool` / void | The `live_inputs_enabled` mid-service kill switch. `setEnabled(false)` drops an on-air feed to 'cleared', tears down receivers/previews, and gates GO/discovery/previews. |
+| `previewStart(sourceName)` / `previewStop(sourceName)` | void | Ref-counted operator preview — drives ~2fps JPEG thumbnails over `liveinput:preview` (never a full-frame bus, never a capture loop). |
 
 | Method | Returns | Notes |
 |---|---|---|
@@ -341,7 +364,7 @@ Network control API (Stream Deck / Companion / phone). The renderer only configu
 | `regenerateViewToken()` | config | Mints a new Remote Output view token (old `/output` links stop working) and restarts. |
 | `pushNavState({items, previewItemId, liveItemId, liveSlideIdx})` | void | Renderer pushes the rundown (each item carries `slides:[{index,label,preview}]`) so remote clients can list + jump to a slide. No-op when the server is stopped. |
 
-Control HTTP surface (token via `X-Cue-Token` header or `?token=`): `GET /` (control page), `GET /api/state`, `GET /api/stream` (SSE), `GET /api/{go,clear,logo,next,prev,live}`, `GET /api/select?itemId=N&slideIdx=M`, `POST /api/command {action, …}`.
+Control HTTP surface (token via `X-Cue-Token` header or `?token=`): `GET /` (control page), `GET /api/state` (now also lists saved broadcast graphics + which destination kinds each is live on, matched by **id** never content), `GET /api/stream` (SSE), `GET /api/{go,clear,logo,next,prev,live}`, `GET /api/select?itemId=N&slideIdx=M`, `POST /api/command {action, …}`. Broadcast-graphics remote (saved graphics + countdowns): `POST /api/graphic/{fire,clear,pause,resume} {id, target?}` and `POST /api/countdown/{show,hide,pause,resume} {mode?, durationSec?, targetClock?, source?, label?, onEnd?, target?}`. Main injects the graphic control fns into the server (`fireById`/`clearById`/`pauseById`/`resumeById` + `list`/`overlay`); the remote never resolves overlay state itself.
 
 Output HTTP surface (view token via `X-Cue-View-Token` header or `?vt=`): `GET /output` (mirror page, ungated shell), `GET /output/assets/<file>` + `GET /output/fonts/<file>` (ungated static templates/fonts), `GET /output/stream` (SSE program deltas, view-gated), `GET /output/media/<abs-path>` (view-gated, `serveLocalFile`). The mirror taps the manager's screen-kind buses: `setRemoteProgramListener(cb)` fires `{slide|transport|overlay}` deltas → `pushProgram`; `getProgramSnapshot()` returns the full current `{slide, transport, overlay}` frame for a late joiner.
 
@@ -398,5 +421,8 @@ Subscribe to main→renderer events. Returns an unsubscribe function — call it
 - `stage:timer` — `{state, remaining, target}` fired after any `stage.timer()` call, so the stage settings panel can display the live timer state without polling.
 - `stage:message` — `{text}` fired after any `stage.message()` call, so the stage settings panel can reflect the live message without polling.
 - `update:progress` — `{received, total}` during an in-app update download. The SettingsView `UpdateChecker` shows it as a percentage. See §7 *In-app updater*.
+- `liveinput:preview` — `{sourceName, dataUrl}` ~2fps JPEG thumbnail of a previewing NDI source. The Library **Live** tab and the preview/live monitors render it (never the full RGBA frame bus). §14.
+- `liveinput:status` — `{sourceName, connected, w?, h?, error?}` receiver connection state for the currently-selected live source.
+- `liveinput:enabled` — `bool`, fired when the `live_inputs_enabled` kill switch flips; keeps the operator's `buildPayload` guard and the Library toggle in sync. §14.
 
 ---

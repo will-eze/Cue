@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { looksLikeYouTube } from '../utils/youtube';
 import { useModalGuard } from '../utils/modalGuard';
+import { useFocusTrap } from '../utils/useFocusTrap';
 
 // Paste a YouTube URL → speculative download starts immediately (before Confirm) to
 // steal lead time. Confirm adds the cue; if the URL was edited between paste and
@@ -14,6 +15,8 @@ export default function AddYouTubeModal({ onClose, onConfirm, initialUrl = '' })
   const [status, setStatus] = useState(null); // latest youtube:status snapshot for the prefetched URL
   const [cookieBrowser, setCookieBrowser] = useState(''); // '' = login off, else 'chrome'|'firefox'|…
   const inputRef = useRef(null);
+  const panelRef = useRef(null);
+  useFocusTrap(panelRef);               // keep Tab inside the dialog
   const prefetchedRef = useRef(null);   // URL we kicked a speculative download for
   const confirmedRef = useRef(false);   // don't cancel on unmount once confirmed
   const debounceRef = useRef(null);
@@ -111,6 +114,10 @@ export default function AddYouTubeModal({ onClose, onConfirm, initialUrl = '' })
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Add YouTube Video"
         className="w-[520px] bg-surface-container-high border border-outline-variant/40 rounded-xl ring-1 ring-white/5 shadow-2xl p-lg flex flex-col gap-md"
         onClick={(e) => e.stopPropagation()}
       >

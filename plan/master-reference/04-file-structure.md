@@ -26,6 +26,7 @@ src/
 │   │   │                     autoSnapshot(): synchronous DB-only copy to userData/backups/cue-<stamp>.db on every
 │   │   │                     quit (will-quit, before closeAll), keeps newest 5, try/caught so it never blocks quit.
 │   │   ├── scenes.js         Scenes CRUD (one-press output state recall). normalizeScene(row|liveObj) is the applyScene boundary; hotkeys unique.
+│   │   ├── output-presets.js Output-preset CRUD (v30 — save/recall the output RIG; separate from scenes). Pure CRUD, no apply() — recall is renderer-orchestrated (§05, §07).
 │   │   ├── graphics.js       Broadcast-graphics CRUD (list/get/create/update/del/reorder). style_json + target.
 │   │   │                     presets() reads built-in designs from resources/graphics/ (*.html custom + *.json
 │   │   │                     structured), not DB rows (§7).
@@ -112,6 +113,8 @@ src/
 │   │   │                     v27: stage layout CRUD (output:stage:layout:get/set, output:stage:preset:list/save/delete).
 │   │   ├── graphics.ipc.js   Registers graphics:* CRUD handlers + graphics:presets (registerGraphicsIpc).
 │   │   ├── scenes.ipc.js     Registers scenes:* CRUD + scenes:apply→outputManager.applyScene (registerScenesIpc).
+│   │   ├── output-presets.ipc.js  Registers outputPresets:* CRUD (registerOutputPresetsIpc). No apply — renderer replays snapshots.
+│   │   ├── live-input.ipc.js Registers liveInput:* (sources/available/getEnabled/setEnabled/previewStart/previewStop) → ndi-input + manager (registerLiveInputIpc). §14.
 │   │   ├── themes.ipc.js     Registers themes:* CRUD + apply handlers (registerThemesIpc); apply* await
 │   │   │                     resolveThemeBackground first when setBg (media-theme bgRef download).
 │   │   ├── background-library.ipc.js  Registers backgrounds:* (list/tagCounts/download/applyAsDefault).
@@ -214,8 +217,11 @@ src/
 │       │                     (interleaved f32le to RTMP); updateAudioTapState (audio:tap on/off). Stream Studio: prepare/open/
 │       │                     close/start/stopStream, get/setStreamStudio, steady-CFR encode pump + preview/levels/health, a
 │       │                     dedicated offscreen compositor window (backgroundThrottling:false) kept outside the windows map.
-│       └── ndi.js            Active NDI implementation. createRequire loads @grandi/<platform>-<arch>
-│                             at runtime. createSender / sendFrame (inflight guard) / sendAudio (FLTp planar) / destroySender.
+│       ├── ndi.js            Active NDI implementation. createRequire loads @grandi/<platform>-<arch>
+│       │                     at runtime. createSender / sendFrame (inflight guard) / sendAudio (FLTp planar) / destroySender.
+│       └── ndi-input.js      NDI RECEIVE (v31 — live video sources). One grandi.find() finder + per-source receive()+framesync()
+│                             video/audio pumps, in-flight crash guard (never destroy while a pull awaits), ~2fps JPEG previews,
+│                             feed-health buzz gate. Fans full frames to fullscreen+stream windows only. §14.
 │
 ├── shared/
 │   ├── stage-schedule.js     Pure scheduled-stage-message logic (no electron/DOM) shared by main + renderer:
@@ -311,6 +317,11 @@ src/
 │   │   │                          lower-third channel mode switcher (per-channel 3-way, runtime), Quick Ticker,
 │   │   │                          grid of live-thumbnail cards (Take/Clear per kind), Clear All. Follows
 │   │   │                          output:overlay-changed for Live badges. Hosts GraphicsEditor.
+│   │   ├── ScenesAndOutputsPanel.jsx  Combined tab shell hosting ScenesPanel (live LOOK recall) + OutputPresetsPanel
+│   │   │                          (output RIG recall) as two sub-sections. Mounted by LibraryPanel.
+│   │   ├── OutputPresetsPanel.jsx Output Presets UI (v30). Card grid (Take/rename/delete/reorder) + capture modal
+│   │   │                          (tick which layers to snapshot) + apply confirm. Recall replays the snapshot through the
+│   │   │                          existing settings IPC (no db apply); outputPresetDiff flags out-of-sync presets. §05.
 │   │   ├── ScenesPanel.jsx        Scenes tab. Card grid (Take + hotkey chip) + capture-driven editor (Capture current
 │   │   │                          output → snapshot overlay/program/audio; program & audio segmented overrides; Test).
 │   │   │                          Dispatches a `cue:scenes-changed` window event so OperatorView reloads number-key binds.
@@ -381,6 +392,9 @@ src/
 │   │   ├── SongScrapeModal.jsx    Online Song Finder modal. Query input → `songs.scrapeSearch` → candidate list
 │   │   │                          (title + artist + provider). Pick a result → `songs.scrapeFetch` → editable preview
 │   │   │                          (SongEditor inside the modal) → Save adds the song to the library.
+│   │   ├── SheetMusicImportModal.jsx  Sheet-music → song import (renderer OCR). Loads a page image → Florence-2
+│   │   │                          (ocr/sheet-ocr-worker.web.js, WebGPU/wasm, opt-in model download) → ocr/sheetParse.js
+│   │   │                          structures lines into title/verses/chorus → editable preview → save. §16.
 │   │   ├── SermonImportModal.jsx  Sermon → Slides import modal. File picker (txt/md/docx) or paste text; PDF extracted
 │   │   │                          via pdfText.js in the renderer. Theme + Bible version pickers. `presentations.sermonGenerate`
 │   │   │                          → opens the PresentationEditor for the new deck on success. See §22.
@@ -437,6 +451,8 @@ src/
 │   │   ├── ShortcutSettings.jsx  Configurable keyboard shortcuts UI. Modifier selector (Cmd/Ctrl/Alt)
 │   │                              + key inputs for GO, Clear, Logo, Live Toggle. Saves to settings DB.
 │   │                              Shortcuts reload in OperatorView on next bgRefreshTick.
+│   │   ├── SongUsageSettings.jsx CCLI usage report (v31). Date-range picker → songs.usageReport table (title/author/
+│   │                              copyright/count/last-used) + client-side CSV export (blob) + confirm-gated Clear Log.
 │   │   ├── RemoteSettings.jsx    Network control card (enable toggle, port, Allow-LAN, pairing token copy/regenerate,
 │   │   │                          phone URL, HTTP API reference) PLUS a Remote Output card (separate enable toggle,
 │   │   │                          view-only /output link copy + Regenerate Link). Renders a QR (qrcode → data-URL,
@@ -455,6 +471,12 @@ src/
 │       │                         @font-face <style> into the operator document (called on app start + after import).
 │       ├── channelMode.js        Lower-third content-mode helpers: CHANNEL_MODES, channelMode(ch),
 │       │                         modeToFlags(mode) ({show_program, show_graphics}). Shared by Settings + Graphics panel.
+│       ├── outputPresetDiff.js   Diffs a saved output preset's snapshot against the live rig (per included layer) so
+│       │                         OutputPresetsPanel can flag "out of sync" / offer update-from-current. §05.
+│       ├── snapping.js           Drag-snap helper for the WYSIWYG editors (Stage/Song/Presentation/Graphics): edge +
+│       │                         centre alignment guides against siblings and the canvas, with a pixel threshold.
+│       ├── useFocusTrap.js       useFocusTrap(ref, active) — traps Tab focus inside a modal + restores focus on close.
+│       │                         Used by the import/scrape/YouTube/usage modals.
 │       ├── themeSort.js          themeKind(theme) + sortThemes(list): media → gradient → custom ordering for the pickers.
 │       ├── pdfText.js            extractPdfText(bytes) → plain text string (pdfjs, DOM-side). Reconstructs lines from
 │       │                         text-item `hasEOL`/y-position info so sub-point structure survives PDF extraction.
@@ -465,9 +487,17 @@ src/
 │                                 numbered only when a type repeats); sectionLabels(slides,{abbrev}); sectionLabelAt.
 │                                 Used by SlideList, SongEditor, OperatorView buildPayload (stage label), the remote.
 │                                 Also owns variable-size section splitting: SLIDE_BREAK ('⁂'), splitSectionContent(content)
-│                                 → parts, expandSongSections(sections) → flat slide list (one slide per part, labels
-│                                 computed at the SECTION level so parts share "Verse 1"; carries _label/_labelAbbr/
-│                                 _partIndex/_partCount/_key). getSlides()'s song branch returns this.
+│                                 → parts, expandSongSections(sections, arrangement) → flat slide list (one slide per part,
+│                                 labels computed at the SECTION level so parts share "Verse 1"; carries _label/_labelAbbr/
+│                                 _partIndex/_partCount/_key). applyArrangement reorders by 0-based positions (v31, §16) —
+│                                 labels stay on the natural list so a repeated chorus keeps its name. getSlides()'s song branch returns this.
+│
+│   ├── ocr/                       Sheet-music OCR (renderer, opt-in Florence-2).
+│   │   ├── sheet-ocr-worker.web.js  Web Worker (Vite ?worker) — transformers.js Florence-2 <OCR_WITH_REGION> on WebGPU/wasm.
+│   │   │                         Local ORT wasm via ?url (no CDN); weights cache in the Cache API; single-flight generate().
+│   │   ├── sheetOcrStore.js       Spawns/owns the worker; sheetModelPresent() opt-in gate; progress + result plumbing.
+│   │   ├── sheetParse.js          Pure line→structure parser (title/author/numbered verses/chorus; drops chords/tempo).
+│   │   └── sheetParse.test.mjs    Node test for sheetParse (wired into `npm test`).
 │
 ├── output/                   Plain HTML — no build step, no React, served directly.
 │   ├── media-player.js       Shared classic script (loaded before fullscreen.js/stage.js). window.CueMediaPlayer.

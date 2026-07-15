@@ -4,7 +4,7 @@ import { app } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
-import { spawnSync } from 'child_process';
+import { spawn } from 'child_process';
 import { ffmpegPath } from '../youtube/bin.js';
 
 export function getMediaDir() {
@@ -39,36 +39,61 @@ function detectType(ext) {
 }
 
 // Probe video/audio duration using ffmpeg header-read (fast — no decode).
-// Returns milliseconds, or null if ffmpeg is unavailable or probing fails.
+// Resolves to milliseconds, or null if ffmpeg is unavailable or probing fails.
+// MUST stay async (spawn, not spawnSync): a synchronous ffmpeg call blocks the
+// main-process event loop for up to the 8s timeout PER FILE — importing a few
+// clips would freeze the whole app (spinning beach ball).
 function probeDurationMs(filePath) {
   const ff = ffmpegPath();
-  if (!ff) return null;
-  try {
-    const r = spawnSync(ff, ['-v', 'error', '-i', filePath], { encoding: 'utf8', timeout: 8000 });
-    const m = (r.stderr || '').match(/Duration:\s+(\d+):(\d+):(\d+(?:\.\d+)?)/);
-    if (!m) return null;
-    return Math.round((Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3])) * 1000);
-  } catch { return null; }
+  if (!ff) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    let stderr = '';
+    let done = false;
+    const finish = (val) => { if (!done) { done = true; resolve(val); } };
+    let child;
+    try {
+      child = spawn(ff, ['-v', 'error', '-i', filePath]);
+    } catch { return finish(null); }
+    const timer = setTimeout(() => { try { child.kill('SIGKILL'); } catch {} finish(null); }, 8000);
+    child.stderr.on('data', (d) => { stderr += d.toString(); });
+    child.on('error', () => { clearTimeout(timer); finish(null); });
+    child.on('close', () => {
+      clearTimeout(timer);
+      const m = stderr.match(/Duration:\s+(\d+):(\d+):(\d+(?:\.\d+)?)/);
+      finish(m ? Math.round((Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3])) * 1000) : null);
+    });
+  });
 }
 
-export function importFiles(filePaths) {
+export async function importFiles(filePaths) {
   const db = getDb();
   const mediaDir = ensureMediaDir();
+
+  // Phase 1 — I/O off the event loop: copy each file and probe its duration
+  // asynchronously. better-sqlite3 transactions are synchronous and can't await,
+  // so all the slow work (large-file copy, ffmpeg probe) happens up front, NOT
+  // inside the transaction.
+  const prepared = [];
+  for (const src of filePaths) {
+    const ext = path.extname(src);
+    const destName = crypto.randomUUID() + ext;
+    const destPath = path.join(mediaDir, destName);
+    await fs.promises.copyFile(src, destPath);
+    const type = detectType(ext);
+    const filename = path.basename(src);
+    const durationMs = (type === 'video' || type === 'audio') ? await probeDurationMs(destPath) : null;
+    let sizeBytes = null;
+    try { sizeBytes = (await fs.promises.stat(destPath)).size; } catch {}
+    prepared.push({ filename, destPath, type, durationMs, sizeBytes });
+  }
+
+  // Phase 2 — fast synchronous inserts inside one transaction.
   const results = [];
   db.transaction(() => {
-    for (const src of filePaths) {
-      const ext = path.extname(src);
-      const destName = crypto.randomUUID() + ext;
-      const destPath = path.join(mediaDir, destName);
-      fs.copyFileSync(src, destPath);
-      const type = detectType(ext);
-      const filename = path.basename(src);
-      const durationMs = (type === 'video' || type === 'audio') ? probeDurationMs(destPath) : null;
-      let sizeBytes = null;
-      try { sizeBytes = fs.statSync(destPath).size; } catch {}
+    for (const p of prepared) {
       const { lastInsertRowid } = db.prepare('INSERT INTO media_assets (filename, path, type, duration_ms, size_bytes) VALUES (?,?,?,?,?)')
-        .run(filename, destPath, type, durationMs, sizeBytes);
-      results.push({ id: Number(lastInsertRowid), filename, path: destPath, type, duration_ms: durationMs, size_bytes: sizeBytes });
+        .run(p.filename, p.destPath, p.type, p.durationMs, p.sizeBytes);
+      results.push({ id: Number(lastInsertRowid), filename: p.filename, path: p.destPath, type: p.type, duration_ms: p.durationMs, size_bytes: p.sizeBytes });
     }
   })();
   return results;
@@ -139,9 +164,14 @@ export function findUnused() {
   addAll(db.prepare('SELECT DISTINCT background_id          AS id FROM presentation_slides    WHERE background_id IS NOT NULL').all());
   addAll(db.prepare('SELECT DISTINCT background_id          AS id FROM presentation_templates WHERE background_id IS NOT NULL').all());
   addAll(db.prepare('SELECT DISTINCT background_media_id    AS id FROM graphics               WHERE background_media_id IS NOT NULL').all());
-  // onEndMediaId is stored inside style_json for countdown graphics (no FK column).
+  // onEndMediaId + audioMediaId are stored inside style_json for countdown graphics
+  // (no FK column) — the end-action media and the "play while live" audio track.
   for (const { style_json } of db.prepare("SELECT style_json FROM graphics WHERE kind='countdown' AND style_json IS NOT NULL").all()) {
-    try { const s = JSON.parse(style_json); if (s.onEndMediaId) referenced.add(Number(s.onEndMediaId)); } catch {}
+    try {
+      const s = JSON.parse(style_json);
+      if (s.onEndMediaId) referenced.add(Number(s.onEndMediaId));
+      if (s.audioMediaId) referenced.add(Number(s.audioMediaId));
+    } catch {}
   }
   // Image elements reference media by id inside elements_json (not an FK column).
   for (const r of db.prepare('SELECT elements_json FROM presentation_slides UNION ALL SELECT elements_json FROM presentation_templates').all()) {
@@ -151,6 +181,14 @@ export function findUnused() {
     const row = db.prepare('SELECT value FROM settings WHERE key=?').get(key);
     if (!row) continue;
     try { const v = JSON.parse(row.value); if (v != null) referenced.add(Number(v)); } catch {}
+  }
+  // Output presets snapshot global background / logo ids inside data_json
+  // (backgroundsStage.settings) — keep those assets out of "unused" too.
+  for (const { data_json } of db.prepare('SELECT data_json FROM output_presets').all()) {
+    try {
+      const s = JSON.parse(data_json)?.backgroundsStage?.settings;
+      if (s) for (const v of Object.values(s)) if (v != null) referenced.add(Number(v));
+    } catch {}
   }
   // Background-library downloads (settings JSON map { manifestId: mediaAssetId },
   // see db/background-library.js) are intentional library additions — keep them

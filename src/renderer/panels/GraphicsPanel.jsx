@@ -116,6 +116,7 @@ export default function GraphicsPanel() {
       targetClock: style.targetClock, format: style.format, showSeconds: style.showSeconds,
       label: g.text || '', endMessage: style.endMessage || '', onEnd: style.onEnd || 'hold',
       onEndMediaId: style.onEndMediaId || null,
+      audioMediaId: style.audioMediaId || null, audioLoop: !!style.audioLoop,
       style: { time: style.time, message: style.message }, target, bgPath, bgFit,
     });
     else if (g.kind === 'custom') window.cue.output.graphic.showCustom({ id: g.id, html: fillPlaceholders(g.html, g), target, autoDismissSec, bgPath, bgFit });
@@ -147,6 +148,22 @@ export default function GraphicsPanel() {
     else if (g.kind === 'ticker') window.cue.output.ticker.hide(target);
     else if (g.kind === 'countdown') window.cue.output.countdown.hide(target);
     else if (g.kind === 'custom') window.cue.output.graphic.hideCustom(target);
+  }
+
+  // Is this live countdown currently paused? True only if EVERY live destination is
+  // paused, so the button shows Resume once, not a mixed state.
+  function livePaused(g) {
+    if (g.kind !== 'countdown') return false;
+    const slot = overlay.countdown;
+    const dests = liveDests(g);
+    return dests.length > 0 && dests.every((k) => slot[k] && slot[k].paused);
+  }
+  function togglePause(g) {
+    const dests = liveDests(g);
+    if (!dests.length) return;
+    const target = destToTarget(dests, dests[0]);
+    if (livePaused(g)) window.cue.output.countdown.resume(target);
+    else window.cue.output.countdown.pause(target);
   }
 
   // Saved tickers the quick ticker can borrow a look from.
@@ -320,8 +337,8 @@ export default function GraphicsPanel() {
               <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-outline px-xs">{title}</span>
               <div className="grid gap-md" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(248px, 1fr))' }}>
                 {items.map((g) => (
-                  <GraphicCard key={g.id} g={g} liveOn={liveDests(g)} dismissAt={liveDismissAt(g)} destLabel={(() => { const t = resolveTarget(g); return Array.isArray(t) ? t.map((k) => TARGET_LABEL[k]).join(' + ') : TARGET_LABEL[t]; })()}
-                    onTake={() => take(g)} onClear={() => clear(g)}
+                  <GraphicCard key={g.id} g={g} liveOn={liveDests(g)} dismissAt={liveDismissAt(g)} paused={livePaused(g)} destLabel={(() => { const t = resolveTarget(g); return Array.isArray(t) ? t.map((k) => TARGET_LABEL[k]).join(' + ') : TARGET_LABEL[t]; })()}
+                    onTake={() => take(g)} onClear={() => clear(g)} onTogglePause={() => togglePause(g)}
                     onEdit={() => setEditor(g)} onDelete={() => remove(g)} />
                 ))}
               </div>
@@ -369,23 +386,26 @@ function useDismissCountdown(dismissAt) {
   return secs > 0 ? secs : null;
 }
 
-function GraphicCard({ g, liveOn = [], dismissAt = null, destLabel, onTake, onClear, onEdit, onDelete }) {
+function GraphicCard({ g, liveOn = [], dismissAt = null, paused = false, destLabel, onTake, onClear, onTogglePause, onEdit, onDelete }) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const live = liveOn.length > 0;
   const dismissIn = useDismissCountdown(dismissAt);
-  // Where it's live: multiple kinds → "Live", else name the single destination.
-  const liveLabel = liveOn.length > 1 ? 'Live' : `Live · ${TARGET_LABEL[liveOn[0]] || ''}`;
+  // Where it's live: multiple kinds → "Live", else name the single destination. A paused
+  // timer reads "Paused" so the frozen readout isn't mistaken for a stuck timer.
+  const liveLabel = paused ? 'Paused' : liveOn.length > 1 ? 'Live' : `Live · ${TARGET_LABEL[liveOn[0]] || ''}`;
   const cdSt = g.kind === 'countdown' ? parseStyle(g) : null;
   const cdModeLabel = cdSt ? (cdSt.mode === 'clock' ? 'Clock' : cdSt.mode === 'countup' ? 'Count Up' : 'Countdown') : '';
   const primaryText = g.kind === 'ticker' ? g.text
     : g.kind === 'countdown' ? (g.label || g.text || cdModeLabel)
     : (g.name || g.label || '—');
   const subText = g.kind === 'lower_third' ? g.title
-    : g.kind === 'countdown' ? cdModeLabel
+    : g.kind === 'countdown' ? (cdModeLabel + (cdSt && cdSt.audioMediaId ? `  ·  ♪ ${cdSt.audioName || 'audio'}` : ''))
     : g.kind === 'custom' ? (g.label || 'Custom HTML') : null;
   const isTimer = g.kind === 'ticker' || g.kind === 'countdown';
   const takeLabel = isTimer ? 'Start' : 'Take';
   const clearLabel = isTimer ? 'Stop' : 'Clear';
+  // Clocks track wall time — only countdown/count-up can be paused.
+  const canPause = g.kind === 'countdown' && cdSt && cdSt.mode !== 'clock';
 
   return (
     <div className={`group flex flex-col rounded-lg border overflow-hidden transition-colors ${
@@ -440,7 +460,17 @@ function GraphicCard({ g, liveOn = [], dismissAt = null, destLabel, onTake, onCl
           {subText && <div className="text-label-sm font-label-sm text-on-surface-variant truncate normal-case tracking-normal">{subText}</div>}
         </div>
         {live ? (
-          <button onClick={onClear} className="px-md py-1.5 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] bg-surface-container-high border border-secondary/50 text-secondary hover:bg-surface-variant cursor-pointer shrink-0">{clearLabel}</button>
+          <div className="flex items-center gap-xs shrink-0">
+            {canPause && (
+              <button onClick={onTogglePause} title={paused ? 'Resume timer' : 'Pause timer'}
+                className={`flex items-center gap-xs px-md py-1.5 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] border cursor-pointer transition-colors ${
+                  paused ? 'bg-tertiary/15 border-tertiary/50 text-tertiary hover:bg-tertiary/25' : 'bg-surface-container-high border-outline-variant/50 text-on-surface-variant hover:text-on-surface'
+                }`}>
+                <span className="material-symbols-outlined text-[14px]">{paused ? 'play_arrow' : 'pause'}</span>{paused ? 'Resume' : 'Pause'}
+              </button>
+            )}
+            <button onClick={onClear} className="px-md py-1.5 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] bg-surface-container-high border border-secondary/50 text-secondary hover:bg-surface-variant cursor-pointer">{clearLabel}</button>
+          </div>
         ) : (
           <button onClick={onTake} className="px-md py-1.5 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] font-bold bg-primary text-on-primary hover:brightness-110 cursor-pointer shrink-0">{takeLabel}</button>
         )}

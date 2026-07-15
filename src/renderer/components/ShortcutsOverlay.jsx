@@ -40,20 +40,15 @@ function Group({ title, children }) {
 }
 
 export default function ShortcutsOverlay({ onClose }) {
-  const [sc, setSc] = useState({ modifier: isMac ? 'meta' : 'ctrl', go: 'g', clear: 'c', logo: 'l', live: 'o' });
+  const [sc, setSc] = useState({ go: 'g', logo: 'l', live: 'o' });
 
   useEffect(() => {
     Promise.all([
-      window.cue.settings.get('keyboard_modifier'),
       window.cue.settings.get('keyboard_go'),
-      window.cue.settings.get('keyboard_clear'),
       window.cue.settings.get('keyboard_logo'),
       window.cue.settings.get('keyboard_live'),
-    ]).then(([mod, go, clear, logo, live]) => {
-      setSc({
-        modifier: mod ?? (isMac ? 'meta' : 'ctrl'),
-        go: go ?? 'g', clear: clear ?? 'c', logo: logo ?? 'l', live: live ?? 'o',
-      });
+    ]).then(([go, logo, live]) => {
+      setSc({ go: go ?? 'g', logo: logo ?? 'l', live: live ?? 'o' });
     });
   }, []);
 
@@ -63,7 +58,7 @@ export default function ShortcutsOverlay({ onClose }) {
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const mod = sc.modifier === 'meta' ? '⌘' : sc.modifier === 'alt' ? '⌥' : 'Ctrl';
+  const mod = isMac ? '⌘' : 'Ctrl';
   const up = (s) => (s || '').toUpperCase();
 
   return (
@@ -79,32 +74,38 @@ export default function ShortcutsOverlay({ onClose }) {
           </button>
         </div>
         <div className="px-lg py-md grid grid-cols-2 gap-x-xl gap-y-lg max-h-[70vh] overflow-auto">
-          <Group title="Transport">
+          <Group title="Transport (bare keys)">
             <Row keys={['Space']} desc="Advance LIVE to the next slide" />
-            <Row keys={[`${mod}+${up(sc.go)}`, 'G']} desc="GO — send preview to live" />
-            <Row keys={[`${mod}+${up(sc.clear)}`, 'Esc']} desc="Clear all outputs" />
-            <Row keys={[`${mod}+${up(sc.logo)}`, 'L']} desc="Show logo on all outputs" />
-            <Row keys={[`${mod}+${up(sc.live)}`]} desc="Toggle output windows on / off" />
+            <Row keys={[up(sc.go)]} desc="GO — send preview to live" />
+            <Row keys={['Esc']} desc="Clear all outputs" />
+            <Row keys={[up(sc.logo)]} desc="Show logo on all outputs" />
+            <Row keys={[up(sc.live)]} desc="Toggle output windows on / off" />
           </Group>
           <Group title="Navigation">
             <Row keys={['↓']} desc="Next preview slide / item" />
             <Row keys={['↑']} desc="Previous preview slide / item" />
             <Row keys={['Q', 'W', 'E', '…']} desc="Jump LIVE to slide 1, 2, 3 … (when armed)" />
-            <Row keys={['S']} desc="Focus the song search bar" />
-            <Row keys={[`${isMac ? '⌘' : 'Ctrl'}+A`]} desc="Select all rundown items" />
-            <Row keys={[`${isMac ? '⌘' : 'Ctrl'}+.`, `${isMac ? '⌘' : 'Ctrl'}+,`]} desc="Next / previous Library tab" />
+            <Row keys={['S', `${mod}+F`]} desc="Focus the song search bar" />
+            <Row keys={['Ctrl+Tab']} desc="Next / previous Library tab (+⇧)" />
           </Group>
-          <Group title="Scenes">
-            <Row keys={['1', '9']} desc="Recall the Scene bound to that number" />
+          <Group title="Editing (standard)">
+            <Row keys={[`${mod}+C`, `${mod}+X`, `${mod}+V`]} desc="Copy / cut / paste" />
+            <Row keys={[`${mod}+Z`]} desc="Undo (+⇧ to redo)" />
+            <Row keys={[`${mod}+S`]} desc="Save the open editor" />
+            <Row keys={[`${mod}+B`, `${mod}+I`, `${mod}+U`]} desc="Bold / italic / underline" />
+            <Row keys={[`${mod}+A`]} desc="Select all rundown items" />
+            <Row keys={[`${mod}+D`]} desc="Duplicate selected item(s)" />
           </Group>
           <Group title="Global">
-            <Row keys={[`${isMac ? '⌘' : 'Ctrl'}+K`]} desc="Command palette — find & add anything" />
+            <Row keys={[`${mod}+K`, `${mod}+N`]} desc="Command palette — find & add anything" />
+            <Row keys={[`${mod}+,`]} desc="Open / leave Settings" />
+            <Row keys={['1', '–', '9']} desc="Recall the Scene bound to that number" />
             <Row keys={['?']} desc="Show / hide this cheatsheet" />
           </Group>
         </div>
         <div className="px-lg py-sm border-t border-outline-variant/20 flex items-center justify-between gap-md">
           <span className="text-[11px] text-on-surface-variant/60">
-            Bare G / Esc fire on a single press only when armed (Settings → Shortcuts). The {mod}-shortcuts always work.
+            Bare GO / Esc / Output fire on a single press only when armed (Settings → Shortcuts). The {mod}-shortcuts always work.
           </span>
           <button
             onClick={() => {

@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useModalGuard } from '../utils/modalGuard';
+import { useFocusTrap } from '../utils/useFocusTrap';
 
 // Online Song Finder — search the web by title/artist, fetch + clean the lyrics,
 // edit them in place, then save into the library. All scraping happens in main
@@ -25,6 +26,8 @@ export default function SongScrapeModal({ onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
 
   const titleRef = useRef(null);
+  const panelRef = useRef(null);
+  useFocusTrap(panelRef);
   useEffect(() => { titleRef.current?.focus(); }, []);
 
   const runSearch = useCallback(async () => {
@@ -85,7 +88,7 @@ export default function SongScrapeModal({ onClose, onSaved }) {
   return createPortal(
     <div className="fixed inset-0 z-[60] bg-background/80 backdrop-blur-sm flex items-center justify-center p-lg"
       onClick={saving || fetching ? undefined : onClose}>
-      <div onClick={(e) => e.stopPropagation()}
+      <div ref={panelRef} role="dialog" aria-modal="true" aria-label="Find Song Online" onClick={(e) => e.stopPropagation()}
         className="w-[920px] max-w-full h-[620px] max-h-full bg-surface-container-low rounded-xl border border-outline-variant/30 shadow-2xl ring-1 ring-white/5 overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex items-center gap-sm px-lg h-12 bg-surface-container-high border-b border-outline-variant/30 shrink-0">

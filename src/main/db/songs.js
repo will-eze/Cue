@@ -99,16 +99,26 @@ export function getById(id) {
   return song;
 }
 
+// Arrangement = the played order of sections as 0-based positions (repeats
+// allowed), stored as JSON. Normalise unknown shapes to null (= natural order).
+function serializeArrangement(arrangement, sectionCount) {
+  if (!Array.isArray(arrangement)) return null;
+  const idxs = arrangement
+    .map((n) => Number(n))
+    .filter((n) => Number.isInteger(n) && n >= 0 && n < sectionCount);
+  return idxs.length ? JSON.stringify(idxs) : null;
+}
+
 export function create(data) {
   const db = getDb();
-  const { title, author, copyright, sections = [], tagIds = [] } = data;
+  const { title, author, copyright, sections = [], tagIds = [], arrangement } = data;
   // A new song starts with NO background of its own — it follows the live global
   // song default (resolved at output time, §9) until one is set explicitly. Don't
   // snapshot the global here, or the song would silently stop tracking it.
   return db.transaction(() => {
     const { lastInsertRowid } = db.prepare(
-      'INSERT INTO songs (title, author, copyright, default_background_id) VALUES (?, ?, ?, ?)'
-    ).run(title, author || null, copyright || null, null);
+      'INSERT INTO songs (title, author, copyright, default_background_id, arrangement_json) VALUES (?, ?, ?, ?, ?)'
+    ).run(title, author || null, copyright || null, null, serializeArrangement(arrangement, sections.length));
     sections.forEach((s, i) =>
       db.prepare('INSERT INTO song_sections (song_id, type, order_index, content, style_json) VALUES (?, ?, ?, ?, ?)')
         .run(lastInsertRowid, s.type, i, s.content, s.style_json ?? null)
@@ -218,10 +228,19 @@ export function seedGhsHymnal() {
 
 export function update(id, data) {
   const db = getDb();
-  const { title, author, copyright, sections, tagIds } = data;
+  const { title, author, copyright, sections, tagIds, arrangement } = data;
   db.transaction(() => {
     db.prepare(`UPDATE songs SET title=?, author=?, copyright=?, updated_at=datetime('now') WHERE id=?`)
       .run(title, author || null, copyright || null, id);
+    // Arrangement rides the same save as the sections it indexes (positions, not
+    // ids — the section rewrite below churns ids). `undefined` = leave untouched.
+    if (arrangement !== undefined) {
+      const count = sections !== undefined
+        ? sections.length
+        : db.prepare('SELECT COUNT(*) AS c FROM song_sections WHERE song_id=?').get(id).c;
+      db.prepare('UPDATE songs SET arrangement_json=? WHERE id=?')
+        .run(serializeArrangement(arrangement, count), id);
+    }
     if (sections !== undefined) {
       db.prepare('DELETE FROM song_sections WHERE song_id = ?').run(id);
       sections.forEach((s, i) =>
@@ -601,4 +620,46 @@ export function updateTag(id, data) {
 
 export function deleteTag(id) {
   getDb().prepare('DELETE FROM tags WHERE id=?').run(id);
+}
+
+// ── Song usage log (CCLI reporting) ──────────────────────────────────────────
+// One row per song aired, deduped so re-airing the same song within a service
+// (slide jumps, GO'ing back after scripture, etc.) counts once. Fields are
+// snapshotted at air time so the report survives later edits/deletes.
+const USAGE_DEDUPE_HOURS = 12;
+
+export function logUsage(songId) {
+  const db = getDb();
+  const song = db.prepare('SELECT id, title, author, copyright FROM songs WHERE id=?').get(songId);
+  if (!song) return { logged: false };
+  const recent = db.prepare(
+    `SELECT id FROM song_usage WHERE song_id=? AND used_at >= datetime('now', ?) LIMIT 1`
+  ).get(songId, `-${USAGE_DEDUPE_HOURS} hours`);
+  if (recent) return { logged: false };
+  db.prepare('INSERT INTO song_usage (song_id, title, author, copyright) VALUES (?, ?, ?, ?)')
+    .run(song.id, song.title, song.author || null, song.copyright || null);
+  return { logged: true };
+}
+
+// Aggregated usage between two ISO dates (inclusive), newest-used first.
+// Grouped by the snapshotted title/author/copyright so renamed/deleted songs
+// still report what was actually shown.
+export function usageReport(fromIso, toIso) {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT title, author, copyright, COUNT(*) AS times_used,
+           MIN(used_at) AS first_used, MAX(used_at) AS last_used
+    FROM song_usage
+    WHERE date(used_at) >= date(?) AND date(used_at) <= date(?)
+    GROUP BY title, author, copyright
+    ORDER BY last_used DESC
+  `).all(fromIso, toIso);
+  const total = db.prepare(
+    `SELECT COUNT(*) AS c FROM song_usage WHERE date(used_at) >= date(?) AND date(used_at) <= date(?)`
+  ).get(fromIso, toIso).c;
+  return { rows, total };
+}
+
+export function usageClear() {
+  getDb().prepare('DELETE FROM song_usage').run();
 }

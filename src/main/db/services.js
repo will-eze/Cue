@@ -81,7 +81,7 @@ function resolveItems(db, items) {
   const songMap = new Map();
   if (songIds.length) {
     const ph = songIds.map(() => '?').join(',');
-    for (const s of db.prepare(`SELECT id, title, author, copyright, default_background_id, background_locked FROM songs WHERE id IN (${ph})`).all(...songIds)) {
+    for (const s of db.prepare(`SELECT id, title, author, copyright, default_background_id, background_locked, arrangement_json FROM songs WHERE id IN (${ph})`).all(...songIds)) {
       songMap.set(s.id, s);
       if (s.default_background_id) mediaIds.add(s.default_background_id);
     }
@@ -163,6 +163,11 @@ function resolveItems(db, items) {
     if (item.item_type === 'scripture' && item.content) {
       const sc = resolveScripture(item);
       if (sc) Object.assign(resolved, sc);
+    }
+    if (item.item_type === 'live-input' && item.content) {
+      // Live video input cue: content is {sourceName, name} JSON — no media_assets
+      // row, no file on disk; the NDI source is resolved live at GO time.
+      try { resolved.liveInput = JSON.parse(item.content); } catch { resolved.liveInput = null; }
     }
     if (item.item_type === 'youtube' && item.content) {
       // The URL lives in `content`; the downloaded file (if any) is tracked in

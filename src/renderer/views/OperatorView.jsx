@@ -19,7 +19,9 @@ const isMac = window.cue.platform === 'darwin';
 // skips the bare operator keys (S = search, G = GO, L = Logo) and never overlaps
 // the 1–9 Scene keys. Armed via Settings (off by default — bare letters can fire
 // mid-task). Lowercase for matching; rendered uppercase in the slide legend.
-const JUMP_KEYS = ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', 'a', 'd', 'f', 'h', 'j', 'k'];
+// Positional verse-jump letters. Excludes the bare transport keys (G/L/O/S) so a
+// jump letter never shadows GO / Logo / Output-toggle / Search when jump is armed.
+const JUMP_KEYS = ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'p', 'a', 'd', 'f', 'h', 'j', 'k'];
 
 // Display label for a slide. Songs get numbered section labels (Verse 1/Verse 2);
 // scripture/media slides keep their own label (the reference / type).
@@ -265,29 +267,40 @@ export default function OperatorView({
   // armJump mirrors armBare but for the positional verse-jump keys (Q W E …). Off
   // by default — kept as state too so the SlideList legend can show/hide the hints.
   const [jumpArmed, setJumpArmed] = useState(false);
-  const shortcutsRef = useRef({ modifier: isMac ? 'meta' : 'ctrl', go: 'g', clear: 'c', logo: 'l', live: 'o', armBare: true, armJump: false });
+  // Mirror of armBare in state so the operator UI can show/toggle the bare-key
+  // arm button (same pattern as jumpArmed). Default armed.
+  const [bareArmed, setBareArmed] = useState(true);
+  // Configurable BARE transport keys (no modifier) + arm flags. Clear is fixed to
+  // Esc; the ⌘/Ctrl combos are all standard app shortcuts and aren't configurable.
+  const shortcutsRef = useRef({ go: 'g', logo: 'l', live: 'o', armBare: true, armJump: false });
   useEffect(() => {
     Promise.all([
-      window.cue.settings.get('keyboard_modifier'),
       window.cue.settings.get('keyboard_go'),
-      window.cue.settings.get('keyboard_clear'),
       window.cue.settings.get('keyboard_logo'),
       window.cue.settings.get('keyboard_live'),
       window.cue.settings.get('shortcut_arm_bare'),
       window.cue.settings.get('shortcut_arm_jump'),
-    ]).then(([mod, go, clear, logo, live, armBare, armJump]) => {
+    ]).then(([go, logo, live, armBare, armJump]) => {
       shortcutsRef.current = {
-        modifier: mod  ?? (isMac ? 'meta' : 'ctrl'),
-        go:       go   ?? 'g',
-        clear:    clear ?? 'c',
-        logo:     logo  ?? 'l',
-        live:     live  ?? 'o',
+        go:       (go   ?? 'g').toLowerCase(),
+        logo:     (logo ?? 'l').toLowerCase(),
+        live:     (live ?? 'o').toLowerCase(),
         armBare:  armBare !== false, // default armed when unset
         armJump:  armJump === true,  // default disarmed when unset
       };
       setJumpArmed(armJump === true);
+      setBareArmed(armBare !== false);
     });
   }, [bgRefreshTick]);
+
+  // Arm/disarm the bare transport keys (G / O / Esc) from the operator UI, mirroring
+  // the jump-arm button. Persists to the same setting Settings → Shortcuts reads.
+  const toggleBareArmed = useCallback(async () => {
+    const next = !shortcutsRef.current.armBare;
+    setBareArmed(next);
+    shortcutsRef.current.armBare = next;
+    await window.cue.settings.set('shortcut_arm_bare', next);
+  }, []);
 
   // Brief on-screen notice when a DISARMED bare key is pressed, so the no-op isn't silent.
   const noticeTimerRef = useRef(null);
@@ -374,7 +387,7 @@ export default function OperatorView({
   }, [serviceData]);
 
   const shortcutRef = useRef({});
-  shortcutRef.current = { handleNextSlide, handlePrevSlide, handleNextLiveSlide, handlePrevLiveSlide, handleGo, handleClear, handleLogo, handleLiveToggle, handleRemoteSelect, handleAutoAdvance, handleJumpLiveSlide, handleSelectAll, handleEscape };
+  shortcutRef.current = { handleNextSlide, handlePrevSlide, handleNextLiveSlide, handlePrevLiveSlide, handleGo, handleClear, handleLogo, handleLiveToggle, handleRemoteSelect, handleAutoAdvance, handleJumpLiveSlide, handleSelectAll, handleEscape, handleDuplicateSelection };
 
   if (transportRef) {
     transportRef.current = { go: handleGo, clear: handleClear, logo: handleLogo };
@@ -413,8 +426,15 @@ export default function OperatorView({
       // own Esc/arrows); don't let operator shortcuts fire underneath it.
       if (overlayOpenRef.current) return;
 
-      // Library tab navigation: ⌘. forward, ⌘, backward — operator-view only.
-      if (viewActiveRef.current && (isMac ? e.metaKey : e.ctrlKey) && !e.altKey && !e.shiftKey && (e.key === '.' || e.key === ',')) {
+      // Library tab cycling — Ctrl+Tab / Ctrl+Shift+Tab (the standard tab-switch
+      // keys, same on macOS and Windows). Moved off ⌘./⌘, so ⌘, opens Settings and
+      // the OS modifier is reserved entirely for standard app shortcuts.
+      if (viewActiveRef.current && e.ctrlKey && !e.altKey && !e.metaKey && e.key === 'Tab') {
+        e.preventDefault(); cycleLibraryTabRef.current?.(e.shiftKey ? -1 : 1); return;
+      }
+      // Ctrl+. / Ctrl+, — quick forward/back through the Library tabs. Kept on the
+      // literal Ctrl key (not the OS modifier) so ⌘, still opens Settings on macOS.
+      if (viewActiveRef.current && e.ctrlKey && !e.altKey && !e.metaKey && (e.key === '.' || e.key === ',')) {
         e.preventDefault(); cycleLibraryTabRef.current?.(e.key === '.' ? 1 : -1); return;
       }
 
@@ -424,36 +444,32 @@ export default function OperatorView({
       // `?` opens the shortcut cheatsheet (Shift+/). Operator-view only.
       if (viewActiveRef.current && e.key === '?') { e.preventDefault(); setHelpOpen((v) => !v); return; }
 
-      // ⌘A / Ctrl+A → select all rundown items. Operator-view only; defers to native
-      // select-all when there's a live text selection (clipboard rule).
-      if (viewActiveRef.current && (isMac ? e.metaKey : e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'a') {
-        if (window.getSelection()?.toString()) return;
-        e.preventDefault(); shortcutRef.current.handleSelectAll(); return;
-      }
-
       const h = shortcutRef.current;
       const sc = shortcutsRef.current;
-      const hasModifier = sc.modifier === 'meta' ? e.metaKey : sc.modifier === 'alt' ? e.altKey : e.ctrlKey;
 
-      if (hasModifier) {
+      // Standard app shortcuts on the OS modifier (⌘ on macOS, Ctrl elsewhere).
+      // Transport NEVER lives on a modifier anymore — it's all bare keys below — so
+      // every clipboard/undo accelerator (⌘C/X/V/Z…) passes straight through to the
+      // browser untouched. We only claim the handful of app-nav combos here.
+      const osMod = isMac ? e.metaKey : e.ctrlKey;
+      if (osMod && !e.altKey) {
         const k = e.key.toLowerCase();
-        // Let the OS clipboard accelerators win over the operator shortcuts when
-        // the user is genuinely copying. The shortcut modifier defaults to the
-        // same key as the system clipboard modifier (⌘ on macOS, Ctrl elsewhere),
-        // so e.g. ⌘C-for-Clear would otherwise swallow every copy. Copy/cut only
-        // matter with a live text selection — without one, fall through so ⌘C
-        // still Clears as before; ⌘A (select-all) always passes through.
-        const clipboardMod = isMac ? e.metaKey : e.ctrlKey;
-        if (clipboardMod) {
-          const hasSelection = !!window.getSelection()?.toString();
-          if (k === 'a' || ((k === 'c' || k === 'x') && hasSelection)) return;
+        // ⌘A → select all rundown items; defers to native select-all when text is
+        // selected (so ⌘A still works inside/over editable text).
+        if (k === 'a' && !e.shiftKey) {
+          if (window.getSelection()?.toString()) return;
+          if (viewActiveRef.current) { e.preventDefault(); h.handleSelectAll(); }
+          return;
         }
-        if (k === sc.go.toLowerCase())    { e.preventDefault(); h.handleGo();          return; }
-        if (k === sc.clear.toLowerCase()) { e.preventDefault(); h.handleClear();       return; }
-        if (k === sc.logo.toLowerCase())  { e.preventDefault(); h.handleLogo();        return; }
-        if (k === sc.live.toLowerCase())  { e.preventDefault(); h.handleLiveToggle();  return; }
-        return;
+        if (!viewActiveRef.current) return; // remaining combos are operator-only
+        if (k === 'f' && !e.shiftKey) { e.preventDefault(); focusSearchRef.current?.(); return; } // find → focus search
+        if (k === 'n' && !e.shiftKey) { e.preventDefault(); setPaletteOpen(true);        return; } // new → command palette
+        if (k === 'd' && !e.shiftKey) { e.preventDefault(); h.handleDuplicateSelection(); return; } // duplicate item(s)
+        return; // any other ⌘/Ctrl combo → native (clipboard, undo, etc.)
       }
+      // A stray Alt / (Ctrl on macOS) modifier with no binding → let it pass so bare
+      // handlers below never fire while a modifier is held.
+      if (e.altKey || e.metaKey || e.ctrlKey) return;
 
       // Number keys 1–9 recall a Scene — active from any view so a director can
       // fire a scene without switching back to the Operator tab.
@@ -469,7 +485,7 @@ export default function OperatorView({
 
       // Positional verse/slide jump (Q W E R …) — only when armed. Jumps the LIVE
       // item straight to slide N and airs it (direct on-air navigation). The key
-      // set excludes S/G/L so it never shadows the bare keys.
+      // set excludes the bare transport letters (G/L/O/S) so it never shadows them.
       if (sc.armJump) {
         const jIdx = JUMP_KEYS.indexOf(e.key.toLowerCase());
         if (jIdx >= 0) { e.preventDefault(); h.handleJumpLiveSlide(jIdx); return; }
@@ -483,8 +499,9 @@ export default function OperatorView({
       // Bare Esc/G fire on a single press only when ARMED; disarmed, they're ignored
       // (a stray press can't air) and just flash a notice.
       else if (e.key === 'Escape')                { h.handleEscape(); }
-      else if (e.key === 'g' || e.key === 'G')    { if (sc.armBare) h.handleGo(); else flashDisarmed('go'); }
-      else if (e.key === 'l' || e.key === 'L')    { h.handleLogo(); }
+      else if (e.key.toLowerCase() === sc.go)     { if (sc.armBare) h.handleGo(); else flashDisarmed('go'); }
+      else if (e.key.toLowerCase() === sc.logo)   { h.handleLogo(); }
+      else if (e.key.toLowerCase() === sc.live)   { if (sc.armBare) h.handleLiveToggle(); else flashDisarmed('output'); }
       else if (e.key === 's' || e.key === 'S')    { e.preventDefault(); focusSearchRef.current?.(); }
     }
     document.addEventListener('keydown', onKeyDown);
@@ -555,11 +572,28 @@ export default function OperatorView({
     ? liveScripture.item
     : (serviceData?.items?.find((i) => i.id === liveItemId) ?? null);
 
+  // CCLI usage log: record every song that goes live. Main dedupes re-airs of the
+  // same song within a service window, so slide jumps / GO-backs count once.
+  const liveSongId = liveItem?.item_type === 'song' ? liveItem.song?.id : null;
+  useEffect(() => {
+    if (liveSongId) window.cue.songs.logUsage(liveSongId).catch?.(() => {});
+  }, [liveSongId]);
+
+  // Live-input master enable (the mid-service NDI kill switch). When off,
+  // buildPayload soft-blocks live-video cues from going live (like a YouTube cue
+  // that isn't ready) — main also refuses at its end, this just keeps the UX honest.
+  const liveInputsEnabledRef = useRef(true);
+  useEffect(() => {
+    window.cue.liveInput?.getEnabled().then((v) => { liveInputsEnabledRef.current = !!v; });
+    return window.cue.on('liveinput:enabled', (v) => { liveInputsEnabledRef.current = !!v; });
+  }, []);
+
   function getSlides(item) {
     if (!item) return [];
     // Songs expand each section into its display parts (variable-size splits on
     // the ⁂ break marker); a section with no marker is one part — unchanged.
-    if (item.item_type === 'song') return expandSongSections(item.sections || []);
+    // An arrangement (played section order with repeats) reorders the expansion.
+    if (item.item_type === 'song') return expandSongSections(item.sections || [], item.song?.arrangement_json);
     if (item.item_type === 'scripture') {
       const slides = item.scriptureSlides || [];
       // Inject the global scripture verse style + reference style so the monitors
@@ -573,6 +607,8 @@ export default function OperatorView({
       }));
     }
     if (item.item_type === 'media') return [{ id: item.id, type: 'media', content: '', asset: item.asset }];
+    // A live video input cue is a single full-frame live slide (NDI source).
+    if (item.item_type === 'live-input') return [{ id: item.id, type: 'live', content: '', liveInput: item.liveInput }];
     // A YouTube cue is a single full-frame video slide. Its file (when ready) lives
     // in the ephemeral cache; status rides along on item.youtube.
     if (item.item_type === 'youtube') return [{ id: item.id, type: 'youtube', content: '', youtube: item.youtube }];
@@ -631,8 +667,19 @@ export default function OperatorView({
       sectionLabel: labelForSlide(item, slides, slideIdx),
       nextText: next.text,
       nextSectionLabel: next.label,
-      title: item.song?.title || item.presentation?.title || item.asset?.filename || item.youtube?.title || null,
+      title: item.song?.title || item.presentation?.title || item.asset?.filename || item.youtube?.title || item.liveInput?.name || null,
     };
+    // Live video input — full-frame NDI feed; output windows paint the frame bus.
+    // Soft-blocked while the live-input master enable is off (GO does nothing).
+    if (item.item_type === 'live-input') {
+      const src = item.liveInput?.sourceName;
+      if (!src || !liveInputsEnabledRef.current) return null;
+      return {
+        ...base,
+        text: '', copyright: null, backgroundPath: null, styleJson: null,
+        liveInput: { sourceName: src, name: item.liveInput?.name || src },
+      };
+    }
     // Foreground media item — full-frame video/audio/image, no text.
     if (item.item_type === 'media' && item.asset) {
       return {
@@ -1160,7 +1207,9 @@ export default function OperatorView({
     refreshService();
 
     const remainingIds = items.filter((i) => i.id !== itemId).map((i) => i.id);
-    const label = item?.song?.title || item?.asset?.filename || item?.scripture?.reference || item?.youtube?.title || 'Item';
+    const label = item?.song?.title || item?.asset?.filename || item?.scripture?.reference
+      || item?.presentation?.title || item?.youtube?.title
+      || item?.liveInput?.name || item?.liveInput?.sourceName || 'Item';
     const serviceIdAtRemoval = activeServiceId;
 
     toast.show({
@@ -1189,6 +1238,15 @@ export default function OperatorView({
 
   async function handleDuplicateItem(itemId) {
     await window.cue.services.duplicateItem(itemId);
+    refreshService();
+  }
+
+  // ⌘D — duplicate the current selection (or the preview item if nothing is
+  // multi-selected). Reuses the existing per-item duplicate IPC.
+  async function handleDuplicateSelection() {
+    const ids = selectedIds.size ? [...selectedIds] : (previewItemId ? [previewItemId] : []);
+    if (!ids.length) return;
+    for (const id of ids) await window.cue.services.duplicateItem(id);
     refreshService();
   }
 
@@ -1346,6 +1404,28 @@ export default function OperatorView({
     }
   }
 
+  // Add a live video input cue (NDI source). The source descriptor persists in the
+  // item's content JSON; the feed itself is resolved live at GO time.
+  async function handleAddLiveInput(source) {
+    const item = {
+      item_type: 'live-input',
+      content: JSON.stringify({ sourceName: source.name, name: source.label || source.name }),
+    };
+    if (!activeServiceId) {
+      const id = await window.cue.services.create({
+        title: new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }),
+        date: new Date().toISOString().split('T')[0],
+      });
+      onServiceChange(id);
+      setServices(await window.cue.services.list());
+      await window.cue.services.addItem(id, item);
+      window.cue.services.get(id).then(setServiceData);
+    } else {
+      await window.cue.services.addItem(activeServiceId, item);
+      refreshService();
+    }
+  }
+
   async function handleAddPresentation(presentationId) {
     const item = { item_type: 'presentation', ref_id: presentationId };
     if (!activeServiceId) {
@@ -1451,7 +1531,7 @@ export default function OperatorView({
       {armNotice && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-sm px-lg py-sm rounded-full border border-outline-variant/50 bg-surface-container-high pointer-events-none text-label-sm font-bold uppercase tracking-[0.06em] text-on-surface-variant">
           <span className="material-symbols-outlined text-[16px]">lock</span>
-          Bare {armNotice === 'go' ? 'GO' : 'Clear'} is disarmed — arm it in Settings
+          Bare {armNotice === 'go' ? 'GO' : armNotice === 'output' ? 'Output toggle' : 'Clear'} is disarmed — turn Hotkeys ON (or arm it in Settings)
         </div>
       )}
       {/* Top work area */}
@@ -1519,6 +1599,8 @@ export default function OperatorView({
             liveChannelIdx={liveChannelIdx}
             onSetLiveChannelIdx={setLiveChannelIdx}
             onToggleLoop={handleToggleLoop}
+            bareArmed={bareArmed}
+            onToggleBareArmed={toggleBareArmed}
             jumpKeys={jumpArmed ? JUMP_KEYS : null}
             jumpArmed={jumpArmed}
             onToggleJumpArmed={async () => {
@@ -1579,6 +1661,7 @@ export default function OperatorView({
               : null
           }
           onAddYouTube={handleAddYouTube}
+          onAddLiveInput={handleAddLiveInput}
           onAddPresentation={handleAddPresentation}
           onSongSave={refreshService}
           refreshTick={bgRefreshTick + songEditTick}

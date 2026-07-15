@@ -83,7 +83,8 @@
       const st = [];
       if (run.bold) st.push('font-weight:700');
       if (run.italic) st.push('font-style:italic');
-      if (run.underline) st.push('text-decoration:underline');
+      const deco = [run.underline && 'underline', run.strikethrough && 'line-through'].filter(Boolean).join(' ');
+      if (deco) st.push('text-decoration:' + deco);
       if (run.color) st.push('color:' + run.color);
       if (run.fontFamily) st.push("font-family:" + String(run.fontFamily).replace(/"/g, "'"));
       if (run.fontSize) st.push('font-size:' + (Number(run.fontSize) * scale) + 'px');
@@ -110,7 +111,7 @@
     el.style.textAlign = s.align || 'center';
     el.style.fontWeight = s.bold ? '700' : '400';
     el.style.fontStyle = s.italic ? 'italic' : 'normal';
-    el.style.textDecoration = s.underline ? 'underline' : 'none';
+    el.style.textDecoration = [s.underline && 'underline', s.strikethrough && 'line-through'].filter(Boolean).join(' ') || 'none';
     el.style.fontSize = (Number(s.fontSize) || 72) * scale + 'px';
     el.style.color = s.color || '';
     el.style.lineHeight = s.lineSpacing ? String(s.lineSpacing) : '';
@@ -386,8 +387,34 @@
     mediaSrc = ctx.createMediaStreamSource(ms);
     mediaSrc.connect(mixBus);
   }
-  // fullscreen.js calls this whenever it attaches/clears a foreground media element.
-  window.CueStreamFeed = { onMediaElement: (el) => attachMedia(el) };
+  // Live-input (NDI receive) audio in 'mixed' mode: fullscreen.js hands the raw
+  // planar Float32 PCM from the live:audio bus here (a live input has no media
+  // element to captureStream). Chunks are scheduled back-to-back into the mixBus
+  // behind an ~80ms jitter buffer; the AudioBufferSourceNode resamples to the
+  // mixer's 48k automatically when the source rate differs.
+  let liveNextAt = 0;
+  function pushLivePcm(f) {
+    if (audioMode !== 'mixed' || !ctx || !mixBus || !f || !f.samples) return;
+    try {
+      const { sampleRate, channels, samples } = f;
+      const bytes = f.data;
+      const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + samples * channels * 4);
+      const all = new Float32Array(ab);
+      const buf = ctx.createBuffer(channels, samples, sampleRate);
+      for (let ch = 0; ch < channels; ch++) buf.copyToChannel(all.subarray(ch * samples, (ch + 1) * samples), ch);
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(mixBus);
+      const now = ctx.currentTime;
+      if (liveNextAt < now + 0.02) liveNextAt = now + 0.08;
+      src.start(liveNextAt);
+      liveNextAt += buf.duration;
+    } catch {}
+  }
+
+  // fullscreen.js calls onMediaElement whenever it attaches/clears a foreground
+  // media element, and pushLivePcm for each live-input audio chunk.
+  window.CueStreamFeed = { onMediaElement: (el) => attachMedia(el), pushLivePcm };
 
   // ── Bus from main ─────────────────────────────────────────────────────────────
   window.cueOutput.onStreamInput?.((cfg) => {

@@ -156,6 +156,8 @@ export function registerOutputIpc() {
   ipcMain.handle('output:custom:hide',  (_e, target) => outputManager.customHide(target));
   ipcMain.handle('output:countdown:show', (_e, data) => outputManager.countdownShow(data));
   ipcMain.handle('output:countdown:hide', (_e, target) => outputManager.countdownHide(target));
+  ipcMain.handle('output:countdown:pause', (_e, target) => outputManager.countdownPause(target));
+  ipcMain.handle('output:countdown:resume', (_e, target) => outputManager.countdownResume(target));
   ipcMain.handle('output:overlay:get',  () => outputManager.getOverlay());
 
   // ── Multiview capture ──────────────────────────────────────────────────────

@@ -31,7 +31,7 @@ let config = { enabled: false, port: 7373, lan: false, token: null, viewToken: n
 let getStateFn = () => ({});
 let commandHandler = () => {};
 let getProgramFn = () => ({ slide: null, transport: null, overlay: null });
-let graphicFns = null; // { graphicShow, graphicHide, tickerShow, tickerHide, customHide, countdownShow, countdownHide }
+let graphicFns = null; // { graphicShow, graphicHide, tickerShow, tickerHide, customHide, countdownShow, countdownHide, countdownPause, countdownResume }
 
 // Rundown snapshot pushed from the renderer so remote clients can list and
 // SELECT items. Kept here (not the DB) because the operator's live/preview
@@ -44,6 +44,11 @@ const sseClients = new Set();
 const outputSseClients = new Set();
 
 const ACTIONS = ['go', 'clear', 'logo', 'next', 'prev', 'live', 'select'];
+
+// Overlay bus: one occupant per destination kind per slot (see manager.js). Used to
+// mark which saved graphics are currently live (matched by id, never by content).
+const G_SLOT = { lower_third: 'nameTitle', ticker: 'ticker', countdown: 'countdown', custom: 'custom' };
+const G_DESTS = ['screen', 'ndi', 'stream'];
 
 export function configure({ getState, onCommand, getProgram, graphics }) {
   if (getState)   getStateFn = getState;
@@ -66,6 +71,35 @@ export function pushProgram(delta) {
 
 // ── State ────────────────────────────────────────────────────────────────────
 
+// Saved broadcast graphics + which destination kinds each is live on, so a remote
+// client can list them and take them live/clear them by id.
+function graphicsList() {
+  if (!graphicFns || !graphicFns.list) return [];
+  let rows, ov;
+  try { rows = graphicFns.list() || []; } catch { return []; }
+  try { ov = (graphicFns.overlay && graphicFns.overlay()) || {}; } catch { ov = {}; }
+  return rows.map((g) => {
+    const slot = ov[G_SLOT[g.kind]];
+    const live = slot ? G_DESTS.filter((k) => slot[k] && slot[k].id === g.id) : [];
+    // Countdown pause state: canPause only for a running timer (clocks track wall time);
+    // paused only when EVERY live destination is frozen, so the button reads one state.
+    let paused = false, canPause = false;
+    if (g.kind === 'countdown' && live.length) {
+      const occ = live.map((k) => slot[k]);
+      canPause = occ.every((s) => s.mode && s.mode !== 'clock');
+      paused = occ.every((s) => s.paused);
+    }
+    const label = g.kind === 'ticker' ? (g.text || g.label || 'Ticker')
+      : g.kind === 'countdown' ? (g.label || g.text || 'Countdown')
+      : (g.name || g.label || g.text || 'Graphic');
+    const sub = g.kind === 'lower_third' ? (g.title || '')
+      : g.kind === 'ticker' ? 'Ticker'
+      : g.kind === 'countdown' ? 'Timer'
+      : 'Custom';
+    return { id: g.id, kind: g.kind, label: String(label).slice(0, 120), sub: String(sub || '').slice(0, 120), live, paused, canPause };
+  });
+}
+
 function fullState() {
   const base = getStateFn() || {};
   return {
@@ -80,6 +114,7 @@ function fullState() {
       ? { text: base.livePayload.nextText ?? '', label: base.livePayload.nextSectionLabel ?? '' }
       : null,
     rundown: navState,
+    graphics: graphicsList(),
   };
 }
 
@@ -289,12 +324,18 @@ function handleRequest(req, res) {
   }
 
   // ── Broadcast-graphics bus control ───────────────────────────────────────────
+  // POST /api/graphic/fire   { id, target? }   ← take a SAVED graphic live (remote UI)
+  // POST /api/graphic/clear  { id, target? }   ← clear a SAVED graphic by id
+  // POST /api/graphic/pause  { id }            ← pause a live SAVED countdown by id
+  // POST /api/graphic/resume { id }            ← resume a paused SAVED countdown by id
   // POST /api/graphic/show   { name, title?, target?, autoDismissSec? }
   // POST /api/graphic/hide   { target? }
   // POST /api/ticker/show    { text, speed?, target?, autoDismissSec? }
   // POST /api/ticker/hide    { target? }
-  // POST /api/countdown/show { mode, durationSec?, targetClock?, source?, label?, onEnd?, target? }
-  // POST /api/countdown/hide { target? }
+  // POST /api/countdown/show   { mode, durationSec?, targetClock?, source?, label?, onEnd?, target? }
+  // POST /api/countdown/hide   { target? }
+  // POST /api/countdown/pause  { target? }
+  // POST /api/countdown/resume { target? }
   // POST /api/graphics/clear-all
   function graphicOk(res) {
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -317,12 +358,18 @@ function handleRequest(req, res) {
     if (req.method === 'POST') {
       readBody(req, (body) => {
         const data = safeJson(body) || {};
-        if (path === '/api/graphic/show')    { graphicFns.graphicShow(data);     graphicOk(res); }
+        if (path === '/api/graphic/fire')    { (graphicFns.fireById && graphicFns.fireById(data.id, data.target || undefined)) ? graphicOk(res) : graphicErr(res, 'unknown graphic'); }
+        else if (path === '/api/graphic/clear')   { (graphicFns.clearById && graphicFns.clearById(data.id, data.target || 'all')) ? graphicOk(res) : graphicErr(res, 'unknown graphic'); }
+        else if (path === '/api/graphic/pause')   { (graphicFns.pauseById && graphicFns.pauseById(data.id)) ? graphicOk(res) : graphicErr(res, 'not a live countdown'); }
+        else if (path === '/api/graphic/resume')  { (graphicFns.resumeById && graphicFns.resumeById(data.id)) ? graphicOk(res) : graphicErr(res, 'not a paused countdown'); }
+        else if (path === '/api/graphic/show')    { graphicFns.graphicShow(data);     graphicOk(res); }
         else if (path === '/api/graphic/hide')    { graphicFns.graphicHide(data.target || 'all');   graphicOk(res); }
         else if (path === '/api/ticker/show')     { graphicFns.tickerShow(data);      graphicOk(res); }
         else if (path === '/api/ticker/hide')     { graphicFns.tickerHide(data.target || 'all');    graphicOk(res); }
-        else if (path === '/api/countdown/show')  { graphicFns.countdownShow(data);   graphicOk(res); }
-        else if (path === '/api/countdown/hide')  { graphicFns.countdownHide(data.target || 'all'); graphicOk(res); }
+        else if (path === '/api/countdown/show')   { graphicFns.countdownShow(data);   graphicOk(res); }
+        else if (path === '/api/countdown/hide')   { graphicFns.countdownHide(data.target || 'all'); graphicOk(res); }
+        else if (path === '/api/countdown/pause')  { graphicFns.countdownPause(data.target || 'all'); graphicOk(res); }
+        else if (path === '/api/countdown/resume') { graphicFns.countdownResume(data.target || 'all'); graphicOk(res); }
         else { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'not found' })); }
       });
       return;

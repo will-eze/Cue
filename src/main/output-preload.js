@@ -11,6 +11,21 @@ contextBridge.exposeInMainWorld('cueOutput', {
   // Runtime content-mode toggle (lyrics band / graphics overlay) — avoids
   // recreating the window (and dropping the NDI sender) on a mode switch.
   onContentMode: (cb) => ipcRenderer.on('content:mode', (_e, p) => cb(p)),
+  // Live video input frames (NDI receive). RGBA pixels from main's framesync
+  // pull loop; the template paints them into a canvas while a live-input payload
+  // is on program. Data arrives as a Uint8Array over structured clone.
+  onLiveFrame: (cb) => {
+    const wrapper = (_e, f) => cb(f);
+    ipcRenderer.on('live:frame', wrapper);
+    return () => ipcRenderer.removeListener('live:frame', wrapper);
+  },
+  // Live video input AUDIO (planar Float32 PCM). Sent only to the audible
+  // window (in-room playback) and the stream compositor ('mixed' mode mixing).
+  onLiveAudio: (cb) => {
+    const wrapper = (_e, f) => cb(f);
+    ipcRenderer.on('live:audio', wrapper);
+    return () => ipcRenderer.removeListener('live:audio', wrapper);
+  },
   // Main-process foreground-media transport. Every player derives its playhead
   // from this shared, machine-clock-based state.
   onMediaTransport: (cb) => {

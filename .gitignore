@@ -32,3 +32,6 @@ __pycache__/
 # Third-party theme reference material used only while authoring the bundled
 # packs (resources/themes/*.json are the shippable outputs). Not a build input.
 plan/themes-references/
+
+# Local sheet-music OCR test images (not committed)
+test-fixtures/

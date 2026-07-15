@@ -84,17 +84,49 @@ export function splitSectionContent(content) {
   return parts.length ? parts : [''];
 }
 
+// ── Arrangements ─────────────────────────────────────────────────────────────
+//
+// A song can carry a played ORDER of its sections (ProPresenter-style
+// arrangement, e.g. V1 C V2 C B C C): `songs.arrangement_json`, a JSON array of
+// 0-based section POSITIONS with repeats allowed. Null/empty/invalid = natural
+// order. Positions rather than ids because a song save rewrites its sections
+// (ids churn); the editor serializes both together so positions stay aligned.
+
+// Resolve an arrangement (JSON string or array of indices) against the natural
+// section list. Stale/out-of-range entries are dropped; an arrangement that
+// resolves to nothing falls back to the natural order so a song never vanishes.
+export function applyArrangement(sections, arrangement) {
+  const list = Array.isArray(sections) ? sections : [];
+  let idxs = arrangement;
+  if (typeof idxs === 'string') {
+    try { idxs = JSON.parse(idxs); } catch { idxs = null; }
+  }
+  if (!Array.isArray(idxs) || !idxs.length) return list;
+  const out = idxs
+    .map((n) => list[Number(n)])
+    .filter(Boolean);
+  return out.length ? out : list;
+}
+
 // Expand an ordered section list into the flat slide list the operator navigates,
 // splitting any section that carries break markers into its parts. Labels are
 // computed at the SECTION level first (so a verse split into 3 parts is still one
 // "Verse 1", not "Verse 1/2/3") and shared across that section's parts. Each part
 // inherits the section's fields (type, style_json, …) plus part metadata.
-export function expandSongSections(sections) {
+//
+// `arrangement` (optional) reorders/repeats sections for playback. Labels are
+// ALWAYS derived from the natural list so a chorus repeated by the arrangement
+// stays "Chorus" (or "Chorus 2" = the second distinct chorus), never gaining a
+// new number per repeat. Keys carry the arranged position so repeats stay unique.
+export function expandSongSections(sections, arrangement) {
   const list = Array.isArray(sections) ? sections : [];
   const labels     = sectionLabels(list);
   const labelsAbbr = sectionLabels(list, { abbrev: true });
+  const labelIdx   = new Map(list.map((sec, i) => [sec, i]));
+  const ordered = applyArrangement(list, arrangement);
   const out = [];
-  list.forEach((sec, si) => {
+  ordered.forEach((sec, oi) => {
+    const si = labelIdx.get(sec) ?? 0;
     const parts = splitSectionContent(sec?.content);
     parts.forEach((content, pi) => {
       out.push({
@@ -104,7 +136,7 @@ export function expandSongSections(sections) {
         _labelAbbr: labelsAbbr[si],
         _partIndex: pi,
         _partCount: parts.length,
-        _key: `${sec?.id ?? si}-${pi}`,
+        _key: `${oi}-${sec?.id ?? si}-${pi}`,
       });
     });
   });

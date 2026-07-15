@@ -58,6 +58,17 @@
     try { await el.setSinkId(await resolveSinkId(desiredSink)); } catch { /* unsupported / denied */ }
   }
 
+  // Auxiliary audio elements (e.g. the live-input Web Audio graph routed out
+  // through a MediaStream <audio>). Registered elements follow the in-room
+  // device picker exactly like the program media element — the salted-deviceId
+  // matching stays in this one place.
+  const auxSinkEls = new Set();
+  function attachAuxAudio(el) {
+    auxSinkEls.add(el);
+    applySink(el);
+    return () => auxSinkEls.delete(el);
+  }
+
   if (window.cueOutput && window.cueOutput.onAudioOutputDevice) {
     window.cueOutput.onAudioOutputDevice((desc) => {
       desiredSink = desc || null;
@@ -65,6 +76,7 @@
       if (activePlayer && activePlayer.element && !activePlayer.baseMuted) {
         applySink(activePlayer.element);
       }
+      for (const el of auxSinkEls) applySink(el);
     });
   }
 
@@ -190,6 +202,7 @@
 
   window.CueMediaPlayer = {
     attach,
+    attachAuxAudio,
     get transport() { return latestTransport; },
   };
 })();

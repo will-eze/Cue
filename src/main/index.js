@@ -18,6 +18,8 @@ import { registerYoutubeIpc } from './ipc/youtube.ipc.js';
 import { registerScriptureDetectIpc } from './ipc/scripture-detect.ipc.js';
 import { registerBackgroundLibraryIpc } from './ipc/background-library.ipc.js';
 import { registerScenesIpc } from './ipc/scenes.ipc.js';
+import { registerOutputPresetsIpc } from './ipc/output-presets.ipc.js';
+import { registerLiveInputIpc } from './ipc/live-input.ipc.js';
 import * as scriptureDetect from './scripture-detect/manager.js';
 import * as youtube from './youtube/downloader.js';
 import { purgeYoutubeItems } from './db/services.js';
@@ -27,6 +29,7 @@ import { seedBundledBibles } from './db/bible.js';
 import { seedGhsHymnal } from './db/songs.js';
 import { seedBundledThemes, preloadPresentationThemeBgs } from './db/themes.js';
 import * as outputManager from './output/manager.js';
+import * as graphicsDb from './db/graphics.js';
 import { isAvailable as ndiAvailable } from './output/ndi.js';
 import { thumbCachePath, getThumbnailDir } from './db/media.js';
 
@@ -330,6 +333,8 @@ app.whenReady().then(async () => {
   registerScriptureDetectIpc();
   registerBackgroundLibraryIpc();
   registerScenesIpc();
+  registerOutputPresetsIpc();
+  registerLiveInputIpc();
 
   createMainWindow();
   outputManager.setMainWindow(mainWindow);
@@ -357,6 +362,15 @@ app.whenReady().then(async () => {
       customHide:     (t) => outputManager.customHide(t),
       countdownShow:  (d) => outputManager.countdownShow(d),
       countdownHide:  (t) => outputManager.countdownHide(t),
+      countdownPause: (t) => outputManager.countdownPause(t),
+      countdownResume:(t) => outputManager.countdownResume(t),
+      // Saved-graphic list + fire/clear by id — the phone remote's "take graphic live".
+      list:      () => graphicsDb.list(),
+      overlay:   () => outputManager.getOverlay(),
+      fireById:  (id, t) => outputManager.graphicShowById(id, t),
+      clearById: (id, t) => outputManager.graphicClearById(id, t),
+      pauseById:  (id) => outputManager.graphicPauseById(id),
+      resumeById: (id) => outputManager.graphicResumeById(id),
     },
   });
   outputManager.setRemoteStateListener(() => remoteServer.pushState());

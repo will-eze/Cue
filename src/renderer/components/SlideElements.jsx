@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { mediaUrl } from '../utils/mediaUrl';
-import { renderTextContent } from './SongEditor';
+import { renderTextContent, buildDecorationCss, buildBoxFillCss } from './SongEditor';
 
 // Shared read-only renderer for presentation slide elements (the §21 elements_json
 // shape). A 4th parallel renderer alongside fullscreen.js / PreviewLivePanel /
@@ -17,15 +17,16 @@ export function elementInner(el) {
       ? `${shadow.x ?? 0}px ${shadow.y ?? 2}px ${shadow.blur ?? 16}px ${shadow.color ?? '#000'}`
       : 'none';
     return (
-      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column',
-        justifyContent: s.verticalAlign === 'top' ? 'flex-start' : s.verticalAlign === 'bottom' ? 'flex-end' : 'center' }}>
+      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', boxSizing: 'border-box',
+        justifyContent: s.verticalAlign === 'top' ? 'flex-start' : s.verticalAlign === 'bottom' ? 'flex-end' : 'center',
+        ...buildBoxFillCss(s.boxFill) }}>
         <div style={{ width: '100%', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
           fontFamily: s.fontFamily || undefined,
           fontSize: (s.fontSize ?? 48) + 'px',
           textAlign: s.align || 'center',
           fontWeight: s.bold ? 700 : 400,
           fontStyle: s.italic ? 'italic' : 'normal',
-          textDecoration: s.underline ? 'underline' : 'none',
+          textDecoration: buildDecorationCss(s),
           textTransform: s.uppercase ? 'uppercase' : 'none',
           color: s.color || '#ffffff',
           lineHeight: s.lineSpacing ? String(s.lineSpacing) : '1.25',

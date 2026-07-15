@@ -70,6 +70,19 @@ export const CONTROL_PAGE = `<!DOCTYPE html>
   .slide.live .sl { color: #ff8a82; }
   .slide .sp { flex: 1; min-width: 0; color: #7d828b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .empty { color: #5e636c; font-size: 14px; padding: 8px 2px; }
+  .gfxrow { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; background: #1b1f26; border: 1px solid #2a2f38; }
+  .gfxrow.live { border-color: #b34a44; background: #241717; }
+  .gfxinfo { flex: 1; min-width: 0; }
+  .gfxlab { font-size: 15px; color: #cfd3d9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .gfxrow.live .gfxlab { color: #ff8a82; }
+  .gfxsub { font-size: 11px; color: #7d828b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
+  .gfxbtn { flex-shrink: 0; border-radius: 9px; padding: 9px 16px; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: #e8eaed; }
+  .gfxbtn.take { background: #143a6b; border: 1px solid #2a5aa0; color: #8fb6ff; }
+  .gfxbtn.clear { background: #3a1d1d; border: 1px solid #b34a44; color: #ff8a82; }
+  .gfxbtn.pause { background: #1b1f26; border: 1px solid #3a3f48; color: #cfd3d9; }
+  .gfxbtn.resume { background: #16321f; border: 1px solid #2aa353; color: #7ee39b; }
+  .gfxbtn:active { filter: brightness(1.3); }
+  .gfxbtns { display: flex; gap: 6px; flex-shrink: 0; }
   #gate { position: fixed; inset: 0; background: #0d0f12; display: none; align-items: center; justify-content: center; padding: 24px; z-index: 10; }
   #gate .card { width: 100%; max-width: 360px; }
   #gate input { width: 100%; margin-top: 8px; padding: 12px; border-radius: 10px; border: 1px solid #2a2f38; background: #0d0f12; color: #e8eaed; font: 15px ui-monospace, monospace; }
@@ -105,6 +118,11 @@ export const CONTROL_PAGE = `<!DOCTYPE html>
       <button class="btn logo" onclick="cmd('logo')">Logo</button>
       <button id="liveBtn" class="btn live" onclick="cmd('live')">Live</button>
       <button class="btn" onclick="cmd('go')" style="visibility:hidden"></button>
+    </div>
+
+    <div id="gfxCard" class="card" style="display:none">
+      <div class="lbl">Graphics</div>
+      <div id="gfx" class="items"></div>
     </div>
 
     <div class="card">
@@ -158,6 +176,16 @@ export const CONTROL_PAGE = `<!DOCTYPE html>
     }).then(function (r) { if (r.status === 401) gate(); }).catch(function () {});
   };
 
+  // Fire/clear a saved graphic by id (same token, fire-and-forget — the SSE stream
+  // pushes the real live state, matched by id so the button flips to Clear).
+  window.gfx = function (path, id) {
+    fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Cue-Token': token },
+      body: JSON.stringify({ id: id })
+    }).then(function (r) { if (r.status === 401) gate(); }).catch(function () {});
+  };
+
   // Which rundown items are expanded to show their slides. The live item is
   // auto-expanded when it changes; the user can still toggle any item open/closed.
   var expanded = {};
@@ -176,7 +204,45 @@ export const CONTROL_PAGE = `<!DOCTYPE html>
     var lb = $('liveBtn');
     lb.className = 'btn live' + (s.outputsEnabled ? ' on' : '');
 
+    renderGraphics(s.graphics || []);
     renderRundown(s.rundown || { items: [] });
+  }
+
+  function renderGraphics(list) {
+    var card = $('gfxCard'), host = $('gfx');
+    if (!list.length) { card.style.display = 'none'; host.innerHTML = ''; return; }
+    card.style.display = '';
+    host.innerHTML = '';
+    list.forEach(function (g) {
+      var live = g.live && g.live.length > 0;
+      var row = document.createElement('div');
+      row.className = 'gfxrow' + (live ? ' live' : '');
+      var info = document.createElement('div'); info.className = 'gfxinfo';
+      var lab = document.createElement('div'); lab.className = 'gfxlab'; lab.textContent = g.label || 'Graphic';
+      info.appendChild(lab);
+      if (g.sub) { var sub = document.createElement('div'); sub.className = 'gfxsub'; sub.textContent = g.sub; info.appendChild(sub); }
+      row.appendChild(info);
+      var btns = document.createElement('div'); btns.className = 'gfxbtns';
+      // Pause / Resume for a live, running countdown (clocks can't be paused).
+      if (live && g.canPause) {
+        var pb = document.createElement('button');
+        pb.className = 'gfxbtn ' + (g.paused ? 'resume' : 'pause');
+        pb.textContent = g.paused ? 'Resume' : 'Pause';
+        (function (id, isPaused) {
+          pb.onclick = function () { gfx(isPaused ? '/api/graphic/resume' : '/api/graphic/pause', id); };
+        })(g.id, g.paused);
+        btns.appendChild(pb);
+      }
+      var btn = document.createElement('button');
+      btn.className = 'gfxbtn ' + (live ? 'clear' : 'take');
+      btn.textContent = live ? 'Clear' : 'Take';
+      (function (id, isLive) {
+        btn.onclick = function () { gfx(isLive ? '/api/graphic/clear' : '/api/graphic/fire', id); };
+      })(g.id, live);
+      btns.appendChild(btn);
+      row.appendChild(btns);
+      host.appendChild(row);
+    });
   }
 
   function renderRundown(rd) {

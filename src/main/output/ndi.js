@@ -47,6 +47,12 @@ export function isAvailable() {
   return ndiAvailable;
 }
 
+// The initialized native handle, shared with ndi-input.js so receive/find reuse
+// the single per-process NDI initialization (grandi.initialize() must run once).
+export function getGrandi() {
+  return ndiAvailable ? grandi : null;
+}
+
 export async function createSender(channelId, name) {
   if (!ndiAvailable) return null;
   try {

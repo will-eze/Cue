@@ -8,6 +8,7 @@ import { useFonts } from '../utils/fonts';
 import MediaPickerModal from './MediaPickerModal';
 import MediaThumb from './MediaThumb';
 import { mediaUrl } from '../utils/mediaUrl';
+import { buildSnapTargets, snapMove, snapResizeBox, SnapGuides } from '../utils/snapping';
 
 function esc(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -49,7 +50,7 @@ export function flatTextCss(s, base = {}) {
     color:            s.color || base.color || '#ffffff',
     fontWeight:       s.bold ? 700 : 400,
     fontStyle:        s.italic ? 'italic' : 'normal',
-    textDecoration:   s.underline ? 'underline' : 'none',
+    textDecoration:   [s.underline && 'underline', s.strikethrough && 'line-through'].filter(Boolean).join(' ') || 'none',
     textTransform:    s.uppercase ? 'uppercase' : 'none',
     textAlign:        s.align || base.align || 'left',
     lineHeight:       s.lineSpacing ? String(s.lineSpacing) : (base.lineHeight ?? 1.15),
@@ -86,7 +87,7 @@ function freshTimeStyle() {
 function freshMsgStyle() {
   return { ...DEFAULT_STYLE, align: 'center', fontSize: 36, color: '#adc6ff', bold: false };
 }
-const FRESH_CD = { mode: 'countdown', source: 'duration', durationSec: 300, targetClock: '11:00', format: '24h', showSeconds: true, endMessage: '', onEnd: 'hold', onEndMediaId: null, onEndMediaPath: null };
+const FRESH_CD = { mode: 'countdown', source: 'duration', durationSec: 300, targetClock: '11:00', format: '24h', showSeconds: true, endMessage: '', onEnd: 'hold', onEndMediaId: null, onEndMediaPath: null, audioMediaId: null, audioName: '', audioLoop: false };
 
 const CD_MODES = [
   { id: 'countdown', label: 'Countdown', icon: 'timer' },
@@ -165,6 +166,9 @@ const FRAME_W = 1920, FRAME_H = 1080;
 // SongEditor.CONTENT_BOX). Boxes can still be dragged anywhere on the frame.
 const CONTENT_BOX = { x: 5, y: 5, w: 90, h: 90 };
 
+// Smart-snap targets for box drags: frame edges/centre/thirds + safe-area lines.
+const GFX_SNAP_TARGETS = buildSnapTargets({ contentBox: CONTENT_BOX });
+
 // ── Drag/resize (PowerPoint-style box) — same maths as SongEditor.SlidePreview ─
 
 const MIN_BOX = 5;
@@ -194,13 +198,15 @@ function resizeBox(s, hx, hy, dx, dy) {
 
 // ── Previews ───────────────────────────────────────────────────────────────────
 
-function ScaledFrame({ children, wrapRef, scale, contentGuide = false, bgMedia = null }) {
+function ScaledFrame({ children, wrapRef, scale, contentGuide = false, bgMedia = null, guides = null }) {
   const bgPath = bgMedia?.path;
   const bgFit  = bgMedia?.fit || 'cover';
   const bgIsVideo = bgPath && /\.(mp4|mov|webm|avi)$/i.test(bgPath.toLowerCase());
   return (
     <div ref={wrapRef} className="w-full aspect-video relative overflow-hidden rounded-lg"
       style={bgPath ? { background: '#000' } : { backgroundImage: 'repeating-conic-gradient(#1a1a1a 0% 25%, #222 0% 50%)', backgroundSize: '28px 28px' }}>
+      {/* Smart-snap guide lines — % positions map 1:1 onto the 16:9 wrapper. */}
+      {guides && <SnapGuides guides={guides} zIndex={40} />}
       {bgPath && (
         bgIsVideo
           ? <video src={mediaUrl(bgPath)} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: bgFit }} autoPlay loop muted playsInline />
@@ -240,14 +246,15 @@ function useScale(wrapRef) {
 function BugPreview({ name, title, nameStyle, titleStyle, onBoxChange, bgMedia = null }) {
   const wrapRef = useRef(null);
   const [scale, scaleRef] = useScale(wrapRef);
+  const [guides, setGuides] = useState([]);
   const box = nameStyle?.textBox || { ...DEFAULT_BOX };
 
   function startDrag(e, start, onMove) {
     e.preventDefault(); e.stopPropagation();
     const sx = e.clientX, sy = e.clientY;
     const sc = scaleRef.current || 1;
-    const move = (ev) => onMove(((ev.clientX - sx) / sc) / FRAME_W * 100, ((ev.clientY - sy) / sc) / FRAME_H * 100, start);
-    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    const move = (ev) => onMove(((ev.clientX - sx) / sc) / FRAME_W * 100, ((ev.clientY - sy) / sc) / FRAME_H * 100, start, ev);
+    const up = () => { setGuides([]); window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
   }
@@ -257,7 +264,7 @@ function BugPreview({ name, title, nameStyle, titleStyle, onBoxChange, bgMedia =
   const vAlign = nameStyle?.verticalAlign || 'bottom';
 
   return (
-    <ScaledFrame wrapRef={wrapRef} scale={scale} contentGuide bgMedia={bgMedia}>
+    <ScaledFrame wrapRef={wrapRef} scale={scale} contentGuide bgMedia={bgMedia} guides={guides}>
       {/* The bug box */}
       <div style={{
         position: 'absolute', left: `${bL}px`, top: `${bT}px`, width: `${bW}px`, height: `${bH}px`,
@@ -272,11 +279,15 @@ function BugPreview({ name, title, nameStyle, titleStyle, onBoxChange, bgMedia =
       {/* Selection frame + handles */}
       {onBoxChange && (
         <div
-          onPointerDown={(e) => startDrag(e, { ...box }, (dx, dy, s) => onBoxChange({
-            x: Math.round(clampPct(s.x + dx, 0, 100 - s.w)),
-            y: Math.round(clampPct(s.y + dy, 0, 100 - s.h)),
-            w: s.w, h: s.h,
-          }))}
+          onPointerDown={(e) => startDrag(e, { ...box }, (dx, dy, s, ev) => {
+            const snapped = snapMove({ x: s.x + dx, y: s.y + dy, w: s.w, h: s.h }, GFX_SNAP_TARGETS, { free: ev?.altKey, grid: 0 });
+            setGuides(snapped.guides);
+            onBoxChange({
+              x: Math.round(clampPct(snapped.x, 0, 100 - s.w)),
+              y: Math.round(clampPct(snapped.y, 0, 100 - s.h)),
+              w: s.w, h: s.h,
+            });
+          })}
           style={{ position: 'absolute', left: `${bL}px`, top: `${bT}px`, width: `${bW}px`, height: `${bH}px`,
             border: '2px solid rgba(173,198,255,0.8)', boxSizing: 'border-box', cursor: 'move' }}
         >
@@ -284,7 +295,12 @@ function BugPreview({ name, title, nameStyle, titleStyle, onBoxChange, bgMedia =
             const hs = 14 / scale;
             return (
               <div key={i}
-                onPointerDown={(e) => { e.stopPropagation(); startDrag(e, { ...box }, (dx, dy, s) => onBoxChange(resizeBox(s, hnd.hx, hnd.hy, dx, dy))); }}
+                onPointerDown={(e) => { e.stopPropagation(); startDrag(e, { ...box }, (dx, dy, s, ev) => {
+                  const sized = resizeBox(s, hnd.hx, hnd.hy, dx, dy);
+                  const { box: b, guides: g } = snapResizeBox(sized, hnd.hx, hnd.hy, GFX_SNAP_TARGETS, { free: ev?.altKey, min: MIN_BOX });
+                  setGuides(g);
+                  onBoxChange({ x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.w), h: Math.round(b.h) });
+                }); }}
                 style={{ position: 'absolute', left: `${hnd.hx * 100}%`, top: `${hnd.hy * 100}%`, width: hs, height: hs,
                   transform: 'translate(-50%, -50%)', background: '#adc6ff', border: '1px solid #0c0e12', borderRadius: 2, cursor: hnd.cursor }} />
             );
@@ -300,6 +316,7 @@ function BugPreview({ name, title, nameStyle, titleStyle, onBoxChange, bgMedia =
 function CountdownPreview({ cd, timeStyle, msgStyle, label, onBoxChange, bgMedia = null }) {
   const wrapRef = useRef(null);
   const [scale, scaleRef] = useScale(wrapRef);
+  const [guides, setGuides] = useState([]);
   const box = timeStyle?.textBox || { ...CD_DEFAULT_BOX };
   const [, force] = useState(0);
 
@@ -330,8 +347,8 @@ function CountdownPreview({ cd, timeStyle, msgStyle, label, onBoxChange, bgMedia
     e.preventDefault(); e.stopPropagation();
     const sx = e.clientX, sy = e.clientY;
     const sc = scaleRef.current || 1;
-    const move = (ev) => onMove(((ev.clientX - sx) / sc) / FRAME_W * 100, ((ev.clientY - sy) / sc) / FRAME_H * 100, start);
-    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    const move = (ev) => onMove(((ev.clientX - sx) / sc) / FRAME_W * 100, ((ev.clientY - sy) / sc) / FRAME_H * 100, start, ev);
+    const up = () => { setGuides([]); window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
   }
@@ -342,7 +359,7 @@ function CountdownPreview({ cd, timeStyle, msgStyle, label, onBoxChange, bgMedia
   const hAlign = timeStyle?.align === 'left' ? 'flex-start' : timeStyle?.align === 'right' ? 'flex-end' : 'center';
 
   return (
-    <ScaledFrame wrapRef={wrapRef} scale={scale} contentGuide bgMedia={bgMedia}>
+    <ScaledFrame wrapRef={wrapRef} scale={scale} contentGuide bgMedia={bgMedia} guides={guides}>
       <div style={{
         position: 'absolute', left: `${bL}px`, top: `${bT}px`, width: `${bW}px`, height: `${bH}px`,
         background: buildBarBg(timeStyle?.ltBar), padding: '16px 32px', boxSizing: 'border-box',
@@ -358,11 +375,15 @@ function CountdownPreview({ cd, timeStyle, msgStyle, label, onBoxChange, bgMedia
 
       {onBoxChange && (
         <div
-          onPointerDown={(e) => startDrag(e, { ...box }, (dx, dy, s) => onBoxChange({
-            x: Math.round(clampPct(s.x + dx, 0, 100 - s.w)),
-            y: Math.round(clampPct(s.y + dy, 0, 100 - s.h)),
-            w: s.w, h: s.h,
-          }))}
+          onPointerDown={(e) => startDrag(e, { ...box }, (dx, dy, s, ev) => {
+            const snapped = snapMove({ x: s.x + dx, y: s.y + dy, w: s.w, h: s.h }, GFX_SNAP_TARGETS, { free: ev?.altKey, grid: 0 });
+            setGuides(snapped.guides);
+            onBoxChange({
+              x: Math.round(clampPct(snapped.x, 0, 100 - s.w)),
+              y: Math.round(clampPct(snapped.y, 0, 100 - s.h)),
+              w: s.w, h: s.h,
+            });
+          })}
           style={{ position: 'absolute', left: `${bL}px`, top: `${bT}px`, width: `${bW}px`, height: `${bH}px`,
             border: '2px solid rgba(173,198,255,0.8)', boxSizing: 'border-box', cursor: 'move' }}
         >
@@ -370,7 +391,12 @@ function CountdownPreview({ cd, timeStyle, msgStyle, label, onBoxChange, bgMedia
             const hs = 14 / scale;
             return (
               <div key={i}
-                onPointerDown={(e) => { e.stopPropagation(); startDrag(e, { ...box }, (dx, dy, s) => onBoxChange(resizeBox(s, hnd.hx, hnd.hy, dx, dy))); }}
+                onPointerDown={(e) => { e.stopPropagation(); startDrag(e, { ...box }, (dx, dy, s, ev) => {
+                  const sized = resizeBox(s, hnd.hx, hnd.hy, dx, dy);
+                  const { box: b, guides: g } = snapResizeBox(sized, hnd.hx, hnd.hy, GFX_SNAP_TARGETS, { free: ev?.altKey, min: MIN_BOX });
+                  setGuides(g);
+                  onBoxChange({ x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.w), h: Math.round(b.h) });
+                }); }}
                 style={{ position: 'absolute', left: `${hnd.hx * 100}%`, top: `${hnd.hy * 100}%`, width: hs, height: hs,
                   transform: 'translate(-50%, -50%)', background: '#adc6ff', border: '1px solid #0c0e12', borderRadius: 2, cursor: hnd.cursor }} />
             );
@@ -668,7 +694,8 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
         durationSec: parsed.durationSec ?? FRESH_CD.durationSec, targetClock: parsed.targetClock || FRESH_CD.targetClock,
         format: parsed.format || FRESH_CD.format, showSeconds: parsed.showSeconds !== false, endMessage: parsed.endMessage || '',
         onEnd: parsed.onEnd || 'hold',
-        onEndMediaId: parsed.onEndMediaId || null, onEndMediaPath: parsed.onEndMediaPath || null },
+        onEndMediaId: parsed.onEndMediaId || null, onEndMediaPath: parsed.onEndMediaPath || null,
+        audioMediaId: parsed.audioMediaId || null, audioName: parsed.audioName || '', audioLoop: !!parsed.audioLoop },
       timeStyle: { ...freshTimeStyle(), ...(parsed.time    || {}) },
       msgStyle:  { ...freshMsgStyle(),  ...(parsed.message || {}) },
       bgMediaId:   graphic?.background_media_id || null,
@@ -685,6 +712,7 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
   const [showGallery, setShowGallery] = useState(false);
   const [showBgPicker, setShowBgPicker] = useState(false);
   const [showEndMediaPicker, setShowEndMediaPicker] = useState(false);
+  const [showAudioPicker, setShowAudioPicker] = useState(false);
   const htmlRef = useRef(null);
 
   // Apply a built-in design to the current draft. It's a STYLE preset, so keep the
@@ -713,6 +741,26 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
+
+  // ⌘S saves & closes; ⌘B/I/U toggle bold/italic/underline on the active text
+  // style (whole-element formatting — these graphics have no inline runs). No dep
+  // array so the listener always sees the current draft/activeStyle (matches the
+  // sibling PresentationEditor pattern).
+  useEffect(() => {
+    const onKey = (e) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod || e.altKey || showGallery) return;
+      const k = e.key.toLowerCase();
+      if (k === 's') { e.preventDefault(); if (canSave) save(); return; }
+      if ((isLT || isTK || isCD) && (k === 'b' || k === 'i' || k === 'u')) {
+        e.preventDefault();
+        const prop = k === 'b' ? 'bold' : k === 'i' ? 'italic' : 'underline';
+        setActiveStyle({ ...activeStyle, [prop]: !activeStyle[prop] });
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Coalesce edits by the field(s) touched, so a typing run / slider drag on one
   // field collapses to a single undo step but switching fields starts a new one.
@@ -845,6 +893,7 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
               // label / ticker) targets → hides the stray reference Pos control.
               previewTemplate={(isLT && target === 'name') || (isCD && target !== 'message') ? 'fullscreen' : 'lowerthird'}
               simple={isTK || (isLT && target === 'title') || (isCD && target === 'message')}
+              allowBoxFill={false} // graphics boxes use the ltBar bar control instead
             />
           </>
         )}
@@ -1043,6 +1092,35 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
                   <BarControl bar={draft.timeStyle.ltBar}
                     onChange={(bar) => set({ timeStyle: { ...draft.timeStyle, ltBar: bar } })} />
                 </Field>
+
+                {/* Audio track — plays in-room while the timer is live, tied to Start/Stop
+                    (and Pause/Resume). Sourced from any audio/video item in the media
+                    library, which includes everything already in the rundown. */}
+                <Field label="Audio track (plays while live)">
+                  <div className="flex items-center gap-sm flex-wrap">
+                    <button onClick={() => setShowAudioPicker(true)}
+                      className="flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] border bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface cursor-pointer transition-colors">
+                      <span className="material-symbols-outlined text-[14px]">music_note</span>
+                      {draft.cd.audioMediaId ? 'Change' : 'Pick audio'}
+                    </button>
+                    {draft.cd.audioMediaId && (
+                      <>
+                        <span className="text-body-md text-on-surface truncate max-w-[160px]" title={draft.cd.audioName}>{draft.cd.audioName || 'Audio'}</span>
+                        <button onClick={() => setCd({ audioLoop: !draft.cd.audioLoop })}
+                          title="Loop the track until the timer stops"
+                          className={`flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] border transition-colors cursor-pointer ${
+                            draft.cd.audioLoop ? 'bg-primary/15 border-primary/50 text-primary' : 'bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
+                          }`}>
+                          <span className="material-symbols-outlined text-[14px]">loop</span>{draft.cd.audioLoop ? 'Loop on' : 'Loop off'}
+                        </button>
+                        <button onClick={() => setCd({ audioMediaId: null, audioName: '' })}
+                          className="flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] border bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-error cursor-pointer transition-colors">
+                          <span className="material-symbols-outlined text-[14px]">close</span>Clear
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </Field>
               </>
             )}
 
@@ -1228,7 +1306,69 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
         }}
       />
     )}
+    {showAudioPicker && (
+      <AudioTrackPickerModal
+        selectedId={draft.cd.audioMediaId}
+        onClose={() => setShowAudioPicker(false)}
+        onSelect={(asset) => {
+          setCd({ audioMediaId: asset ? asset.id : null, audioName: asset ? (asset.filename || 'Audio') : '' });
+          setShowAudioPicker(false);
+        }}
+      />
+    )}
     </>,
+    document.body
+  );
+}
+
+// Audio-track picker for the countdown "play while live" track. MediaPickerModal is
+// image/video + thumbnail-based, so this is a lightweight list of audio/video assets
+// (the audio of a video item works too). Sourced from the whole media library, which
+// includes every file already added to a rundown.
+function AudioTrackPickerModal({ selectedId, onSelect, onClose }) {
+  const [assets, setAssets] = useState(null);
+  useEffect(() => {
+    window.cue.media.listAll().then((all) =>
+      setAssets((all || []).filter((a) => a.type === 'audio' || a.type === 'video'))
+    );
+  }, []);
+  const fmtDur = (ms) => {
+    if (!ms) return '';
+    const s = Math.round(ms / 1000);
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  };
+  return createPortal(
+    <div className="fixed inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-[60] p-6" onClick={onClose}>
+      <div className="bg-surface-container-low border border-outline-variant/30 rounded-xl w-full max-w-lg max-h-[70vh] flex flex-col shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="px-lg py-md border-b border-outline-variant/20 flex items-center gap-sm shrink-0">
+          <span className="material-symbols-outlined text-primary">music_note</span>
+          <h3 className="text-headline-sm font-bold text-on-surface">Choose audio track</h3>
+        </div>
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-sm min-h-0">
+          {assets === null ? (
+            <div className="p-lg text-center text-on-surface-variant text-body-md">Loading…</div>
+          ) : assets.length === 0 ? (
+            <div className="p-lg text-center text-on-surface-variant text-body-md">No audio or video in the media library yet.</div>
+          ) : (
+            <div className="flex flex-col gap-[2px]">
+              {assets.map((a) => (
+                <button key={a.id} onClick={() => onSelect(a)}
+                  className={`flex items-center gap-sm px-sm py-2 rounded-lg text-left transition-colors cursor-pointer ${
+                    a.id === selectedId ? 'bg-primary/15 text-primary' : 'text-on-surface hover:bg-surface-container'
+                  }`}>
+                  <span className="material-symbols-outlined text-[18px] text-on-surface-variant shrink-0">{a.type === 'audio' ? 'audiotrack' : 'movie'}</span>
+                  <span className="flex-1 min-w-0 truncate text-body-md">{a.filename}</span>
+                  <span className="text-label-sm font-label-sm text-on-surface-variant tabular-nums shrink-0">{fmtDur(a.duration_ms)}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="px-lg py-sm border-t border-outline-variant/20 flex justify-end shrink-0">
+          <button onClick={onClose} className="px-md py-1.5 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] bg-surface-container-high border border-outline-variant/40 text-on-surface-variant hover:text-on-surface cursor-pointer">Cancel</button>
+        </div>
+      </div>
+    </div>,
     document.body
   );
 }

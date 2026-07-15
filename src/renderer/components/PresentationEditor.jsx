@@ -8,7 +8,8 @@ import {
   SortableContext, verticalListSortingStrategy, useSortable, arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { FormattingToolbar, renderTextContent } from './SongEditor';
+import { FormattingToolbar, renderTextContent, buildDecorationCss, buildBoxFillCss } from './SongEditor';
+import { buildSnapTargets, snapMove, snapResizeBox, SnapGuides } from '../utils/snapping';
 import MediaPickerModal from './MediaPickerModal';
 import UndoRedoButtons from './UndoRedoButtons';
 import useEditHistory, { useUndoRedoKeys } from '../utils/useEditHistory';
@@ -46,15 +47,16 @@ function elementInner(el) {
       ? `${shadow.x ?? 0}px ${shadow.y ?? 2}px ${shadow.blur ?? 16}px ${shadow.color ?? '#000'}`
       : 'none';
     return (
-      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column',
-        justifyContent: s.verticalAlign === 'top' ? 'flex-start' : s.verticalAlign === 'bottom' ? 'flex-end' : 'center' }}>
+      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', boxSizing: 'border-box',
+        justifyContent: s.verticalAlign === 'top' ? 'flex-start' : s.verticalAlign === 'bottom' ? 'flex-end' : 'center',
+        ...buildBoxFillCss(s.boxFill) }}>
         <div style={{ width: '100%', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
           fontFamily: s.fontFamily || undefined,
           fontSize: (s.fontSize ?? 48) + 'px',
           textAlign: s.align || 'center',
           fontWeight: s.bold ? 700 : 400,
           fontStyle: s.italic ? 'italic' : 'normal',
-          textDecoration: s.underline ? 'underline' : 'none',
+          textDecoration: buildDecorationCss(s),
           textTransform: s.uppercase ? 'uppercase' : 'none',
           color: s.color || '#ffffff',
           lineHeight: s.lineSpacing ? String(s.lineSpacing) : '1.25',
@@ -90,8 +92,11 @@ const HANDLES = [
 ];
 
 // One interactive element on the canvas: click to select, drag to move,
-// corner handles to resize, double-click text to edit in place.
-function EditableElement({ el, selected, editing, scale, canvasRef, onSelect, onChange, onStartEdit, onEndEdit }) {
+// corner handles to resize, double-click text to edit in place. Drags smart-snap
+// (shared utils/snapping.js) to the canvas edges/centre/thirds and every sibling
+// element's edges/centres — hold Alt to bypass. Guides render at the canvas level
+// via onGuides so they span the whole slide.
+function EditableElement({ el, others, selected, editing, scale, canvasRef, onSelect, onChange, onGuides, onStartEdit, onEndEdit }) {
   const drag = useRef(null);
   const textEditRef = useRef(null);
 
@@ -123,8 +128,11 @@ function EditableElement({ el, selected, editing, scale, canvasRef, onSelect, on
     const ch = canvasRef.current?.offsetHeight || 1;
     const dxPct = ((e.clientX - d.startX) / cw) * 100;
     const dyPct = ((e.clientY - d.startY) / ch) * 100;
+    const free = e.altKey; // Alt/Option = free positioning (no snap)
     if (d.mode === 'move') {
-      onChange({ ...el, x: clamp(d.x0 + dxPct, -50, 100), y: clamp(d.y0 + dyPct, -50, 100) });
+      const snapped = snapMove({ x: d.x0 + dxPct, y: d.y0 + dyPct, w: d.w0, h: d.h0 }, d.targets, { free, grid: 0 });
+      onGuides?.(snapped.guides);
+      onChange({ ...el, x: clamp(snapped.x, -50, 100), y: clamp(snapped.y, -50, 100) });
     } else {
       let { x0, y0, w0, h0 } = d;
       let x = x0, y = y0, w = w0, h = h0;
@@ -132,20 +140,28 @@ function EditableElement({ el, selected, editing, scale, canvasRef, onSelect, on
       if (d.mode.includes('s')) h = Math.max(1, h0 + dyPct);
       if (d.mode.includes('w')) { w = Math.max(2, w0 - dxPct); x = x0 + dxPct; }
       if (d.mode.includes('n')) { h = Math.max(1, h0 - dyPct); y = y0 + dyPct; }
-      onChange({ ...el, x, y, w, h });
+      const hx = d.mode.includes('e') ? 1 : d.mode.includes('w') ? 0 : 0.5;
+      const hy = d.mode.includes('s') ? 1 : d.mode.includes('n') ? 0 : 0.5;
+      const { box, guides } = snapResizeBox({ x, y, w, h }, hx, hy, d.targets, { free, min: 1 });
+      onGuides?.(guides);
+      onChange({ ...el, ...box });
     }
-  }, [el, onChange, canvasRef]);
+  }, [el, onChange, onGuides, canvasRef]);
 
   const endDrag = useCallback(() => {
     drag.current = null;
+    onGuides?.([]);
     window.removeEventListener('pointermove', onPointerMove);
     window.removeEventListener('pointerup', endDrag);
-  }, [onPointerMove]);
+  }, [onPointerMove, onGuides]);
 
   function startDrag(e, mode) {
     e.stopPropagation();
     onSelect();
-    drag.current = { mode, startX: e.clientX, startY: e.clientY, x0: el.x, y0: el.y, w0: el.w, h0: el.h };
+    drag.current = {
+      mode, startX: e.clientX, startY: e.clientY, x0: el.x, y0: el.y, w0: el.w, h0: el.h,
+      targets: buildSnapTargets({ others: others || [] }),
+    };
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', endDrag);
   }
@@ -187,8 +203,9 @@ function EditableElement({ el, selected, editing, scale, canvasRef, onSelect, on
         // key="edit" forces React to unmount this subtree (not reuse its DOM nodes)
         // when switching to the static path, preventing the stale innerHTML from the
         // useEffect appearing as a ghost text node alongside the new dangerouslySetInnerHTML child.
-        <div key="edit" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column',
-          justifyContent: s.verticalAlign === 'top' ? 'flex-start' : s.verticalAlign === 'bottom' ? 'flex-end' : 'center' }}>
+        <div key="edit" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', boxSizing: 'border-box',
+          justifyContent: s.verticalAlign === 'top' ? 'flex-start' : s.verticalAlign === 'bottom' ? 'flex-end' : 'center',
+          ...buildBoxFillCss(s.boxFill) }}>
           <div
             ref={textEditRef}
             contentEditable
@@ -205,7 +222,7 @@ function EditableElement({ el, selected, editing, scale, canvasRef, onSelect, on
               textAlign: s.align || 'center',
               fontWeight: s.bold ? 700 : 400,
               fontStyle: s.italic ? 'italic' : 'normal',
-              textDecoration: s.underline ? 'underline' : 'none',
+              textDecoration: buildDecorationCss(s),
               textTransform: s.uppercase ? 'uppercase' : 'none',
               color: s.color || '#ffffff',
               lineHeight: s.lineSpacing ? String(s.lineSpacing) : '1.25',
@@ -278,6 +295,7 @@ export default function PresentationEditor({ presentationId, onClose, onSave }) 
   const [cur, setCur] = useState(0);
   const [selId, setSelId] = useState(null);
   const [editingId, setEditingId] = useState(null);
+  const [guides, setGuides] = useState([]); // smart-snap guide lines during an element drag
   const [picker, setPicker] = useState(null); // 'element' | 'background'
   const [ctxMenu, setCtxMenu] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -346,6 +364,23 @@ export default function PresentationEditor({ presentationId, onClose, onSave }) 
     if (!selected) return;
     const minZ = Math.min(0, ...slide.elements.map((e) => e.z || 0));
     patchElement({ ...selected, z: minZ - 1 });
+  }
+  function duplicateSelected() {
+    if (!selected) return;
+    const copy = { ...selected, id: newId(), x: selected.x + 2, y: selected.y + 2 };
+    patchSlide({ elements: [...slide.elements, copy] });
+    setSelId(copy.id);
+  }
+  // Align the selected element against the slide edges/centre (PowerPoint-style).
+  function alignSelected(axis, where) {
+    if (!selected) return;
+    if (axis === 'h') {
+      const x = where === 'left' ? 0 : where === 'right' ? 100 - selected.w : (100 - selected.w) / 2;
+      patchElement({ ...selected, x });
+    } else {
+      const y = where === 'top' ? 0 : where === 'bottom' ? 100 - selected.h : (100 - selected.h) / 2;
+      patchElement({ ...selected, y });
+    }
   }
 
   // Add a slide composed from a theme × layout. Photo-backed themes (bgRef) resolve
@@ -444,13 +479,32 @@ export default function PresentationEditor({ presentationId, onClose, onSave }) 
     } finally { setSaving(false); }
   }
 
-  // Esc closes; Delete removes selected element (unless typing).
+  // Esc closes; Delete removes, arrows nudge (Shift = coarse), ⌘/Ctrl+D duplicates
+  // the selected element (all suppressed while typing).
   useEffect(() => {
     const onKey = (e) => {
       const t = document.activeElement?.tagName;
       const typing = t === 'INPUT' || t === 'TEXTAREA' || document.activeElement?.isContentEditable;
-      if (e.key === 'Escape') { if (!picker) onClose(); }
-      else if ((e.key === 'Delete' || e.key === 'Backspace') && selected && !typing) { e.preventDefault(); deleteSelected(); }
+      if (e.key === 'Escape') { if (!picker) onClose(); return; }
+      const mod = e.metaKey || e.ctrlKey;
+      // ⌘S saves & closes from anywhere in the editor (standard app behavior).
+      if (mod && !e.altKey && e.key.toLowerCase() === 's') { e.preventDefault(); if (!saving) save(); return; }
+      // ⌘B/I/U toggle bold/italic/underline on the selected text element — works
+      // even while its label field is focused (a plain input has no inline format).
+      if (mod && !e.altKey && selected?.type === 'text' && ['b', 'i', 'u'].includes(e.key.toLowerCase())) {
+        e.preventDefault();
+        const prop = e.key.toLowerCase() === 'b' ? 'bold' : e.key.toLowerCase() === 'i' ? 'italic' : 'underline';
+        const st = selected.style || {};
+        patchElement({ ...selected, style: { ...st, [prop]: !st[prop] } });
+        return;
+      }
+      if (!selected || typing) return;
+      if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSelected(); return; }
+      if (e.key === 'd' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); duplicateSelected(); return; }
+      const step = e.shiftKey ? 2 : 0.5;
+      const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
+      const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
+      if (dx || dy) { e.preventDefault(); patchElement({ ...selected, x: selected.x + dx, y: selected.y + dy }); }
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
@@ -533,6 +587,7 @@ export default function PresentationEditor({ presentationId, onClose, onSave }) 
               <div style={{ position: 'absolute', top: 0, left: 0, width: NATIVE_W, height: NATIVE_H, transform: `scale(${scale})`, transformOrigin: 'top left' }}>
                 {slide && [...slide.elements].sort((a, b) => (a.z || 0) - (b.z || 0)).map((el) => (
                   <EditableElement key={el.id} el={el} selected={el.id === selId} editing={el.id === editingId}
+                    others={slide.elements.filter((o) => o.id !== el.id)} onGuides={setGuides}
                     scale={scale} canvasRef={canvasRef}
                     onSelect={() => {
                       // Commit any active inline edit before changing selection
@@ -548,6 +603,9 @@ export default function PresentationEditor({ presentationId, onClose, onSave }) 
                   />
                 ))}
               </div>
+              {/* Smart-snap guide lines — rendered at canvas level (unscaled) so they
+                  stay 1px crisp; % positions match the 1920×1080 stage exactly. */}
+              <SnapGuides guides={guides} zIndex={60} />
             </div>
           </div>
         </div>
@@ -556,7 +614,8 @@ export default function PresentationEditor({ presentationId, onClose, onSave }) 
         <div className="w-80 shrink-0 border-l border-outline-variant/30 bg-surface-container-low overflow-y-auto">
           {selected ? (
             <Inspector el={selected} fonts={fonts} onChange={patchElement} onDelete={deleteSelected}
-              onFront={bringToFront} onBack={sendToBack} onReplaceImage={() => setPicker('element')} />
+              onFront={bringToFront} onBack={sendToBack} onDuplicate={duplicateSelected}
+              onAlign={alignSelected} onReplaceImage={() => setPicker('element')} />
           ) : (
             <div className="p-md flex flex-col gap-md">
               <div className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-widest">
@@ -882,7 +941,7 @@ function ApplyThemeModal({ hasSlide, onApply, onClose }) {
 // Per-type element inspector. Text reuses SongEditor's FormattingToolbar (simple
 // mode, no element-box controls) plus a textarea + v-align; shapes get fill/stroke;
 // images a fit toggle. Common geometry/arrange controls at the bottom.
-function Inspector({ el, fonts, onChange, onDelete, onFront, onBack, onReplaceImage }) {
+function Inspector({ el, fonts, onChange, onDelete, onFront, onBack, onDuplicate, onAlign, onReplaceImage }) {
   const set = (k, v) => onChange({ ...el, [k]: v });
   const num = (k, v) => onChange({ ...el, [k]: v === '' ? 0 : Number(v) });
   return (
@@ -890,7 +949,10 @@ function Inspector({ el, fonts, onChange, onDelete, onFront, onBack, onReplaceIm
       <div className="px-md py-sm border-b border-outline-variant/30 flex items-center gap-sm">
         <span className="material-symbols-outlined text-[16px] text-primary">{el.type === 'text' ? 'title' : el.type === 'image' ? 'image' : 'shapes'}</span>
         <span className="text-label-sm font-label-sm uppercase tracking-widest text-on-surface">{el.type}</span>
-        <button onClick={onDelete} title="Delete element" className="ml-auto text-error hover:bg-error-container/20 rounded p-1 transition-colors">
+        <button onClick={onDuplicate} title="Duplicate element (⌘/Ctrl+D)" className="ml-auto text-on-surface-variant hover:text-on-surface hover:bg-surface-variant rounded p-1 transition-colors">
+          <span className="material-symbols-outlined text-[16px]">content_copy</span>
+        </button>
+        <button onClick={onDelete} title="Delete element" className="text-error hover:bg-error-container/20 rounded p-1 transition-colors">
           <span className="material-symbols-outlined text-[16px]">delete</span>
         </button>
       </div>
@@ -935,6 +997,24 @@ function Inspector({ el, fonts, onChange, onDelete, onFront, onBack, onReplaceIm
 
       {/* Common geometry + arrange */}
       <div className="p-sm border-t border-outline-variant/30 flex flex-col gap-sm">
+        {/* Align on slide — snap the element to the slide edges / centre lines. */}
+        <Row label="Align">
+          <div className="flex gap-[2px]">
+            {[
+              { axis: 'h', where: 'left',   icon: 'align_horizontal_left',   t: 'Align left edge' },
+              { axis: 'h', where: 'center', icon: 'align_horizontal_center', t: 'Centre horizontally' },
+              { axis: 'h', where: 'right',  icon: 'align_horizontal_right',  t: 'Align right edge' },
+              { axis: 'v', where: 'top',    icon: 'align_vertical_top',      t: 'Align top edge' },
+              { axis: 'v', where: 'middle', icon: 'align_vertical_center',   t: 'Centre vertically' },
+              { axis: 'v', where: 'bottom', icon: 'align_vertical_bottom',   t: 'Align bottom edge' },
+            ].map(({ axis, where, icon, t }) => (
+              <button key={`${axis}-${where}`} title={t} onClick={() => onAlign(axis, where)}
+                className="p-1 rounded text-on-surface-variant hover:bg-surface-variant hover:text-on-surface transition-colors">
+                <span className="material-symbols-outlined text-[15px]">{icon}</span>
+              </button>
+            ))}
+          </div>
+        </Row>
         <div className="grid grid-cols-4 gap-xs">
           <Field label="X" value={Math.round(el.x)} onChange={(v) => num('x', v)} />
           <Field label="Y" value={Math.round(el.y)} onChange={(v) => num('y', v)} />

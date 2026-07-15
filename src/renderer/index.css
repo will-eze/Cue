@@ -107,6 +107,31 @@ input:focus, select:focus, textarea:focus {
   box-shadow: 0 0 0 1px #adc6ff;
 }
 
+/* ── Keyboard focus ring ───────────────────────────────────── */
+/* Every interactive element gets a visible ring on KEYBOARD focus only
+   (:focus-visible), so Tab navigation is always legible while mouse clicks
+   stay clean. Uses the primary blue (#adc6ff). Inputs keep their own ring
+   above, so they're excluded here. */
+button:focus-visible,
+a:focus-visible,
+summary:focus-visible,
+[role="button"]:focus-visible,
+[role="switch"]:focus-visible,
+[role="tab"]:focus-visible,
+[role="menuitem"]:focus-visible,
+[role="option"]:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid #adc6ff;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+/* Never show a focus ring for pointer interactions on these elements. */
+button:focus:not(:focus-visible),
+[role="button"]:focus:not(:focus-visible),
+[tabindex]:focus:not(:focus-visible) {
+  outline: none;
+}
+
 /* ── Placeholder text ──────────────────────────────────────── */
 ::placeholder { color: #8c909f; }
 

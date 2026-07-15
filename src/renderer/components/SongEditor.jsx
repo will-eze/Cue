@@ -7,7 +7,7 @@ import UndoRedoButtons from './UndoRedoButtons';
 import useEditHistory, { useUndoRedoKeys } from '../utils/useEditHistory';
 import { useToast } from './Toast';
 import { mediaUrl } from '../utils/mediaUrl';
-import { sectionOrdinals, SLIDE_BREAK } from '../utils/sectionLabels';
+import { sectionOrdinals, sectionLabels, SLIDE_BREAK } from '../utils/sectionLabels';
 import { useFonts } from '../utils/fonts';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
@@ -16,6 +16,7 @@ import {
   SortableContext, verticalListSortingStrategy, useSortable, arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { buildSnapTargets, snapMove, snapResizeBox, SnapGuides } from '../utils/snapping';
 
 // ─── Constants ─────────────────────────────────────────────────────────────
 
@@ -29,6 +30,7 @@ export const DEFAULT_STYLE = {
   bold:             false,
   italic:           false,
   underline:        false,
+  strikethrough:    false,
   uppercase:        false,
   align:            'center',
   verticalAlign:    'center',
@@ -37,6 +39,7 @@ export const DEFAULT_STYLE = {
   textShadow:       null,
   textStroke:       null,
   textBox:          null,
+  boxFill:          null,  // {enabled,color,opacity,radius,pad} — fill panel behind the text box
   ltBar:            null,
   listStyle:        null,  // null|'disc'|'decimal'
   bulletSpacing:    null,  // em — gap after each bullet item
@@ -93,7 +96,8 @@ export function renderWithRuns(text, runs, scale = 1) {
     const st = [];
     if (run.bold)       st.push('font-weight:700');
     if (run.italic)     st.push('font-style:italic');
-    if (run.underline)  st.push('text-decoration:underline');
+    const deco = [run.underline && 'underline', run.strikethrough && 'line-through'].filter(Boolean).join(' ');
+    if (deco)           st.push(`text-decoration:${deco}`);
     if (run.color)      st.push(`color:${run.color}`);
     if (run.fontFamily) st.push(`font-family:${String(run.fontFamily).replace(/"/g, "'")}`);
     if (run.fontSize)   st.push(`font-size:${Number(run.fontSize) * scale}px`);
@@ -172,11 +176,13 @@ function extractContentAndRuns(el) {
     if (tag === 'B' || tag === 'STRONG') s.bold = true;
     if (tag === 'I' || tag === 'EM')     s.italic = true;
     if (tag === 'U')                      s.underline = true;
+    if (tag === 'S' || tag === 'STRIKE' || tag === 'DEL') s.strikethrough = true;
     if (tag === 'SPAN') {
       const cs = node.style;
       if (cs.fontWeight === 'bold' || cs.fontWeight === '700') s.bold = true;
       if (cs.fontStyle === 'italic')                          s.italic = true;
       if (cs.textDecoration?.includes('underline'))           s.underline = true;
+      if (cs.textDecoration?.includes('line-through'))        s.strikethrough = true;
       if (cs.color)      s.color = cs.color;
       if (cs.fontFamily) s.fontFamily = cs.fontFamily;
       if (cs.fontSize)   s.fontSize = parseInt(cs.fontSize);
@@ -191,9 +197,9 @@ function extractContentAndRuns(el) {
 export function styleIsDefault(s) {
   if (!s) return true;
   return !s.fontFamily && !s.fontSize && !s.color && !s.bold && !s.italic &&
-    !s.underline && !s.uppercase && (!s.align || s.align === 'center') &&
+    !s.underline && !s.strikethrough && !s.uppercase && (!s.align || s.align === 'center') &&
     (!s.verticalAlign || s.verticalAlign === 'center') &&
-    !s.lineSpacing && !s.letterSpacing && !s.textShadow && !s.textStroke && !s.textBox && !s.ltBar &&
+    !s.lineSpacing && !s.letterSpacing && !s.textShadow && !s.textStroke && !s.textBox && !s.boxFill && !s.ltBar &&
     !s.bgCss && !s.bgScrim && !s.listStyle && !s.bulletSpacing && !s.paragraphSpacing;
 }
 
@@ -249,6 +255,27 @@ function buildStrokeCss(stroke) {
   return `${stroke.width ?? 2}px ${stroke.color ?? '#000000'}`;
 }
 
+// underline + strikethrough combine into one text-decoration value.
+export function buildDecorationCss(s) {
+  const deco = [s?.underline && 'underline', s?.strikethrough && 'line-through'].filter(Boolean).join(' ');
+  return deco || 'none';
+}
+
+// Fill panel behind the text box (legibility on busy backgrounds) — colour at
+// opacity, rounded corners, inner padding. px values are authored 1920×1080 space.
+export function buildBoxFillCss(bf) {
+  if (!bf || !bf.enabled) return {};
+  const c = bf.color || '#000000';
+  const r = parseInt(c.slice(1, 3), 16) || 0;
+  const g = parseInt(c.slice(3, 5), 16) || 0;
+  const b = parseInt(c.slice(5, 7), 16) || 0;
+  return {
+    background: `rgba(${r},${g},${b},${bf.opacity ?? 0.5})`,
+    borderRadius: `${bf.radius ?? 0}px`,
+    padding: `${bf.pad ?? 24}px`,
+  };
+}
+
 // Build a CSS style object for an attribution/reference line from a style_json
 // subset (font/size/colour/align/weight/etc). Used by the scripture reference,
 // which is stylable; `null` style falls back to the caller's base + defaultAlign.
@@ -262,7 +289,7 @@ export function copyrightFontCss(cs) {
   if (cs.color)         o.color = cs.color;
   if (cs.bold)          o.fontWeight = 700;
   if (cs.italic)        o.fontStyle = 'italic';
-  if (cs.underline)     o.textDecoration = 'underline';
+  if (cs.underline || cs.strikethrough) o.textDecoration = buildDecorationCss(cs);
   if (cs.uppercase)     o.textTransform = 'uppercase';
   if (cs.letterSpacing) o.letterSpacing = `${cs.letterSpacing}em`;
   if (cs.textShadow?.enabled) o.textShadow = `${cs.textShadow.x ?? 0}px ${cs.textShadow.y ?? 2}px ${cs.textShadow.blur ?? 16}px ${cs.textShadow.color ?? '#000'}`;
@@ -398,12 +425,16 @@ function resizeBox(s, hx, hy, dx, dy) {
   return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) };
 }
 
+// Snap targets for the text box: frame edges/centre/thirds + the safe-area lines.
+const TB_SNAP_TARGETS = buildSnapTargets({ contentBox: CONTENT_BOX });
+
 export function SlidePreview({ text, runs, style, backgroundPath, copyright, copyrightAlign, copyrightStyle, onTextBoxChange, onRefPosChange, onCanvasTextChange }) {
   const wrapRef  = useRef(null);
   const [scale, setScale] = useState(0.5);
   const scaleRef = useRef(scale);
   scaleRef.current = scale;
   const [isEditing, setIsEditing] = useState(false);
+  const [guides, setGuides] = useState([]); // smart-snap guide lines during a drag
   const textEditRef = useRef(null);
 
   useEffect(() => {
@@ -432,7 +463,8 @@ export function SlidePreview({ text, runs, style, backgroundPath, copyright, cop
     setIsEditing(false);
   }
 
-  // Drag: pointer delta → native px (÷ scale) → percent. onMove(dx%, dy%, startSnapshot).
+  // Drag: pointer delta → native px (÷ scale) → percent. onMove(dx%, dy%, startSnapshot, ev)
+  // — ev exposes altKey so a drag can bypass smart-snap (free positioning).
   function startDrag(e, start, onMove) {
     e.preventDefault(); e.stopPropagation();
     const sx = e.clientX, sy = e.clientY;
@@ -440,9 +472,10 @@ export function SlidePreview({ text, runs, style, backgroundPath, copyright, cop
     const move = (ev) => {
       const dx = ((ev.clientX - sx) / sc) / SLIDE_W * 100;
       const dy = ((ev.clientY - sy) / sc) / SLIDE_H * 100;
-      onMove(dx, dy, start);
+      onMove(dx, dy, start, ev);
     };
     const up = () => {
+      setGuides([]);
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
     };
@@ -489,6 +522,7 @@ export function SlidePreview({ text, runs, style, backgroundPath, copyright, cop
     justifyContent: style?.verticalAlign === 'top' ? 'flex-start' : style?.verticalAlign === 'bottom' ? 'flex-end' : 'center',
     overflow:       'hidden',
     boxSizing:      'border-box',
+    ...buildBoxFillCss(style?.boxFill),
   };
 
   const textCss = {
@@ -496,7 +530,7 @@ export function SlidePreview({ text, runs, style, backgroundPath, copyright, cop
     fontSize:            `${style?.fontSize ?? 72}px`,
     fontWeight:          style?.bold ? 700 : 400,
     fontStyle:           style?.italic ? 'italic' : 'normal',
-    textDecoration:      style?.underline ? 'underline' : 'none',
+    textDecoration:      buildDecorationCss(style),
     color:               style?.color || '#ffffff',
     textAlign:           style?.align || 'center',
     lineHeight:          style?.lineSpacing ? String(style.lineSpacing) : '1.25',
@@ -516,6 +550,8 @@ export function SlidePreview({ text, runs, style, backgroundPath, copyright, cop
       ref={wrapRef}
       style={{ position: 'relative', width: '100%', aspectRatio: '16/9', background: '#000', borderRadius: '8px', overflow: 'hidden', flexShrink: 0 }}
     >
+      {/* Smart-snap guide lines — % positions map 1:1 onto the 16:9 wrapper. */}
+      <SnapGuides guides={guides} zIndex={40} />
       <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
         <div style={{ width: `${SLIDE_W}px`, height: `${SLIDE_H}px`, transform: `scale(${scale})`, transformOrigin: 'top left', position: 'relative' }}>
           {/* Background — media asset wins; else a media theme's remote thumb
@@ -572,11 +608,16 @@ export function SlidePreview({ text, runs, style, backgroundPath, copyright, cop
               onPointerDown={(e) => startDrag(
                 e,
                 { x: tb.x, y: tb.y, w: tb.w, h: tb.h },
-                (dx, dy, s) => onTextBoxChange({
-                  x: Math.round(clampPct(s.x + dx, 0, 100 - s.w)),
-                  y: Math.round(clampPct(s.y + dy, 0, 100 - s.h)),
-                  w: s.w, h: s.h,
-                }),
+                (dx, dy, s, ev) => {
+                  // Smart-snap to frame edges/centre/thirds + safe area (Alt = free).
+                  const snapped = snapMove({ x: s.x + dx, y: s.y + dy, w: s.w, h: s.h }, TB_SNAP_TARGETS, { free: ev?.altKey, grid: 0 });
+                  setGuides(snapped.guides);
+                  onTextBoxChange({
+                    x: Math.round(clampPct(snapped.x, 0, 100 - s.w)),
+                    y: Math.round(clampPct(snapped.y, 0, 100 - s.h)),
+                    w: s.w, h: s.h,
+                  });
+                },
               )}
               onDoubleClick={onCanvasTextChange ? () => setIsEditing(true) : undefined}
               style={{
@@ -589,7 +630,12 @@ export function SlidePreview({ text, runs, style, backgroundPath, copyright, cop
                 return (
                   <div
                     key={i}
-                    onPointerDown={(e) => { e.stopPropagation(); startDrag(e, { x: tb.x, y: tb.y, w: tb.w, h: tb.h }, (dx, dy, s) => onTextBoxChange(resizeBox(s, hnd.hx, hnd.hy, dx, dy))); }}
+                    onPointerDown={(e) => { e.stopPropagation(); startDrag(e, { x: tb.x, y: tb.y, w: tb.w, h: tb.h }, (dx, dy, s, ev) => {
+                      const sized = resizeBox(s, hnd.hx, hnd.hy, dx, dy);
+                      const { box: snapped, guides: g } = snapResizeBox(sized, hnd.hx, hnd.hy, TB_SNAP_TARGETS, { free: ev?.altKey, min: MIN_BOX });
+                      setGuides(g);
+                      onTextBoxChange({ x: Math.round(snapped.x), y: Math.round(snapped.y), w: Math.round(snapped.w), h: Math.round(snapped.h) });
+                    }); }}
                     style={{
                       position: 'absolute', left: `${hnd.hx * 100}%`, top: `${hnd.hy * 100}%`,
                       width: hs, height: hs, transform: 'translate(-50%, -50%)',
@@ -646,7 +692,7 @@ export function LowerThirdPreview({ text, runs, style, copyright, copyrightAlign
     fontSize:         `${style?.fontSize ?? 48}px`,
     fontWeight:       style?.bold ? 700 : 400,
     fontStyle:        style?.italic ? 'italic' : 'normal',
-    textDecoration:   style?.underline ? 'underline' : 'none',
+    textDecoration:   buildDecorationCss(style),
     color:            style?.color || '#ffffff',
     textAlign:        style?.align || 'center',
     lineHeight:       style?.lineSpacing ? String(style.lineSpacing) : '1.2',
@@ -734,15 +780,106 @@ function NumInput({ value, onChange, min, max, step = 0.1, width = 'w-12', place
   );
 }
 
-export function FormattingToolbar({ style, onChange, fonts, hasSelection, execCmd, previewTemplate, simple = false }) {
+// A toolbar submenu: compact trigger button + a portal-anchored popover panel.
+// Portalled (fixed position from the trigger rect) so it never clips inside a
+// narrow/overflow toolbar host (e.g. the presentation inspector). The trigger
+// lights up while open OR when its group holds non-default styling, so advanced
+// settings stay discoverable without permanent toolbar real estate.
+function ToolMenu({ icon, label, title, active, width = 264, children }) {
+  const [open, setOpen] = useState(false);
+  const btnRef = useRef(null);
+  const panelRef = useRef(null);
+  const [pos, setPos] = useState({ left: 0, top: 0 });
+
+  useEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const r = btnRef.current?.getBoundingClientRect();
+      if (!r) return;
+      setPos({
+        left: Math.min(Math.max(8, r.left), window.innerWidth - width - 8),
+        top: Math.min(r.bottom + 4, window.innerHeight - 60),
+      });
+    };
+    place();
+    const onDown = (e) => {
+      if (btnRef.current?.contains(e.target) || panelRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
+    // Capture-phase Escape so closing the menu never also closes the host editor
+    // (whose own Escape listener sits in the bubble phase on document).
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); setOpen(false); } };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey, true);
+    window.addEventListener('resize', place);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('resize', place);
+    };
+  }, [open, width]);
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        title={title || label}
+        onMouseDown={(e) => { e.preventDefault(); setOpen((v) => !v); }}
+        className={`h-6 px-1.5 flex items-center gap-[3px] rounded transition-colors flex-shrink-0 cursor-pointer text-[10px] font-mono uppercase tracking-[0.04em]
+          ${open || active ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-variant'}`}
+      >
+        {icon && <span className="material-symbols-outlined text-[13px]">{icon}</span>}
+        {label}
+        <span className="material-symbols-outlined text-[13px] -mr-1">arrow_drop_down</span>
+      </button>
+      {open && createPortal(
+        <div ref={panelRef}
+          className="fixed z-[90] bg-surface-container-high border border-outline-variant/40 rounded-lg shadow-2xl p-md flex flex-col gap-sm max-h-[70vh] overflow-y-auto custom-scrollbar"
+          style={{ left: pos.left, top: pos.top, width }}>
+          {children}
+        </div>,
+        document.body
+      )}
+    </>
+  );
+}
+
+function MenuRow({ label, children }) {
+  return (
+    <div className="flex items-center gap-sm min-h-6">
+      <span className="text-[9px] font-mono text-on-surface-variant/60 uppercase tracking-[0.05em] flex-1">{label}</span>
+      {children}
+    </div>
+  );
+}
+
+function MenuSection({ children }) {
+  return (
+    <div className="flex items-center gap-sm pt-xs first:pt-0">
+      <span className="text-[9px] font-mono font-bold text-on-surface-variant uppercase tracking-[0.08em]">{children}</span>
+      <span className="flex-1 h-px bg-outline-variant/30" />
+    </div>
+  );
+}
+
+// One-click shadow looks — each writes a complete textShadow config, tweakable after.
+const SHADOW_PRESETS = [
+  { id: 'soft', label: 'Soft', v: { enabled: true, color: '#000000', blur: 24, x: 0, y: 4 } },
+  { id: 'hard', label: 'Hard', v: { enabled: true, color: '#000000', blur: 2, x: 3, y: 3 } },
+  { id: 'glow', label: 'Glow', v: { enabled: true, color: '#ffffff', blur: 30, x: 0, y: 0 } },
+];
+
+export function FormattingToolbar({ style, onChange, fonts, hasSelection, execCmd, previewTemplate, simple = false, allowBoxFill = true }) {
   const set = (prop, val) => onChange({ ...style, [prop]: val });
 
   const shadow = style.textShadow;
   const stroke = style.textStroke;
+  const fill   = style.boxFill;
   const tb     = style.textBox || { x: 5, y: 5, w: 90, h: 90 };
 
   const shadowEnabled = shadow?.enabled ?? false;
   const strokeEnabled = stroke?.enabled ?? false;
+  const fillEnabled   = fill?.enabled ?? false;
 
   function toggleShadow() {
     if (!shadow) onChange({ ...style, textShadow: { enabled: true, color: '#000000', blur: 16, x: 0, y: 2 } });
@@ -752,6 +889,16 @@ export function FormattingToolbar({ style, onChange, fonts, hasSelection, execCm
     if (!stroke) onChange({ ...style, textStroke: { enabled: true, color: '#000000', width: 2 } });
     else onChange({ ...style, textStroke: { ...stroke, enabled: !stroke.enabled } });
   }
+  function toggleBoxFill() {
+    if (!fill) onChange({ ...style, boxFill: { enabled: true, color: '#000000', opacity: 0.5, radius: 16, pad: 32 } });
+    else onChange({ ...style, boxFill: { ...fill, enabled: !fill.enabled } });
+  }
+
+  // Submenu triggers light up when their group holds non-default styling.
+  const spacingActive = !!(style.lineSpacing || style.paragraphSpacing || style.letterSpacing || style.bulletSpacing);
+  const effectsActive = shadowEnabled || strokeEnabled || !!style.bgScrim;
+  const listActive    = !!style.listStyle;
+  const boxActive     = !!style.textBox || fillEnabled;
   function setTb(prop, val) {
     const cur = style.textBox || { ...CONTENT_BOX };
     onChange({ ...style, textBox: { ...cur, [prop]: Number(val) } });
@@ -774,7 +921,6 @@ export function FormattingToolbar({ style, onChange, fonts, hasSelection, execCm
   }
 
   const row = 'flex items-center gap-1 px-md py-1.5 flex-wrap';
-  const label = 'text-[9px] font-mono text-on-surface-variant/50 uppercase tracking-[0.05em] flex-shrink-0';
 
   return (
     <div className="border-b border-outline-variant/30 bg-surface-container">
@@ -813,15 +959,19 @@ export function FormattingToolbar({ style, onChange, fonts, hasSelection, execCm
           })()}
         </select>
 
-        {/* Font size */}
-        <select
-          value={style.fontSize || ''}
-          onChange={(e) => set('fontSize', e.target.value ? Number(e.target.value) : null)}
-          className="bg-surface-container-high text-on-surface text-[11px] rounded px-1 h-6 border border-outline-variant/50 w-[62px] outline-none focus:border-primary cursor-pointer flex-shrink-0"
-        >
-          <option value="">Size</option>
-          {FONT_SIZES.map((s) => <option key={s} value={s}>{s}px</option>)}
-        </select>
+        {/* Font size — free entry (any px) with the preset ladder as a datalist,
+            so operators can both type an exact size and pick a common one. */}
+        <input
+          type="number" list="cue-font-sizes" min={6} max={500} step={1}
+          value={style.fontSize ?? ''}
+          placeholder="Size"
+          title="Font size (px) — type any value or pick a preset"
+          onChange={(e) => set('fontSize', e.target.value === '' ? null : Number(e.target.value))}
+          onBlur={(e) => { const v = e.target.value; if (v !== '') set('fontSize', Math.max(6, Math.min(500, Number(v) || 6))); }}
+          onFocus={(e) => e.target.select()}
+          className="bg-surface-container-high text-on-surface text-[11px] rounded px-1 h-6 border border-outline-variant/50 w-[58px] outline-none focus:border-primary flex-shrink-0 text-center"
+        />
+        <datalist id="cue-font-sizes">{FONT_SIZES.map((s) => <option key={s} value={s} />)}</datalist>
 
         {/* Text color */}
         <ColorSwatch value={style.color || '#ffffff'} onChange={(v) => set('color', v)} title="Text colour" />
@@ -845,6 +995,12 @@ export function FormattingToolbar({ style, onChange, fonts, hasSelection, execCm
           if (hasSelection()) execCmd('underline');
           else set('underline', !style.underline);
         }} className="underline">U</ToolBtn>
+
+        {/* Strikethrough */}
+        <ToolBtn active={style.strikethrough} title="Strikethrough" onMouseDown={() => {
+          if (hasSelection()) execCmd('strikeThrough');
+          else set('strikethrough', !style.strikethrough);
+        }} className="line-through">S</ToolBtn>
 
         {/* Uppercase */}
         <ToolBtn active={style.uppercase} title="Uppercase" onMouseDown={() => set('uppercase', !style.uppercase)}>
@@ -893,160 +1049,213 @@ export function FormattingToolbar({ style, onChange, fonts, hasSelection, execCm
         )}
       </div>
 
-      {/* Row 2: Lists + Spacing + Shadow + Stroke + TextBox */}
+      {/* Row 2: organised submenus — advanced styling grouped ProPresenter-style so
+          the frequent controls above stay one click away. Each trigger lights up
+          when its group holds non-default styling, so nothing hides silently. */}
       <div className={`${row} border-t border-outline-variant/20`}>
 
-        {/* Bullet / numbered list */}
-        <span className={label}>List</span>
-        <ToolBtn active={style.listStyle === 'disc'} title="Unordered bullet list" onMouseDown={() => set('listStyle', style.listStyle === 'disc' ? null : 'disc')}>
-          <span className="material-symbols-outlined text-[13px]">format_list_bulleted</span>
-        </ToolBtn>
-        <ToolBtn active={style.listStyle === 'decimal'} title="Numbered list" onMouseDown={() => set('listStyle', style.listStyle === 'decimal' ? null : 'decimal')}>
-          <span className="material-symbols-outlined text-[13px]">format_list_numbered</span>
-        </ToolBtn>
-        {style.listStyle && (
-          <>
-            <span className={label}>Gap</span>
-            <NumInput value={style.bulletSpacing} onChange={(v) => set('bulletSpacing', v)} min={0} max={4} step={0.05} width="w-12" placeholder="0" />
-          </>
-        )}
+        <ToolMenu icon="format_line_spacing" label="Spacing" active={spacingActive} title="Line, paragraph and letter spacing">
+          <MenuRow label="Line height">
+            <NumInput value={style.lineSpacing} onChange={(v) => set('lineSpacing', v)} min={0.5} max={4} step={0.05} width="w-14" placeholder="1.25" />
+          </MenuRow>
+          <MenuRow label="Paragraph gap (em)">
+            <NumInput value={style.paragraphSpacing} onChange={(v) => set('paragraphSpacing', v)} min={0} max={4} step={0.05} width="w-14" placeholder="0" />
+          </MenuRow>
+          <MenuRow label="Letter tracking (em)">
+            <NumInput value={style.letterSpacing} onChange={(v) => set('letterSpacing', v)} min={-0.2} max={1} step={0.01} width="w-14" placeholder="0" />
+          </MenuRow>
+        </ToolMenu>
 
-        <Divider />
+        <ToolMenu icon="blur_on" label="Effects" active={effectsActive} title="Shadow, outline and background scrim">
+          <MenuSection>Shadow</MenuSection>
+          <MenuRow label="Enabled">
+            <ToolBtn active={shadowEnabled} title="Toggle text shadow" onMouseDown={toggleShadow}>{shadowEnabled ? 'On' : 'Off'}</ToolBtn>
+          </MenuRow>
+          <MenuRow label="Preset">
+            <div className="flex gap-[3px]">
+              {SHADOW_PRESETS.map((p) => (
+                <ToolBtn key={p.id} title={`${p.label} shadow`} onMouseDown={() => onChange({ ...style, textShadow: { ...p.v } })}>{p.label}</ToolBtn>
+              ))}
+            </div>
+          </MenuRow>
+          {shadowEnabled && shadow && (
+            <>
+              <MenuRow label="Colour">
+                <ColorSwatch value={shadow.color || '#000000'} onChange={(v) => onChange({ ...style, textShadow: { ...shadow, color: v } })} title="Shadow colour" />
+              </MenuRow>
+              <MenuRow label="Blur">
+                <NumInput value={shadow.blur ?? 16} onChange={(v) => onChange({ ...style, textShadow: { ...shadow, blur: v } })} min={0} max={100} step={1} width="w-14" />
+              </MenuRow>
+              <MenuRow label="Offset X / Y">
+                <div className="flex gap-[3px]">
+                  <NumInput value={shadow.x ?? 0} onChange={(v) => onChange({ ...style, textShadow: { ...shadow, x: v } })} min={-50} max={50} step={1} width="w-12" />
+                  <NumInput value={shadow.y ?? 2} onChange={(v) => onChange({ ...style, textShadow: { ...shadow, y: v } })} min={-50} max={50} step={1} width="w-12" />
+                </div>
+              </MenuRow>
+            </>
+          )}
+          <MenuSection>Outline</MenuSection>
+          <MenuRow label="Enabled">
+            <ToolBtn active={strokeEnabled} title="Toggle text outline" onMouseDown={toggleStroke}>{strokeEnabled ? 'On' : 'Off'}</ToolBtn>
+          </MenuRow>
+          {strokeEnabled && stroke && (
+            <>
+              <MenuRow label="Colour">
+                <ColorSwatch value={stroke.color || '#000000'} onChange={(v) => onChange({ ...style, textStroke: { ...stroke, color: v } })} title="Outline colour" />
+              </MenuRow>
+              <MenuRow label="Width">
+                <NumInput value={stroke.width ?? 2} onChange={(v) => onChange({ ...style, textStroke: { ...stroke, width: v } })} min={0.5} max={20} step={0.5} width="w-14" />
+              </MenuRow>
+            </>
+          )}
+          {/* Background scrim — darken the background (transparent → black) for
+              legibility on bright displays. Fullscreen only; lower-third has its bar. */}
+          {previewTemplate !== 'lowerthird' && (
+            <>
+              <MenuSection>Background scrim</MenuSection>
+              <MenuRow label={`Darken · ${Math.round((style.bgScrim ?? 0) * 100)}%`}>
+                <input
+                  type="range" min={0} max={1} step={0.05}
+                  value={style.bgScrim ?? 0}
+                  onChange={(e) => set('bgScrim', Number(e.target.value) || null)}
+                  className="w-24 accent-primary cursor-pointer"
+                  title="Background scrim (transparent → black)"
+                />
+              </MenuRow>
+            </>
+          )}
+        </ToolMenu>
 
-        {/* Line spacing */}
-        <span className={label}>Line</span>
-        <NumInput value={style.lineSpacing} onChange={(v) => set('lineSpacing', v)} min={0.5} max={4} step={0.05} width="w-12" placeholder="1.25" />
+        <ToolMenu icon="format_list_bulleted" label="List" active={listActive} title="Bullet / numbered list">
+          <MenuRow label="Style">
+            <div className="flex gap-[3px]">
+              <ToolBtn active={!style.listStyle} title="No list" onMouseDown={() => set('listStyle', null)}>None</ToolBtn>
+              <ToolBtn active={style.listStyle === 'disc'} title="Unordered bullet list" onMouseDown={() => set('listStyle', 'disc')}>
+                <span className="material-symbols-outlined text-[13px]">format_list_bulleted</span>
+              </ToolBtn>
+              <ToolBtn active={style.listStyle === 'decimal'} title="Numbered list" onMouseDown={() => set('listStyle', 'decimal')}>
+                <span className="material-symbols-outlined text-[13px]">format_list_numbered</span>
+              </ToolBtn>
+            </div>
+          </MenuRow>
+          {style.listStyle && (
+            <MenuRow label="Item gap (em)">
+              <NumInput value={style.bulletSpacing} onChange={(v) => set('bulletSpacing', v)} min={0} max={4} step={0.05} width="w-14" placeholder="0" />
+            </MenuRow>
+          )}
+        </ToolMenu>
 
-        {/* Paragraph spacing */}
-        <span className={label}>Para</span>
-        <NumInput value={style.paragraphSpacing} onChange={(v) => set('paragraphSpacing', v)} min={0} max={4} step={0.05} width="w-12" placeholder="0" />
-
-        {/* Letter spacing */}
-        <span className={label}>Track</span>
-        <NumInput value={style.letterSpacing} onChange={(v) => set('letterSpacing', v)} min={-0.2} max={1} step={0.01} width="w-12" placeholder="0" />
-
-        <Divider />
-
-        {/* Text Shadow */}
-        <span className={label}>Shadow</span>
-        <ToolBtn active={shadowEnabled} title="Toggle text shadow" onMouseDown={toggleShadow}>
-          {shadowEnabled ? 'On' : 'Off'}
-        </ToolBtn>
-        {shadowEnabled && shadow && (
-          <>
-            <ColorSwatch value={shadow.color || '#000000'} onChange={(v) => onChange({ ...style, textShadow: { ...shadow, color: v } })} title="Shadow colour" />
-            <span className={label}>Blur</span>
-            <NumInput value={shadow.blur ?? 16} onChange={(v) => onChange({ ...style, textShadow: { ...shadow, blur: v } })} min={0} max={100} step={1} width="w-10" />
-            <span className={label}>X</span>
-            <NumInput value={shadow.x ?? 0} onChange={(v) => onChange({ ...style, textShadow: { ...shadow, x: v } })} min={-50} max={50} step={1} width="w-10" />
-            <span className={label}>Y</span>
-            <NumInput value={shadow.y ?? 2} onChange={(v) => onChange({ ...style, textShadow: { ...shadow, y: v } })} min={-50} max={50} step={1} width="w-10" />
-          </>
-        )}
-
-        <Divider />
-
-        {/* Text Stroke */}
-        <span className={label}>Stroke</span>
-        <ToolBtn active={strokeEnabled} title="Toggle text stroke" onMouseDown={toggleStroke}>
-          {strokeEnabled ? 'On' : 'Off'}
-        </ToolBtn>
-        {strokeEnabled && stroke && (
-          <>
-            <ColorSwatch value={stroke.color || '#000000'} onChange={(v) => onChange({ ...style, textStroke: { ...stroke, color: v } })} title="Stroke colour" />
-            <span className={label}>Width</span>
-            <NumInput value={stroke.width ?? 2} onChange={(v) => onChange({ ...style, textStroke: { ...stroke, width: v } })} min={0.5} max={20} step={0.5} width="w-10" />
-          </>
-        )}
-
-        {/* Background scrim — darken the background (transparent → black) for legibility
-            on bright displays. Fullscreen background concept; lower-third uses its bar. */}
-        {previewTemplate !== 'lowerthird' && (
-          <>
-            <Divider />
-            <span className={label} title="Darken the background for brighter displays">Scrim</span>
-            <input
-              type="range" min={0} max={1} step={0.05}
-              value={style.bgScrim ?? 0}
-              onChange={(e) => set('bgScrim', Number(e.target.value) || null)}
-              className="w-20 accent-primary cursor-pointer"
-              title="Background scrim (transparent → black)"
-            />
-            <span className="text-[10px] font-mono text-on-surface-variant w-8 text-right tabular-nums">
-              {Math.round((style.bgScrim ?? 0) * 100)}%
-            </span>
-          </>
+        {/* Text box — object-align in the safe area, precise X/Y/W/H, fill panel. */}
+        {!simple && previewTemplate !== 'lowerthird' && (
+          <ToolMenu icon="crop_free" label="Box" active={boxActive} width={280} title="Text box position, size and fill">
+            <MenuSection>Position &amp; size</MenuSection>
+            <MenuRow label="Align in safe area">
+              <div className="flex gap-[2px]">
+                {[
+                  { axis: 'h', where: 'left',   icon: 'align_horizontal_left',   t: 'Align box left' },
+                  { axis: 'h', where: 'center', icon: 'align_horizontal_center', t: 'Centre box horizontally' },
+                  { axis: 'h', where: 'right',  icon: 'align_horizontal_right',  t: 'Align box right' },
+                  { axis: 'v', where: 'top',    icon: 'align_vertical_top',      t: 'Align box top' },
+                  { axis: 'v', where: 'middle', icon: 'align_vertical_center',   t: 'Centre box vertically' },
+                  { axis: 'v', where: 'bottom', icon: 'align_vertical_bottom',   t: 'Align box bottom' },
+                ].map(({ axis, where, icon, t }) => (
+                  <ToolBtn key={`${axis}-${where}`} title={t} onMouseDown={() => objAlign(axis, where)}>
+                    <span className="material-symbols-outlined text-[13px]">{icon}</span>
+                  </ToolBtn>
+                ))}
+              </div>
+            </MenuRow>
+            <MenuRow label="Fill safe area">
+              <ToolBtn title="Size the box to the full content window" onMouseDown={() => set('textBox', { ...CONTENT_BOX })}>Fit</ToolBtn>
+            </MenuRow>
+            <MenuRow label="X / Y (%)">
+              <div className="flex gap-[3px]">
+                <NumInput value={tb.x} onChange={(v) => setTb('x', v)} min={0} max={100} step={1} width="w-12" />
+                <NumInput value={tb.y} onChange={(v) => setTb('y', v)} min={0} max={100} step={1} width="w-12" />
+              </div>
+            </MenuRow>
+            <MenuRow label="W / H (%)">
+              <div className="flex gap-[3px]">
+                <NumInput value={tb.w} onChange={(v) => setTb('w', v)} min={1} max={100} step={1} width="w-12" />
+                <NumInput value={tb.h} onChange={(v) => setTb('h', v)} min={1} max={100} step={1} width="w-12" />
+              </div>
+            </MenuRow>
+            {allowBoxFill && (
+              <>
+                <MenuSection>Box fill</MenuSection>
+                <MenuRow label="Fill panel behind text">
+                  <ToolBtn active={fillEnabled} title="Toggle a colour panel behind the text box (legibility on busy backgrounds)" onMouseDown={toggleBoxFill}>
+                    {fillEnabled ? 'On' : 'Off'}
+                  </ToolBtn>
+                </MenuRow>
+                {fillEnabled && fill && (
+                  <>
+                    <MenuRow label="Colour">
+                      <ColorSwatch value={fill.color || '#000000'} onChange={(v) => onChange({ ...style, boxFill: { ...fill, color: v } })} title="Fill colour" />
+                    </MenuRow>
+                    <MenuRow label="Opacity">
+                      <NumInput value={fill.opacity ?? 0.5} onChange={(v) => onChange({ ...style, boxFill: { ...fill, opacity: v } })} min={0} max={1} step={0.05} width="w-14" />
+                    </MenuRow>
+                    <MenuRow label="Corner radius (px)">
+                      <NumInput value={fill.radius ?? 16} onChange={(v) => onChange({ ...style, boxFill: { ...fill, radius: v } })} min={0} max={200} step={1} width="w-14" />
+                    </MenuRow>
+                    <MenuRow label="Padding (px)">
+                      <NumInput value={fill.pad ?? 32} onChange={(v) => onChange({ ...style, boxFill: { ...fill, pad: v } })} min={0} max={200} step={1} width="w-14" />
+                    </MenuRow>
+                  </>
+                )}
+              </>
+            )}
+          </ToolMenu>
         )}
 
         {/* Reference position — fullscreen reference styling only (drag in preview or set X/Y) */}
         {simple && previewTemplate !== 'lowerthird' && (
-          <>
-            <Divider />
-            <span className={label}>Pos</span>
-            <ToolBtn active={!style.pos} title="Anchor to bottom" onMouseDown={() => set('pos', null)}>Bottom</ToolBtn>
-            <ToolBtn active={!!style.pos} title="Free position (drag in preview)" onMouseDown={() => set('pos', style.pos || { x: 50, y: 90 })}>Free</ToolBtn>
+          <ToolMenu icon="place_item" label="Position" active={!!style.pos} title="Reference anchor / free position">
+            <MenuRow label="Anchor">
+              <div className="flex gap-[3px]">
+                <ToolBtn active={!style.pos} title="Anchor to bottom" onMouseDown={() => set('pos', null)}>Bottom</ToolBtn>
+                <ToolBtn active={!!style.pos} title="Free position (drag in preview)" onMouseDown={() => set('pos', style.pos || { x: 50, y: 90 })}>Free</ToolBtn>
+              </div>
+            </MenuRow>
             {style.pos && (
-              <>
-                <span className={label}>X</span>
-                <NumInput value={style.pos.x} onChange={(v) => set('pos', { ...style.pos, x: Number(v) })} min={0} max={100} step={1} width="w-9" />
-                <span className={label}>Y</span>
-                <NumInput value={style.pos.y} onChange={(v) => set('pos', { ...style.pos, y: Number(v) })} min={0} max={100} step={1} width="w-9" />
-              </>
+              <MenuRow label="X / Y (%)">
+                <div className="flex gap-[3px]">
+                  <NumInput value={style.pos.x} onChange={(v) => set('pos', { ...style.pos, x: Number(v) })} min={0} max={100} step={1} width="w-12" />
+                  <NumInput value={style.pos.y} onChange={(v) => set('pos', { ...style.pos, y: Number(v) })} min={0} max={100} step={1} width="w-12" />
+                </div>
+              </MenuRow>
             )}
-          </>
-        )}
-
-        {/* Text box — fill / object-align in content window / precise X/Y/W/H. Fullscreen only. */}
-        {!simple && previewTemplate !== 'lowerthird' && (
-          <>
-            <Divider />
-            <span className={label}>Box</span>
-            <ToolBtn title="Fill the content window" onMouseDown={() => set('textBox', { ...CONTENT_BOX })}>Fill</ToolBtn>
-            {/* Object align — position the box within the content window */}
-            {[
-              { axis: 'h', where: 'left',   icon: 'align_horizontal_left',   t: 'Align box left' },
-              { axis: 'h', where: 'center', icon: 'align_horizontal_center', t: 'Centre box horizontally' },
-              { axis: 'h', where: 'right',  icon: 'align_horizontal_right',  t: 'Align box right' },
-              { axis: 'v', where: 'top',    icon: 'align_vertical_top',      t: 'Align box top' },
-              { axis: 'v', where: 'middle', icon: 'align_vertical_center',   t: 'Centre box vertically' },
-              { axis: 'v', where: 'bottom', icon: 'align_vertical_bottom',   t: 'Align box bottom' },
-            ].map(({ axis, where, icon, t }) => (
-              <ToolBtn key={`${axis}-${where}`} title={t} onMouseDown={() => objAlign(axis, where)}>
-                <span className="material-symbols-outlined text-[13px]">{icon}</span>
-              </ToolBtn>
-            ))}
-            <span className={label}>X</span>
-            <NumInput value={tb.x} onChange={(v) => setTb('x', v)} min={0} max={100} step={1} width="w-9" />
-            <span className={label}>Y</span>
-            <NumInput value={tb.y} onChange={(v) => setTb('y', v)} min={0} max={100} step={1} width="w-9" />
-            <span className={label}>W</span>
-            <NumInput value={tb.w} onChange={(v) => setTb('w', v)} min={1} max={100} step={1} width="w-9" />
-            <span className={label}>H</span>
-            <NumInput value={tb.h} onChange={(v) => setTb('h', v)} min={1} max={100} step={1} width="w-9" />
-          </>
+            <p className="text-[9px] font-mono text-on-surface-variant/50 leading-relaxed m-0">In Free mode, drag the reference anywhere in the preview.</p>
+          </ToolMenu>
         )}
 
         {/* Gradient bar — lower third only */}
         {!simple && previewTemplate === 'lowerthird' && (
-          <>
-            <Divider />
-            <span className={label}>Bar</span>
-            <ToolBtn active={!!style.ltBar} title="Toggle gradient bar" onMouseDown={() => {
-              onChange({ ...style, ltBar: style.ltBar ? null : { color: '#000000', opacity: 0.8, solid: false } });
-            }}>
-              {style.ltBar ? 'On' : 'Off'}
-            </ToolBtn>
+          <ToolMenu icon="gradient" label="Bar" active={!!style.ltBar} title="Lower-third gradient bar">
+            <MenuRow label="Enabled">
+              <ToolBtn active={!!style.ltBar} title="Toggle gradient bar" onMouseDown={() => {
+                onChange({ ...style, ltBar: style.ltBar ? null : { color: '#000000', opacity: 0.8, solid: false } });
+              }}>
+                {style.ltBar ? 'On' : 'Off'}
+              </ToolBtn>
+            </MenuRow>
             {style.ltBar && (
               <>
-                <ColorSwatch value={style.ltBar.color || '#000000'} onChange={(v) => onChange({ ...style, ltBar: { ...style.ltBar, color: v } })} title="Bar colour" />
-                <span className={label}>Opacity</span>
-                <NumInput value={style.ltBar.opacity ?? 0.8} onChange={(v) => onChange({ ...style, ltBar: { ...style.ltBar, opacity: Number(v) } })} min={0} max={1} step={0.05} width="w-12" />
-                <ToolBtn active={!!style.ltBar.solid} title="Solid bar (no fade to transparent)" onMouseDown={() => onChange({ ...style, ltBar: { ...style.ltBar, solid: !style.ltBar.solid } })}>
-                  Solid
-                </ToolBtn>
+                <MenuRow label="Colour">
+                  <ColorSwatch value={style.ltBar.color || '#000000'} onChange={(v) => onChange({ ...style, ltBar: { ...style.ltBar, color: v } })} title="Bar colour" />
+                </MenuRow>
+                <MenuRow label="Opacity">
+                  <NumInput value={style.ltBar.opacity ?? 0.8} onChange={(v) => onChange({ ...style, ltBar: { ...style.ltBar, opacity: Number(v) } })} min={0} max={1} step={0.05} width="w-14" />
+                </MenuRow>
+                <MenuRow label="Solid (no fade)">
+                  <ToolBtn active={!!style.ltBar.solid} title="Solid bar (no fade to transparent)" onMouseDown={() => onChange({ ...style, ltBar: { ...style.ltBar, solid: !style.ltBar.solid } })}>
+                    {style.ltBar.solid ? 'On' : 'Off'}
+                  </ToolBtn>
+                </MenuRow>
               </>
             )}
-          </>
+          </ToolMenu>
         )}
       </div>
     </div>
@@ -1061,6 +1270,121 @@ const TYPE_COLORS = {
   bridge: 'text-tertiary bg-tertiary/10 border-tertiary/40',
   default: 'text-on-surface-variant bg-surface-variant/30 border-outline-variant/30',
 };
+
+// ── Arrangement panel (played order of sections, ProPresenter-style) ─────────
+// A compact list at the bottom of the sections sidebar. Entries reference
+// sections by _key (repeats allowed) and are draggable to reorder; ids are
+// position-composed (`i:key`) so repeated sections stay individually sortable.
+function SortableArrangementRow({ rid, label, typeColor, onRemove }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: rid });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
+      className="group flex items-center gap-1.5 px-sm py-[3px] border-b border-outline-variant/10"
+    >
+      <button
+        className="cursor-grab text-on-surface-variant/25 hover:text-on-surface-variant flex-shrink-0 transition-colors"
+        {...attributes} {...listeners} tabIndex={-1}
+      >
+        <svg width="7" height="10" viewBox="0 0 7 10" fill="currentColor">
+          <circle cx="1.5" cy="1.5" r="1.2"/><circle cx="5.5" cy="1.5" r="1.2"/>
+          <circle cx="1.5" cy="5" r="1.2"/><circle cx="5.5" cy="5" r="1.2"/>
+          <circle cx="1.5" cy="8.5" r="1.2"/><circle cx="5.5" cy="8.5" r="1.2"/>
+        </svg>
+      </button>
+      <span className={`text-[9px] font-mono font-bold uppercase tracking-[0.06em] truncate flex-1 ${typeColor}`}>
+        {label}
+      </span>
+      <button
+        onClick={onRemove}
+        tabIndex={-1}
+        title="Remove from arrangement"
+        className="opacity-0 group-hover:opacity-100 text-on-surface-variant/40 hover:text-error transition-all cursor-pointer flex items-center"
+      >
+        <span className="material-symbols-outlined text-[12px]">close</span>
+      </button>
+    </div>
+  );
+}
+
+function ArrangementPanel({ sections, arrangement, onChange }) {
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+  const labels = sectionLabels(sections);
+  const byKey = new Map(sections.map((s, i) => [s._key, { label: labels[i], color: TYPE_COLORS[s.type] || TYPE_COLORS.default }]));
+  const active = Array.isArray(arrangement) && arrangement.length > 0;
+  const rows = active
+    ? arrangement.map((k, i) => ({ rid: `${i}:${k}`, key: k, ...(byKey.get(k) || { label: 'Removed', color: 'text-on-surface-variant/30' }) }))
+    : [];
+
+  function onDragEnd({ active: a, over }) {
+    if (!over || a.id === over.id) return;
+    const oi = rows.findIndex((r) => r.rid === a.id);
+    const ni = rows.findIndex((r) => r.rid === over.id);
+    if (oi < 0 || ni < 0) return;
+    onChange(arrayMove([...arrangement], oi, ni));
+  }
+
+  return (
+    <div className="border-t border-outline-variant/30 bg-surface-container/40 flex flex-col max-h-[40%]">
+      <div className="px-sm py-1.5 border-b border-outline-variant/20 flex items-center justify-between flex-shrink-0">
+        <span className="text-[9px] font-mono text-on-surface-variant/50 uppercase tracking-[0.06em]" title="The order sections play in the service. Repeats allowed — e.g. V1 C V2 C B C C.">
+          Arrangement
+        </span>
+        {active ? (
+          <button
+            onClick={() => onChange(null)}
+            title="Back to the natural section order"
+            className="text-[9px] font-mono text-on-surface-variant/50 hover:text-error cursor-pointer transition-colors uppercase tracking-[0.05em]"
+          >
+            Reset
+          </button>
+        ) : (
+          <button
+            onClick={() => onChange(sections.map((s) => s._key))}
+            disabled={!sections.length}
+            title="Create a custom played order (starts from the natural order)"
+            className="text-[9px] font-mono text-primary hover:text-primary/80 cursor-pointer transition-colors uppercase tracking-[0.05em] disabled:opacity-40"
+          >
+            + Create
+          </button>
+        )}
+      </div>
+      {active && (
+        <>
+          <div className="flex-1 overflow-y-auto custom-scrollbar min-h-0">
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+              <SortableContext items={rows.map((r) => r.rid)} strategy={verticalListSortingStrategy}>
+                {rows.map((r, i) => (
+                  <SortableArrangementRow
+                    key={r.rid}
+                    rid={r.rid}
+                    label={r.label}
+                    typeColor={r.color}
+                    onRemove={() => {
+                      const next = arrangement.filter((_, j) => j !== i);
+                      onChange(next.length ? next : null);
+                    }}
+                  />
+                ))}
+              </SortableContext>
+            </DndContext>
+          </div>
+          <select
+            value=""
+            onChange={(e) => { const k = e.target.value; if (k) onChange([...arrangement, k]); }}
+            className="mx-sm my-1.5 text-[9px] font-mono uppercase tracking-[0.05em] text-primary bg-surface-container-lowest border border-outline-variant/40 rounded px-1 h-[20px] outline-none cursor-pointer flex-shrink-0"
+          >
+            <option value="">+ Add section…</option>
+            {sections.map((s, i) => (
+              <option key={s._key} value={s._key} className="bg-surface-container text-on-surface normal-case font-normal">{labels[i]}</option>
+            ))}
+          </select>
+        </>
+      )}
+    </div>
+  );
+}
 
 function SortableSectionItem({ section, ordinal, isActive, onSelect, onDelete, onTypeChange }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: section._key });
@@ -1173,8 +1497,9 @@ export default function SongEditor({ song, onClose, onSave }) {
   const doc = useEditHistory({
     title: '', author: '', copyright: '', sections: [],
     style: { ...DEFAULT_STYLE }, songBackground: null, bgLocked: false, selectedTagIds: [],
+    arrangement: null, // played section order as _keys with repeats; null = natural
   });
-  const { title, author, copyright, sections, style, songBackground, bgLocked, selectedTagIds } = doc.state;
+  const { title, author, copyright, sections, style, songBackground, bgLocked, selectedTagIds, arrangement } = doc.state;
   const field = (name, coalesce) => (updater) =>
     doc.set((d) => ({ ...d, [name]: typeof updater === 'function' ? updater(d[name]) : updater }), coalesce);
   const setTitle        = field('title', 'title');
@@ -1186,6 +1511,8 @@ export default function SongEditor({ song, onClose, onSave }) {
   const setSelectedTagIds = field('selectedTagIds');
   const setSections = (updater, coalesce) =>
     doc.set((d) => ({ ...d, sections: typeof updater === 'function' ? updater(d.sections) : updater }), coalesce);
+  const setArrangement = (updater) =>
+    doc.set((d) => ({ ...d, arrangement: typeof updater === 'function' ? updater(d.arrangement) : updater }));
   const [domSyncTick, setDomSyncTick] = useState(0); // bumped on undo/redo to re-render the active section's DOM
   const handleUndo = useCallback(() => { doc.undo(); setDomSyncTick((t) => t + 1); }, [doc.undo]);
   const handleRedo = useCallback(() => { doc.redo(); setDomSyncTick((t) => t + 1); }, [doc.redo]);
@@ -1317,6 +1644,16 @@ export default function SongEditor({ song, onClose, onSave }) {
           const parsed = sec.style_json ? JSON.parse(sec.style_json) : {};
           return { ...sec, _key: String(sec.id), content: sec.content || '', runs: parsed.runs || [] };
         });
+        // Stored arrangement is 0-based positions; hydrate to section _keys so it
+        // survives in-session reorders and is re-serialized to positions on save.
+        let arr = null;
+        try {
+          const idxs = s.arrangement_json ? JSON.parse(s.arrangement_json) : null;
+          if (Array.isArray(idxs)) {
+            arr = idxs.map((n) => mapped[Number(n)]?._key).filter(Boolean);
+            if (!arr.length) arr = null;
+          }
+        } catch { arr = null; }
         // Seed via reset() so the DB hydrate is the baseline, not an undo step.
         doc.reset({
           title: s.title, author: s.author || '', copyright: s.copyright || '',
@@ -1325,6 +1662,7 @@ export default function SongEditor({ song, onClose, onSave }) {
             ? { id: s.default_background_id, path: s.background_path, filename: s.background_filename } : null,
           bgLocked: !!s.background_locked,
           selectedTagIds: (s.tags || []).map((t) => t.id),
+          arrangement: arr,
         });
         if (mapped.length) {
           setActiveSectionKey(mapped[0]._key);
@@ -1339,8 +1677,9 @@ export default function SongEditor({ song, onClose, onSave }) {
         ? seeded.map((s) => ({ _key: newKey(), type: s.type || 'verse', content: s.content, runs: [] }))
         : [{ _key: newKey(), type: 'verse', content: '', runs: [] }];
       doc.reset({
-        title: song?.prefillTitle || '', author: '', copyright: '',
+        title: song?.prefillTitle || '', author: song?.prefillAuthor || '', copyright: song?.prefillCopyright || '',
         sections: mapped, style: { ...DEFAULT_STYLE }, songBackground: null, bgLocked: false, selectedTagIds: [],
+        arrangement: null,
       });
       setActiveSectionKey(mapped[0]._key);
       setPreviewContent({ text: mapped[0].content, runs: mapped[0].runs });
@@ -1515,6 +1854,13 @@ export default function SongEditor({ song, onClose, onSave }) {
     const prev = sections;
     const next = prev.filter((s) => s._key !== key);
     setSections(next);
+    // A deleted section vanishes from the arrangement too; an emptied arrangement
+    // reverts to natural order rather than lingering as a zero-slide song.
+    setArrangement((a) => {
+      if (!a) return a;
+      const filtered = a.filter((k) => k !== key);
+      return filtered.length ? filtered : null;
+    });
     if (key === activeKeyRef.current && next.length) {
       const idx = Math.max(0, prev.findIndex((s) => s._key === key) - 1);
       const newActive = next[Math.min(idx, next.length - 1)];
@@ -1570,7 +1916,7 @@ export default function SongEditor({ song, onClose, onSave }) {
 
   // ── Save ────────────────────────────────────────────────────────────────
   async function handleSave() {
-    if (!title.trim()) return;
+    if (!title.trim() || saving) return;
     setSaving(true); setSaveError('');
     try {
       // For the active section read directly from the DOM; all others from state.
@@ -1585,7 +1931,17 @@ export default function SongEditor({ song, onClose, onSave }) {
         }
         return serializeSection(sec.type, content, runs, style);
       });
-      const data = { title: title.trim(), author: author.trim() || null, copyright: copyright.trim() || null, sections: sectionData, tagIds: selectedTagIds };
+      // Arrangement keys → 0-based positions in the exact section order being saved
+      // (stale keys dropped). null clears back to natural order.
+      const keyIdx = new Map(sectionsRef.current.map((s, i) => [s._key, i]));
+      const arrangementIdxs = Array.isArray(arrangement)
+        ? arrangement.map((k) => keyIdx.get(k)).filter((n) => n != null)
+        : null;
+      const data = {
+        title: title.trim(), author: author.trim() || null, copyright: copyright.trim() || null,
+        sections: sectionData, tagIds: selectedTagIds,
+        arrangement: arrangementIdxs && arrangementIdxs.length ? arrangementIdxs : null,
+      };
       let savedId;
       if (song?.id) {
         await window.cue.songs.update(song.id, data);
@@ -1604,6 +1960,22 @@ export default function SongEditor({ song, onClose, onSave }) {
       setSaving(false);
     }
   }
+
+  // ⌘S / Ctrl+S saves the song (standard app behavior). A ref keeps the listener
+  // stable while always calling the latest handleSave (which reads current state).
+  // ⌘B/I/U inline formatting is handled natively by the contentEditable editor.
+  const handleSaveRef = useRef(handleSave);
+  handleSaveRef.current = handleSave;
+  useEffect(() => {
+    const onKey = (e) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod || e.altKey || e.shiftKey || e.key.toLowerCase() !== 's') return;
+      e.preventDefault();
+      handleSaveRef.current();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
 
   async function handleApplyStyleToSong() {
     if (!song?.id) return;
@@ -1864,6 +2236,9 @@ export default function SongEditor({ song, onClose, onSave }) {
                   </div>
                 )}
               </div>
+
+              {/* Played order (arrangement) — repeats sections without duplicating lyrics */}
+              <ArrangementPanel sections={sections} arrangement={arrangement} onChange={setArrangement} />
             </div>
 
             {/* ── Editor main area ──────────────────────────────────── */}
@@ -2036,7 +2411,7 @@ export default function SongEditor({ song, onClose, onSave }) {
                           textAlign:      style.align || 'center',
                           fontWeight:     style.bold ? 700 : undefined,
                           fontStyle:      style.italic ? 'italic' : undefined,
-                          textDecoration: style.underline ? 'underline' : undefined,
+                          textDecoration: (style.underline || style.strikethrough) ? buildDecorationCss(style) : undefined,
                           textTransform:  style.uppercase ? 'uppercase' : undefined,
                         }}
                       />

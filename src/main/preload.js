@@ -21,6 +21,10 @@ contextBridge.exposeInMainWorld('cue', {
     scrapeSearch: (query) => ipcRenderer.invoke('songScrape:search', query),
     scrapeFetch: (candidate) => ipcRenderer.invoke('songScrape:fetch', candidate),
     applyStyleToSong: (songId, styleJson) => ipcRenderer.invoke('songs:applyStyleToSong', songId, styleJson),
+    // CCLI usage reporting
+    logUsage: (songId) => ipcRenderer.invoke('songs:logUsage', songId),
+    usageReport: (fromIso, toIso) => ipcRenderer.invoke('songs:usageReport', fromIso, toIso),
+    usageClear: () => ipcRenderer.invoke('songs:usageClear'),
   },
   tags: {
     list: () => ipcRenderer.invoke('tags:list'),
@@ -126,6 +130,8 @@ contextBridge.exposeInMainWorld('cue', {
     countdown: {
       show: (data) => ipcRenderer.invoke('output:countdown:show', data),
       hide: (target) => ipcRenderer.invoke('output:countdown:hide', target),
+      pause: (target) => ipcRenderer.invoke('output:countdown:pause', target),
+      resume: (target) => ipcRenderer.invoke('output:countdown:resume', target),
     },
     overlay: {
       get: () => ipcRenderer.invoke('output:overlay:get'),
@@ -151,6 +157,25 @@ contextBridge.exposeInMainWorld('cue', {
     delete:  (id)          => ipcRenderer.invoke('scenes:delete', id),
     reorder: (orderedIds)  => ipcRenderer.invoke('scenes:reorder', orderedIds),
     apply:   (scene)       => ipcRenderer.invoke('scenes:apply', scene),
+  },
+  // Output Presets — save & recall the output rig (channels/displays/NDI/stream/stage).
+  // Separate from scenes; apply is orchestrated in the renderer (OutputPresetsPanel).
+  outputPresets: {
+    list:    ()           => ipcRenderer.invoke('outputPresets:list'),
+    get:     (id)         => ipcRenderer.invoke('outputPresets:get', id),
+    create:  (data)       => ipcRenderer.invoke('outputPresets:create', data),
+    update:  (id, data)   => ipcRenderer.invoke('outputPresets:update', id, data),
+    delete:  (id)         => ipcRenderer.invoke('outputPresets:delete', id),
+    reorder: (orderedIds) => ipcRenderer.invoke('outputPresets:reorder', orderedIds),
+  },
+  // Live video inputs (NDI receive) — network sources routed to the program.
+  liveInput: {
+    sources: (waitMs) => ipcRenderer.invoke('liveInput:sources', waitMs),
+    available: () => ipcRenderer.invoke('liveInput:available'),
+    getEnabled: () => ipcRenderer.invoke('liveInput:getEnabled'),
+    setEnabled: (v) => ipcRenderer.invoke('liveInput:setEnabled', v),
+    previewStart: (sourceName) => ipcRenderer.invoke('liveInput:previewStart', sourceName),
+    previewStop: (sourceName) => ipcRenderer.invoke('liveInput:previewStop', sourceName),
   },
   media: {
     import: (filePaths) => ipcRenderer.invoke('media:import', filePaths),
@@ -293,6 +318,7 @@ contextBridge.exposeInMainWorld('cue', {
       'scripture:detected', 'scripture:transcript', 'scripture:status',
       'update:progress',
       'stream:status', 'output:stream-preview', 'output:stream-levels',
+      'liveinput:preview', 'liveinput:status', 'liveinput:enabled',
     ];
     if (!allowed.includes(channel)) return () => {};
     const wrapper = (_event, ...args) => callback(...args);

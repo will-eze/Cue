@@ -38,6 +38,8 @@ function SortableItem({ item, index, bgPath, isPreview, isLive, isSelected, live
     ? item.presentation?.title || 'Presentation'
     : item.item_type === 'youtube'
     ? item.youtube?.title || 'YouTube video'
+    : item.item_type === 'live-input'
+    ? item.liveInput?.name || item.liveInput?.sourceName || 'Live Video'
     : (item.content?.split('\n')[0]?.trim()) || 'Slide';
 
   const sublabel = item.item_type === 'song'
@@ -48,6 +50,7 @@ function SortableItem({ item, index, bgPath, isPreview, isLive, isSelected, live
     : item.item_type === 'presentation'
     ? `Presentation · ${item.slides?.length || 0} slide${item.slides?.length === 1 ? '' : 's'}`
     : item.item_type === 'youtube' ? 'YouTube'
+    : item.item_type === 'live-input' ? 'Live Input · NDI'
     : 'Slide';
 
   // Live countdown for the auto-advance badge — ticks every second while live.
@@ -66,6 +69,7 @@ function SortableItem({ item, index, bgPath, isPreview, isLive, isSelected, live
     : item.item_type === 'scripture' ? 'menu_book'
     : item.item_type === 'presentation' ? 'slideshow'
     : item.item_type === 'youtube' ? 'smart_display'
+    : item.item_type === 'live-input' ? 'videocam'
     : 'article';
 
   // Ephemeral YouTube download state, shown as a compact badge so the operator

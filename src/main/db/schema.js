@@ -783,6 +783,103 @@ const migrations = [
   function v29(database) {
     database.exec(`ALTER TABLE media_assets ADD COLUMN size_bytes INTEGER;`);
   },
+
+  // v30 — Output Presets: save & recall the OUTPUT RIG (which is separate from Scenes,
+  // which recall the live LOOK — graphics overlay + program + audio). An output preset
+  // is a DECLARATIVE snapshot of output-channel configuration for one-tap re-rigging
+  // (e.g. flip a "Rehearsal" rig to a "Live Broadcast" rig, or reset outputs):
+  //   includes_json — which layers this preset manages, as booleans
+  //                   { channels, displaysNdi, stream, stageLayouts, backgrounds }. A
+  //                   layer that is false is left untouched on recall (like scenes' NULL
+  //                   overlay). `stageLayouts` and `backgrounds` are separate toggles but
+  //                   share the one `backgroundsStage` data blob below.
+  //   data_json     — the captured snapshot, only the ticked layers populated:
+  //     channels:        [{ id, name, active }]  (per-channel enable flags)
+  //     displaysNdi:     { channels:[{ id, name, template, type, ndi_* }],
+  //                        monitors:[{ channel_id, display_bounds, label, active }] }
+  //     stream:          { studio, config }  (Stream Studio layout + RTMP config)
+  //     backgroundsStage:{ settings:{ global_bg_*_id, global_logo_id },   // ← `backgrounds`
+  //                        stage:[{ channel_id, layout }] }               // ← `stageLayouts`
+  // Presets are machine-local by nature (they reference channel ids + physical
+  // display_bounds) — matching the hardware-specific nature of output config. Apply is
+  // renderer-orchestrated: the panel replays the snapshot through the same window.cue.*
+  // IPC the settings UI uses (channels:update → syncChannel, monitors:create/delete,
+  // stream.setStudio/setConfig, stage.setLayout, settings.setGlobalBackground). No
+  // media-asset FKs (only ids that live elsewhere), so no media.findUnused() entry and
+  // rides backups with no path rewriting.
+  function v30(database) {
+    database.exec(`
+      CREATE TABLE output_presets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        includes_json TEXT NOT NULL,
+        data_json TEXT NOT NULL,
+        order_index INTEGER NOT NULL DEFAULT 0,
+        created_at DATETIME NOT NULL DEFAULT (datetime('now')),
+        updated_at DATETIME NOT NULL DEFAULT (datetime('now'))
+      );
+    `);
+  },
+
+  // v31 — Live video inputs (NDI receive) + song arrangements + CCLI usage log.
+  //
+  // service_items.item_type gains 'live-input': the cue stores {sourceName, name}
+  // JSON in `content` (ref_id stays NULL — it is NOT a media_assets row; the NDI
+  // feed is resolved live at GO time, so nothing on disk and nothing for
+  // media.findUnused()). CHECK can't be altered in place, so the table is rebuilt
+  // carrying every column (same pattern as v21).
+  //
+  // songs.arrangement_json — the played ORDER of sections (ProPresenter-style
+  // arrangement, e.g. V1 C V2 C B C C) as a JSON array of 0-based section
+  // POSITIONS (order_index), with repeats allowed. NULL = natural order.
+  // Positions, not ids, because songs.update() rewrites song_sections (ids churn
+  // on every save); the editor serializes arrangement and sections together.
+  //
+  // song_usage — CCLI reporting log. One row per song aired (deduped in code,
+  // ~12h window). Title/author/copyright are SNAPSHOTTED at air time and song_id
+  // carries no FK, so the report survives later song edits/deletes.
+  function v31(database) {
+    database.exec(`
+      ALTER TABLE songs ADD COLUMN arrangement_json TEXT;
+
+      CREATE TABLE song_usage (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        song_id INTEGER,
+        title TEXT NOT NULL,
+        author TEXT,
+        copyright TEXT,
+        used_at DATETIME NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX idx_song_usage_used_at ON song_usage(used_at);
+
+      CREATE TABLE service_items_v31 (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        service_id INTEGER NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+        item_type TEXT NOT NULL CHECK(item_type IN ('song','media','slide','scripture','presentation','youtube','live-input')),
+        ref_id INTEGER,
+        order_index INTEGER NOT NULL,
+        notes TEXT,
+        content TEXT,
+        background_override_id INTEGER REFERENCES media_assets(id) ON DELETE SET NULL,
+        media_loop INTEGER NOT NULL DEFAULT 0,
+        advance_seconds INTEGER,
+        advance_loop TEXT,
+        advance_wrap INTEGER NOT NULL DEFAULT 1
+      );
+
+      INSERT INTO service_items_v31
+        (id, service_id, item_type, ref_id, order_index, notes, content, background_override_id,
+         media_loop, advance_seconds, advance_loop, advance_wrap)
+      SELECT id, service_id, item_type, ref_id, order_index, notes, content, background_override_id,
+             media_loop, advance_seconds, advance_loop, advance_wrap
+      FROM service_items;
+
+      DROP TABLE service_items;
+      ALTER TABLE service_items_v31 RENAME TO service_items;
+
+      CREATE INDEX IF NOT EXISTS idx_service_items_service_id ON service_items(service_id);
+    `);
+  },
 ];
 
 function runMigrations() {

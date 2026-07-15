@@ -26,7 +26,8 @@ function renderWithRuns(text, runs, scale = 1) {
     const st = [];
     if (run.bold)       st.push('font-weight:700');
     if (run.italic)     st.push('font-style:italic');
-    if (run.underline)  st.push('text-decoration:underline');
+    const deco = [run.underline && 'underline', run.strikethrough && 'line-through'].filter(Boolean).join(' ');
+    if (deco)           st.push('text-decoration:' + deco);
     if (run.color)      st.push('color:' + run.color);
     if (run.fontFamily) st.push("font-family:" + String(run.fontFamily).replace(/"/g, "'"));
     // Inline run sizes scale with the global L3 font scale too, so a styled span
@@ -78,7 +79,7 @@ function applyStyle(el, s, scale = 1) {
   el.style.textAlign       = s.align        || 'center';
   el.style.fontWeight      = s.bold         ? '700' : '400';
   el.style.fontStyle       = s.italic       ? 'italic' : 'normal';
-  el.style.textDecoration  = s.underline    ? 'underline' : 'none';
+  el.style.textDecoration  = [s.underline && 'underline', s.strikethrough && 'line-through'].filter(Boolean).join(' ') || 'none';
   // L3 font size = the authored size × the global L3 scale. The base mirrors the
   // FULLSCREEN default (72px in fullscreen.css) when the style sets none, so at
   // 100% the lower-third matches the screen and the operator can dial it smaller.
@@ -136,9 +137,9 @@ function renderProgram(payload) {
 
   const { type, text, copyright: copy, styleJson } = payload;
 
-  // clear / logo / foreground-media / presentation all blank the lower-third lyric
-  // band (a presentation is a full-canvas item with no lyric band in v1).
-  if (type === 'clear' || type === 'logo' || payload.media || payload.elements) { clearBand(); return; }
+  // clear / logo / foreground-media / live-input / presentation all blank the
+  // lower-third lyric band (full-frame items carry no lyric band in v1).
+  if (type === 'clear' || type === 'logo' || payload.media || payload.liveInput || payload.elements) { clearBand(); return; }
 
   // Global lower-third font scale (fraction of the authored/fullscreen size). Main
   // attaches it to every content payload; default to 1 when absent.
@@ -200,7 +201,7 @@ function applyCopyrightStyle(el, cs, defaultAlign) {
   el.style.color           = cs?.color || '';
   el.style.fontWeight      = cs?.bold ? '700' : '';
   el.style.fontStyle       = cs?.italic ? 'italic' : '';
-  el.style.textDecoration  = cs?.underline ? 'underline' : '';
+  el.style.textDecoration  = [cs?.underline && 'underline', cs?.strikethrough && 'line-through'].filter(Boolean).join(' ') || '';
   el.style.textTransform   = cs?.uppercase ? 'uppercase' : '';
   el.style.letterSpacing   = cs?.letterSpacing ? cs.letterSpacing + 'em' : '';
   el.style.textShadow      = cs?.textShadow?.enabled

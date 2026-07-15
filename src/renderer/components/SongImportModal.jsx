@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useModalGuard } from '../utils/modalGuard';
+import { useFocusTrap } from '../utils/useFocusTrap';
 
 const FORMAT_BADGE = {
   OpenLyrics:   'text-primary border-primary/40 bg-primary/10',
@@ -24,6 +25,8 @@ export default function SongImportModal({ preview, onCancel, onImported }) {
   // Duplicates (already in the library) start unselected.
   const [selected, setSelected] = useState(() => new Set(rows.filter((r) => r.ok && !r.existing).map((r) => r._id)));
   const titlesRef = useRef(Object.fromEntries(rows.map((r) => [r._id, r.title])));
+  const panelRef = useRef(null);
+  useFocusTrap(panelRef);
   const [committing, setCommitting] = useState(false);
 
   useEffect(() => {
@@ -65,6 +68,10 @@ export default function SongImportModal({ preview, onCancel, onImported }) {
   return createPortal(
     <div className="fixed inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={committing ? undefined : onCancel}>
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Import songs"
         className="bg-surface-container-low border border-outline-variant/30 rounded-xl w-full max-w-2xl max-h-[82vh] flex flex-col shadow-2xl ring-1 ring-white/5"
         onClick={(e) => e.stopPropagation()}
       >

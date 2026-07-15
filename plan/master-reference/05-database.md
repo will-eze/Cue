@@ -42,6 +42,8 @@
 | v27 | Customisable WYSIWYG stage display: added `output_channels.stage_layout_json` (TEXT). A stage/confidence channel's layout is now a free-form set of absolutely-positioned elements (currentText / nextText / clock / timer / elapsedTimer / videoCountdown / message / staticText), each in % of 1920×1080. `NULL` → the built-in default layout reproduced in both `manager.js` and `stage.js`. Reusable named layouts live in the `stage_presets` setting (plain ALTER — no table rebuild) |
 | v28 | Background media on broadcast graphics: added `graphics.background_media_id INTEGER REFERENCES media_assets(id) ON DELETE SET NULL`. An optional full-screen video/image rendered behind the overlay text (e.g. countdown + video loop behind the clock). `NULL` = no background (overlay transparent as before). `ON DELETE SET NULL` means deleting a media asset clears the reference without removing the graphic. `graphics.list()` and `graphics.get()` JOIN to `media_assets` to expose `background_path`/`background_filename`. Also adds countdown `onEnd` action field (in `style_json`): `'hold'`\|`'clear'`\|`'overflow'`\|`'loop'`\|`'media'` (see graphics table below). |
 | v29 | File size on media assets: added `media_assets.size_bytes INTEGER`. Populated at import time via `fs.statSync` so the media grid can show file size without a live filesystem stat. `duration_ms` is also now populated at import time (via ffmpeg probe — `spawnSync(ffmpeg, ['-v','error','-i',filePath])` parses the `Duration:` line) rather than being reserved. `findUnused()` reads both columns from the DB directly. |
+| v30 | Output Presets: created `output_presets` (declarative snapshot of the output RIG — channels on/off, display/NDI assignment, Stream Studio, global background/logo defaults, per-channel stage layouts). Separate feature from Scenes (§ scenes recall the live LOOK; presets re-rig outputs). Apply is renderer-orchestrated — the panel replays the snapshot through the same `window.cue.*` IPC the settings UI uses; there is no `apply()` in the db layer. Presets are machine-local (reference channel ids + physical `display_bounds`); `media.findUnused()` parses `data_json.backgroundsStage.settings` for the snapshotted global bg/logo media ids. |
+| v31 | Live video inputs + song arrangements + CCLI usage log. (a) Rebuilt `service_items` to add `'live-input'` to the `item_type` CHECK (v7-pattern rebuild) — a live-input cue stores `{sourceName, name}` JSON in `content`, `ref_id` NULL (the NDI feed is resolved live at GO, never a `media_assets` row; §14). (b) Added `songs.arrangement_json` (TEXT) — the played section ORDER as a JSON array of 0-based section positions with repeats; NULL = natural order (§16). (c) Created `song_usage` (CCLI reporting log; one snapshotted row per song aired, no FK on `song_id`) + `idx_song_usage_used_at`. |
 
 ### All tables
 
@@ -53,6 +55,7 @@ author TEXT
 copyright TEXT
 default_background_id INTEGER REFERENCES media_assets(id) ON DELETE SET NULL
 background_locked INTEGER NOT NULL DEFAULT 0   -- v25: pin this song's bg at the top of the resolution cascade
+arrangement_json TEXT                          -- v31: played section order (0-based positions, repeats); NULL = natural order (§16)
 created_at DATETIME DEFAULT (datetime('now'))
 updated_at DATETIME DEFAULT (datetime('now'))
 ```
@@ -118,8 +121,8 @@ notes TEXT
 ```sql
 id INTEGER PRIMARY KEY AUTOINCREMENT
 service_id INTEGER NOT NULL REFERENCES services(id) ON DELETE CASCADE
-item_type TEXT NOT NULL CHECK(item_type IN ('song','media','slide','scripture','presentation','youtube'))  -- 'scripture' v7, 'presentation' v20, 'youtube' v21
-ref_id INTEGER               -- song id, media_asset id, or null for custom slides / youtube
+item_type TEXT NOT NULL CHECK(item_type IN ('song','media','slide','scripture','presentation','youtube','live-input'))  -- 'scripture' v7, 'presentation' v20, 'youtube' v21, 'live-input' v31
+ref_id INTEGER               -- song id, media_asset id, or null for custom slides / youtube / live-input
 order_index INTEGER NOT NULL
 notes TEXT
 content TEXT                 -- for item_type='slide': JSON {text, ...} or plain text; for 'youtube': the URL (file is ephemeral, see §6)
@@ -196,6 +199,30 @@ created_at DATETIME, updated_at DATETIME
 ```
 
 A scene is a declarative snapshot of the **service-independent** output layers (never a rundown-slide reference, so scenes survive weekly service changes). The authoring flow is **capture, not hand-build**: the operator sets the live output up, then `ScenesPanel`'s editor reads `output.getState()` (`overlay`, `displayMode`, `transport.muted`) and freezes it. Recall is atomic via `outputManager.applyScene` (§13) — number key 1–9 in `OperatorView`, or the panel's Take. `overlay_json` slots hold self-contained re-fire data (the same objects the `*Show` functions accept), so recall needs no saved-graphic lookup and survives graphic deletion; an all-empty snapshot is a "hide all graphics" scene. `db/scenes.js` `normalizeScene(row|liveObj)` → `{ overlay, program, audioMuted }` is the apply boundary (parses `overlay_json`).
+
+#### `output_presets` (v30 — save & recall the output RIG)
+```sql
+id INTEGER PRIMARY KEY AUTOINCREMENT
+name TEXT NOT NULL
+includes_json TEXT NOT NULL    -- which layers this preset manages: {channels, displaysNdi, stream, stageLayouts, backgrounds}
+data_json TEXT NOT NULL        -- captured snapshot, only ticked layers populated (shape below)
+order_index INTEGER NOT NULL DEFAULT 0
+created_at DATETIME, updated_at DATETIME
+```
+
+An output preset is a declarative snapshot of **output-channel configuration** for one-tap re-rigging (flip a "Rehearsal" rig to "Live Broadcast", or reset outputs). Distinct from `scenes` (which recall the live LOOK — overlay + program + audio); presets recall the RIG. A `false` layer in `includes_json` is left untouched on recall. `data_json` shape (only ticked layers present): `channels:[{id,name,active}]`, `displaysNdi:{channels:[{id,name,template,type,ndi_*}], monitors:[{channel_id,display_bounds,label,active}]}`, `stream:{studio,config}`, `backgroundsStage:{settings:{global_bg_*_id,global_logo_id}, stage:[{channel_id,layout}]}` (`stageLayouts` and `backgrounds` are separate `includes` toggles but share this one blob). **Apply is renderer-orchestrated** — `OutputPresetsPanel` replays the snapshot through the same `window.cue.*` IPC the settings UI uses (`channels:update`, `monitors:create/delete`, `stream.setStudio/setConfig`, `stage.setLayout`, `settings.setGlobalBackground/setGlobalLogo`); the db layer (`db/output-presets.js`) is pure CRUD, no `apply()`. Presets are machine-local (channel ids + physical `display_bounds`) and carry no media-asset FKs, so they ride backups with no path rewriting; `media.findUnused()` reads `data_json.backgroundsStage.settings` for the snapshotted global bg/logo ids. `outputPresetDiff.js` (renderer) flags a preset as out-of-sync with the live rig for the "update from current" affordance.
+
+#### `song_usage` (v31 — CCLI reporting log)
+```sql
+id INTEGER PRIMARY KEY AUTOINCREMENT
+song_id INTEGER                -- NO FK: the report must survive song edits/deletes
+title TEXT NOT NULL            -- snapshotted at air time
+author TEXT                    -- snapshotted
+copyright TEXT                 -- snapshotted
+used_at DATETIME NOT NULL DEFAULT (datetime('now'))
+```
+
+One row per song aired. `OperatorView` fires `songs:logUsage(songId)` on every live-song change; `db/songs.js logUsage` **dedupes per song within ~12h** (one service window) and **snapshots** title/author/copyright so a later song edit/delete never corrupts a historical report (hence no FK on `song_id`). `usageReport(fromIso, toIso)` groups by the snapshot and powers Settings → CCLI (`SongUsageSettings.jsx`): a date-range table, client-side CSV export (blob download), and a confirm-gated `usageClear`. Logging fires ONLY from the live-song-change effect — never from GO variants (a slide jump inside the same song would double-count).
 
 #### `themes` (v15 — theme / template library; v22 — theme packs)
 ```sql

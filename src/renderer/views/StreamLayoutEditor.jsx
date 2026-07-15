@@ -178,7 +178,9 @@ export default function StreamLayoutEditor({ initial, presetId, presetName, onAp
               const b = layout[ly.kind];
               const fitOpts = ly.kind === 'feed' ? [['cover', 'Fill'], ['contain', 'Fit']] : [['fit', 'Fit'], ['fill', 'Stretch']];
               return (
-                <div key={ly.kind} className={`rounded-lg border p-sm space-y-sm cursor-pointer transition-colors ${sel === ly.kind ? 'border-primary/50 bg-primary/[0.05]' : 'border-outline-variant/30 hover:border-outline-variant/50'}`} onClick={() => setSel(ly.kind)}>
+                <div key={ly.kind} role="button" tabIndex={0} aria-pressed={sel === ly.kind}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSel(ly.kind); } }}
+                  className={`rounded-lg border p-sm space-y-sm cursor-pointer transition-colors ${sel === ly.kind ? 'border-primary/50 bg-primary/[0.05]' : 'border-outline-variant/30 hover:border-outline-variant/50'}`} onClick={() => setSel(ly.kind)}>
                   <div className="flex items-center gap-xs">
                     <span className="material-symbols-outlined text-[16px] text-on-surface-variant">{ly.icon}</span>
                     <span className="text-label-sm font-label-sm font-bold uppercase tracking-[0.04em] flex-1">{ly.label}</span>

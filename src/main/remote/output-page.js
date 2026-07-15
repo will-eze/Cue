@@ -138,8 +138,9 @@ export const OUTPUT_PAGE = `<!DOCTYPE html>
       var o = Object.assign({}, ov);
       if (o.countdown) {
         o.countdown = Object.assign({}, o.countdown);
-        if (o.countdown.endsAt  != null) o.countdown.endsAt  = reTs(o.countdown.endsAt);
-        if (o.countdown.startAt != null) o.countdown.startAt = reTs(o.countdown.startAt);
+        if (o.countdown.endsAt   != null) o.countdown.endsAt   = reTs(o.countdown.endsAt);
+        if (o.countdown.startAt  != null) o.countdown.startAt  = reTs(o.countdown.startAt);
+        if (o.countdown.frozenAt != null) o.countdown.frozenAt = reTs(o.countdown.frozenAt);
       }
       return o;
     }
@@ -157,6 +158,9 @@ export const OUTPUT_PAGE = `<!DOCTYPE html>
       onAudioTap:       unsub,
       onStageTimer:     noop, onStageMessage: noop, onStageSchedule: noop,
       onStreamInput:    unsub, onStreamLayout: unsub, onStreamAudioTap: unsub,
+      onLiveFrame:      unsub, // live NDI input frames never cross the network mirror
+      onLiveAudio:      unsub,
+
       sendAudioPcm:     noop, sendStreamAudioPcm: noop, sendStreamLevels: noop,
       getWorkletSource: function () { return Promise.resolve(''); },
     };

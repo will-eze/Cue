@@ -120,7 +120,7 @@
     el.style.color          = s.color || d.color || '';
     el.style.fontWeight     = s.bold ? '700' : '400';
     el.style.fontStyle      = s.italic ? 'italic' : 'normal';
-    el.style.textDecoration = s.underline ? 'underline' : 'none';
+    el.style.textDecoration = [s.underline && 'underline', s.strikethrough && 'line-through'].filter(Boolean).join(' ') || 'none';
     el.style.textTransform  = s.uppercase ? 'uppercase' : 'none';
     el.style.textAlign      = s.align || d.align || '';
     el.style.lineHeight     = s.lineSpacing ? String(s.lineSpacing) : '';
@@ -231,16 +231,19 @@
   function renderCountdown() {
     const c = cdState;
     if (!c) return;
+    // While paused, render against the frozen instant instead of the live clock so the
+    // displayed time holds still (the anchor is shifted on resume in main).
+    const now = c.paused ? (c.frozenAt || Date.now()) : Date.now();
     if (c.mode === 'clock') {
-      cdTime.textContent = fmtClock(new Date(), c.format, c.showSeconds);
+      cdTime.textContent = fmtClock(new Date(now), c.format, c.showSeconds);
       return;
     }
     if (c.mode === 'countup') {
-      cdTime.textContent = fmtDuration((Date.now() - c.startAt) / 1000);
+      cdTime.textContent = fmtDuration((now - c.startAt) / 1000);
       return;
     }
     // countdown
-    const remainingSec = (c.endsAt - Date.now()) / 1000;
+    const remainingSec = (c.endsAt - now) / 1000;
     if (remainingSec <= 0) {
       if (c.onEnd === 'overflow') {
         // Keep ticking past zero with a '+' prefix; don't clear the interval.
@@ -282,8 +285,9 @@
       cdState = c;
       renderCountdown();
       countdownEl.classList.add('active');
-      // Clock / count-up never end; countdown self-clears its timer at zero.
-      cdTimer = setInterval(renderCountdown, 250);
+      // Clock / count-up never end; countdown self-clears its timer at zero. A paused
+      // timer shows a frozen value, so it needs no interval (resume re-broadcasts).
+      if (!c.paused) cdTimer = setInterval(renderCountdown, 250);
     } else {
       cdState = null;
       countdownEl.classList.remove('active');
@@ -354,10 +358,64 @@
     }
   }
 
+  // ── Countdown audio track (in-room only) ─────────────────────────────────────
+  // A timer graphic can carry an audio track that plays while it's live, tied to the
+  // graphic's Start/Stop and Pause/Resume. It plays from ONE place only — the audible
+  // program window (the primary audio monitor) — so it isn't heard N times across every
+  // output. Gate: this window emits program audio (mute!=='1'), the media-player aux hook
+  // exists (fullscreen template only), and it's NOT the Remote Output browser mirror
+  // (CUE_MEDIA_BASE is set there) — audio is in-room only. Registered via attachAuxAudio
+  // so it follows the in-room output-device picker exactly like program media.
+  const AUDIO_ENABLED = new URLSearchParams(location.search).get('mute') !== '1'
+    && !!(window.CueMediaPlayer && window.CueMediaPlayer.attachAuxAudio)
+    && !window.CUE_MEDIA_BASE;
+  let auxAudioEl = null;
+  let auxAudioPath = null;
+
+  function ensureAuxAudio() {
+    if (auxAudioEl) return auxAudioEl;
+    // A hidden <video> plays the audio track of both audio- and video-source files.
+    const el = document.createElement('video');
+    el.style.display = 'none';
+    el.setAttribute('playsinline', '');
+    el.crossOrigin = 'anonymous';
+    document.body.appendChild(el);
+    auxAudioEl = el;
+    try { window.CueMediaPlayer.attachAuxAudio(el); } catch {}
+    return el;
+  }
+
+  function stopAuxAudio() {
+    if (!auxAudioEl) return;
+    try { auxAudioEl.pause(); } catch {}
+    auxAudioEl.removeAttribute('src');
+    try { auxAudioEl.load(); } catch {}
+    auxAudioPath = null;
+  }
+
+  // Drive the aux audio from the live countdown slot. A missing mode (cleared, or the
+  // onEnd→media transition) or absent path stops it.
+  function setCountdownAudio(c) {
+    if (!AUDIO_ENABLED) return;
+    const desired = (c && c.mode && c.audioPath) ? c.audioPath : null;
+    if (!desired) { stopAuxAudio(); return; }
+    const el = ensureAuxAudio();
+    el.loop = !!c.audioLoop;
+    if (auxAudioPath !== desired) {
+      auxAudioPath = desired;
+      el.src = pathToUrl(desired);
+      try { el.load(); } catch {}
+    }
+    // Pause/resume follows the timer's paused flag; otherwise ensure it's playing.
+    if (c.paused) { if (!el.paused) el.pause(); }
+    else if (el.paused) el.play().catch(() => {});
+  }
+
   function apply(o) {
     setNameTitle(o && o.nameTitle);
     setTicker(o && o.ticker);
     setCountdown(o && o.countdown);
+    setCountdownAudio(o && o.countdown);
     setCustom(o && o.custom);
 
     // Background media: first active slot wins, priority: countdown > custom > nameTitle > ticker
