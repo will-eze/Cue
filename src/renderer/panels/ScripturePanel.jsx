@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import ScriptureEditor from '../components/ScriptureEditor';
 import ContextMenu from '../components/ContextMenu';
+import AnchoredMenu from '../components/AnchoredMenu';
 import OnlineBibleModal from '../components/OnlineBibleModal';
 
 // EasyWorship-style live scripture browser.
@@ -491,19 +492,23 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, onPrevie
               className={`${REF_INPUT} w-44`}
               autoComplete="off" spellCheck={false}
             />
-            {showBookMenu && bookMatches.length > 0 && (
-              <div className="absolute z-30 mt-1 left-0 w-56 max-h-60 overflow-y-auto rounded-lg border border-outline-variant/40 bg-surface-container-high shadow-2xl ring-1 ring-white/5 custom-scrollbar">
-                {bookMatches.map((b) => (
-                  <button
-                    key={b.book_num}
-                    onMouseDown={(e) => { e.preventDefault(); commitBook(b.book_name).then(() => { setTimeout(() => { chapterInputRef.current?.focus(); chapterInputRef.current?.select(); }, 0); }); }}
-                    className="block w-full text-left px-sm py-xs text-body-sm text-on-surface hover:bg-surface-variant transition-colors cursor-pointer"
-                  >
-                    {b.book_name}
-                  </button>
-                ))}
-              </div>
-            )}
+            <AnchoredMenu
+              open={showBookMenu && bookMatches.length > 0}
+              anchorRef={bookInputRef}
+              onClose={() => setShowBookMenu(false)}
+              align="left"
+              className="w-56 max-h-60 overflow-y-auto rounded-lg border border-outline-variant/40 bg-surface-container-high shadow-2xl ring-1 ring-white/5 custom-scrollbar"
+            >
+              {bookMatches.map((b) => (
+                <button
+                  key={b.book_num}
+                  onMouseDown={(e) => { e.preventDefault(); commitBook(b.book_name).then(() => { setTimeout(() => { chapterInputRef.current?.focus(); chapterInputRef.current?.select(); }, 0); }); }}
+                  className="block w-full text-left px-sm py-xs text-body-sm text-on-surface hover:bg-surface-variant transition-colors cursor-pointer"
+                >
+                  {b.book_name}
+                </button>
+              ))}
+            </AnchoredMenu>
           </div>
 
           <span className="text-on-surface-variant/50 text-body-md">·</span>

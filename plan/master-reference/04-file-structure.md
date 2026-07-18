@@ -309,7 +309,13 @@ src/
 │   │   │                          Presentations tab: "Sermon to Slides" toolbar button opens SermonImportModal.
 │   │   │                          GHS folder = the "GHS" tag; when it's the sole active filter the list orders by
 │   │   │                          hymn number and a numeric "GHS number…" quick-search replaces the text search
-│   │   │                          (Enter previews the exact number). Single-click (220ms) → SongPreviewModal.
+│   │   │                          (Enter previews the exact number). Single-click (220ms) → SongPreviewModal (a
+│   │   │                          LOCAL component distinct from components/SongPreviewModal.jsx, which RundownPanel
+│   │   │                          uses instead). Its title+lyrics live in one `select-text` node (`contentRef`); the
+│   │   │                          Add/Edit/Close buttons are an absolutely-positioned sibling outside that node, and
+│   │   │                          ⌘A/Ctrl+A is intercepted to select only `contentRef`'s contents — otherwise a
+│   │   │                          document-wide select-all would visually highlight the rundown and other chrome
+│   │   │                          behind the modal backdrop.
 │   │   │                          Double-click → add to rundown. Accepts refreshTick + focusSearchRef props.
 │   │   │                          focusSearchRef focuses whichever search input is mounted (GHS number field in the
 │   │   │                          GHS folder, else the song search) on S keypress. Graphics tab → <GraphicsPanel />.
@@ -411,8 +417,16 @@ src/
 │   │   │                          Slide content capped at max-h-24 to prevent runaway tall cards.
 │   │   │                          Section labels via utils/sectionLabels (numbered: Verse 1 / Verse 2, abbrev forms).
 │   │   │                          Presentation slides label by slide.label/"Slide N"; content preview = first text element.
-│   │   └── ContextMenu.jsx        Generic right-click menu positioned by x/y coords.
-│   │                              Escape key closes menu. Overflow guard accounts for separator height.
+│   │   ├── ContextMenu.jsx        Generic right-click menu positioned by x/y coords.
+│   │   │                          Escape key closes menu. Overflow guard accounts for separator height.
+│   │   └── AnchoredMenu.jsx       Generic anchored dropdown, portaled to <body> (so no `overflow:hidden` ancestor
+│   │                              clips it). Positions from the anchor's `getBoundingClientRect()`: opens below by
+│   │                              default, flips above when short on room, clamps horizontally into the viewport;
+│   │                              `align="left"|"right"` pins the matching edge. Re-places on scroll/resize/own-size
+│   │                              change (ResizeObserver); closes on outside click or Escape (capture-phase, so it
+│   │                              doesn't also close a host modal). Replaces ad-hoc `absolute` + outside-click-effect
+│   │                              dropdowns in SongListImportModal, StageLayoutEditor, TopBarTabs, LibraryPanel's
+│   │                              Import menu, and ScripturePanel's book picker.
 │   │
 │   ├── settings/
 │   │   ├── OutputChannels.jsx    Channel cards. Create/edit/delete. Monitor assignment per channel.

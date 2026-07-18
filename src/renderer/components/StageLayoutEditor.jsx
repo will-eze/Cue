@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import { buildSnapTargets, snapMove, snapEdge, nudgeFromKey, SnapGuides } from '../utils/snapping';
+import AnchoredMenu from './AnchoredMenu';
 
 // ── Stage Layout Editor ───────────────────────────────────────────────────────
 // A WYSIWYG editor for the free-form stage/confidence display. Elements are
@@ -101,13 +102,6 @@ export default function StageLayoutEditor({ value, onChange }) {
     return () => clearInterval(id);
   }, []);
 
-  // Close the add menu on an outside click.
-  useEffect(() => {
-    if (!addOpen) return;
-    const onDown = (e) => { if (addRef.current && !addRef.current.contains(e.target)) setAddOpen(false); };
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [addOpen]);
 
   const setElements = useCallback((next) => onChange({ ...value, elements: next }), [onChange, value]);
   const patchEl = useCallback((id, patch) => setElements(elements.map((e) => (e.id === id ? { ...e, ...patch } : e))), [elements, setElements]);
@@ -192,16 +186,20 @@ export default function StageLayoutEditor({ value, onChange }) {
               className="flex items-center gap-xs h-9 px-md rounded-lg text-label-sm font-label-sm font-bold uppercase tracking-[0.03em] bg-primary text-on-primary hover:brightness-110 active:scale-95 transition-all cursor-pointer">
               <span className="material-symbols-outlined text-[16px]">add</span>Add Element
             </button>
-            {addOpen && (
-              <div className="absolute z-30 mt-xs w-56 bg-surface-container-high border border-outline-variant/40 rounded-lg shadow-2xl py-xs">
-                {TYPE_ORDER.map((t) => (
-                  <button key={t} onClick={() => addElement(t)}
-                    className="w-full flex items-center gap-sm px-md h-9 text-left text-body-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest cursor-pointer">
-                    <span className="material-symbols-outlined text-[16px]">{ELEMENT_CATALOG[t].icon}</span>{ELEMENT_CATALOG[t].label}
-                  </button>
-                ))}
-              </div>
-            )}
+            <AnchoredMenu
+              open={addOpen}
+              anchorRef={addRef}
+              onClose={() => setAddOpen(false)}
+              align="left"
+              className="w-56 bg-surface-container-high border border-outline-variant/40 rounded-lg shadow-2xl ring-1 ring-white/5 py-xs"
+            >
+              {TYPE_ORDER.map((t) => (
+                <button key={t} onClick={() => addElement(t)}
+                  className="w-full flex items-center gap-sm px-md h-9 text-left text-body-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest cursor-pointer">
+                  <span className="material-symbols-outlined text-[16px]">{ELEMENT_CATALOG[t].icon}</span>{ELEMENT_CATALOG[t].label}
+                </button>
+              ))}
+            </AnchoredMenu>
           </div>
           <div className="w-px h-6 bg-outline-variant/40" />
           {/* Ready-made starting layouts */}

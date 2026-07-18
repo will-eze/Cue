@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import SongEditor from './SongEditor';
+import AnchoredMenu from './AnchoredMenu';
 import { useModalGuard } from '../utils/modalGuard';
 
 const CONFIDENCE_META = {
@@ -39,7 +40,7 @@ function ResultRow({ row, onChange, onPreview, onCreate, previewId }) {
   const [q, setQ] = useState('');
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
-  const pickerRef = useRef(null);
+  const pickerBtnRef = useRef(null);
   const searchRef = useRef(null);
   // A manual override (picked or just-created) is trusted regardless of the
   // original match confidence, so it gets its own "Chosen" badge.
@@ -47,16 +48,6 @@ function ResultRow({ row, onChange, onPreview, onCreate, previewId }) {
   const meta = overridden
     ? { icon: 'check_circle', cls: 'text-tertiary', label: 'Chosen' }
     : CONFIDENCE_META[row.confidence];
-
-  // Close the picker on an outside click (only while it's open).
-  useEffect(() => {
-    if (!open) return;
-    function onDocClick(e) {
-      if (pickerRef.current && !pickerRef.current.contains(e.target)) setOpen(false);
-    }
-    document.addEventListener('mousedown', onDocClick);
-    return () => document.removeEventListener('mousedown', onDocClick);
-  }, [open]);
 
   useEffect(() => { if (open) setTimeout(() => searchRef.current?.focus(), 0); }, [open]);
 
@@ -102,7 +93,7 @@ function ResultRow({ row, onChange, onPreview, onCreate, previewId }) {
   }
 
   return (
-    <div ref={pickerRef} className={`flex items-center gap-md px-md py-sm rounded-lg border transition-colors ${
+    <div className={`flex items-center gap-md px-md py-sm rounded-lg border transition-colors ${
       previewId && effective && previewId === effective.id
         ? 'border-primary/60 bg-primary/10'
         : row.selected
@@ -161,6 +152,7 @@ function ResultRow({ row, onChange, onPreview, onCreate, previewId }) {
       {/* Replace / pick-different toggle (available on every row) */}
       <div className="relative shrink-0">
         <button
+          ref={pickerBtnRef}
           onClick={() => setOpen((o) => !o)}
           title="Search for a different song"
           className={`cursor-pointer transition-colors ${open ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}
@@ -168,8 +160,13 @@ function ResultRow({ row, onChange, onPreview, onCreate, previewId }) {
           <span className="material-symbols-outlined text-[18px]">search</span>
         </button>
 
-        {open && (
-          <div className="absolute right-0 mt-xs w-80 bg-surface-container-high border border-outline-variant/40 rounded-lg shadow-2xl ring-1 ring-white/5 z-50 flex flex-col max-h-96">
+        <AnchoredMenu
+          open={open}
+          anchorRef={pickerBtnRef}
+          onClose={() => setOpen(false)}
+          align="right"
+          className="w-80 bg-surface-container-high border border-outline-variant/40 rounded-lg shadow-2xl ring-1 ring-white/5 flex flex-col max-h-96"
+        >
             {/* Search field */}
             <div className="p-sm border-b border-outline-variant/20 shrink-0">
               <div className="flex items-center gap-sm bg-surface-container-lowest border border-outline-variant/30 rounded-lg px-sm focus-within:border-primary/60">
@@ -230,8 +227,7 @@ function ResultRow({ row, onChange, onPreview, onCreate, previewId }) {
               <span className="material-symbols-outlined text-[18px]">add_circle</span>
               <span className="text-body-md truncate">{q.trim() ? `Create “${q.trim()}”…` : 'Create new song…'}</span>
             </button>
-          </div>
-        )}
+        </AnchoredMenu>
       </div>
     </div>
   );

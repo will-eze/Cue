@@ -6,6 +6,7 @@ import SongListImportModal from '../components/SongListImportModal';
 import SongScrapeModal from '../components/SongScrapeModal';
 import SongEditor from '../components/SongEditor';
 import ContextMenu from '../components/ContextMenu';
+import AnchoredMenu from '../components/AnchoredMenu';
 import ScripturePanel from './ScripturePanel';
 import GraphicsPanel from './GraphicsPanel';
 import ScenesAndOutputsPanel from './ScenesAndOutputsPanel';
@@ -217,12 +218,18 @@ const SECTION_TYPE_LABELS = { verse: 'Verse', chorus: 'Chorus', bridge: 'Bridge'
 function SongPreviewModal({ song, onClose, onEdit, onAddToRundown }) {
   useModalGuard();
   const panelRef = useRef(null);
+  const contentRef = useRef(null);
   useFocusTrap(panelRef);
   const [fullSong, setFullSong] = useState(null);
   useEffect(() => {
     setFullSong(null);
+    // Drop any leftover selection when switching directly to another song.
+    window.getSelection?.()?.removeAllRanges();
     window.cue.songs.get(song.id).then(setFullSong);
   }, [song.id]);
+  // Clear the text selection when the modal closes (click-out / Esc / Edit) so a
+  // stale highlight doesn't carry into the next preview.
+  useEffect(() => () => { window.getSelection?.()?.removeAllRanges(); }, []);
   const author = song.author || fullSong?.author;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
@@ -232,44 +239,64 @@ function SongPreviewModal({ song, onClose, onEdit, onAddToRundown }) {
         aria-modal="true"
         aria-label={song.title}
         onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
-        className="w-[560px] max-h-[80vh] bg-surface-container-high border border-outline-variant/40 rounded-xl ring-1 ring-white/5 shadow-2xl flex flex-col"
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') { onClose(); return; }
+          // ⌘A / Ctrl+A selects ONLY the song content (title + lyrics). We drive
+          // the selection ourselves and swallow the event so the browser's
+          // document-wide select-all — which visually highlights the rundown,
+          // the action buttons and other chrome behind the modal — never fires.
+          const mod = window.cue.platform === 'darwin' ? e.metaKey : e.ctrlKey;
+          if (mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'a') {
+            e.preventDefault();
+            const el = contentRef.current;
+            if (!el) return;
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            const range = document.createRange();
+            range.selectNodeContents(el);
+            sel.addRange(range);
+          }
+        }}
+        className="relative w-[560px] max-h-[80vh] bg-surface-container-high border border-outline-variant/40 rounded-xl ring-1 ring-white/5 shadow-2xl flex flex-col"
       >
-        <div className="flex items-start justify-between gap-md px-lg py-md border-b border-outline-variant/20 shrink-0">
-          <div className="min-w-0">
+        {/* All selectable text lives in this one node so ⌘A / drag-select grabs the
+            title + lyrics and nothing else. The action buttons are an absolutely
+            positioned sibling, deliberately OUTSIDE contentRef. */}
+        <div ref={contentRef} className="flex flex-col flex-1 min-h-0 select-text">
+          <div className="px-lg py-md pr-[190px] border-b border-outline-variant/20 shrink-0 min-w-0">
             <h2 className="text-body-lg text-on-surface font-medium truncate">{song.title}</h2>
             {author && <div className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.04em] truncate mt-[2px]">{author}</div>}
             {fullSong?.copyright && <div className="text-[10px] text-on-surface-variant/60 truncate mt-[2px]">{fullSong.copyright}</div>}
           </div>
-          <div className="flex gap-xs shrink-0">
-            <button onClick={() => { onAddToRundown(song.id); onClose(); }} className="px-md py-[5px] rounded text-[10px] font-label-sm font-bold uppercase tracking-[0.04em] bg-primary text-on-primary hover:brightness-110 cursor-pointer">Add</button>
-            <button onClick={() => onEdit(fullSong || song)} className="px-md py-[5px] rounded text-[10px] font-label-sm uppercase tracking-[0.04em] bg-surface-container border border-outline-variant/40 text-on-surface-variant hover:bg-surface-variant cursor-pointer">Edit</button>
-            <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded text-on-surface-variant/60 hover:text-on-surface hover:bg-surface-variant cursor-pointer">
-              <span className="material-symbols-outlined text-[16px]">close</span>
-            </button>
+          <div className="overflow-y-auto custom-scrollbar px-lg py-md flex-1 min-h-0">
+            {!fullSong ? (
+              <div className="text-label-sm font-label-sm text-on-surface-variant/50 uppercase tracking-[0.05em]">Loading…</div>
+            ) : !fullSong.sections?.length ? (
+              <div className="text-label-sm font-label-sm text-on-surface-variant/50 uppercase tracking-[0.05em]">No lyrics</div>
+            ) : (
+              <div className="space-y-md">
+                {fullSong.sections.map((s, i) => {
+                  const text = (s.content || '').split('⁂').map((t) => t.trim()).filter(Boolean).join('\n\n');
+                  if (!text) return null;
+                  return (
+                    <div key={i}>
+                      <div className="text-[10px] text-on-surface-variant/60 uppercase tracking-[0.06em] font-label-sm mb-xs">
+                        {SECTION_TYPE_LABELS[s.type] || s.type}
+                      </div>
+                      <div className="text-body-md text-on-surface leading-relaxed whitespace-pre-wrap">{text}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
-        <div className="overflow-y-auto custom-scrollbar px-lg py-md">
-          {!fullSong ? (
-            <div className="text-label-sm font-label-sm text-on-surface-variant/50 uppercase tracking-[0.05em]">Loading…</div>
-          ) : !fullSong.sections?.length ? (
-            <div className="text-label-sm font-label-sm text-on-surface-variant/50 uppercase tracking-[0.05em]">No lyrics</div>
-          ) : (
-            <div className="space-y-md">
-              {fullSong.sections.map((s, i) => {
-                const text = (s.content || '').split('⁂').map((t) => t.trim()).filter(Boolean).join('\n\n');
-                if (!text) return null;
-                return (
-                  <div key={i}>
-                    <div className="text-[10px] text-on-surface-variant/60 uppercase tracking-[0.06em] font-label-sm mb-xs">
-                      {SECTION_TYPE_LABELS[s.type] || s.type}
-                    </div>
-                    <div className="text-body-md text-on-surface leading-relaxed whitespace-pre-wrap">{text}</div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+        <div className="absolute top-md right-lg flex gap-xs">
+          <button onClick={() => { onAddToRundown(song.id); onClose(); }} className="px-md py-[5px] rounded text-[10px] font-label-sm font-bold uppercase tracking-[0.04em] bg-primary text-on-primary hover:brightness-110 cursor-pointer">Add</button>
+          <button onClick={() => onEdit(fullSong || song)} className="px-md py-[5px] rounded text-[10px] font-label-sm uppercase tracking-[0.04em] bg-surface-container border border-outline-variant/40 text-on-surface-variant hover:bg-surface-variant cursor-pointer">Edit</button>
+          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded text-on-surface-variant/60 hover:text-on-surface hover:bg-surface-variant cursor-pointer">
+            <span className="material-symbols-outlined text-[16px]">close</span>
+          </button>
         </div>
       </div>
     </div>
@@ -488,6 +515,7 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
   const ghsSearchRef = useRef(null);
   const searchDebounce = useRef(null);
   const listRef = useRef(null);
+  const importBtnRef = useRef(null);
 
   // Expose a focus function so OperatorView can trigger search focus via keyboard
   // (S key). Only one of the two inputs is mounted at a time — the GHS number
@@ -865,6 +893,7 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
           {tab === 'songs' && (
             <div className="relative">
               <button
+                ref={importBtnRef}
                 onClick={() => setImportMenuOpen((o) => !o)}
                 disabled={parsingSongs}
                 title="Import songs"
@@ -874,10 +903,13 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
                 {parsingSongs ? 'Reading…' : 'Import'}
                 <span className="material-symbols-outlined text-[14px]">expand_more</span>
               </button>
-              {importMenuOpen && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setImportMenuOpen(false)} />
-                  <div className="absolute right-0 mt-xs w-60 bg-surface-container-high border border-outline-variant/40 rounded-lg shadow-2xl ring-1 ring-white/5 z-50 py-xs">
+              <AnchoredMenu
+                open={importMenuOpen}
+                anchorRef={importBtnRef}
+                onClose={() => setImportMenuOpen(false)}
+                align="right"
+                className="w-60 bg-surface-container-high border border-outline-variant/40 rounded-lg shadow-2xl ring-1 ring-white/5 py-xs"
+              >
                     <button
                       onClick={() => { setImportMenuOpen(false); handleImportSongs(); }}
                       className="w-full flex items-start gap-sm px-md py-sm text-left hover:bg-surface-variant transition-colors cursor-pointer"
@@ -929,9 +961,7 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
                         <span className="text-label-sm font-label-sm text-on-surface-variant tracking-normal normal-case">Read lyrics from a scan or PDF (offline OCR)</span>
                       </span>
                     </button>
-                  </div>
-                </>
-              )}
+              </AnchoredMenu>
             </div>
           )}
           {tab === 'songs' && (

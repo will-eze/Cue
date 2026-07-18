@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
 } from '@dnd-kit/core';
@@ -7,6 +7,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { SECTIONS } from '../views/SettingsView';
+import AnchoredMenu from './AnchoredMenu';
 
 // Pinnable extra destinations for the top bar: every Settings subsection, deep-linked
 // as `settings:<id>`. The three base views (Operator/Multiview/Settings) are fixed in
@@ -53,15 +54,8 @@ function SortableTab({ id, active, onNavigate, onRemove }) {
 export default function TopBarTabs({ extraTabs, activeTabId, onNavigate, onReorder, onRemove, onAdd, onReset }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const wrapRef = useRef(null);
+  const pickerBtnRef = useRef(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
-
-  // Close the picker on an outside click.
-  useEffect(() => {
-    if (!pickerOpen) return;
-    const onDown = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setPickerOpen(false); };
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [pickerOpen]);
 
   const available = DESTINATIONS.filter((d) => !extraTabs.includes(d.id));
   const atCap = extraTabs.length >= MAX_EXTRA;
@@ -86,6 +80,7 @@ export default function TopBarTabs({ extraTabs, activeTabId, onNavigate, onReord
 
       <div className="relative titlebar-nodrag" ref={wrapRef}>
         <button
+          ref={pickerBtnRef}
           onClick={() => setPickerOpen((v) => !v)}
           title="Pin a Settings section as a tab"
           className={`h-6 w-6 flex items-center justify-center rounded-lg transition-colors cursor-pointer ${
@@ -95,8 +90,14 @@ export default function TopBarTabs({ extraTabs, activeTabId, onNavigate, onReord
           <span className="material-symbols-outlined text-[16px]">add</span>
         </button>
 
-        {pickerOpen && (
-          <div className="absolute left-0 top-[calc(100%+4px)] z-[60] w-52 bg-surface-container-high border border-outline-variant/40 rounded-xl shadow-2xl ring-1 ring-white/5 overflow-hidden">
+        <AnchoredMenu
+          open={pickerOpen}
+          anchorRef={pickerBtnRef}
+          onClose={() => setPickerOpen(false)}
+          align="left"
+          zIndex={60}
+          className="titlebar-nodrag w-52 bg-surface-container-high border border-outline-variant/40 rounded-xl shadow-2xl ring-1 ring-white/5 overflow-hidden"
+        >
             <div className="px-md py-xs border-b border-outline-variant/20">
               <span className="text-[9px] font-label-sm uppercase tracking-[0.08em] text-on-surface-variant/60">Pin a Settings tab</span>
             </div>
@@ -127,8 +128,7 @@ export default function TopBarTabs({ extraTabs, activeTabId, onNavigate, onReord
                 </button>
               </div>
             )}
-          </div>
-        )}
+        </AnchoredMenu>
       </div>
     </>
   );
