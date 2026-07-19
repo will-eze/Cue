@@ -279,6 +279,7 @@ Known keys:
 | `lowerthird_font_scale` | number | Global lower-third font scale, percent (1–150, default 100). Lower-third font size = `(authored size or 72) × pct/100`; rides every content payload as `ltFontScale` (a fraction). Set via Settings → Lower Third / `output.lowerthird.setFontScale`. Fullscreen unaffected |
 | `operator_preview_layout` | 'stacked'\|'sidebyside' | Unused in current UI — reserved |
 | `youtube_cookies_browser` | string\|null | Opt-in: browser to read YouTube cookies from for the download cascade's cookies tier (`chrome`/`edge`/`firefox`/`brave`/`safari`); `null`/absent = off. Set from the Add-YouTube modal's "Use my browser's YouTube login" control |
+| `update_skipped_version` | string\|null | Version string (e.g. `'31.2.0'`) the user dismissed via "Skip This Version" in `UpdateAvailableModal`. The launch-time auto-check (§7 *In-app updater*) suppresses the modal while `checkForUpdate()`'s `latest` still matches; a newer release re-prompts. Doesn't affect the manual Settings "Check for Updates" button |
 | `keyboard_modifier` | 'meta'\|'ctrl'\|'alt' | Modifier key for transport shortcuts (default: 'meta' on macOS, 'ctrl' on Windows) |
 | `keyboard_go` | string | Key char for GO shortcut (default: 'g') |
 | `keyboard_clear` | string | Key char for Clear shortcut (default: 'c') |

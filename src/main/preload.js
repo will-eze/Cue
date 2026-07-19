@@ -316,7 +316,7 @@ contextBridge.exposeInMainWorld('cue', {
       'remote:command',
       'youtube:status',
       'scripture:detected', 'scripture:transcript', 'scripture:status',
-      'update:progress',
+      'update:progress', 'update:available',
       'stream:status', 'output:stream-preview', 'output:stream-levels',
       'liveinput:preview', 'liveinput:status', 'liveinput:enabled',
     ];

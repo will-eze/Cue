@@ -74,6 +74,7 @@ Unified single-process Electron app. Replaces EasyWorship/ProPresenter (worship 
 ### In-app updater (`src/main/update/updater.js`)
 - **Query `/releases` and take `[0]`, never `/releases/latest`.** CI publishes *prereleases* and `/latest` skips them, so `/latest` makes the check silently always report "up to date".
 - **Pick the asset by file extension** (`.dmg` / `Setup.exe`), never a name template — real names are `Cue.dmg` / `Cue-<ver>.Setup.exe`. After download, **strip `com.apple.quarantine`** — a quarantine xattr on the ad-hoc-signed app is a Gatekeeper hard-block. No auth/token/`gh`: the repo is public. See master reference §7 *In-app updater*.
+- **`settings.update_skipped_version` gates ONLY the launch-time auto-check modal, never the manual Settings "Check for Updates" button** — that button must always query fresh. Don't wire the skip into `checkForUpdate()` itself or a user who skipped v31 can never manually update to v31 later.
 
 ---
 

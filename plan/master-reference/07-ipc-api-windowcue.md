@@ -327,7 +327,7 @@ The downloaded file is **ephemeral** — never a `media_assets` row (see §6 *Na
 
 ### In-app updater (`src/main/update/updater.js`)
 
-Manual "Check for Updates" button in the SettingsView footer (`UpdateChecker`). Pulls Cue's own updates across an owned fleet with **no auth, token, `gh` CLI, or Apple Developer ID** — the repo is public, so the GitHub Releases API and asset downloads are anonymous HTTPS, like a browser.
+Two entry points share the same `checkForUpdate()`/`downloadAndInstall()`: the manual "Check for Updates" button in the SettingsView footer (`UpdateChecker`), and a launch-time auto-check. Pulls Cue's own updates across an owned fleet with **no auth, token, `gh` CLI, or Apple Developer ID** — the repo is public, so the GitHub Releases API and asset downloads are anonymous HTTPS, like a browser.
 
 - **Takes `/releases[0]`, never `/releases/latest`** — CI publishes *prereleases*, and `/latest` skips them, so `/latest` would always report "up to date". Index 0 is the newest release including prereleases.
 - **Asset chosen by file extension** (`.dmg` on darwin, `…Setup.exe` on win32), never a name template — real asset names are `Cue.dmg` and `Cue-<ver>.Setup.exe` (no arch/version pattern on the dmg). No `RELEASES`/`.nupkg` are uploaded.
@@ -335,6 +335,8 @@ Manual "Check for Updates" button in the SettingsView footer (`UpdateChecker`). 
 - Download follows GitHub's redirect to the asset host (Node's `https.get` does **not** auto-follow), streams to disk (never buffers), reports `{received,total}`.
 - **Strips `com.apple.quarantine`** after download: a quarantine xattr on the ad-hoc-signed app is a Gatekeeper hard-block. (Programmatic Node downloads usually aren't quarantined — unlike browser downloads — so this is belt-and-braces, verified working on macOS.)
 - This is "Option A" (manual one-click). True silent auto-update ("Option B", Electron `autoUpdater`) is blocked on macOS by ad-hoc signing (needs a $99 Apple Developer ID + notarization); Windows could do it but the squirrel `RELEASES`/`.nupkg` artifacts aren't published. See `deployment-handoff.md` for signing.
+
+**Launch-time auto-check** (`main/index.js`, inside the `did-finish-load` `.once` handler): fires `checkForUpdate()` on a `setTimeout` 4s after first load (off the startup critical path), silent on failure/up-to-date. If `isNewer` and `res.latest` doesn't match the persisted `settings.update_skipped_version`, sends `update:available` (full `checkForUpdate()` result) to the renderer, which shows `UpdateAvailableModal` (`src/renderer/components/UpdateAvailableModal.jsx`, mounted from `App.jsx`). The modal offers **Install Now** (calls `downloadUpdate` same as the manual flow), **Later** (dismiss only, re-prompts next launch), and **Skip This Version** (`settings.set('update_skipped_version', latest)` — suppressed until a newer release ships). Because it's a one-shot `.once` listener, only the very first `did-finish-load` per app launch triggers the check — a renderer reload does not re-fire it. The manual Settings button always queries fresh regardless of the skipped-version setting.
 
 ### `window.cue.bible`
 
@@ -421,6 +423,7 @@ Subscribe to main→renderer events. Returns an unsubscribe function — call it
 - `stage:timer` — `{state, remaining, target}` fired after any `stage.timer()` call, so the stage settings panel can display the live timer state without polling.
 - `stage:message` — `{text}` fired after any `stage.message()` call, so the stage settings panel can reflect the live message without polling.
 - `update:progress` — `{received, total}` during an in-app update download. The SettingsView `UpdateChecker` shows it as a percentage. See §7 *In-app updater*.
+- `update:available` — the full `checkForUpdate()` result, fired once ~4s after launch if a newer release exists and isn't the skipped version. `App.jsx` shows `UpdateAvailableModal`. See §7 *In-app updater — Launch-time auto-check*.
 - `liveinput:preview` — `{sourceName, dataUrl}` ~2fps JPEG thumbnail of a previewing NDI source. The Library **Live** tab and the preview/live monitors render it (never the full RGBA frame bus). §14.
 - `liveinput:status` — `{sourceName, connected, w?, h?, error?}` receiver connection state for the currently-selected live source.
 - `liveinput:enabled` — `bool`, fired when the `live_inputs_enabled` kill switch flips; keeps the operator's `buildPayload` guard and the Library toggle in sync. §14.

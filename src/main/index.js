@@ -32,6 +32,8 @@ import * as outputManager from './output/manager.js';
 import * as graphicsDb from './db/graphics.js';
 import { isAvailable as ndiAvailable } from './output/ndi.js';
 import { thumbCachePath, getThumbnailDir } from './db/media.js';
+import { checkForUpdate } from './update/updater.js';
+import * as settings from './db/settings.js';
 
 // Must be called synchronously before app is ready
 protocol.registerSchemesAsPrivileged([
@@ -387,6 +389,19 @@ app.whenReady().then(async () => {
       mainWindow.webContents.send('output:ndi-unavailable');
     }
   });
+
+  // Auto-check for updates a few seconds after launch (off the startup critical path).
+  // Silent no-op on failure/up-to-date; a version the user already dismissed via
+  // "Skip" doesn't re-prompt until something newer ships. Manual "Check for Updates"
+  // in Settings is unaffected — it always queries fresh regardless of this skip.
+  setTimeout(async () => {
+    try {
+      const res = await checkForUpdate();
+      if (res.ok && res.isNewer && res.latest !== settings.get('update_skipped_version')) {
+        mainWindow?.webContents.send('update:available', res);
+      }
+    } catch { /* silent — this is a background courtesy check */ }
+  }, 4000);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();

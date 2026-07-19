@@ -10,6 +10,6 @@
    f. `createMainWindow()` — show operator UI
    g. `remoteServer.configure(...)` + `outputManager.setRemoteStateListener(...)` + `await applyRemoteConfig()` — start the network control server if `remote_enabled`
    h. `outputManager.init()` — load active channels, create BrowserWindows
-   i. On `did-finish-load`: send `output:unresolved-channels` and/or `output:ndi-unavailable` if needed. The renderer does not auto-navigate to Settings — the operator opens it manually.
+   i. On `did-finish-load`: send `output:unresolved-channels` and/or `output:ndi-unavailable` if needed. The renderer does not auto-navigate to Settings — the operator opens it manually. Also arms a one-shot 4s `setTimeout` that calls `checkForUpdate()` and, if newer and not the skipped version, sends `update:available` (§7 *In-app updater — Launch-time auto-check*).
 
 ---

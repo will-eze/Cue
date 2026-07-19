@@ -419,7 +419,7 @@ src/
 │   │   │                          Presentation slides label by slide.label/"Slide N"; content preview = first text element.
 │   │   ├── ContextMenu.jsx        Generic right-click menu positioned by x/y coords.
 │   │   │                          Escape key closes menu. Overflow guard accounts for separator height.
-│   │   └── AnchoredMenu.jsx       Generic anchored dropdown, portaled to <body> (so no `overflow:hidden` ancestor
+│   │   ├── AnchoredMenu.jsx       Generic anchored dropdown, portaled to <body> (so no `overflow:hidden` ancestor
 │   │                              clips it). Positions from the anchor's `getBoundingClientRect()`: opens below by
 │   │                              default, flips above when short on room, clamps horizontally into the viewport;
 │   │                              `align="left"|"right"` pins the matching edge. Re-places on scroll/resize/own-size
@@ -427,6 +427,9 @@ src/
 │   │                              doesn't also close a host modal). Replaces ad-hoc `absolute` + outside-click-effect
 │   │                              dropdowns in SongListImportModal, StageLayoutEditor, TopBarTabs, LibraryPanel's
 │   │                              Import menu, and ScripturePanel's book picker.
+│   │   └── UpdateAvailableModal.jsx  Launch-time "Update available" prompt (mounted from App.jsx on the
+│   │                              `update:available` event fired by main's auto-check §7/§19). Install Now
+│   │                              / Later / Skip This Version (persists update_skipped_version, §5).
 │   │
 │   ├── settings/
 │   │   ├── OutputChannels.jsx    Channel cards. Create/edit/delete. Monitor assignment per channel.

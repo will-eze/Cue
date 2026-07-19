@@ -6,6 +6,7 @@ import StageView from './views/StageView';
 import SettingsView from './views/SettingsView';
 import TopBarTabs from './components/TopBarTabs';
 import ErrorBoundary from './components/ErrorBoundary';
+import UpdateAvailableModal from './components/UpdateAvailableModal';
 import { injectUserFontFaces } from './utils/fonts';
 import { hasOpenModal } from './utils/modalGuard';
 import { resolveAnchors, collides, overlapIds } from '../shared/stage-schedule.js';
@@ -27,6 +28,7 @@ export default function App() {
   const [bgRefreshTick, setBgRefreshTick] = useState(0);
   const [activeServiceId, setActiveServiceId] = useState(null);
   const [ndiWarning, setNdiWarning] = useState(false);
+  const [updateInfo, setUpdateInfo] = useState(null); // launch-time auto-check result, see index.js
   const [headerState, setHeaderState] = useState({ isLive: false, canGo: false, micActive: false });
   const [outputWindows, setOutputWindows] = useState(0);
   const [outputsEnabled, setOutputsEnabled] = useState(true);
@@ -69,6 +71,7 @@ export default function App() {
 
   useEffect(() => {
     const offNdi   = window.cue.on('output:ndi-unavailable', () => setNdiWarning(true));
+    const offUpdate = window.cue.on('update:available', (res) => setUpdateInfo(res));
     const applyState = (s) => {
       setOutputWindows(s.activeWindows ?? 0);
       setOutputsEnabled(s.outputsEnabled ?? true);
@@ -77,7 +80,7 @@ export default function App() {
     };
     const offState = window.cue.on('output:state-changed', applyState);
     window.cue.output.getState().then(applyState);
-    return () => { offNdi(); offState(); };
+    return () => { offNdi(); offUpdate(); offState(); };
   }, []);
 
   useEffect(() => {
@@ -353,6 +356,10 @@ export default function App() {
           onBackgroundDefaultChanged={() => setBgRefreshTick((t) => t + 1)}
         /></ErrorBoundary>}
       </div>
+
+      {updateInfo && (
+        <UpdateAvailableModal info={updateInfo} onClose={() => setUpdateInfo(null)} />
+      )}
     </div>
   );
 }
