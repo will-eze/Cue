@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { splitSectionContent } from '../utils/sectionLabels';
+import { splitSectionContent, splitByMaxLines, maxLinesOf } from '../utils/sectionLabels';
 import { useModalGuard } from '../utils/modalGuard';
 
 const TYPE_LABELS = {
@@ -11,10 +11,27 @@ const TYPE_LABELS = {
 export default function SongPreviewModal({ song, onClose, onEdit, onAddToRundown }) {
   useModalGuard();
   const [fullSong, setFullSong] = useState(null);
+  const [globalMaxLines, setGlobalMaxLines] = useState(0);
 
   useEffect(() => {
     window.cue.songs.get(song.id).then(setFullSong);
   }, [song.id]);
+
+  // Global max-lines default — matches the operator's fallback so the preview
+  // paginates identically to output. Per-song cap (fullSong.max_lines) wins.
+  useEffect(() => {
+    window.cue.settings.get('song_max_lines').then((v) => {
+      const n = Number(v);
+      setGlobalMaxLines(isFinite(n) && n > 0 ? n : 0);
+    });
+  }, []);
+
+  // Effective cap for a section, mirroring expandSongSections' cascade:
+  // per-song → section theme → global. (0 = unlimited.)
+  const effectiveMax = (section) =>
+    (Number(fullSong?.max_lines) > 0 ? Number(fullSong.max_lines) : 0)
+    || maxLinesOf(section)
+    || globalMaxLines;
 
   useEffect(() => {
     function handleKey(e) { if (e.key === 'Escape') onClose(); }
@@ -70,7 +87,9 @@ export default function SongPreviewModal({ song, onClose, onEdit, onAddToRundown
                     <div className={`section-chip mb-sm inline-flex ${isChorus ? 'bg-primary text-on-primary border-transparent' : ''}`}>
                       {TYPE_LABELS[section.type] || section.type}
                     </div>
-                    {splitSectionContent(section.content).map((part, pi, arr) => (
+                    {splitSectionContent(section.content)
+                      .flatMap((p) => splitByMaxLines(p, effectiveMax(section)))
+                      .map((part, pi, arr) => (
                       <React.Fragment key={pi}>
                         {pi > 0 && (
                           <div className="flex items-center gap-sm my-sm text-[8px] font-mono text-on-surface-variant/30 uppercase tracking-[0.1em]">

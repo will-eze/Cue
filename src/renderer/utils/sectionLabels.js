@@ -84,6 +84,42 @@ export function splitSectionContent(content) {
   return parts.length ? parts : [''];
 }
 
+// ── Max-lines auto-pagination ────────────────────────────────────────────────
+//
+// A theme (or a song's own style_json) can cap how many AUTHORED lines a single
+// display slide shows via `style_json.maxLines`. Overflow paginates: the content
+// is split on newlines and re-chunked into groups of at most `maxLines` lines.
+// Counting is by typed line breaks (deterministic) — NOT visual wrapping, which
+// depends on live output geometry the operator doesn't have.
+//
+// Runs AFTER splitSectionContent so a manual `⁂` break wins the boundary and each
+// resulting part is then capped. A falsy / <1 cap (or no overflow) leaves the
+// content unchanged, so existing songs behave exactly as before.
+export function splitByMaxLines(content, maxLines) {
+  const cap = Number(maxLines);
+  if (!Number.isFinite(cap) || cap < 1) return [String(content ?? '')];
+  const lines = String(content ?? '').split('\n');
+  if (lines.length <= cap) return [String(content ?? '')];
+  const chunks = [];
+  for (let i = 0; i < lines.length; i += cap) {
+    chunks.push(lines.slice(i, i + cap).join('\n'));
+  }
+  return chunks.length ? chunks : [String(content ?? '')];
+}
+
+// Read the max-lines cap off a section's style_json (a JSON string or object).
+// Null / unparseable / absent → 0 (unlimited).
+export function maxLinesOf(section) {
+  const sj = section?.style_json;
+  if (!sj) return 0;
+  let style = sj;
+  if (typeof sj === 'string') {
+    try { style = JSON.parse(sj); } catch { return 0; }
+  }
+  const n = Number(style?.maxLines);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
 // ── Arrangements ─────────────────────────────────────────────────────────────
 //
 // A song can carry a played ORDER of its sections (ProPresenter-style
@@ -118,8 +154,18 @@ export function applyArrangement(sections, arrangement) {
 // ALWAYS derived from the natural list so a chorus repeated by the arrangement
 // stays "Chorus" (or "Chorus 2" = the second distinct chorus), never gaining a
 // new number per repeat. Keys carry the arranged position so repeats stay unique.
-export function expandSongSections(sections, arrangement) {
+//
+// `opts.songMaxLines` / `opts.globalMaxLines` supply the max-lines cascade for
+// auto-pagination (most-specific-wins): a section's own theme-applied
+// `style_json.maxLines` → the song's explicit per-song cap (Song Editor, forces
+// every section) → the global `song_max_lines` default → 0 (unlimited). The
+// per-song cap intentionally overrides a theme's section cap so "set N in the
+// editor" adjusts all slides; the global is only the fallback for songs that set
+// neither. All are 0-safe (0 = unset), so existing songs are unchanged.
+export function expandSongSections(sections, arrangement, opts = {}) {
   const list = Array.isArray(sections) ? sections : [];
+  const songMaxLines   = Number(opts.songMaxLines)   > 0 ? Number(opts.songMaxLines)   : 0;
+  const globalMaxLines = Number(opts.globalMaxLines) > 0 ? Number(opts.globalMaxLines) : 0;
   const labels     = sectionLabels(list);
   const labelsAbbr = sectionLabels(list, { abbrev: true });
   const labelIdx   = new Map(list.map((sec, i) => [sec, i]));
@@ -127,7 +173,12 @@ export function expandSongSections(sections, arrangement) {
   const out = [];
   ordered.forEach((sec, oi) => {
     const si = labelIdx.get(sec) ?? 0;
-    const parts = splitSectionContent(sec?.content);
+    // Manual `⁂` breaks first, then auto-paginate each part by the section's
+    // max-lines cap. _partIndex/_partCount span the FINAL combined slide list so a
+    // section that expands to N slides is numbered 1..N under one shared label.
+    const cap = songMaxLines || maxLinesOf(sec) || globalMaxLines;
+    const parts = splitSectionContent(sec?.content)
+      .flatMap((part) => splitByMaxLines(part, cap));
     parts.forEach((content, pi) => {
       out.push({
         ...sec,

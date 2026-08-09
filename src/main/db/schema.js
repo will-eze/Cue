@@ -880,6 +880,28 @@ const migrations = [
       CREATE INDEX IF NOT EXISTS idx_service_items_service_id ON service_items(service_id);
     `);
   },
+
+  // v32 — Per-output-channel content font scale. A percentage (100 = neutral) that
+  // rides the window's ?cfs= query param and multiplies the fill-screen auto-fit
+  // target, so a large TV can run bigger lyrics than a confidence monitor. Mirrors
+  // the global lowerthird_font_scale, but per screen. Live-updated via 'content:scale'
+  // (no window recreate → the NDI sender survives). Follows the show_program column pattern.
+  function v32(database) {
+    database.exec(`
+      ALTER TABLE output_channels ADD COLUMN content_font_scale INTEGER NOT NULL DEFAULT 100;
+    `);
+  },
+
+  // v33 — Per-song max lines per slide. A cap on how many AUTHORED lines a single
+  // display slide shows; overflow auto-paginates (expandSongSections → splitByMaxLines).
+  // 0 = inherit (no per-song cap) — the song then follows the global `song_max_lines`
+  // setting, exactly like the global background/scale defaults. Set explicitly in the
+  // Song Editor to override every section at once ("all song items adjust to match").
+  function v33(database) {
+    database.exec(`
+      ALTER TABLE songs ADD COLUMN max_lines INTEGER NOT NULL DEFAULT 0;
+    `);
+  },
 ];
 
 function runMigrations() {

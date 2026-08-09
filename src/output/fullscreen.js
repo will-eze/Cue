@@ -175,7 +175,7 @@ function applyStyle(s) {
   textEl.style.fontWeight      = s.bold         ? '700' : '400';
   textEl.style.fontStyle       = s.italic       ? 'italic' : 'normal';
   textEl.style.textDecoration  = buildDecoration(s);
-  textEl.style.fontSize        = s.fontSize     ? Math.round(s.fontSize * vs) + 'px' : '';
+  textEl.style.fontSize        = s.fontSize     ? Math.round(s.fontSize * vs * CONTENT_FONT_SCALE) + 'px' : '';
   textEl.style.color           = s.color        || '';
   textEl.style.lineHeight      = s.lineSpacing  ? String(s.lineSpacing) : '';
   textEl.style.letterSpacing   = s.letterSpacing ? s.letterSpacing + 'em' : '';
@@ -189,14 +189,25 @@ function applyStyle(s) {
   textEl.style.width      = '100%';
 }
 
+// Per-output-channel content font scale. Read once from the ?cfs= query param main
+// sets at window creation, live-updated via the 'content:scale' IPC. 1 = author's
+// size (neutral); >1 grows every slide's text for a large screen (an 80" TV), <1
+// shrinks it. Mirrors the lower-third ltFontScale model, but per screen — it's a
+// straight multiplier on the authored font size, NOT an auto-fill-the-box target.
+let CONTENT_FONT_SCALE = (() => {
+  const v = Number(new URLSearchParams(location.search).get('cfs'));
+  return isFinite(v) && v > 0 ? v : 1;
+})();
+
 // Split-verse auto-fit: binary-search the font size so the stacked translations fill
 // — but never overflow — the text box. `maxPx` caps it at the authored scripture size
-// so a single short verse pair never blows up larger than normal scripture.
+// (× the per-channel content scale) so a single short verse pair never blows up larger
+// than normal scripture, while a large-screen channel still scales the cap up.
 let lastSplitMax = 0;
 function fitSplitText(maxPx) {
   const vs = viewportScale();
   const maxH = textWrap.clientHeight;
-  const cap = Math.max(Math.round(22 * vs), Math.round(maxPx * vs));
+  const cap = Math.max(Math.round(22 * vs), Math.round(maxPx * CONTENT_FONT_SCALE * vs));
   if (!maxH) { textEl.style.fontSize = cap + 'px'; return; }
   textEl.style.fontSize = cap + 'px';
   if (textEl.scrollHeight <= maxH) return;
@@ -583,6 +594,17 @@ window.addEventListener('resize', () => {
 });
 window.addEventListener('resize', () => { if (lastSplitMax) fitSplitText(lastSplitMax); });
 
+// Runtime per-channel content scale change — update the multiplier and re-apply the
+// live slide's style in place (no window recreation, so the NDI sender survives).
+if (window.cueOutput.onContentScale) {
+  window.cueOutput.onContentScale((frac) => {
+    const v = Number(frac);
+    CONTENT_FONT_SCALE = isFinite(v) && v > 0 ? v : 1;
+    if (_liveStyle) applyStyle(_liveStyle);
+    if (lastSplitMax) fitSplitText(lastSplitMax);
+  });
+}
+
 function hideElements() {
   slideEls.classList.remove('active');
   slideEls.innerHTML = '';
@@ -768,11 +790,12 @@ function renderSlide(payload) {
       `<div class="split-verse"><div class="split-verse-body">${renderWithRuns(b.text || '', styleJson?.runs)}</div>`
       + `<div class="split-verse-attr">${esc(b.attribution || '')}</div></div>`).join('');
     copyright.textContent = '';
-    // Auto-fit instead of a fixed shrink: pick the LARGEST font (up to the authored
-    // scripture size) at which both translations still fit the verse box. Short verses
-    // keep the full size and fill the screen; only long readings shrink.
-    fitSplitText(Number(styleJson?.fontSize) || 72);
-    lastSplitMax = Number(styleJson?.fontSize) || 72;
+    // Auto-fit: pick the LARGEST font (up to the authored scripture size × content
+    // scale) at which both translations still fit the verse box. Short verses keep
+    // the full size; only long readings shrink.
+    const splitMax = Number(styleJson?.fontSize) || 72;
+    fitSplitText(splitMax);
+    lastSplitMax = splitMax;
     return;
   }
   lastSplitMax = 0;
@@ -783,6 +806,39 @@ function renderSlide(payload) {
   applyCopyrightStyle(copyright, payload.copyrightStyle, payload.copyrightAlign === 'right' ? 'right' : 'center');
 }
 
+// ── Decode-gated image swaps ─────────────────────────────────────────────────
+// A fresh <img> (a logo, or a new background image) doesn't paint the instant it's
+// inserted — the browser decodes it a frame or two later. Because renderSlide()
+// blanks the outgoing layer synchronously (e.g. the logo path does bg.innerHTML=''),
+// that decode latency shows as a brief cut to black, most visibly when swapping
+// between lyrics and the logo. So when an incoming payload paints an image, we
+// decode it OFFSCREEN first while the current frame stays up, then run the render.
+// The decoded bitmap lands in the browser image cache, so the real <img> in
+// showLogo()/setBackground() paints on its first frame — no gap. Videos stream and
+// are never gated; a text-only or already-cached image renders synchronously so
+// verse advances stay snap-instant.
+const _imgReady = new Map(); // url → decoded HTMLImageElement (retained as the cache signal)
+function decodeImg(url) {
+  if (!url) return Promise.resolve();
+  const cached = _imgReady.get(url);
+  if (cached && cached.complete && cached.naturalWidth) return Promise.resolve();
+  const img = new Image();
+  img.src = url;
+  const done = img.decode ? img.decode() : new Promise((r) => { img.onload = r; img.onerror = r; });
+  return done.then(() => { _imgReady.set(url, img); }, () => {});
+}
+function payloadImageUrls(p) {
+  if (!p) return [];
+  if (p.type === 'logo') return p.logoPath && !isVideoPath(p.logoPath) ? [pathToUrl(p.logoPath)] : [];
+  if (p.media) return p.media.type === 'image' && p.media.path ? [pathToUrl(p.media.path)] : [];
+  if (p.liveInput || p.elements) return []; // live NDI / presentation canvas: not gated here
+  return p.backgroundPath && !isVideoPath(p.backgroundPath) ? [pathToUrl(p.backgroundPath)] : [];
+}
+function imagesCached(urls) {
+  return urls.every((u) => { const c = _imgReady.get(u); return c && c.complete && c.naturalWidth; });
+}
+
+let _renderSeq = 0;
 window.cueOutput.onSlideUpdate((payload) => {
   // Sync loop settings from the payload. A mode change invalidates the cached path
   // so the next setBackground() re-mounts the video in the new mode.
@@ -790,12 +846,22 @@ window.cueOutput.onSlideUpdate((payload) => {
     if (payload.bgLoopMode !== LOOP_MODE) { LOOP_MODE = payload.bgLoopMode; _lastBgPath = null; }
   }
   if (typeof payload.bgLoopBlendSecs === 'number' && payload.bgLoopBlendSecs > 0) LOOP_BLEND_SECS = payload.bgLoopBlendSecs;
-  // Hard-cut (no transition) whenever a video is on either side: the outgoing stage
-  // already shows one, or the incoming payload brings one (Option 2 — see transitions.js).
-  const involvesVideo = !!(stageEl && stageEl.querySelector('video')) || payloadHasVideo(payload);
-  const transition = involvesVideo ? { type: 'none' } : payload.transition;
-  // fgSel '#content' fades/zooms only the text layer in; #background + #scrim stay
-  // solid so a same-background advance never dips to black.
-  if (window.CueTransitions) window.CueTransitions.run(stageEl, transition, () => renderSlide(payload), { fgSel: '#content' });
-  else renderSlide(payload);
+
+  // latest-wins: a newer payload arriving mid-decode supersedes this one's commit.
+  const seq = ++_renderSeq;
+  const commit = () => {
+    if (seq !== _renderSeq) return;
+    // Hard-cut (no transition) whenever a video is on either side: the outgoing stage
+    // already shows one, or the incoming payload brings one (Option 2 — transitions.js).
+    const involvesVideo = !!(stageEl && stageEl.querySelector('video')) || payloadHasVideo(payload);
+    const transition = involvesVideo ? { type: 'none' } : payload.transition;
+    // fgSel '#content' fades/zooms only the text layer in; #background + #scrim stay
+    // solid so a same-background advance never dips to black.
+    if (window.CueTransitions) window.CueTransitions.run(stageEl, transition, () => renderSlide(payload), { fgSel: '#content' });
+    else renderSlide(payload);
+  };
+
+  const urls = payloadImageUrls(payload);
+  if (urls.length && !imagesCached(urls)) Promise.all(urls.map(decodeImg)).then(commit);
+  else commit();
 });

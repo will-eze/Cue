@@ -493,6 +493,15 @@ function ChannelCard({ channel, monitors, screens, assignedBounds, onUpdate, onD
         )}
       </div>
 
+      {/* Content size — full-screen lyric/scripture output only (lower-third has its
+          own global scale). Per-channel font multiplier. Screen + NDI fullscreen channels. */}
+      {channel.template === 'fullscreen' && (
+        <ContentSizeControl
+          value={channel.content_font_scale ?? 100}
+          onCommit={(pct) => onUpdate({ content_font_scale: pct })}
+        />
+      )}
+
       {/* Monitors area — NDI channels don't use physical screens */}
       {isNdi ? (
         <>
@@ -573,6 +582,62 @@ function ChannelCard({ channel, monitors, screens, assignedBounds, onUpdate, onD
         )}
       </div>
       )}
+    </div>
+  );
+}
+
+// ─── Content Size Control ─────────────────────────────────────────────────────
+// Per-channel multiplier on the authored lyric/scripture font size for THIS output
+// (100 = the theme's designed size; higher grows text for a large TV, lower shrinks
+// it — e.g. a confidence monitor). Mirrors the global Lower Third scale but per
+// screen; the change is pushed live (no window recreate → the NDI sender survives).
+// Commit is debounced so a slider drag doesn't spam channel reloads.
+const CONTENT_SIZE_PRESETS = [75, 100, 125, 150];
+// Slider detents every 25%: within SNAP_PX of a 25-mark the value sticks to it,
+// so a drag settles on the round values while still allowing fine sizes between.
+const SNAP_STEP = 25;
+const SNAP_PX = 6;
+function snap25(pct) {
+  const nearest = Math.round(pct / SNAP_STEP) * SNAP_STEP;
+  return Math.abs(pct - nearest) <= SNAP_PX ? nearest : pct;
+}
+function ContentSizeControl({ value, onCommit }) {
+  const [local, setLocal] = useState(value);
+  useEffect(() => { setLocal(value); }, [value]);
+  const timer = useRef(null);
+  function change(pct, { snap = false } = {}) {
+    const raw = snap ? snap25(pct) : pct;
+    const n = Math.max(50, Math.min(200, Math.round(raw)));
+    setLocal(n);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => onCommit(n), 160);
+  }
+  return (
+    <div className="px-md py-sm flex items-center gap-md border-t border-outline-variant/10">
+      <span className="material-symbols-outlined text-[14px] text-on-surface-variant shrink-0">format_size</span>
+      <span className="text-label-sm font-label-sm text-on-surface-variant shrink-0 uppercase tracking-[0.04em]">Content Size</span>
+      <input
+        type="range" min={50} max={200} step={1} list="content-size-ticks" value={local}
+        onChange={(e) => change(Number(e.target.value), { snap: true })}
+        className="flex-1 accent-primary cursor-pointer"
+      />
+      <datalist id="content-size-ticks">
+        {[50, 75, 100, 125, 150, 175, 200].map((t) => <option key={t} value={t} />)}
+      </datalist>
+      <span className="text-body-sm tabular-nums text-on-surface font-semibold shrink-0 w-10 text-right">{local}%</span>
+      <div className="flex gap-[2px] shrink-0">
+        {CONTENT_SIZE_PRESETS.map((p) => (
+          <button
+            key={p}
+            onClick={() => change(p)}
+            className={`px-sm h-6 rounded text-[10px] font-label-sm tabular-nums transition-colors cursor-pointer ${
+              local === p
+                ? 'bg-primary/10 text-primary border border-primary/40'
+                : 'text-on-surface-variant hover:text-on-surface border border-outline-variant/30'
+            }`}
+          >{p}</button>
+        ))}
+      </div>
     </div>
   );
 }

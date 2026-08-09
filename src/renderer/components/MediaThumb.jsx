@@ -10,12 +10,19 @@ import { thumbUrl } from '../utils/mediaUrl';
  * the protocol returns 404, the <img> errors, and we show a neutral icon.
  * Audio has no visual frame — callers render their own placeholder for it.
  */
+const MAX_RETRIES = 3;
+
 export default function MediaThumb({ path, alt = '', className = '' }) {
   const [failed, setFailed] = useState(false);
+  // A cache-busting nonce appended on retry. A first miss can be transient — a
+  // video whose poster is still being generated, or one waiting on the one-time
+  // background ffmpeg download — so retry a few times with backoff before giving
+  // up, rather than pinning the broken-image icon on the first 404.
+  const [attempt, setAttempt] = useState(0);
 
-  // Reset the error state if this instance is reused for a different asset
+  // Reset error + retry state if this instance is reused for a different asset
   // (lists keyed by index rather than id could otherwise show a stale fallback).
-  useEffect(() => { setFailed(false); }, [path]);
+  useEffect(() => { setFailed(false); setAttempt(0); }, [path]);
 
   if (failed || !path) {
     return (
@@ -25,14 +32,20 @@ export default function MediaThumb({ path, alt = '', className = '' }) {
     );
   }
 
+  const src = attempt > 0 ? `${thumbUrl(path)}?retry=${attempt}` : thumbUrl(path);
+
   return (
     <img
-      src={thumbUrl(path)}
+      src={src}
       alt={alt}
       loading="lazy"
       decoding="async"
       className={className}
-      onError={() => setFailed(true)}
+      onError={() => {
+        if (attempt >= MAX_RETRIES) { setFailed(true); return; }
+        const next = attempt + 1;
+        setTimeout(() => setAttempt(next), 1500 * next);
+      }}
     />
   );
 }

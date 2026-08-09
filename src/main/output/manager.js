@@ -64,6 +64,14 @@ function getLtFontScalePct() {
 }
 function ltFontScaleFraction() { return getLtFontScalePct() / 100; }
 
+// Per-channel content font scale (fill-target multiplier) as a fraction. 100 →
+// 1 (neutral fill). Rides the window's ?cfs= query param and the runtime
+// 'content:scale' send; fullscreen.js applies it to the auto-fit target.
+function contentFontScaleFrac(channel) {
+  const n = Number(channel?.content_font_scale);
+  return isFinite(n) && n > 0 ? n / 100 : 1;
+}
+
 // Stage display state — persisted so newly opened stage windows can be synced.
 // `scheduled` holds timed messages as ABSOLUTE epoch-ms anchors ({ showAt, clearAt });
 // main resolves the anchors once and the stage template ticks them against Date.now()
@@ -240,6 +248,7 @@ function createMonitorWindow(channel, monitor) {
       audioDevice: audioDevice ? JSON.stringify(audioDevice) : '',
       program: channel.show_program === 0 ? '0' : '1',
       graphics: channel.show_graphics === 0 ? '0' : '1',
+      cfs: String(contentFontScaleFrac(channel)),
     },
   });
   // Re-dispatch current display state once the template JS is ready.
@@ -321,6 +330,7 @@ function createNdiWindow(channel) {
       mute: '1',
       program: channel.show_program === 0 ? '0' : '1',
       graphics: channel.show_graphics === 0 ? '0' : '1',
+      cfs: String(contentFontScaleFrac(channel)),
     },
   });
   win.webContents.once('did-finish-load', () => {
@@ -510,6 +520,28 @@ export function setChannelContentMode(channelId) {
     try { if (!w.isDestroyed()) w.webContents.send('content:mode', msg); } catch {}
   }
   notifyMainWindow('output:state-changed', getState());
+}
+
+// Push a channel's content font scale to its live windows at RUNTIME (same reason
+// as setChannelContentMode — no window recreate, so the NDI sender is never
+// dropped). fullscreen.js applies it to the fill-screen auto-fit target.
+export function setChannelContentScale(channelId) {
+  const db = getDb();
+  const channel = db.prepare('SELECT * FROM output_channels WHERE id = ?').get(channelId);
+  if (!channel) return;
+  const frac = contentFontScaleFrac(channel);
+
+  const wins = [];
+  if (channel.type === 'ndi') {
+    const w = windows.get(`ndi-${channelId}`);
+    if (w) wins.push(w);
+  } else {
+    const monitors = db.prepare('SELECT * FROM channel_monitors WHERE channel_id = ? AND active = 1').all(channelId);
+    for (const m of monitors) { const w = windows.get(m.id); if (w) wins.push(w); }
+  }
+  for (const w of wins) {
+    try { if (!w.isDestroyed()) w.webContents.send('content:scale', frac); } catch {}
+  }
 }
 
 export function closeChannel(channelId) {

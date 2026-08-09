@@ -127,6 +127,7 @@ export default function OperatorView({
   const [slideBgPath, setSlideBgPath] = useState(null);           // global presentation/slide bg | null
   const [songGlobalBgPath, setSongGlobalBgPath] = useState(null); // live global song default bg | null
   const [ltFontScale, setLtFontScale] = useState(1);              // global lower-third font scale (fraction)
+  const [songMaxLines, setSongMaxLines] = useState(0);            // global max lines/slide for songs (0 = unlimited)
 
   const loadScriptureDefaults = useCallback(async () => {
     const styleJson = await window.cue.settings.get('scripture_style_json');
@@ -147,6 +148,11 @@ export default function OperatorView({
     // Global lower-third font scale (percent → fraction); mirrors output/lowerthird.js.
     const ltPct = Number(await window.cue.settings.get('lowerthird_font_scale'));
     setLtFontScale(isFinite(ltPct) && ltPct > 0 ? ltPct / 100 : 1);
+    // Global max lines/slide for songs — auto-paginates every song in the rundown
+    // that hasn't set its own cap. Read live (like the bg/scale defaults) so a
+    // Settings change applies without a reload.
+    const sml = Number(await window.cue.settings.get('song_max_lines'));
+    setSongMaxLines(isFinite(sml) && sml > 0 ? sml : 0);
     // Split-verse (compare) setting — a second translation shown alongside the live
     // verse. Resolve the chosen version's abbrev/name once so the live path doesn't.
     const splitEnabled = (await window.cue.settings.get('scripture_split_enabled')) === '1';
@@ -593,7 +599,10 @@ export default function OperatorView({
     // Songs expand each section into its display parts (variable-size splits on
     // the ⁂ break marker); a section with no marker is one part — unchanged.
     // An arrangement (played section order with repeats) reorders the expansion.
-    if (item.item_type === 'song') return expandSongSections(item.sections || [], item.song?.arrangement_json);
+    if (item.item_type === 'song') return expandSongSections(item.sections || [], item.song?.arrangement_json, {
+      songMaxLines: item.song?.max_lines || 0,
+      globalMaxLines: songMaxLines,
+    });
     if (item.item_type === 'scripture') {
       const slides = item.scriptureSlides || [];
       // Inject the global scripture verse style + reference style so the monitors

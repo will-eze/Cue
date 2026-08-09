@@ -325,6 +325,29 @@ function ThemeEditorModal({ theme, initialCategory, onClose, onSaved }) {
               previewTemplate={previewTemplate}
             />
 
+            {/* Max lines per slide — auto-paginates any section longer than this
+                into multiple display slides (0 / blank = unlimited). Stored in
+                style_json and merged into each section on apply. */}
+            <div className="px-md py-sm border-b border-outline-variant/20 bg-surface-container-lowest flex items-center gap-md">
+              <div className="min-w-0">
+                <div className="text-[11px] font-mono text-on-surface uppercase tracking-[0.05em]">Max Lines / Slide</div>
+                <div className="text-[10px] text-on-surface-variant/60">Longer sections split across slides. 0 = unlimited.</div>
+              </div>
+              <input
+                type="number"
+                min={0}
+                max={20}
+                step={1}
+                value={style.maxLines ?? ''}
+                placeholder="0"
+                onChange={(e) => {
+                  const n = Math.max(0, Math.min(20, Math.round(Number(e.target.value) || 0)));
+                  setStyle((s) => ({ ...s, maxLines: n || undefined }));
+                }}
+                className="ml-auto w-16 bg-surface-container border border-outline-variant/30 rounded px-sm py-[3px] text-[13px] tabular-nums text-on-surface text-center outline-none focus:border-primary"
+              />
+            </div>
+
             {/* Preview — width-bound so it derives its height from the modal width
                 (the modal is content-sized; a height-bound box would collapse to 0). */}
             <div className="p-md bg-surface-container-lowest">
@@ -590,16 +613,27 @@ export default function ThemeSettings() {
   const [showAll, setShowAll] = useState(false);
   const [bgThumbs, setBgThumbs] = useState({}); // media-library item id -> thumb url (for media-theme previews)
   const [cat, setCat] = useState('song');       // active category tab
+  const [globalMaxLines, setGlobalMaxLines] = useState(0); // global song max lines/slide (0 = unlimited)
 
   useEffect(() => {
     reload();
     window.cue.services.list().then(setServices);
+    window.cue.settings.get('song_max_lines').then((v) => {
+      const n = Number(v);
+      setGlobalMaxLines(isFinite(n) && n > 0 ? n : 0);
+    });
     window.cue.backgrounds?.list?.().then((items) => {
       const map = {};
       for (const it of items) if (it.thumb) map[it.id] = it.thumb;
       setBgThumbs(map);
     }).catch(() => {});
   }, []);
+
+  function saveGlobalMaxLines(n) {
+    const v = Math.max(0, Math.min(20, Math.round(Number(n) || 0)));
+    setGlobalMaxLines(v);
+    window.cue.settings.set('song_max_lines', String(v));
+  }
 
   async function reload() {
     const list = await window.cue.themes.list();
@@ -670,6 +704,41 @@ export default function ThemeSettings() {
         <span className="material-symbols-outlined text-primary">style</span>
         Themes
       </h2>
+
+      {/* Global song legibility — max lines per slide across every song in the
+          rundown. A per-song value (Song Editor) or a theme's own Max Lines
+          overrides this; 0 = unlimited (no auto-pagination). */}
+      <div className="bg-surface-container-high p-lg rounded-xl border border-outline-variant/30">
+        <div className="flex items-center justify-between gap-md">
+          <div className="min-w-0">
+            <h3 className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em]">Max Lines / Slide</h3>
+            <p className="text-body-sm text-on-surface-variant/70 mt-xs">
+              Auto-split every song so no slide shows more than this many lines. Applies to the whole
+              rundown; a song can override it in the Song Editor. 0 = unlimited.
+            </p>
+          </div>
+          <div className="flex items-center gap-xs shrink-0">
+            <button
+              onClick={() => saveGlobalMaxLines(globalMaxLines - 1)}
+              className="w-7 h-7 flex items-center justify-center rounded-lg border border-outline-variant/30 text-on-surface-variant hover:text-on-surface hover:border-outline-variant cursor-pointer"
+            >−</button>
+            <input
+              type="number"
+              min={0}
+              max={20}
+              step={1}
+              value={globalMaxLines || ''}
+              placeholder="0"
+              onChange={(e) => saveGlobalMaxLines(e.target.value)}
+              className="w-14 bg-surface-container border border-outline-variant/30 rounded-lg px-sm py-[4px] text-[14px] tabular-nums text-on-surface text-center outline-none focus:border-primary"
+            />
+            <button
+              onClick={() => saveGlobalMaxLines(globalMaxLines + 1)}
+              className="w-7 h-7 flex items-center justify-center rounded-lg border border-outline-variant/30 text-on-surface-variant hover:text-on-surface hover:border-outline-variant cursor-pointer"
+            >+</button>
+          </div>
+        </div>
+      </div>
 
       <div className="bg-surface-container-high p-lg rounded-xl border border-outline-variant/30">
         <div className="flex items-start justify-between mb-md gap-md">

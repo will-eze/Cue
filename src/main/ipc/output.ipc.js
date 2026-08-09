@@ -104,21 +104,27 @@ export function registerOutputIpc() {
     const fields = [];
     const vals = [];
     const allowed = ['name', 'type', 'template', 'ndi_fps', 'ndi_width', 'ndi_height',
-      'logo_override_id', 'ndi_audio_muted', 'show_program', 'show_graphics', 'active'];
+      'logo_override_id', 'ndi_audio_muted', 'show_program', 'show_graphics', 'active',
+      'content_font_scale'];
     for (const k of allowed) {
       if (k in data) { fields.push(`${k} = ?`); vals.push(data[k]); }
     }
     if (fields.length) {
       db.prepare(`UPDATE output_channels SET ${fields.join(', ')} WHERE id = ?`).run(...vals, id);
     }
-    // A content-mode-only change (lyrics/graphics visibility) is applied at runtime
-    // so the window — and any NDI sender — is never recreated. Structural changes
-    // (template, type, monitors, active…) still rebuild the window via syncChannel.
+    // A runtime-only change (lyrics/graphics visibility, content font scale) is applied
+    // by messaging the existing windows so the window — and any NDI sender — is never
+    // recreated. Structural changes (template, type, monitors, active…) still rebuild
+    // the window via syncChannel.
     const changedKeys = Object.keys(data);
-    const contentModeOnly = changedKeys.length > 0 &&
-      changedKeys.every((k) => k === 'show_program' || k === 'show_graphics');
-    if (contentModeOnly) outputManager.setChannelContentMode(id);
-    else await outputManager.syncChannel(id);
+    const RUNTIME_KEYS = new Set(['show_program', 'show_graphics', 'content_font_scale']);
+    const runtimeOnly = changedKeys.length > 0 && changedKeys.every((k) => RUNTIME_KEYS.has(k));
+    if (runtimeOnly) {
+      if ('show_program' in data || 'show_graphics' in data) outputManager.setChannelContentMode(id);
+      if ('content_font_scale' in data) outputManager.setChannelContentScale(id);
+    } else {
+      await outputManager.syncChannel(id);
+    }
     return db.prepare('SELECT * FROM output_channels WHERE id = ?').get(id);
   });
 

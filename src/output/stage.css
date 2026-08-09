@@ -64,6 +64,9 @@ html, body, #stage-root {
 .timer-idle    { color: #2a2e38; }
 .timer-running { color: #ffb3ad; }
 .timer-paused  { color: #c2c6d6; }
+/* Counting past zero: steady, hotter red — deliberately NOT blinking, so the
+   moving overrun digits stay legible from the stage. */
+.timer-overrun { color: #ff5449; }
 .timer-expired { color: #ffb3ad; animation: blink 0.8s step-end infinite; }
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.15} }
 

@@ -11,13 +11,15 @@ src/
 │   │                         renderer as remote:command + getProgram=getProgramSnapshot), outputManager.
 │   │                         setRemoteStateListener (control STATE push) + setRemoteProgramListener (Remote Output
 │   │                         program deltas → remoteServer.pushProgram), applyRemoteConfig().
+│   │                         cue-thumb:// video posters fall back to ffmpeg (ffmpegVideoThumb) when the OS thumbnail
+│   │                         service comes up empty — covers exotic codecs and the sandboxed packaged app (§6).
 │   ├── preload.js            contextBridge → window.cue. The complete renderer API surface.
 │   ├── output-preload.js     Minimal contextBridge for output windows → window.cueOutput only. Also injects
 │   │                         user-installed @font-face rules (fonts:css) into every output window on load.
 │   ├── fonts.js              BUNDLED_FONTS array + DEFAULT_FONT. Imported by preload.js.
 │   │
 │   ├── db/
-│   │   ├── schema.js         SQLite init, migration runner (v1→v27), getDb() singleton, closeDb() (releases
+│   │   ├── schema.js         SQLite init, migration runner (v1→v33), getDb() singleton, closeDb() (releases
 │   │   │                     the cue.db handle, checkpointing WAL — used by backup/restore before file swap).
 │   │   ├── backup.js         .cuebackup export/import. exportBackup(dest): wal_checkpoint(TRUNCATE) then
 │   │   │                     gzip-tar cue.db + media/. importBackup(src): extract to temp, validate staged DB
@@ -128,6 +130,8 @@ src/
 │   │   ├── bible.ipc.js      Registers bible:* handlers (versions/books/chapters/verses/adjacent/resolve/search/importFile/delete/online:*).
 │   │   ├── youtube.ipc.js    Registers youtube:* handlers (prefetch/status/cancel/detect) + clipboard:readText. Wires
 │   │   │                     the downloader's status listener → broadcasts youtube:status to every window.
+│   │   ├── packages.ipc.js   Registers packages:* handlers (list/install/remove/reveal/locate) → packages/registry.js.
+│   │   │                     install() streams packages:progress to the CALLING window only (e.sender.send).
 │   │   └── remote.ipc.js       Registers remote:* handlers (getConfig/setConfig/regenerateToken/regenerateViewToken/
 │   │                           navState). Owns the settings keys (remote_enabled/port/lan/token +
 │   │                           remote_output_enabled/remote_view_token) + applyRemoteConfig() (boot + on-change start;
@@ -166,13 +170,22 @@ src/
 │   │                           browser viewer. KEEPS the isUnderUserData() containment guard (arbitrary-file-read).
 │   │
 │   ├── youtube/
-│   │   ├── bin.js             yt-dlp + ffmpeg resolver + auto-downloader (NOT bundled). Resolves userData/bin →
-│   │   │                     PATH → dev-only resources/bin; ensureBinaries() downloads missing ones into userData/bin
-│   │   │                     on first use (streamed, progress); refreshYtDlp() re-fetches latest on extractor failure.
+│   │   ├── bin.js             yt-dlp + ffmpeg resolver + auto-downloader (NOT bundled). Resolves override setting →
+│   │   │                     userData/bin → PATH → common install dirs (GUI-stripped-PATH fallback) → dev-only
+│   │   │                     resources/bin; ensureBinaries() downloads BOTH into userData/bin on first use (streamed,
+│   │   │                     progress); refreshYtDlp() re-fetches latest on extractor failure. Also exports the
+│   │   │                     package-manager surface: binInfo/installBinary(one at a time)/removeBinary/setBinaryPath.
 │   │   └── downloader.js      Ephemeral YouTube resolver. parseVideoId; prefetch(url) (resolve metadata → download
 │   │                         with faststart + concurrent-fragments → ready); withClientCascade (default → web_embedded
 │   │                         → cookies anti-bot tiers, refresh-on-bot-wall); in-memory entries Map keyed by video id;
 │   │                         getStatus/getReadyPath/cancel; wipeCache() (quit + startup). Emits youtube:status.
+│   │
+│   ├── packages/
+│   │   └── registry.js       Optional-dependency registry backing Settings → Packages (§6). list() derives live
+│   │                         status for yt-dlp/ffmpeg (youtube/bin.js), LibreOffice (import/pptx-import.js, detect-only),
+│   │                         whisper-cpu (scripture-detect/whisper-bin.js), embed (scripture-detect/embed-bin.js) into
+│   │                         one descriptor shape. install/remove/reveal/locate dispatch to each package's own module;
+│   │                         GPU ASR models are NOT here (renderer/Cache-API-owned, added client-side by the modal).
 │   │
 │   ├── update/
 │   │   └── updater.js        In-app updater (Option A). Anonymous GitHub Releases API (public repo). checkForUpdate()
@@ -198,7 +211,9 @@ src/
 │       │                     unscheduleStageMessage / getStageSchedule; broadcastStageSchedule → stage:schedule to stage
 │       │                     windows + operator; a single setTimeout (nextPruneDelay) prunes expired entries. Anchor
 │       │                     resolution + pruning come from src/shared/stage-schedule.js.
-│       │                     v27 Stage layout: getStageLayout/setStageLayout (reads/writes output_channels.stage_layout_json;
+│       │                     v32: contentFontScaleFrac/setChannelContentScale — per-channel fullscreen font-size multiplier,
+│                     pushed live via content:scale (?cfs= at window creation, no window recreate). §13.
+│                     v27 Stage layout: getStageLayout/setStageLayout (reads/writes output_channels.stage_layout_json;
 │       │                     NULL → DEFAULT_STAGE_LAYOUT mirrored verbatim from stage.js). getStagePresets/saveStagePreset/
 │       │                     deleteStagePreset (stage_presets setting). sendStageState() broadcasts stage:layout to every
 │       │                     open window for the channel on setLayout + on window open.
@@ -238,6 +253,9 @@ src/
 │   │                         scheduled messages (queue with live "in M:SS"/ON badges, collision flags, auto-clear),
 │   │                         driven via window.cue.output.stage.timer / .message / .schedule|getSchedule|unschedule.
 │   │                         Preview/collision use src/shared/stage-schedule.js so they match main's resolution.
+│   │                         Timer duration is a free-text MM:SS field (parseDuration) + quick-duration chips, not
+│   │                         spin dials; Start always commits the typed value first. Counts past zero into overrun
+│   │                         (negative display, no auto-stop) — see §13 presenter timer overrun.
 │   │
 │   ├── views/
 │   │   ├── OperatorView.jsx  Three-panel layout. All transport state. Keyboard shortcuts (configurable via shortcutsRef).
@@ -412,7 +430,8 @@ src/
 │   │   │                          `initialUrl` pre-fills + auto-resolves (clipboard chip); "Use my browser's YouTube
 │   │   │                          login" control sets youtube_cookies_browser for the download cascade's cookies tier.
 │   │   ├── MediaPickerModal.jsx   Media grid picker. Used by RundownPanel for bg override.
-│   │   ├── MediaThumb.jsx         Cached thumbnail tile (cue-thumb:// + error fallback). Used by every media grid/list.
+│   │   ├── MediaThumb.jsx         Cached thumbnail tile (cue-thumb:// + retry-with-backoff before the error fallback,
+│   │   │                          §6). Used by every media grid/list.
 │   │   ├── SlideList.jsx          Scrollable slide/section list. Preview and live variants.
 │   │   │                          Slide content capped at max-h-24 to prevent runaway tall cards.
 │   │   │                          Section labels via utils/sectionLabels (numbered: Verse 1 / Verse 2, abbrev forms).
@@ -427,9 +446,13 @@ src/
 │   │                              doesn't also close a host modal). Replaces ad-hoc `absolute` + outside-click-effect
 │   │                              dropdowns in SongListImportModal, StageLayoutEditor, TopBarTabs, LibraryPanel's
 │   │                              Import menu, and ScripturePanel's book picker.
-│   │   └── UpdateAvailableModal.jsx  Launch-time "Update available" prompt (mounted from App.jsx on the
-│   │                              `update:available` event fired by main's auto-check §7/§19). Install Now
-│   │                              / Later / Skip This Version (persists update_skipped_version, §5).
+│   │   ├── UpdateAvailableModal.jsx  Launch-time "Update available" prompt (mounted from App.jsx on the
+│   │   │                          `update:available` event fired by main's auto-check §7/§19). Install Now
+│   │   │                          / Later / Skip This Version (persists update_skipped_version, §5).
+│   │   └── PackageManagerModal.jsx   Settings → Packages manager UI (§6). Card per optional dependency
+│   │                              (window.cue.packages.list) — status/size/features/losesOnRemove, Install
+│   │                              (packages:progress bar) / Remove (two-step confirm) / Reveal / Locate…
+│   │                              (native file picker for a manually-installed binary/LibreOffice).
 │   │
 │   ├── settings/
 │   │   ├── OutputChannels.jsx    Channel cards. Create/edit/delete. Monitor assignment per channel.
@@ -475,9 +498,11 @@ src/
 │   │   │                          view-only /output link copy + Regenerate Link). Renders a QR (qrcode → data-URL,
 │   │   │                          shown when LAN is on) for both the control pairing URL and the view URL. Drives
 │   │   │                          remote:setConfig / regenerateToken / regenerateViewToken.
-│   │   └── DataSettings.jsx      Backup/restore card. Export button (settings.exportBackup) + confirm-gated
-│   │                              Restore (settings.importBackup, "Overwrite all?" → "Choose file"; app relaunches
-│   │                              on success). Shows current media disk usage. Toast feedback.
+│   │   ├── DataSettings.jsx      Backup/restore card. Export button (settings.exportBackup) + confirm-gated
+│   │   │                          Restore (settings.importBackup, "Overwrite all?" → "Choose file"; app relaunches
+│   │   │                          on success). Shows current media disk usage. Toast feedback.
+│   │   └── PackagesSettings.jsx  Settings → Packages entry point. Summary card (installed/total, disk usage) that
+│   │                              opens PackageManagerModal.
 │   │
 │   └── utils/
 │       ├── useEditHistory.js     Shared editor undo/redo: useEditHistory(initial) → {state,set,reset,undo,redo,canUndo,canRedo} (bounded past/present/future, coalesced by tag) + useUndoRedoKeys (⌘Z/⌘⇧Z capture-phase). Reducer stays pure (StrictMode).
@@ -504,10 +529,12 @@ src/
 │                                 numbered only when a type repeats); sectionLabels(slides,{abbrev}); sectionLabelAt.
 │                                 Used by SlideList, SongEditor, OperatorView buildPayload (stage label), the remote.
 │                                 Also owns variable-size section splitting: SLIDE_BREAK ('⁂'), splitSectionContent(content)
-│                                 → parts, expandSongSections(sections, arrangement) → flat slide list (one slide per part,
+│                                 → parts, expandSongSections(sections, arrangement, opts) → flat slide list (one slide per part,
 │                                 labels computed at the SECTION level so parts share "Verse 1"; carries _label/_labelAbbr/
 │                                 _partIndex/_partCount/_key). applyArrangement reorders by 0-based positions (v31, §16) —
 │                                 labels stay on the natural list so a repeated chorus keeps its name. getSlides()'s song branch returns this.
+│                                 v33: splitByMaxLines(content,maxLines) + maxLinesOf(section) — auto-pagination cascade
+│                                 (opts.songMaxLines/globalMaxLines), applied per-⁂-part after splitSectionContent (§8, §16).
 │
 │   ├── ocr/                       Sheet-music OCR (renderer, opt-in Florence-2).
 │   │   ├── sheet-ocr-worker.web.js  Web Worker (Vite ?worker) — transformers.js Florence-2 <OCR_WITH_REGION> on WebGPU/wasm.
@@ -556,6 +583,9 @@ src/
 │   │                         slide — absolutely-positioned text/image/shape elements (% of the scaled 1920×1080 #slide-elements).
 │   │                         Render body factored into renderSlide(payload); onSlideUpdate routes it through CueTransitions
 │   │                         (fgSel '#content'), forcing {type:'none'} when the stage holds a <video> or payloadHasVideo(payload).
+│   │                         onSlideUpdate decode-gates incoming logo/background IMAGES (Image.decode() offscreen,
+│   │                         latest-wins via _renderSeq) before committing, so a swap never shows a decode-latency
+│   │                         black flash. CONTENT_FONT_SCALE (?cfs=, live via content:scale) multiplies fontSize (§13).
 │   ├── lowerthird.html       #lowerthird > #text + #copyright (lyric band) + graphics-overlay.js. Always transparent.
 │   ├── lowerthird.css        #lowerthird: bottom-anchored, background: transparent (controlled by JS via ltBar).
 │   ├── lowerthird.js         The LYRIC BAND only (program slide). applyStyle(el, s) incl. ltBar gradient to #lowerthird.
@@ -574,7 +604,8 @@ src/
 │                             + nodes registry (byId / byType). Receives slide:update + stage:timer + stage:message +
 │                             stage:schedule. Video preview via CueMediaPlayer (always baseMuted). VIDEO countdown
 │                             derives remaining from transport + clip duration — loops with the clip, freezes on pause.
-│                             Presenter countdown + message: resolveMessage() picks immediate (precedence) else the active
+│                             Presenter timer counts past zero into overrun (negative fmtTime, .timer-overrun steady
+│                             red, no auto-stop — §13); Presenter countdown + message: resolveMessage() picks immediate (precedence) else the active
 │                             scheduled one, re-ticked every 1s against Date.now() anchors (mirrors resolveActive in
 │                             src/shared/stage-schedule.js — plain <script>, can't import). DEFAULT_ELEMENTS (the classic
 │                             3-bar layout) is mirrored verbatim as DEFAULT_STAGE_LAYOUT in manager.js — they MUST stay

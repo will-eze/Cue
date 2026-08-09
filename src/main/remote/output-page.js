@@ -154,6 +154,7 @@ export const OUTPUT_PAGE = `<!DOCTYPE html>
       onGraphicUpdate:  function (cb) { graphicCbs.push(cb); },
       onMediaTransport: function (cb) { transportCbs.push(cb); return noop; },
       onContentMode:    noop,
+      onContentScale:   noop,
       onAudioOutputDevice: unsub,
       onAudioTap:       unsub,
       onStageTimer:     noop, onStageMessage: noop, onStageSchedule: noop,

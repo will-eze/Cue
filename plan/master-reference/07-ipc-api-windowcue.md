@@ -109,7 +109,7 @@ All renderer↔main communication is via `ipcRenderer.invoke` / `ipcMain.handle`
 | `lowerthird.setFontScale(pct)` | `number` | Set the **global lower-third font scale** (percent, clamped 1–150). Persists the `lowerthird_font_scale` setting and re-broadcasts the live slide so on-air lower-thirds restyle instantly. Returns the clamped value. Only the lower-third output is affected; fullscreen ignores it. |
 | `channels.list()` | `[output_channel rows]` | — |
 | `channels.create(data)` | `channel` | NDI channels open a BrowserWindow immediately; screen channels wait for monitor assignment. `data.ndi_audio_muted` / `data.show_program` / `data.show_graphics` (all default 1). |
-| `channels.update(id, data)` | `channel` | A change to **only** `show_program`/`show_graphics` is applied at runtime (`setChannelContentMode` → `content:mode`, no window recreate); any other field rebuilds via `syncChannel`. Emits `output:state-changed`. |
+| `channels.update(id, data)` | `channel` | A change to **only** `show_program`/`show_graphics`/`content_font_scale` (v32) is applied at runtime (`setChannelContentMode` → `content:mode`, `setChannelContentScale` → `content:scale`; no window recreate); any other field rebuilds via `syncChannel`. Emits `output:state-changed`. |
 | `channels.delete(id)` | void | Closes window(s) and cascades to channel_monitors. |
 | `monitors.list(channelId?)` | `[channel_monitor rows]` | Pass channelId to filter. |
 | `monitors.create(channelId, {display_bounds, label})` | `monitor` | Assigns a physical screen to a channel and opens its BrowserWindow. |
@@ -307,6 +307,16 @@ Browsable pool of curated 16:9 worship backgrounds shipped only as a manifest (`
 
 The downloaded file is **ephemeral** — never a `media_assets` row (see §6 *Native YouTube player*).
 
+### `window.cue.packages` (Settings → Packages manager; §6)
+
+| Method | Returns | Notes |
+|---|---|---|
+| `list()` | `[{id, name, kind, status, location, managed, size, approxMB?, version?, features, losesOnRemove, installable, removable, locatable?, externalUrl?}]` | Live-derived descriptor per optional dependency: `yt-dlp`, `ffmpeg` (binaries), `libreoffice` (external, `installable:false`), `whisper-cpu`, `embed` (ASR models). `status` is `'installed'\|'missing'`, `managed:false` = a system/PATH copy Cue doesn't own. |
+| `install(id)` | `{ok}\|{ok:false,error}` | Streams progress to the CALLING window only via `packages:progress` (`{id,percent,file}`), not a global broadcast. |
+| `remove(id)` | `{ok}\|{ok:false,error}` | Deletes only the userData copy Cue downloaded (`managed`); a system binary is never touched. |
+| `reveal(id)` | `{ok}` | `shell.showItemInFolder` on the package's on-disk location. |
+| `locate(id)` | `{ok, canceled?}\|{ok:false,error}` | Native file picker ("Locate…") → persists a manual path override (`bin_<name>_path` setting for yt-dlp/ffmpeg, `libreoffice_path` for LibreOffice) and re-detects. |
+
 ### `window.cue.settings`
 
 | Method | Notes |
@@ -424,6 +434,7 @@ Subscribe to main→renderer events. Returns an unsubscribe function — call it
 - `stage:message` — `{text}` fired after any `stage.message()` call, so the stage settings panel can reflect the live message without polling.
 - `update:progress` — `{received, total}` during an in-app update download. The SettingsView `UpdateChecker` shows it as a percentage. See §7 *In-app updater*.
 - `update:available` — the full `checkForUpdate()` result, fired once ~4s after launch if a newer release exists and isn't the skipped version. `App.jsx` shows `UpdateAvailableModal`. See §7 *In-app updater — Launch-time auto-check*.
+- `packages:progress` — `{id, percent, file}` during a Settings → Packages install; sent to the calling window only (`e.sender.send`, not a global broadcast), so `PackageManagerModal`'s per-package bar updates without other windows hearing it.
 - `liveinput:preview` — `{sourceName, dataUrl}` ~2fps JPEG thumbnail of a previewing NDI source. The Library **Live** tab and the preview/live monitors render it (never the full RGBA frame bus). §14.
 - `liveinput:status` — `{sourceName, connected, w?, h?, error?}` receiver connection state for the currently-selected live source.
 - `liveinput:enabled` — `bool`, fired when the `live_inputs_enabled` kill switch flips; keeps the operator's `buildPayload` guard and the Library toggle in sync. §14.

@@ -1498,8 +1498,9 @@ export default function SongEditor({ song, onClose, onSave }) {
     title: '', author: '', copyright: '', sections: [],
     style: { ...DEFAULT_STYLE }, songBackground: null, bgLocked: false, selectedTagIds: [],
     arrangement: null, // played section order as _keys with repeats; null = natural
+    maxLines: 0,       // per-song max lines/slide (0 = inherit the global default)
   });
-  const { title, author, copyright, sections, style, songBackground, bgLocked, selectedTagIds, arrangement } = doc.state;
+  const { title, author, copyright, sections, style, songBackground, bgLocked, selectedTagIds, arrangement, maxLines } = doc.state;
   const field = (name, coalesce) => (updater) =>
     doc.set((d) => ({ ...d, [name]: typeof updater === 'function' ? updater(d[name]) : updater }), coalesce);
   const setTitle        = field('title', 'title');
@@ -1513,6 +1514,7 @@ export default function SongEditor({ song, onClose, onSave }) {
     doc.set((d) => ({ ...d, sections: typeof updater === 'function' ? updater(d.sections) : updater }), coalesce);
   const setArrangement = (updater) =>
     doc.set((d) => ({ ...d, arrangement: typeof updater === 'function' ? updater(d.arrangement) : updater }));
+  const setMaxLines = field('maxLines');
   const [domSyncTick, setDomSyncTick] = useState(0); // bumped on undo/redo to re-render the active section's DOM
   const handleUndo = useCallback(() => { doc.undo(); setDomSyncTick((t) => t + 1); }, [doc.undo]);
   const handleRedo = useCallback(() => { doc.redo(); setDomSyncTick((t) => t + 1); }, [doc.redo]);
@@ -1663,6 +1665,7 @@ export default function SongEditor({ song, onClose, onSave }) {
           bgLocked: !!s.background_locked,
           selectedTagIds: (s.tags || []).map((t) => t.id),
           arrangement: arr,
+          maxLines: Number(s.max_lines) > 0 ? Number(s.max_lines) : 0,
         });
         if (mapped.length) {
           setActiveSectionKey(mapped[0]._key);
@@ -1679,7 +1682,7 @@ export default function SongEditor({ song, onClose, onSave }) {
       doc.reset({
         title: song?.prefillTitle || '', author: song?.prefillAuthor || '', copyright: song?.prefillCopyright || '',
         sections: mapped, style: { ...DEFAULT_STYLE }, songBackground: null, bgLocked: false, selectedTagIds: [],
-        arrangement: null,
+        arrangement: null, maxLines: 0,
       });
       setActiveSectionKey(mapped[0]._key);
       setPreviewContent({ text: mapped[0].content, runs: mapped[0].runs });
@@ -1941,6 +1944,7 @@ export default function SongEditor({ song, onClose, onSave }) {
         title: title.trim(), author: author.trim() || null, copyright: copyright.trim() || null,
         sections: sectionData, tagIds: selectedTagIds,
         arrangement: arrangementIdxs && arrangementIdxs.length ? arrangementIdxs : null,
+        maxLines: Number(maxLines) > 0 ? Number(maxLines) : 0,
       };
       let savedId;
       if (song?.id) {
@@ -2239,6 +2243,29 @@ export default function SongEditor({ song, onClose, onSave }) {
 
               {/* Played order (arrangement) — repeats sections without duplicating lyrics */}
               <ArrangementPanel sections={sections} arrangement={arrangement} onChange={setArrangement} />
+
+              {/* Max lines / slide — auto-paginates every section of THIS song longer
+                  than the cap into multiple display slides, overriding the global
+                  default. 0 = inherit the global (Settings › Themes). */}
+              <div className="px-md py-sm border-t border-outline-variant/20 flex items-center gap-sm">
+                <div className="min-w-0 flex-1">
+                  <div className="text-[10px] font-mono text-on-surface-variant uppercase tracking-[0.05em]">Max Lines / Slide</div>
+                  <div className="text-[9px] text-on-surface-variant/50">0 = use global default</div>
+                </div>
+                <input
+                  type="number"
+                  min={0}
+                  max={20}
+                  step={1}
+                  value={maxLines || ''}
+                  placeholder="0"
+                  onChange={(e) => {
+                    const n = Math.max(0, Math.min(20, Math.round(Number(e.target.value) || 0)));
+                    setMaxLines(n);
+                  }}
+                  className="w-14 bg-surface-container border border-outline-variant/30 rounded px-sm py-[3px] text-[13px] tabular-nums text-on-surface text-center outline-none focus:border-primary"
+                />
+              </div>
             </div>
 
             {/* ── Editor main area ──────────────────────────────────── */}

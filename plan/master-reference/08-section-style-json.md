@@ -23,6 +23,7 @@
   "bgScrim":       null,       // 0..1 black overlay opacity between background and text (legibility); null/0 = off
   "bgRef":         null,       // media-library manifest item id — a media theme's background, resolved lazily on apply (§9)
   "bgThumb":       null,       // hotlinked poster URL — PREVIEW-ONLY (theme cards/SlidePreview), never written to a section
+  "maxLines":      undefined,  // number>0 — theme's per-section auto-pagination cap (§16); absent/0 = unlimited
   "runs":          []          // [{start, end, bold, italic, underline, color, fontFamily, fontSize}]
 }
 ```
@@ -32,6 +33,8 @@
 **Theme-pack additions** (`bgCss`, `bgScrim`, `bgRef`) ride inside `style_json` rather than new DB columns, so they flow through the existing `applyTo*` merge into `song_sections.style_json`. `bgThumb` exists only in preview props. Scripture themes additionally carry a top-level `refStyle` object (the reference-line style), applied to `scripture_ref_style_json` on theme load — it is not a section style key.
 
 `renderWithRuns(text, runs)` is exported from `SongEditor.jsx` and used in `PreviewLivePanel.jsx` to render text with run-level styling in the monitor frame. Output templates have an equivalent inline copy. Runs support `underline`.
+
+**Max-lines auto-pagination (schema v33).** `style_json.maxLines` (this file), `songs.max_lines` (per-song, DB column), and the `song_max_lines` global setting form a most-specific-wins cascade — see §16 for the full pagination mechanics and the cascade order.
 
 **Variable-size section splitting.** A single section can render as multiple display slides while staying **one logical section** in `song_sections`. The split point is an inline `⁂` (U+2042) marker in `content` — symbol-only, so it is invisible to `songs_fts` (unicode61 tokenizer) and the lyric matchers (`db/songs.js` `_norm`, paste-list, future song detection), and needs **no schema change**. `utils/sectionLabels.js` owns the logic: `splitSectionContent(content)` → parts, `expandSongSections(sections)` → the flat slide list `getSlides()` returns for songs (one slide per part; labels are computed at the section level so all parts share "Verse 1", with `_partIndex`/`_partCount` for the operator's "1/2" chip). The editor stores the canonical glyph but renders it as a styled non-editable divider; the EW importer turns a verse's blank-line-separated slides into `⁂` markers (§4 `songs-import.js`).
 

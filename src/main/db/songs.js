@@ -71,7 +71,7 @@ export function search(query) {
 }
 
 const _listAllSongsStmt = () => getDb().prepare(
-  'SELECT id, title, author, copyright, default_background_id, created_at, updated_at FROM songs ORDER BY title COLLATE NOCASE'
+  'SELECT id, title, author, copyright, default_background_id, max_lines, created_at, updated_at FROM songs ORDER BY title COLLATE NOCASE'
 );
 const _listTagsForSongStmt = () => getDb().prepare(
   `SELECT t.id, t.name, t.colour FROM tags t JOIN taggables tb ON tb.tag_id = t.id WHERE tb.entity_type = 'song' AND tb.entity_id = ?`
@@ -99,6 +99,13 @@ export function getById(id) {
   return song;
 }
 
+// Per-song max lines per slide: a non-negative integer, 0 = inherit (no cap).
+// Clamped to the same 0–20 range the Song Editor / Theme controls offer.
+function normMaxLines(v) {
+  const n = Math.round(Number(v));
+  return Number.isFinite(n) && n > 0 ? Math.min(20, n) : 0;
+}
+
 // Arrangement = the played order of sections as 0-based positions (repeats
 // allowed), stored as JSON. Normalise unknown shapes to null (= natural order).
 function serializeArrangement(arrangement, sectionCount) {
@@ -111,14 +118,14 @@ function serializeArrangement(arrangement, sectionCount) {
 
 export function create(data) {
   const db = getDb();
-  const { title, author, copyright, sections = [], tagIds = [], arrangement } = data;
+  const { title, author, copyright, sections = [], tagIds = [], arrangement, maxLines } = data;
   // A new song starts with NO background of its own — it follows the live global
   // song default (resolved at output time, §9) until one is set explicitly. Don't
   // snapshot the global here, or the song would silently stop tracking it.
   return db.transaction(() => {
     const { lastInsertRowid } = db.prepare(
-      'INSERT INTO songs (title, author, copyright, default_background_id, arrangement_json) VALUES (?, ?, ?, ?, ?)'
-    ).run(title, author || null, copyright || null, null, serializeArrangement(arrangement, sections.length));
+      'INSERT INTO songs (title, author, copyright, default_background_id, arrangement_json, max_lines) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(title, author || null, copyright || null, null, serializeArrangement(arrangement, sections.length), normMaxLines(maxLines));
     sections.forEach((s, i) =>
       db.prepare('INSERT INTO song_sections (song_id, type, order_index, content, style_json) VALUES (?, ?, ?, ?, ?)')
         .run(lastInsertRowid, s.type, i, s.content, s.style_json ?? null)
@@ -224,14 +231,64 @@ export function seedGhsHymnal() {
     } catch { /* no bundled hymnal present (e.g. dev checkout without resources) */ }
   }
   tagGhsSongs();
+  patchGhsPunctuation();
+}
+
+// One-time content fix for OCR punctuation artefacts in five bundled GHS hymns
+// (printed note-sustain dots captured as literal "., . . ." plus a few mangled
+// words). The seed import is gated by `ghs_seeded` and skips existing titles, so
+// a corrected ghs-hymnal.json alone never reaches users who already imported the
+// broken text — this backfill does. It edits song_sections.content at the
+// substring level, so it is independent of how a song was split into sections,
+// idempotent (the broken fragment is gone after the first run), respects user
+// edits (an edited line no longer matches, so it is left alone) and never
+// resurrects a deleted hymn (it only touches rows that still exist). Scoped to
+// GHS songs. song_sections UPDATE triggers keep songs_fts in sync automatically.
+const GHS_PUNCT_FIXES = [
+  // GHS 47 – Just Obey
+  ['Just obey . . ., just obey . . .,', 'Just obey, just obey,'],
+  ['Is the way . . ., God’s way . . .,', 'Is the way, God’s way,'],
+  ['Just obey . . . just obey.', 'Just obey, just obey.'],
+  // GHS 24 – It Is Well With My Soul
+  ['It is well . . . with my soul . . .', 'It is well, with my soul,'],
+  // GHS 121 – Somebody Else Needs Him, Too
+  ['They-need Him., they need Him, too', 'They need Him, they need Him, too'],
+  ['waiting for you;…', 'waiting for you…'],
+  // GHS 132 – Running Over
+  ['Ru.. nning over, Ru… nning over,', 'Running over, running over,'],
+  ['Tho’.my way be drear', 'Tho’ my way be drear'],
+  ['My cup’s and running over.', 'My cup’s fill’d and running over.'],
+  // GHS 174 – Jesus Is Coming Again
+  ['again!..', 'again!'],
+];
+
+export function patchGhsPunctuation() {
+  if (getSetting('ghs_punct_fix_v1')) return;
+  const db = getDb();
+  try {
+    const upd = db.prepare(`
+      UPDATE song_sections SET content = REPLACE(content, @from, @to)
+      WHERE song_id IN (SELECT id FROM songs WHERE title GLOB 'GHS [0-9]*')
+        AND content LIKE '%' || @from || '%'
+    `);
+    db.transaction(() => {
+      for (const [from, to] of GHS_PUNCT_FIXES) upd.run({ from, to });
+    })();
+    setSetting('ghs_punct_fix_v1', true);
+  } catch { /* non-fatal: a failed backfill just retries next launch */ }
 }
 
 export function update(id, data) {
   const db = getDb();
-  const { title, author, copyright, sections, tagIds, arrangement } = data;
+  const { title, author, copyright, sections, tagIds, arrangement, maxLines } = data;
   db.transaction(() => {
     db.prepare(`UPDATE songs SET title=?, author=?, copyright=?, updated_at=datetime('now') WHERE id=?`)
       .run(title, author || null, copyright || null, id);
+    // Per-song max-lines cap. `undefined` = leave untouched (partial edits); an
+    // explicit value (incl. 0 = clear) is normalised and written.
+    if (maxLines !== undefined) {
+      db.prepare('UPDATE songs SET max_lines=? WHERE id=?').run(normMaxLines(maxLines), id);
+    }
     // Arrangement rides the same save as the sections it indexes (positions, not
     // ids — the section rewrite below churns ids). `undefined` = leave untouched.
     if (arrangement !== undefined) {

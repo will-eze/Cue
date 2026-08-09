@@ -9,7 +9,7 @@
 
 ### Migration system
 
-`schema.js` creates `db_version` table (single integer row) on first run and applies pending migrations in order inside a transaction. **Never delete `db_version`** — it is required to exist before any user-facing build. Current version: **29**. Migrations run with foreign keys disabled, so table-rebuild migrations (v6, v7, v11, v16, v20, v21, v23) do not cascade-delete referencing rows.
+`schema.js` creates `db_version` table (single integer row) on first run and applies pending migrations in order inside a transaction. **Never delete `db_version`** — it is required to exist before any user-facing build. Current version: **33**. Migrations run with foreign keys disabled, so table-rebuild migrations (v6, v7, v11, v16, v20, v21, v23) do not cascade-delete referencing rows.
 
 | Version | Change |
 |---|---|
@@ -44,6 +44,8 @@
 | v29 | File size on media assets: added `media_assets.size_bytes INTEGER`. Populated at import time via `fs.statSync` so the media grid can show file size without a live filesystem stat. `duration_ms` is also now populated at import time (via ffmpeg probe — `spawnSync(ffmpeg, ['-v','error','-i',filePath])` parses the `Duration:` line) rather than being reserved. `findUnused()` reads both columns from the DB directly. |
 | v30 | Output Presets: created `output_presets` (declarative snapshot of the output RIG — channels on/off, display/NDI assignment, Stream Studio, global background/logo defaults, per-channel stage layouts). Separate feature from Scenes (§ scenes recall the live LOOK; presets re-rig outputs). Apply is renderer-orchestrated — the panel replays the snapshot through the same `window.cue.*` IPC the settings UI uses; there is no `apply()` in the db layer. Presets are machine-local (reference channel ids + physical `display_bounds`); `media.findUnused()` parses `data_json.backgroundsStage.settings` for the snapshotted global bg/logo media ids. |
 | v31 | Live video inputs + song arrangements + CCLI usage log. (a) Rebuilt `service_items` to add `'live-input'` to the `item_type` CHECK (v7-pattern rebuild) — a live-input cue stores `{sourceName, name}` JSON in `content`, `ref_id` NULL (the NDI feed is resolved live at GO, never a `media_assets` row; §14). (b) Added `songs.arrangement_json` (TEXT) — the played section ORDER as a JSON array of 0-based section positions with repeats; NULL = natural order (§16). (c) Created `song_usage` (CCLI reporting log; one snapshotted row per song aired, no FK on `song_id`) + `idx_song_usage_used_at`. |
+| v32 | Added `output_channels.content_font_scale` (INTEGER NOT NULL DEFAULT 100) — per-channel percentage multiplier on the fullscreen fill-target font size (100 = neutral), independent of the global `lowerthird_font_scale`. Rides the window's `?cfs=` query param and live-updates via `content:scale` (no window recreate — the NDI sender survives). §13. |
+| v33 | Added `songs.max_lines` (INTEGER NOT NULL DEFAULT 0) — a per-song cap on AUTHORED lines per display slide; overflow auto-paginates (`expandSongSections` → `splitByMaxLines`). 0 = inherit: falls through to a section's theme `style_json.maxLines` then the global `song_max_lines` setting (§8, §16). |
 
 ### All tables
 
@@ -56,6 +58,7 @@ copyright TEXT
 default_background_id INTEGER REFERENCES media_assets(id) ON DELETE SET NULL
 background_locked INTEGER NOT NULL DEFAULT 0   -- v25: pin this song's bg at the top of the resolution cascade
 arrangement_json TEXT                          -- v31: played section order (0-based positions, repeats); NULL = natural order (§16)
+max_lines INTEGER NOT NULL DEFAULT 0           -- v33: per-song max authored lines/slide cap; 0 = inherit (§8, §16)
 created_at DATETIME DEFAULT (datetime('now'))
 updated_at DATETIME DEFAULT (datetime('now'))
 ```
@@ -160,6 +163,7 @@ ndi_audio_muted INTEGER NOT NULL DEFAULT 1   -- v9: per-NDI-channel audio mute (
 show_program INTEGER NOT NULL DEFAULT 1      -- v13: lower-third shows the song lyric band
 show_graphics INTEGER NOT NULL DEFAULT 1     -- v14: lower-third shows the broadcast-graphics overlay
 stage_layout_json TEXT                       -- v27: per-channel WYSIWYG stage element layout (NULL → built-in default)
+content_font_scale INTEGER NOT NULL DEFAULT 100  -- v32: per-channel fullscreen font-size multiplier, percent (§13)
 active INTEGER NOT NULL DEFAULT 1
 ```
 
@@ -307,6 +311,9 @@ Known keys:
 | `stage_presets` | array | Saved stage display layout presets `[{id,name,elements:[…]}]`. Each `elements` array is the same free-form element spec as `stage_layout_json` (% positions + per-type props). CRUD via `output.stage.getPresets/savePreset/deletePreset`. |
 | `bg_loop_mode` | `'blend'`\|`'jump'` | How background videos loop at the loop point. `'blend'` (default) crossfades end→start using two `<video>` elements; `'jump'` uses native `loop` for an immediate cut. Sent as `bgLoopMode` on every `slide:update` payload; `fullscreen.js` reads it on each update and re-mounts the video when the mode changes |
 | `bg_loop_blend_secs` | number | Crossfade duration for `blend` mode (0.5–10, default 2.0). Sent as `bgLoopBlendSecs` on every `slide:update` payload; clamped in main before dispatch |
+| `song_max_lines` | number | Global default cap on authored lines/slide for songs (0–20, default 0 = unlimited). Bottom of the max-lines cascade — a song's own `max_lines` or a theme's `style_json.maxLines` overrides it (§8, §16). Set in Settings → Themes |
+| `bin_<name>_path` | string\|null | Per-binary manual override (`bin_yt-dlp_path`, `bin_ffmpeg_path`) from the Settings → Packages "Locate…" flow; tried before the auto-downloaded/PATH/common-dir search (§6). `null` reverts to auto-resolution |
+| `ghs_punct_fix_v1` | boolean | Set true after the one-time OCR-punctuation backfill (`patchGhsPunctuation`) runs on five bundled GHS hymns; gates it so it never re-runs (§16) |
 
 **localStorage keys** (UI state only — not in DB):
 | Key | Description |

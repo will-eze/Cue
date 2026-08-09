@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog, screen, protocol, nativeImage, ses
 import path from 'path';
 import fs from 'fs';
 import { Readable } from 'node:stream';
+import { spawn } from 'node:child_process';
 import { initDb } from './db/schema.js';
 import { registerSongsIpc } from './ipc/songs.ipc.js';
 import { registerServicesIpc } from './ipc/services.ipc.js';
@@ -33,6 +34,7 @@ import * as outputManager from './output/manager.js';
 import * as graphicsDb from './db/graphics.js';
 import { isAvailable as ndiAvailable } from './output/ndi.js';
 import { thumbCachePath, getThumbnailDir } from './db/media.js';
+import { ffmpegPath, installBinary } from './youtube/bin.js';
 import { checkForUpdate } from './update/updater.js';
 import * as settings from './db/settings.js';
 
@@ -220,6 +222,52 @@ app.whenReady().then(async () => {
   // a hash of the source path. URL format: cue-thumb://localhost/absolute/path.
   const THUMB_MAX = 480;
   const THUMB_IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tiff', 'svg']);
+  const THUMB_VIDEO_EXTS = new Set(['mp4', 'webm', 'mov', 'avi', 'mkv', 'm4v']);
+
+  // Single-flight background provisioning of ffmpeg for video posters. ffmpeg is
+  // otherwise only fetched on first YouTube use, so a fresh install with only
+  // video assets would never get one — leaving videos QuickLook can't poster
+  // (webm/mkv/avi, and the packaged app) with no thumbnail.
+  let ffmpegThumbInstall = null;
+  const ensureFfmpegForThumbs = () => {
+    if (ffmpegPath() || ffmpegThumbInstall) return;
+    ffmpegThumbInstall = installBinary('ffmpeg')
+      .catch(() => {})
+      .finally(() => { ffmpegThumbInstall = null; });
+  };
+
+  // Fallback video poster via ffmpeg: grab a single frame a second in (skips the
+  // common black fade-in) and downscale it to fit THUMB_MAX. Used when the OS
+  // thumbnail service can't poster a video — exotic codecs/containers, and the
+  // sandboxed packaged app where QuickLook thumbnailing is restricted (there,
+  // createThumbnailFromPath returns empty, so without this videos show no
+  // thumbnail). Returns a JPEG Buffer, or null if ffmpeg is unavailable/fails.
+  const ffmpegVideoThumb = (srcPath) => new Promise((resolve) => {
+    const ff = ffmpegPath();
+    if (!ff) return resolve(null);
+    const run = (seekSec) => {
+      const args = [
+        '-ss', String(seekSec), '-i', srcPath, '-frames:v', '1',
+        '-vf', `scale=${THUMB_MAX}:${THUMB_MAX}:force_original_aspect_ratio=decrease`,
+        '-f', 'mjpeg', '-',
+      ];
+      const proc = spawn(ff, args, { stdio: ['ignore', 'pipe', 'ignore'] });
+      const chunks = [];
+      let killed = false;
+      const timer = setTimeout(() => { killed = true; try { proc.kill('SIGKILL'); } catch {} }, 8000);
+      proc.stdout.on('data', (c) => chunks.push(c));
+      proc.on('error', () => { clearTimeout(timer); resolve(null); });
+      proc.on('close', () => {
+        clearTimeout(timer);
+        const buf = Buffer.concat(chunks);
+        if (!killed && buf.length) return resolve(buf);
+        // A short clip may have no frame at 1s — retry from the very start once.
+        if (seekSec > 0 && !killed) return run(0);
+        resolve(null);
+      });
+    };
+    run(1);
+  });
   protocol.handle('cue-thumb', async (request) => {
     const { pathname } = new URL(request.url);
     let srcPath = decodeURIComponent(pathname);
@@ -257,11 +305,34 @@ app.whenReady().then(async () => {
       });
     }
 
-    // Couldn't make a thumbnail. For an image, fall back to the original bytes so
-    // the tile still renders; for anything else (e.g. a video the OS can't
-    // thumbnail) return 404 so the renderer shows its own placeholder rather than
-    // feeding video bytes into an <img>.
+    // OS thumbnail service came up empty. For a video, try ffmpeg — it posters
+    // codecs/containers QuickLook can't, and works in the sandboxed packaged app
+    // where the OS service is restricted (its silent failure was why videos
+    // showed no thumbnail). Cache the result exactly like the OS-generated path.
     const ext = path.extname(srcPath).slice(1).toLowerCase();
+    if (THUMB_VIDEO_EXTS.has(ext)) {
+      if (ffmpegPath()) {
+        const jpg = await ffmpegVideoThumb(srcPath);
+        if (jpg && jpg.length) {
+          fs.promises.mkdir(getThumbnailDir(), { recursive: true })
+            .then(() => fs.promises.writeFile(cachePath, jpg))
+            .catch(() => {});
+          return new Response(jpg, {
+            headers: { 'Content-Type': 'image/jpeg', 'Content-Length': String(jpg.length), ...cacheHeaders },
+          });
+        }
+      } else {
+        // ffmpeg isn't provisioned yet (only fetched lazily). Kick off a
+        // single-flight background download so the NEXT request can poster this
+        // video; return 404 for now (MediaThumb retries and recovers once ready).
+        ensureFfmpegForThumbs();
+      }
+    }
+
+    // Couldn't make a thumbnail. For an image, fall back to the original bytes so
+    // the tile still renders; for anything else (e.g. a video ffmpeg also failed
+    // on) return 404 so the renderer shows its own placeholder rather than
+    // feeding video bytes into an <img>.
     if (THUMB_IMAGE_EXTS.has(ext)) {
       try {
         const data = await fs.promises.readFile(srcPath);

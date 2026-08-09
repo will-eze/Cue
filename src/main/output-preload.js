@@ -11,6 +11,9 @@ contextBridge.exposeInMainWorld('cueOutput', {
   // Runtime content-mode toggle (lyrics band / graphics overlay) — avoids
   // recreating the window (and dropping the NDI sender) on a mode switch.
   onContentMode: (cb) => ipcRenderer.on('content:mode', (_e, p) => cb(p)),
+  // Runtime per-channel content font scale (fill-target multiplier). Live-updated
+  // without recreating the window (same reason as content:mode — keep the NDI sender).
+  onContentScale: (cb) => ipcRenderer.on('content:scale', (_e, p) => cb(p)),
   // Live video input frames (NDI receive). RGBA pixels from main's framesync
   // pull loop; the template paints them into a canvas while a live-input payload
   // is on program. Data arrives as a Uint8Array over structured clone.
