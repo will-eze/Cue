@@ -20,8 +20,10 @@ function esc(str) {
   return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 function fmtTime(sec) {
-  sec = Math.max(0, Math.round(sec));
-  return `${String(Math.floor(sec / 60)).padStart(2,'0')}:${String(sec % 60).padStart(2,'0')}`;
+  sec = Math.round(sec);
+  const neg = sec < 0;
+  sec = Math.abs(sec);
+  return `${neg ? '-' : ''}${String(Math.floor(sec / 60)).padStart(2,'0')}:${String(sec % 60).padStart(2,'0')}`;
 }
 const alignItems = (a) => (a === 'left' ? 'flex-start' : a === 'right' ? 'flex-end' : 'center');
 
@@ -255,10 +257,13 @@ function tickClock() {
 setInterval(tickClock, 1000);
 
 // ── Presenter timer (countdown) + elapsed (count-up) ──────────────────────────
+// Remaining is allowed to go negative once time is up — the timer keeps counting
+// into overrun (e.g. "-00:15") rather than freezing at 00:00, so a presenter can
+// see exactly how far over they are.
 function currentRemaining() {
-  return Math.max(0, (timer.running && timer.startedAt)
+  return (timer.running && timer.startedAt)
     ? timer.remainingAtStart - (Date.now() - timer.startedAt) / 1000
-    : timer.remainingSeconds);
+    : timer.remainingSeconds;
 }
 function renderTimers() {
   const remaining = currentRemaining();
@@ -271,7 +276,7 @@ function renderTimers() {
               :                                         'timer-paused';
     node.refs.value.className = 'el-value ' + cls;
     if (node.refs.bar) {
-      const pct = timer.totalSeconds > 0 ? (remaining / timer.totalSeconds) * 100 : 0;
+      const pct = timer.totalSeconds > 0 ? Math.max(0, (remaining / timer.totalSeconds) * 100) : 0;
       node.refs.bar.style.width = pct + '%';
       node.refs.bar.style.background = (timer.running || (timer.totalSeconds > 0 && remaining <= 0)) ? '#a40217' : '#2a2e38';
     }
@@ -286,10 +291,9 @@ function renderTimers() {
 let timerTick = null;
 function startLocalCountdown() {
   stopLocalCountdown();
-  timerTick = setInterval(() => {
-    renderTimers();
-    if (currentRemaining() <= 0) { timer.running = false; timer.remainingSeconds = 0; stopLocalCountdown(); renderTimers(); }
-  }, 200);
+  // Keep ticking past zero into negative (overrun) — never auto-stop here. The
+  // timer only stops on an explicit pause/reset command from the operator.
+  timerTick = setInterval(renderTimers, 200);
 }
 function stopLocalCountdown() { if (timerTick) { clearInterval(timerTick); timerTick = null; } }
 function applyTimerCmd(cmd) {

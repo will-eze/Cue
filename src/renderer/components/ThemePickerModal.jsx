@@ -10,8 +10,12 @@ import { sortThemes } from '../utils/themeSort';
 // with the chosen theme; the caller decides what "apply" means.
 const SAMPLE = 'Amazing Grace\nHow Sweet the Sound';
 
-function PickCard({ theme, bgThumb, onPick }) {
-  const style = theme.style_json ? { ...DEFAULT_STYLE, ...JSON.parse(theme.style_json) } : { ...DEFAULT_STYLE };
+function themeStyle(theme) {
+  return theme.style_json ? { ...DEFAULT_STYLE, ...JSON.parse(theme.style_json) } : { ...DEFAULT_STYLE };
+}
+
+function PickCard({ theme, bgThumb, onPick, onEnlarge }) {
+  const style = themeStyle(theme);
   const isMedia = !!style.bgRef || !!theme.background_id;
   return (
     // A <div> (not <button>) so SlidePreview's width:100%/aspect-ratio lays out
@@ -23,8 +27,16 @@ function PickCard({ theme, bgThumb, onPick }) {
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPick(theme); } }}
       className="bg-surface-container border border-outline-variant/30 rounded-xl overflow-hidden flex flex-col cursor-pointer hover:border-primary/50 hover:ring-1 hover:ring-primary/30 active:scale-[0.99] transition-all"
     >
-      <div className="p-sm pb-0">
+      <div className="p-sm pb-0 relative group/preview">
         <SlidePreview text={SAMPLE} runs={[]} style={bgThumb ? { ...style, bgThumb } : style} backgroundPath={theme.background_path ?? null} />
+        <button
+          type="button"
+          title="Enlarge preview"
+          onClick={(e) => { e.stopPropagation(); onEnlarge(theme); }}
+          className="absolute top-sm right-sm w-7 h-7 flex items-center justify-center rounded-lg bg-surface-container-highest/90 border border-outline-variant/40 text-on-surface-variant opacity-0 group-hover/preview:opacity-100 hover:text-on-surface hover:border-primary/60 transition-opacity cursor-pointer"
+        >
+          <span className="material-symbols-outlined text-[16px]">open_in_full</span>
+        </button>
       </div>
       <div className="px-md py-sm flex items-center gap-xs">
         <span className="text-label-sm font-mono font-bold text-on-surface truncate min-w-0">{theme.name}</span>
@@ -36,11 +48,47 @@ function PickCard({ theme, bgThumb, onPick }) {
   );
 }
 
+// Full-size lightbox for a single theme's preview — opened via each card's enlarge
+// button so an operator can inspect fine detail (text placement, gradient, media
+// backdrop) before committing. Stacks above the picker modal; picking from here
+// applies the theme and closes both.
+function EnlargeOverlay({ theme, bgThumb, onPick, onClose }) {
+  const style = themeStyle(theme);
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } };
+    document.addEventListener('keydown', onKey, true);
+    return () => document.removeEventListener('keydown', onKey, true);
+  }, [onClose]);
+  return createPortal(
+    <div className="fixed inset-0 z-[60] bg-background/95 flex items-center justify-center p-2xl" onMouseDown={onClose}>
+      <div className="w-full max-w-3xl flex flex-col gap-md" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between gap-md">
+          <span className="text-label-sm font-mono font-bold text-on-surface uppercase tracking-[0.05em] truncate min-w-0">{theme.name}</span>
+          <button onClick={onClose} className="text-on-surface-variant hover:text-on-surface cursor-pointer flex items-center shrink-0">
+            <span className="material-symbols-outlined">close</span>
+          </button>
+        </div>
+        <div className="rounded-xl overflow-hidden border border-outline-variant/30 shadow-2xl ring-1 ring-white/5">
+          <SlidePreview text={SAMPLE} runs={[]} style={bgThumb ? { ...style, bgThumb } : style} backgroundPath={theme.background_path ?? null} />
+        </div>
+        <button
+          onClick={() => onPick(theme)}
+          className="self-center h-9 px-lg text-label-sm font-mono uppercase tracking-[0.05em] bg-primary text-on-primary rounded-lg hover:opacity-90 transition-opacity cursor-pointer"
+        >
+          Use this theme
+        </button>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 export default function ThemePickerModal({ onPick, onClose, category = 'song' }) {
   useModalGuard();
   const [themes, setThemes] = useState([]);
   const [bgThumbs, setBgThumbs] = useState({});
   const [query, setQuery] = useState('');
+  const [enlarged, setEnlarged] = useState(null);
 
   useEffect(() => {
     window.cue.themes.list().then((list) => setThemes(list.filter((t) => (t.category || 'song') === category))).catch(() => {});
@@ -79,7 +127,7 @@ export default function ThemePickerModal({ onPick, onClose, category = 'song' })
         </div>
       );
     }
-    nodes.push(<PickCard key={t.id} theme={t} bgThumb={bgThumbFor(t)} onPick={onPick} />);
+    nodes.push(<PickCard key={t.id} theme={t} bgThumb={bgThumbFor(t)} onPick={onPick} onEnlarge={setEnlarged} />);
   }
 
   return createPortal(
@@ -118,6 +166,14 @@ export default function ThemePickerModal({ onPick, onClose, category = 'song' })
           )}
         </div>
       </div>
+      {enlarged && (
+        <EnlargeOverlay
+          theme={enlarged}
+          bgThumb={bgThumbFor(enlarged)}
+          onPick={(theme) => { onPick(theme); setEnlarged(null); }}
+          onClose={() => setEnlarged(null)}
+        />
+      )}
     </div>,
     document.body
   );

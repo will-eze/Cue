@@ -387,8 +387,10 @@ function NavTab({ label, active, onClick }) {
 
 // ── Stage controls popover ────────────────────────────────────────────────────
 function fmtSecs(s) {
-  s = Math.max(0, Math.round(s));
-  return `${String(Math.floor(s / 60)).padStart(2,'0')}:${String(s % 60).padStart(2,'0')}`;
+  s = Math.round(s);
+  const neg = s < 0;
+  s = Math.abs(s);
+  return `${neg ? '-' : ''}${String(Math.floor(s / 60)).padStart(2,'0')}:${String(s % 60).padStart(2,'0')}`;
 }
 
 // Wall-clock HH:MM for an epoch-ms scheduled anchor.
@@ -469,7 +471,7 @@ function StagePanel() {
     setMins(Math.floor(total / 60));
     setSecs(total % 60);
     if (t.running && t.startedAt) {
-      const rem = Math.max(0, t.remainingSeconds - (Date.now() - t.startedAt) / 1000);
+      const rem = t.remainingSeconds - (Date.now() - t.startedAt) / 1000;
       setRemaining(rem);
       setRunning(true);
       startTick(rem);
@@ -503,9 +505,8 @@ function StagePanel() {
     remAtStartRef.current = fromRemaining;
     tickRef.current = setInterval(() => {
       const elapsed = (Date.now() - startedAtRef.current) / 1000;
-      const rem     = Math.max(0, remAtStartRef.current - elapsed);
+      const rem     = remAtStartRef.current - elapsed;
       setRemaining(rem);
-      if (rem <= 0) { stopTick(); setRunning(false); }
     }, 100);
   }
 
@@ -534,7 +535,7 @@ function StagePanel() {
     if (running) {
       stopTick();
       const elapsed = startedAtRef.current ? (Date.now() - startedAtRef.current) / 1000 : 0;
-      const rem = Math.max(0, remAtStartRef.current - elapsed);
+      const rem = remAtStartRef.current - elapsed;
       setRemaining(rem);
       setRunning(false);
       window.cue.output.stage.timer('pause');

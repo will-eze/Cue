@@ -1664,7 +1664,9 @@ export function stageTimerCmd(action, seconds) {
   } else if (action === 'pause') {
     if (t.running && t.startedAt) {
       const elapsed = (Date.now() - t.startedAt) / 1000;
-      t.remainingSeconds = Math.max(0, t.remainingSeconds - elapsed);
+      // No floor at 0 — pausing mid-overrun keeps the negative remaining so the
+      // display still reads e.g. "-00:15" instead of snapping back to 00:00.
+      t.remainingSeconds = t.remainingSeconds - elapsed;
       t.running   = false;
       t.startedAt = null;
     }
