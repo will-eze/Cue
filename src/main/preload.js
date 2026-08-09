@@ -265,6 +265,13 @@ contextBridge.exposeInMainWorld('cue', {
     ingestTranscript:(payload) => ipcRenderer.send('scriptureDetect:ingestTranscript', payload),
   },
   openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
+  packages: {
+    list:     ()   => ipcRenderer.invoke('packages:list'),
+    install:  (id) => ipcRenderer.invoke('packages:install', id),
+    remove:   (id) => ipcRenderer.invoke('packages:remove', id),
+    reveal:   (id) => ipcRenderer.invoke('packages:reveal', id),
+    locate:   (id) => ipcRenderer.invoke('packages:locate', id),
+  },
   remote: {
     getConfig:       () => ipcRenderer.invoke('remote:getConfig'),
     setConfig:       (data) => ipcRenderer.invoke('remote:setConfig', data),
@@ -317,6 +324,7 @@ contextBridge.exposeInMainWorld('cue', {
       'youtube:status',
       'scripture:detected', 'scripture:transcript', 'scripture:status',
       'update:progress', 'update:available',
+      'packages:progress',
       'stream:status', 'output:stream-preview', 'output:stream-levels',
       'liveinput:preview', 'liveinput:status', 'liveinput:enabled',
     ];

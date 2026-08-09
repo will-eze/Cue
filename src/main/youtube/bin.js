@@ -14,6 +14,7 @@ import { app } from 'electron';
 import { execFileSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
+import * as settings from '../db/settings.js';
 
 function platformDir() {
   return `${process.platform}-${process.arch}`;
@@ -59,19 +60,56 @@ function findOnPath(name) {
   } catch { return null; }
 }
 
+// A GUI-launched macOS/Linux app inherits a STRIPPED PATH (Finder gives it just
+// /usr/bin:/bin:/usr/sbin:/sbin — no /opt/homebrew/bin, /usr/local/bin, etc.), so
+// `which` silently misses a Homebrew/MacPorts/pip-installed tool that resolves fine
+// in a terminal. Scan the well-known install dirs directly as a fallback.
+function commonBinDirs() {
+  if (process.platform === 'win32') return [];
+  const home = app.getPath('home');
+  return [
+    '/opt/homebrew/bin', '/opt/homebrew/sbin',
+    '/usr/local/bin', '/usr/local/sbin',
+    '/opt/local/bin',                       // MacPorts
+    path.join(home, '.local', 'bin'), path.join(home, 'bin'),
+    '/usr/bin', '/bin',
+  ];
+}
+
+function findInCommonDirs(name) {
+  const e = exe(name);
+  for (const d of commonBinDirs()) {
+    const p = path.join(d, e);
+    try { if (fs.existsSync(p) && fs.statSync(p).isFile()) return p; } catch {}
+  }
+  return null;
+}
+
+// Persisted manual override key ("Locate…" flow) — an absolute path the user pointed
+// Cue at when their copy lives somewhere non-standard.
+function overrideKey(name) { return `bin_${name}_path`; }
+
 function resolveBinary(name) {
   if (cache[name] && fs.existsSync(cache[name])) return cache[name];
-  const e = exe(name);
-  const candidates = [
-    path.join(userBinDir(), e),     // 1. auto-downloaded (fresh)
-    null,                           // 2. system PATH (filled below)
-    path.join(bundledBinDir(), e),  // 3. dev-only bundled copy
-  ];
   let resolved = null;
-  if (fs.existsSync(candidates[0])) resolved = candidates[0];
-  else { const p = findOnPath(name); if (p) resolved = p; else if (fs.existsSync(candidates[2])) resolved = candidates[2]; }
+  // 1. explicit user override (Locate…), if it still exists.
+  const override = settings.get(overrideKey(name));
+  if (override && fs.existsSync(override)) resolved = override;
+  // 2. auto-downloaded userData copy (kept fresh).
+  if (!resolved) { const u = path.join(userBinDir(), exe(name)); if (fs.existsSync(u)) resolved = u; }
+  // 3. system PATH → 4. common install dirs (GUI-stripped-PATH fallback).
+  if (!resolved) resolved = findOnPath(name) || findInCommonDirs(name);
+  // 5. dev-only bundled copy (present in a checkout, never packaged).
+  if (!resolved) { const b = path.join(bundledBinDir(), exe(name)); if (fs.existsSync(b)) resolved = b; }
   cache[name] = resolved;
   return resolved;
+}
+
+// Persist a manual path for a binary and re-resolve. Clearing (null) reverts to auto.
+export function setBinaryPath(name, p) {
+  settings.set(overrideKey(name), p || null);
+  clearCache();
+  return binInfo(name);
 }
 
 export const ytDlpPath  = () => resolveBinary('yt-dlp');
@@ -137,6 +175,40 @@ async function doEnsure(onProgress) {
   } catch (err) {
     return { ok: false, error: err.message };
   }
+}
+
+// ── Package-manager surface ──────────────────────────────────────────────────
+// Per-binary info/install/remove for the Settings → Packages manager. Only the
+// auto-downloaded userData copy is ours to delete; a system-PATH or dev-bundled
+// copy is reported but never removed (we don't own it).
+export function binInfo(name) {
+  const resolved = resolveBinary(name);
+  const userCopy = path.join(userBinDir(), exe(name));
+  const inUserDir = !!resolved && path.resolve(resolved) === path.resolve(userCopy);
+  let size = 0;
+  try { if (resolved) size = fs.statSync(resolved).size; } catch {}
+  return { path: resolved, inUserDir, size };
+}
+
+// Download a SINGLE binary into userData/bin (the manager installs each package on
+// its own, unlike ensureBinaries which provisions both for the YouTube flow).
+export async function installBinary(name, onProgress) {
+  const url = name === 'yt-dlp' ? YTDLP_URL : FFMPEG_URLS[platformDir()];
+  if (!url) return { ok: false, error: `no ${name} build for ${platformDir()}` };
+  try {
+    await downloadTo(url, path.join(userBinDir(), exe(name)), onProgress);
+    clearCache();
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+// Delete the userData copy of a binary (a system/PATH copy is left untouched).
+export function removeBinary(name) {
+  try { fs.rmSync(path.join(userBinDir(), exe(name)), { force: true }); } catch {}
+  clearCache();
+  return { ok: true };
 }
 
 // Re-download the latest yt-dlp into userData (used when an extraction fails because

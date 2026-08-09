@@ -17,7 +17,7 @@
 import os from 'os';
 import path from 'path';
 import fs from 'fs';
-import { userDir } from './provision.js';
+import { userDir, dirSizeBytes } from './provision.js';
 
 // transformers.js model repos (Xenova ONNX exports) per size.
 const MODELS = {
@@ -214,4 +214,18 @@ async function decodeOne(entry, float32) {
 }
 
 export function dispose() { pipes.clear(); loadPromises.clear(); }
+
+// ── Package-manager surface ──────────────────────────────────────────────────
+// The CPU whisper cache is a single userData dir shared by every downloaded model
+// size; the manager reports/removes it as one package. `anyModelReady` is true once
+// ANY size has been fetched (a fresh install nudges the user to download).
+export function modelStorePath() { return cacheDir(); }
+export function storeSizeBytes() { return dirSizeBytes(cacheDir()); }
+export function anyModelReady() { return Object.keys(MODELS).some(modelReady); }
+export function removeModels() {
+  dispose(); // drop resident pipes so no ONNX session holds the files open
+  try { fs.rmSync(cacheDir(), { recursive: true, force: true }); } catch {}
+  return { ok: true };
+}
+
 export { MODELS };

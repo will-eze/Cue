@@ -13,6 +13,7 @@ import ShortcutSettings from '../settings/ShortcutSettings';
 import RemoteSettings from '../settings/RemoteSettings';
 import SongUsageSettings from '../settings/SongUsageSettings';
 import ScriptureDetectionSettings from '../settings/ScriptureDetectionSettings';
+import PackagesSettings from '../settings/PackagesSettings';
 import DataSettings from '../settings/DataSettings';
 import DangerZone from '../settings/DangerZone';
 
@@ -34,6 +35,7 @@ export const SECTIONS = [
   { id: 'usage',      icon: 'receipt_long',    label: 'CCLI' },
   { id: 'remote',     icon: 'cell_tower',      label: 'Remote' },
   { id: 'detect',     icon: 'hearing',         label: 'Detect' },
+  { id: 'packages',   icon: 'inventory_2',     label: 'Packages' },
   { id: 'data',       icon: 'database',        label: 'Data' },
   { id: 'danger',     icon: 'warning',         label: 'Danger' },
 ];
@@ -259,6 +261,7 @@ export default function SettingsView({ activeServiceId, onRundownCleared, onRund
         <section ref={setRef('usage')} data-section="usage" className="scroll-mt-lg"><SongUsageSettings /></section>
         <section ref={setRef('remote')} data-section="remote" className="scroll-mt-lg"><RemoteSettings /></section>
         <section ref={setRef('detect')} data-section="detect" className="scroll-mt-lg"><ScriptureDetectionSettings /></section>
+        <section ref={setRef('packages')} data-section="packages" className="scroll-mt-lg"><PackagesSettings /></section>
         <section ref={setRef('data')} data-section="data" className="scroll-mt-lg"><DataSettings /></section>
         <section ref={setRef('danger')} data-section="danger" className="scroll-mt-lg">
           <DangerZone

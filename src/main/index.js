@@ -20,6 +20,7 @@ import { registerBackgroundLibraryIpc } from './ipc/background-library.ipc.js';
 import { registerScenesIpc } from './ipc/scenes.ipc.js';
 import { registerOutputPresetsIpc } from './ipc/output-presets.ipc.js';
 import { registerLiveInputIpc } from './ipc/live-input.ipc.js';
+import { registerPackagesIpc } from './ipc/packages.ipc.js';
 import * as scriptureDetect from './scripture-detect/manager.js';
 import * as youtube from './youtube/downloader.js';
 import { purgeYoutubeItems } from './db/services.js';
@@ -337,6 +338,7 @@ app.whenReady().then(async () => {
   registerScenesIpc();
   registerOutputPresetsIpc();
   registerLiveInputIpc();
+  registerPackagesIpc();
 
   createMainWindow();
   outputManager.setMainWindow(mainWindow);

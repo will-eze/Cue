@@ -5,7 +5,7 @@
 
 import path from 'path';
 import fs from 'fs';
-import { userDir, downloadTo } from './provision.js';
+import { userDir, downloadTo, dirSizeBytes } from './provision.js';
 
 // Xenova mirror exposes a stable, CORS-friendly ONNX export of MiniLM.
 const BASE = 'https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/main';
@@ -41,4 +41,12 @@ async function doEnsure(onProgress) {
   } catch (err) {
     return { ok: false, error: err.message };
   }
+}
+
+// ── Package-manager surface ──────────────────────────────────────────────────
+export function modelStorePath() { return modelDir(); }
+export function storeSizeBytes() { return dirSizeBytes(modelDir()); }
+export function removeModel() {
+  try { fs.rmSync(modelDir(), { recursive: true, force: true }); } catch {}
+  return { ok: true };
 }
