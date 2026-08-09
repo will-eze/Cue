@@ -1657,6 +1657,10 @@ export function stageTimerCmd(action, seconds) {
     t.running          = false;
     t.startedAt        = null;
   } else if (action === 'start') {
+    // Nothing committed yet: starting from a 0 total counts straight into overrun
+    // and leaves the stage element in its near-invisible 'timer-idle' grey, which
+    // reads as "the timer never appeared". Nothing to run — ignore it.
+    if (t.totalSeconds <= 0) return;
     if (!t.running) {
       t.startedAt = Date.now();
       t.running   = true;

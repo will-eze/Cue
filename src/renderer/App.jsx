@@ -413,6 +413,9 @@ function StagePanel() {
   const [secs, setSecs]       = useState(0);
   const [remaining, setRemaining] = useState(600); // displayed countdown
   const [running, setRunning] = useState(false);
+  // Main's authoritative totalSeconds. 0 = never Set, so the dials below are just
+  // an uncommitted proposal — main would count from 0 if we sent a bare 'start'.
+  const [totalSec, setTotalSec] = useState(0);
   const [stageMsg, setStageMsg] = useState('');
   const [msgPresets, setMsgPresets] = useState([]);
 
@@ -468,6 +471,7 @@ function StagePanel() {
   function applyTimerState(t) {
     if (!t || t.totalSeconds <= 0) return; // no timer configured yet — leave defaults
     const total = t.totalSeconds;
+    setTotalSec(total);
     setMins(Math.floor(total / 60));
     setSecs(total % 60);
     if (t.running && t.startedAt) {
@@ -526,6 +530,7 @@ function StagePanel() {
     const total = mins * 60 + secs;
     if (total <= 0) return;
     stopTick();
+    setTotalSec(total);
     setRemaining(total);
     setRunning(false);
     window.cue.output.stage.timer('set', total);
@@ -540,8 +545,22 @@ function StagePanel() {
       setRunning(false);
       window.cue.output.stage.timer('pause');
     } else {
-      const cur = remaining > 0 ? remaining : mins * 60 + secs;
-      startTick(cur);
+      // Main resumes from ITS stored remaining, so mirror that rather than
+      // re-deriving from the dials — otherwise resuming mid-overrun shows 10:00
+      // counting down here while the stage window continues at -00:05.
+      let from = remaining;
+      // Nothing committed yet: a bare 'start' would run main from totalSeconds 0,
+      // which paints the stage element in its near-invisible 'timer-idle' grey —
+      // indistinguishable from "the timer never appeared". Commit the dials first.
+      if (totalSec <= 0) {
+        const total = mins * 60 + secs;
+        if (total <= 0) return;
+        setTotalSec(total);
+        window.cue.output.stage.timer('set', total);
+        from = total;
+      }
+      setRemaining(from);
+      startTick(from);
       setRunning(true);
       window.cue.output.stage.timer('start');
     }
@@ -549,7 +568,8 @@ function StagePanel() {
 
   function handleReset() {
     stopTick();
-    const total = mins * 60 + secs;
+    // Reset restores main's committed total, not the (possibly re-spun) dials.
+    const total = totalSec > 0 ? totalSec : mins * 60 + secs;
     setRemaining(total);
     setRunning(false);
     window.cue.output.stage.timer('reset');
@@ -601,7 +621,9 @@ function StagePanel() {
   const overlaps = overlapIds(schedule);
   const previewOverlaps = preview && schedule.some((m) => collides(preview, m));
 
-  const dispColor = running ? 'text-secondary' : remaining > 0 ? 'text-on-surface' : 'text-outline-variant';
+  // Overrun reads red even when paused — a frozen negative is still "over time".
+  const dispColor = (running || remaining < 0) ? 'text-secondary'
+    : remaining > 0 ? 'text-on-surface' : 'text-outline-variant';
 
   return (
     <div className="absolute right-0 top-[calc(100%+6px)] w-76 bg-surface-container-low border border-outline-variant/30 rounded-xl shadow-2xl ring-1 ring-white/5 z-50 overflow-hidden" style={{ width: 296 }}>
