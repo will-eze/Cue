@@ -270,7 +270,12 @@ function renderTimers() {
   // Countdown timers
   for (const node of nodesOf('timer')) {
     node.refs.value.textContent = fmtTime(remaining);
+    // Overrun (still running, past zero) is a STEADY red, not the blinking
+    // 'timer-expired'. A blink reads as "stopped / alarm" and makes the moving
+    // digits hard to read — the blink is reserved for a timer that has actually
+    // come to rest at or past zero.
     const cls = timer.running && remaining > 0      ? 'timer-running'
+              : timer.running && remaining <= 0     ? 'timer-overrun'
               : timer.totalSeconds > 0 && remaining <= 0 ? 'timer-expired'
               : timer.totalSeconds === 0              ? 'timer-idle'
               :                                         'timer-paused';
