@@ -309,7 +309,7 @@ function computeRemaining() {
   if (!isFinite(dur) || dur <= 0) return null;
   const now = Date.now();
   const ref = (stageTransport.pausedAt != null) ? stageTransport.pausedAt : now;
-  let pos = (ref - stageTransport.startAt) / 1000;
+  let pos = (ref - stageTransport.startAt) / 1000 * (stageTransport.rate || 1);
   if (pos < 0) pos = 0;
   const within = vcd.loop ? pos % dur : Math.min(pos, dur);
   return Math.max(0, dur - within);

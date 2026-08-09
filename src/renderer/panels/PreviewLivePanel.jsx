@@ -3,6 +3,7 @@ import SlideList from '../components/SlideList';
 import { renderWithRuns, copyrightCss, buildDecorationCss, buildBoxFillCss } from '../components/SongEditor';
 import { flatTextCss, buildBarBg as buildGraphicBarBg, fmtDuration as fmtGfxDuration, fmtClock as fmtGfxClock, CD_DEFAULT_BOX, TIME_BASE as GFX_TIME_BASE, MSG_BASE as GFX_MSG_BASE } from '../components/GraphicsEditor';
 import { mediaUrl } from '../utils/mediaUrl';
+import { resolveActive } from '../../shared/stage-schedule.js';
 
 const GFX_BOX_DEFAULT = { x: 4, y: 70, w: 55, h: 22 };
 const GFX_NAME_BASE  = { fontSize: 54, color: '#ffffff', fontWeight: 700 };
@@ -264,9 +265,12 @@ function SyncedVideo({ src, transport, loop, style }) {
 // Confidence-monitor — a layout-driven mirror of the customisable stage display
 // (output/stage.js). Reads the selected channel's per-channel layout (subscribing to
 // stage:layout) and renders the same positioned elements at native 1920×1080, binding
-// the live slide / next / transport it already receives. The timer/message tickers show
-// their idle state here (the operator doesn't track stage timer/message state in this
-// panel). Parallel renderer to the plain-DOM template, same as StreamLayoutEditor.
+// the live slide / next / transport it already receives PLUS the stage buses
+// (stage:timer / stage:message / stage:schedule), so the monitor shows the same
+// clock, presenter timer, video countdown and message bar the stage screen does.
+// Like the template, every ticker runs LOCALLY against Date.now() — main sends
+// anchors (startedAt / showAt / transport.startAt), never per-second updates.
+// Parallel renderer to the plain-DOM template, same as StreamLayoutEditor.
 const STAGE_DEFAULT_ELEMENTS = [
   { id: 'clock',   type: 'clock',          x: 2.5, y: 2.5,  w: 30.5, h: 12, hour12: true, showSeconds: true },
   { id: 'timer',   type: 'timer',          x: 34.5, y: 2.5, w: 31,   h: 12, showBar: true },
@@ -277,13 +281,70 @@ const STAGE_DEFAULT_ELEMENTS = [
 ];
 const alignJustify = (a) => (a === 'left' ? 'flex-start' : a === 'right' ? 'flex-end' : 'center');
 
-function StageMonitor({ slide, item, slides, slideIdx, copyrightText, copyrightRight, transport, hideText, channelId }) {
-  const [elements, setElements] = useState(null);
-  const [clock, setClock] = useState('');
+// mm:ss, matching stage.js fmtTime (zero-padded minutes, unlike fmtClock above).
+function fmtStageTime(sec) {
+  sec = Math.max(0, Math.round(sec));
+  return `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`;
+}
+
+// Wall-clock string for the `clock` element — mirrors stage.js fmtClock, honouring
+// the element's own hour12 / showSeconds spec (the old monitor hardcoded 12h+seconds).
+function fmtStageClock(spec, now) {
+  const d = new Date(now);
+  const h = d.getHours();
+  const m = String(d.getMinutes()).padStart(2, '0');
+  const s = String(d.getSeconds()).padStart(2, '0');
+  if (spec.hour12 !== false) {
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const h12 = String(h % 12 || 12).padStart(2, '0');
+    return spec.showSeconds !== false ? `${h12}:${m}:${s} ${ampm}` : `${h12}:${m} ${ampm}`;
+  }
+  const h24 = String(h).padStart(2, '0');
+  return spec.showSeconds !== false ? `${h24}:${m}:${s}` : `${h24}:${m}`;
+}
+
+// The presenter timer's remaining seconds, recomputed locally from the last anchor
+// main sent — identical to stage.js currentRemaining(). `remainingSeconds` in the
+// payload IS the value at `startedAt` (main only rewrites it on pause/reset), so it
+// doubles as stage.js's `remainingAtStart`.
+function stageRemaining(t, now) {
+  if (!t) return 0;
+  return Math.max(0, (t.running && t.startedAt)
+    ? t.remainingSeconds - (now - t.startedAt) / 1000
+    : (t.remainingSeconds || 0));
+}
+
+// Live stage buses (presenter timer, immediate message, scheduled messages). Main
+// already mirrors all three to the operator window via notifyMainWindow, and preload
+// whitelists them — this just subscribes, seeding from the getters so a monitor opened
+// mid-service is correct before the next broadcast.
+function useStageState() {
+  const [timer, setTimer] = useState(null);
+  const [message, setMessage] = useState('');
+  const [scheduled, setScheduled] = useState([]);
   useEffect(() => {
-    const fmt = () => setClock(new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }));
-    fmt();
-    const id = setInterval(fmt, 1000);
+    let alive = true;
+    const api = window.cue.output.stage;
+    api?.getTimer?.().then((t) => { if (alive && t) setTimer(t); });
+    api?.getMessage?.().then((m) => { if (alive && m) setMessage(m.text || ''); });
+    api?.getSchedule?.().then((s) => { if (alive && Array.isArray(s)) setScheduled(s); });
+    const offT = window.cue.on('stage:timer',    (t) => setTimer(t));
+    const offM = window.cue.on('stage:message',  (p) => setMessage(p?.text || ''));
+    const offS = window.cue.on('stage:schedule', (p) => setScheduled(p?.scheduled || []));
+    return () => { alive = false; offT(); offM(); offS(); };
+  }, []);
+  return { timer, message, scheduled };
+}
+
+function StageMonitor({ slide, item, slides, slideIdx, copyrightText, copyrightRight, transport, channelId, displayMode, isLive }) {
+  const [elements, setElements] = useState(null);
+  const { timer, message, scheduled } = useStageState();
+
+  // One local ticker drives clock, presenter timer, video countdown and the
+  // scheduled-message window — same 250ms cadence stage.js uses for its timers.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 250);
     return () => clearInterval(id);
   }, []);
 
@@ -297,21 +358,58 @@ function StageMonitor({ slide, item, slides, slideIdx, copyrightText, copyrightR
   }, [channelId]);
 
   const els = elements || STAGE_DEFAULT_ELEMENTS;
+
+  // Foreground media — mirrors stage.js's slide bus handling: a video plays muted in
+  // the currentText box (and drives the video countdown); any other media shows an
+  // icon + title line instead of lyric text.
   const isMediaItem = item?.item_type === 'media';
-  const mediaPath   = isMediaItem ? item?.asset?.path : null;
-  const isVideo     = mediaPath && /\.(mp4|webm|mov|m4v|avi|mkv)$/i.test(mediaPath);
+  const isYouTube   = item?.item_type === 'youtube' && item?.youtube?.status === 'ready';
+  const mediaPath   = isMediaItem ? item?.asset?.path : isYouTube ? item?.youtube?.path : null;
+  const mediaType   = isMediaItem ? item?.asset?.type : isYouTube ? 'video' : null;
+  const isVideo     = !!mediaPath && (mediaType === 'video' || /\.(mp4|webm|mov|m4v|avi|mkv)$/i.test(mediaPath));
+  const videoDuration = useMediaDuration(isVideo ? mediaPath : null, 'video');
+
+  // stage.js keeps the last content on screen when the program is cleared/logo and
+  // simply dims the whole layout (#stage-root.muted) — it never blanks the text.
+  const muted = isLive && (displayMode === 'cleared' || displayMode === 'logo');
+
+  let currentText = slide?.content || '';
+  if (mediaPath && !isVideo) {
+    const icon = mediaType === 'audio' ? '♪' : '⊞';
+    currentText = `${icon} ${item?.asset?.filename || item?.youtube?.title || mediaPath.split(/[\\/]/).pop()}`;
+  } else if (isVideo) {
+    currentText = '';
+  }
+
+  // Video countdown: time left in the live clip, off the shared transport clock.
+  // null (→ "--:--") whenever no video is running, exactly like stage.js.
+  // transportPosition already wraps (loop) or clamps (one-shot) against the duration.
+  const vcdLoop  = transport ? !!transport.loop : !!item?.media_loop;
+  const vcdValue = (isVideo && transport?.active && videoDuration > 0)
+    ? Math.max(0, videoDuration - transportPosition(transport, videoDuration))
+    : null;
+
+  const remaining = stageRemaining(timer, now);
+  const activeMsg = (message && message.trim())
+    ? message
+    : (resolveActive(scheduled, now)?.text || '');
+
   const live = {
-    clock,
-    currentText: slide?.content || '',
-    nextText:    slides[slideIdx + 1]?.content || '',
-    refText:     copyrightRight ? copyrightText : null,
-    isVideo, mediaPath, transport, item, hideText,
+    now,
+    currentText,
+    nextText: slides[slideIdx + 1]?.content || '',
+    refText:  copyrightRight ? copyrightText : null,
+    isVideo, mediaPath, transport, item,
+    timer, remaining,
+    elapsed: (timer?.totalSeconds > 0) ? Math.max(0, timer.totalSeconds - remaining) : 0,
+    vcdValue, vcdLoop,
+    message: activeMsg,
   };
 
   return (
     <div style={{ width: NATIVE_W, height: NATIVE_H, position: 'relative', background: '#0c0e12', fontFamily: 'Inter, sans-serif', color: '#e2e2e8' }}>
       {els.map((el, i) => (
-        <div key={el.id} style={{ position: 'absolute', left: `${el.x}%`, top: `${el.y}%`, width: `${el.w}%`, height: `${el.h}%`, zIndex: i + 1, overflow: 'hidden' }}>
+        <div key={el.id} style={{ position: 'absolute', left: `${el.x}%`, top: `${el.y}%`, width: `${el.w}%`, height: `${el.h}%`, zIndex: i + 1, overflow: 'hidden', opacity: muted ? 0.25 : 1 }}>
           <StageElement el={el} live={live} />
         </div>
       ))}
@@ -358,7 +456,7 @@ function StageCurrentText({ el, live }) {
         live.transport?.active
           ? <SyncedVideo src={mediaUrl(live.mediaPath)} transport={live.transport} loop={!!live.item?.media_loop} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
           : <video src={mediaUrl(live.mediaPath)} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} autoPlay loop muted />
-      ) : !live.hideText && (
+      ) : (
         <>
           {live.refText && el.showRef !== false && (
             <div ref={refRef} style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: '1.5% 6% 0', textAlign: 'center', fontSize: 34, fontWeight: 600, letterSpacing: '0.04em', color: '#adc6ff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{live.refText}</div>
@@ -380,13 +478,47 @@ function StageElement({ el, live }) {
     </div>
   );
   switch (el.type) {
-    case 'clock':          return <Bar label={el.label} value={live.clock} valColor="#adc6ff" />;
-    case 'timer':          return <Bar label={el.label} value="00:00" valColor="#2a2e38">{el.showBar !== false && <div style={{ width: '65%', height: 4, background: 'rgba(255,255,255,0.07)', borderRadius: 99, overflow: 'hidden' }}><div style={{ height: '100%', width: '100%', background: '#2a2e38' }} /></div>}</Bar>;
-    case 'elapsedTimer':   return <Bar label={el.label} value="00:00" valColor="#2a2e38" />;
-    case 'videoCountdown': return <Bar label={el.label} value="--:--" valColor="#2a2e38" />;
+    case 'clock':          return <Bar label={el.label} value={fmtStageClock(el, live.now)} valColor="#adc6ff" />;
+    case 'timer': {
+      // Colour states mirror stage.css .timer-idle / -running / -paused / -expired.
+      const t = live.timer;
+      const total = t?.totalSeconds || 0;
+      const rem = live.remaining;
+      const color = (t?.running && rem > 0) ? '#ffb3ad'
+                  : (total > 0 && rem <= 0) ? '#ffb3ad'
+                  : total === 0             ? '#2a2e38'
+                  :                           '#c2c6d6';
+      const pct = total > 0 ? (rem / total) * 100 : 0;
+      const barFill = (t?.running || (total > 0 && rem <= 0)) ? '#a40217' : '#2a2e38';
+      return (
+        <Bar label={el.label} value={fmtStageTime(rem)} valColor={color}>
+          {el.showBar !== false && (
+            <div style={{ width: '65%', height: 4, background: 'rgba(255,255,255,0.07)', borderRadius: 99, overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${pct}%`, background: barFill }} />
+            </div>
+          )}
+        </Bar>
+      );
+    }
+    case 'elapsedTimer':   return <Bar label={el.label} value={fmtStageTime(live.elapsed)} valColor={live.timer?.running ? '#ffb3ad' : '#e2e2e8'} />;
+    case 'videoCountdown': {
+      // stage.css .counter-idle / -active / -warning / -ended.
+      if (live.vcdValue == null) return <Bar label={el.label} value="--:--" valColor="#2a2e38" />;
+      const color = (!live.vcdLoop && live.vcdValue <= 0) ? '#424754'
+                  : (live.vcdValue <= 15)                 ? '#ffb3ad'
+                  :                                         '#4ae176';
+      return <Bar label={el.label} value={fmtStageTime(live.vcdValue)} valColor={color} />;
+    }
     case 'message':        return (
       <div style={{ width: '100%', height: '100%', background: '#1a1c20', border: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: el.align === 'left' ? 'flex-start' : el.align === 'right' ? 'flex-end' : 'center', padding: '0 4%' }}>
-        <div style={{ fontSize: 14, fontWeight: 500, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(140,144,159,0.25)' }}>NO MESSAGES</div>
+        {live.message ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1.5%', background: 'rgba(164,2,23,0.3)', border: '1px solid rgba(255,179,173,0.25)', borderRadius: 10, padding: '1% 2%', width: '100%', overflow: 'hidden' }}>
+            <span style={{ flexShrink: 0, fontSize: 42, color: '#ffb3ad', lineHeight: 1 }}>&#9888;</span>
+            <span style={{ fontSize: el.fontPx || 50, fontWeight: 700, color: '#ffb3ad', letterSpacing: '0.04em', lineHeight: 1.25, textTransform: 'uppercase', whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflow: 'hidden' }}>{live.message}</span>
+          </div>
+        ) : (
+          <div style={{ fontSize: 14, fontWeight: 500, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(140,144,159,0.25)' }}>NO MESSAGES</div>
+        )}
       </div>
     );
     case 'staticText':     return (
@@ -635,19 +767,14 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
         isLive ? 'monitor-live' : item ? 'monitor-preview' : 'monitor-idle'
       }`}
     >
-      {/* Scaled 1920×1080 canvas — pixel-accurate match of the output template */}
-      {slide ? (
+      {/* Scaled 1920×1080 canvas — pixel-accurate match of the output template.
+          A stage channel renders even with nothing live: the real stage screen is
+          still showing its clock, presenter timer and message bar, so an idle
+          rundown must not blank the monitor. */}
+      {(slide || isStage) ? (
         <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
           <div style={{ width: NATIVE_W, height: NATIVE_H, transform: `scale(${scale})`, transformOrigin: 'top left', position: 'relative' }}>
-                {isLiveInput && !isStage ? (
-                  <LiveInputMonitor liveInput={slide.liveInput || item.liveInput} />
-                ) : isPresentation ? (
-                  <PresentationCanvas
-                    elements={slide.elements}
-                    backgroundPath={slide.background_path || backgroundPath}
-                    hideText={hideText}
-                  />
-                ) : isStage ? (
+                {isStage ? (
                   <StageMonitor
                     slide={slide}
                     item={item}
@@ -656,8 +783,17 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
                     copyrightText={copyrightText}
                     copyrightRight={copyrightRight}
                     transport={transport}
-                    hideText={hideText}
                     channelId={stageChannelId}
+                    displayMode={displayMode}
+                    isLive={isLive}
+                  />
+                ) : isLiveInput ? (
+                  <LiveInputMonitor liveInput={slide.liveInput || item.liveInput} />
+                ) : isPresentation ? (
+                  <PresentationCanvas
+                    elements={slide.elements}
+                    backgroundPath={slide.background_path || backgroundPath}
+                    hideText={hideText}
                   />
                 ) : (
                 <>
