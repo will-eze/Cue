@@ -393,6 +393,26 @@ function fmtSecs(s) {
   return `${neg ? '-' : ''}${String(Math.floor(s / 60)).padStart(2,'0')}:${String(s % 60).padStart(2,'0')}`;
 }
 
+// Parse a typed timer duration into seconds. A bare number is MINUTES ("10" =>
+// 10:00) because that's overwhelmingly what a presenter timer is set to; anything
+// with a colon is explicit MM:SS ("0:45", "10:30"). Returns null when unparseable
+// so the caller can revert the field instead of committing a garbage duration.
+const MAX_TIMER_SEC = 99 * 60 + 59;
+function parseDuration(text) {
+  const t = String(text).trim();
+  if (!t) return null;
+  if (t.includes(':')) {
+    const [m, s] = t.split(':');
+    const mi = parseInt(m || '0', 10);
+    const se = parseInt(s || '0', 10);
+    if (Number.isNaN(mi) || Number.isNaN(se)) return null;
+    return Math.max(0, Math.min(MAX_TIMER_SEC, mi * 60 + se));
+  }
+  const n = parseInt(t, 10);
+  if (Number.isNaN(n)) return null;
+  return Math.max(0, Math.min(MAX_TIMER_SEC, n * 60));
+}
+
 // Wall-clock HH:MM for an epoch-ms scheduled anchor.
 function fmtClockShort(epoch) {
   const d = new Date(epoch);
@@ -409,8 +429,9 @@ function fmtCountdown(ms) {
 }
 
 function StagePanel() {
-  const [mins, setMins]       = useState(10);
-  const [secs, setSecs]       = useState(0);
+  // The duration field is free text (MM:SS) rather than spin dials — it is only
+  // parsed on commit, so a half-typed "1" never momentarily means one minute.
+  const [draft, setDraft]     = useState('10:00');
   const [remaining, setRemaining] = useState(600); // displayed countdown
   const [running, setRunning] = useState(false);
   // Main's authoritative totalSeconds. 0 = never Set, so the dials below are just
@@ -472,8 +493,9 @@ function StagePanel() {
     if (!t || t.totalSeconds <= 0) return; // no timer configured yet — leave defaults
     const total = t.totalSeconds;
     setTotalSec(total);
-    setMins(Math.floor(total / 60));
-    setSecs(total % 60);
+    // The field mirrors the COMMITTED total, never the live remaining — otherwise
+    // it would scroll as the clock runs and there'd be no record of what to reset to.
+    setDraft(fmtSecs(total));
     if (t.running && t.startedAt) {
       const rem = t.remainingSeconds - (Date.now() - t.startedAt) / 1000;
       setRemaining(rem);
@@ -514,22 +536,29 @@ function StagePanel() {
     }, 100);
   }
 
-  function adjMins(delta) {
-    const n = Math.max(0, Math.min(99, mins + delta));
-    setMins(n);
-    if (!running) setRemaining(n * 60 + secs);
-  }
-
-  function adjSecs(delta) {
-    const n = Math.max(0, Math.min(59, secs + delta));
-    setSecs(n);
-    if (!running) setRemaining(mins * 60 + n);
-  }
-
-  function handleSet() {
-    const total = mins * 60 + secs;
-    if (total <= 0) return;
+  // Commit whatever is typed in the duration field as the new total, stopped and
+  // ready to run. Unparseable or empty input reverts the field rather than wiping
+  // a perfectly good committed timer.
+  function commitDraft() {
+    const total = parseDuration(draft);
+    if (total == null || total <= 0) {
+      setDraft(fmtSecs(totalSec > 0 ? totalSec : 0));
+      return null;
+    }
+    setDraft(fmtSecs(total));
+    if (total === totalSec) return total; // no change — don't disturb a running clock
     stopTick();
+    setTotalSec(total);
+    setRemaining(total);
+    setRunning(false);
+    window.cue.output.stage.timer('set', total);
+    return total;
+  }
+
+  // Quick-set chip: commit N seconds immediately, stopped.
+  function applyQuick(total) {
+    stopTick();
+    setDraft(fmtSecs(total));
     setTotalSec(total);
     setRemaining(total);
     setRunning(false);
@@ -544,32 +573,36 @@ function StagePanel() {
       setRemaining(rem);
       setRunning(false);
       window.cue.output.stage.timer('pause');
-    } else {
-      // Main resumes from ITS stored remaining, so mirror that rather than
-      // re-deriving from the dials — otherwise resuming mid-overrun shows 10:00
-      // counting down here while the stage window continues at -00:05.
-      let from = remaining;
-      // Nothing committed yet: a bare 'start' would run main from totalSeconds 0,
-      // which paints the stage element in its near-invisible 'timer-idle' grey —
-      // indistinguishable from "the timer never appeared". Commit the dials first.
-      if (totalSec <= 0) {
-        const total = mins * 60 + secs;
-        if (total <= 0) return;
-        setTotalSec(total);
-        window.cue.output.stage.timer('set', total);
-        from = total;
-      }
-      setRemaining(from);
-      startTick(from);
-      setRunning(true);
-      window.cue.output.stage.timer('start');
+      return;
     }
+    // There is no separate "Set" step any more: Start commits whatever is currently
+    // typed. That's the fix for "I pick a time, press Start, and nothing happens" —
+    // previously an uncommitted duration meant main started from a total of 0.
+    const typed = parseDuration(draft);
+    let from = remaining;
+    if (typed != null && typed > 0 && typed !== totalSec) {
+      // A newly-typed duration always wins and restarts from the top.
+      setTotalSec(typed);
+      setDraft(fmtSecs(typed));
+      setRemaining(typed);
+      window.cue.output.stage.timer('set', typed);
+      from = typed;
+    } else if (totalSec <= 0) {
+      return; // nothing typed and nothing committed — nothing to run
+    }
+    // Otherwise resume from OUR remaining, mirroring main's stored value, so
+    // resuming mid-overrun continues at -00:05 instead of jumping back to 10:00.
+    setRemaining(from);
+    startTick(from);
+    setRunning(true);
+    window.cue.output.stage.timer('start');
   }
 
   function handleReset() {
     stopTick();
-    // Reset restores main's committed total, not the (possibly re-spun) dials.
-    const total = totalSec > 0 ? totalSec : mins * 60 + secs;
+    // Reset restores main's committed total, not a half-typed field value.
+    const total = totalSec > 0 ? totalSec : (parseDuration(draft) ?? 0);
+    setDraft(fmtSecs(total));
     setRemaining(total);
     setRunning(false);
     window.cue.output.stage.timer('reset');
@@ -638,46 +671,56 @@ function StagePanel() {
             {fmtSecs(remaining)}
           </div>
 
-          {/* MM : SS spin controls */}
-          <div className="flex items-center justify-center gap-sm mb-sm">
-            {/* Minutes */}
-            <div className="flex flex-col items-center gap-[3px]">
-              <button onClick={() => adjMins(1)}  className="w-7 h-5 flex items-center justify-center text-[11px] text-on-surface-variant hover:text-on-surface bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant/30 rounded cursor-pointer transition-colors">▲</button>
-              <span className="text-[22px] font-mono font-bold tabular-nums text-on-surface w-10 text-center leading-none py-[2px]">{String(mins).padStart(2,'0')}</span>
-              <button onClick={() => adjMins(-1)} className="w-7 h-5 flex items-center justify-center text-[11px] text-on-surface-variant hover:text-on-surface bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant/30 rounded cursor-pointer transition-colors">▼</button>
-              <span className="text-[9px] font-mono uppercase tracking-[0.1em] text-outline mt-[2px]">min</span>
-            </div>
-
-            <span className="text-[24px] font-bold text-outline-variant pb-4">:</span>
-
-            {/* Seconds */}
-            <div className="flex flex-col items-center gap-[3px]">
-              <button onClick={() => adjSecs(10)} className="w-7 h-5 flex items-center justify-center text-[11px] text-on-surface-variant hover:text-on-surface bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant/30 rounded cursor-pointer transition-colors">▲</button>
-              <span className="text-[22px] font-mono font-bold tabular-nums text-on-surface w-10 text-center leading-none py-[2px]">{String(secs).padStart(2,'0')}</span>
-              <button onClick={() => adjSecs(-10)} className="w-7 h-5 flex items-center justify-center text-[11px] text-on-surface-variant hover:text-on-surface bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant/30 rounded cursor-pointer transition-colors">▼</button>
-              <span className="text-[9px] font-mono uppercase tracking-[0.1em] text-outline mt-[2px]">sec</span>
-            </div>
-          </div>
-
-          {/* Action row */}
-          <div className="flex gap-xs">
-            <button onClick={handleSet}
-              className="h-7 px-sm text-[10px] font-mono uppercase tracking-[0.05em] bg-surface-container-high border border-outline-variant/40 text-on-surface-variant hover:border-outline-variant hover:text-on-surface rounded transition-colors cursor-pointer whitespace-nowrap">
-              Set
-            </button>
+          {/* Duration field + transport. Typing commits on Enter/blur, and Start
+              commits too — there is no separate "Set" step to forget. */}
+          <div className="flex items-center gap-xs mb-xs">
+            <input
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
+                if (e.key === 'Escape') { e.preventDefault(); setDraft(fmtSecs(totalSec)); e.currentTarget.blur(); }
+              }}
+              onBlur={commitDraft}
+              onFocus={(e) => e.currentTarget.select()}
+              placeholder="MM:SS"
+              aria-label="Timer duration in minutes and seconds"
+              className="w-[68px] h-7 px-xs bg-surface-container-lowest border border-outline-variant/50 rounded text-center text-[14px] font-bold tabular-nums text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/30 outline-none"
+            />
             <button onClick={handleToggle}
+              title={running ? 'Pause the timer' : 'Start (commits the duration shown)'}
               className={`flex-1 h-7 text-[10px] font-mono uppercase tracking-[0.05em] rounded border transition-colors cursor-pointer ${
                 running
-                  ? 'bg-surface-container-high border-outline-variant/40 text-on-surface-variant hover:border-outline-variant'
+                  ? 'bg-secondary-container/70 border-secondary/50 text-secondary hover:bg-secondary-container'
                   : 'bg-tertiary-container/80 border-tertiary/50 text-tertiary hover:bg-tertiary-container'
               }`}>
-              {running ? '⏸ Pause' : '▶ Start'}
+              {running ? '⏸ Pause' : (totalSec > 0 && remaining !== totalSec ? '▶ Resume' : '▶ Start')}
             </button>
-            <button onClick={handleReset}
+            <button onClick={handleReset} title="Reset to the set duration"
               className="h-7 px-sm text-[10px] font-mono uppercase tracking-[0.05em] bg-surface-container-high border border-outline-variant/40 text-on-surface-variant hover:border-outline-variant hover:text-on-surface rounded transition-colors cursor-pointer">
               ↺
             </button>
           </div>
+
+          {/* Quick durations — replaces the one-minute-per-click spin buttons. */}
+          <div className="flex gap-[4px] mb-xs">
+            {[5, 10, 15, 20, 30].map((m) => (
+              <button key={m} onClick={() => applyQuick(m * 60)}
+                className={`flex-1 h-6 text-[10px] font-mono tabular-nums rounded border transition-colors cursor-pointer ${
+                  totalSec === m * 60
+                    ? 'bg-primary/15 border-primary/50 text-primary'
+                    : 'bg-surface-container-high border-outline-variant/30 text-on-surface-variant hover:text-on-surface hover:border-outline-variant'
+                }`}>
+                {m}m
+              </button>
+            ))}
+          </div>
+
+          <p className="text-[9px] text-outline leading-tight">
+            {remaining < 0
+              ? 'Over time — Pause to stop the overrun, ↺ to reset.'
+              : 'Type minutes (10) or MM:SS (10:30) · Enter to set'}
+          </p>
         </div>
 
         <div className="h-px bg-outline-variant/20" />
