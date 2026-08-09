@@ -393,6 +393,41 @@ function ThemeEditorModal({ theme, initialCategory, onClose, onSaved }) {
 
 // ─── Theme Card ────────────────────────────────────────────────────────────
 
+// Full-size lightbox for a single theme's preview — opened via the card's enlarge
+// button so a large image/gradient/text combo can be inspected before applying it.
+function ThemeEnlargeOverlay({ theme, style, isPresentation, bgThumb, onClose }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } };
+    document.addEventListener('keydown', onKey, true);
+    return () => document.removeEventListener('keydown', onKey, true);
+  }, [onClose]);
+  return createPortal(
+    <div className="fixed inset-0 z-[60] bg-background/95 flex items-center justify-center p-2xl" onMouseDown={onClose}>
+      <div className="w-full max-w-3xl flex flex-col gap-md" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between gap-md">
+          <span className="text-label-sm font-mono font-bold text-on-surface uppercase tracking-[0.05em] truncate min-w-0">{theme.name}</span>
+          <button onClick={onClose} className="text-on-surface-variant hover:text-on-surface cursor-pointer flex items-center shrink-0">
+            <span className="material-symbols-outlined">close</span>
+          </button>
+        </div>
+        <div className="rounded-xl overflow-hidden border border-outline-variant/30 shadow-2xl ring-1 ring-white/5">
+          {isPresentation ? (
+            <StaticSlide elements={buildThemeSlide(style, 'title-sub')} />
+          ) : (
+            <SlidePreview
+              text={SAMPLE_TEXT}
+              runs={[]}
+              style={bgThumb ? { ...style, bgThumb } : style}
+              backgroundPath={theme.background_path ?? null}
+            />
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 function ThemeCard({ theme, services, onEdit, onDelete, onApplied, bgThumb, songApply = true }) {
   const toast = useToast();
   const [selectedServiceId, setSelectedServiceId] = useState(services[0]?.id ?? null);
@@ -400,6 +435,7 @@ function ThemeCard({ theme, services, onEdit, onDelete, onApplied, bgThumb, song
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmApplyAll, setConfirmApplyAll] = useState(false);
   const [feedback, setFeedback] = useState(null);
+  const [enlarged, setEnlarged] = useState(false);
 
   const isBuiltin = !!theme.builtin;
   const style = theme.style_json ? { ...DEFAULT_STYLE, ...JSON.parse(theme.style_json) } : { ...DEFAULT_STYLE };
@@ -463,7 +499,7 @@ function ThemeCard({ theme, services, onEdit, onDelete, onApplied, bgThumb, song
   return (
     <div className="bg-surface-container border border-outline-variant/30 rounded-xl overflow-hidden flex flex-col">
       {/* Slide preview */}
-      <div className="p-sm pb-0">
+      <div className="p-sm pb-0 relative group/preview">
         {isPresentation ? (
           <StaticSlide elements={buildThemeSlide(style, 'title-sub')} />
         ) : (
@@ -474,7 +510,24 @@ function ThemeCard({ theme, services, onEdit, onDelete, onApplied, bgThumb, song
             backgroundPath={theme.background_path ?? null}
           />
         )}
+        <button
+          type="button"
+          title="Enlarge preview"
+          onClick={() => setEnlarged(true)}
+          className="absolute top-sm right-sm w-7 h-7 flex items-center justify-center rounded-lg bg-surface-container-highest/90 border border-outline-variant/40 text-on-surface-variant opacity-0 group-hover/preview:opacity-100 hover:text-on-surface hover:border-primary/60 transition-opacity cursor-pointer"
+        >
+          <span className="material-symbols-outlined text-[16px]">open_in_full</span>
+        </button>
       </div>
+      {enlarged && (
+        <ThemeEnlargeOverlay
+          theme={theme}
+          style={style}
+          isPresentation={isPresentation}
+          bgThumb={bgThumb}
+          onClose={() => setEnlarged(false)}
+        />
+      )}
 
       {/* Name + edit/delete */}
       <div className="px-md pt-sm pb-xs flex items-center justify-between">
