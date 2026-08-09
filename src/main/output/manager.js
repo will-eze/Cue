@@ -1511,6 +1511,23 @@ function resolveLogo(channel) {
   return null;
 }
 
+// What a given channel would actually paint in logo mode — the SAME cascade
+// emitSlides uses (channel logo_override_id → global_logo_id) plus the global
+// scale mode. Exported so the operator's live monitor mirrors logo mode from
+// the real resolution instead of guessing the global logo for every channel.
+export function getLogoInfo(channelId) {
+  const db = getDb();
+  const channel = channelId != null
+    ? (db.prepare('SELECT * FROM output_channels WHERE id = ?').get(channelId) || {})
+    : {};
+  let scaleMode = 'cover';
+  try {
+    const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('logo_scale_mode');
+    if (row) scaleMode = JSON.parse(row.value);
+  } catch {}
+  return { path: resolveLogo(channel), scaleMode };
+}
+
 // Flat background cascade: lock → slot override → song default → live global → black.
 // (Renderer OperatorView.resolveBackground is the live source of truth; this mirror
 // keeps the exported helper honest.)

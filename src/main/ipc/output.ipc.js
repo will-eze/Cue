@@ -9,6 +9,8 @@ export function registerOutputIpc() {
   ipcMain.handle('output:go', (_e, payload) => outputManager.go(payload));
   ipcMain.handle('output:clear', () => outputManager.clear());
   ipcMain.handle('output:logo', () => outputManager.logo());
+  // Read-only: what `channelId` would show in logo mode (per-channel override → global).
+  ipcMain.handle('output:logo-info', (_e, channelId) => outputManager.getLogoInfo(channelId));
   ipcMain.handle('output:setLive', (_e, enabled) => outputManager.setOutputsEnabled(enabled));
   ipcMain.handle('output:getState', () => outputManager.getState());
   ipcMain.handle('output:media:control', (_e, action) => outputManager.mediaControl(action));

@@ -54,6 +54,7 @@ contextBridge.exposeInMainWorld('cue', {
     go: (payload) => ipcRenderer.invoke('output:go', payload),
     clear: () => ipcRenderer.invoke('output:clear'),
     logo: () => ipcRenderer.invoke('output:logo'),
+    logoInfo: (channelId) => ipcRenderer.invoke('output:logo-info', channelId),
     setLive: (enabled) => ipcRenderer.invoke('output:setLive', enabled),
     getState: () => ipcRenderer.invoke('output:getState'),
     media: {

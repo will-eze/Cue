@@ -1585,6 +1585,7 @@ export default function OperatorView({
             previewSlideIdx={previewSlideIdx}
             liveSlideIdx={liveSlideIdx}
             displayMode={displayMode}
+            outputsEnabled={outputsEnabled}
             liveMediaStartAt={liveMediaStartAt}
             onRestartMedia={handleRestartMedia}
             getSlides={getSlides}

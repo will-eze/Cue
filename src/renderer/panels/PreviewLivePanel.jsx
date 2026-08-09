@@ -697,7 +697,52 @@ function LiveInputMonitor({ liveInput }) {
   );
 }
 
-function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroundPath, displayMode, channelTemplate, stageChannelId, ltFontScale = 1, transport, overlay, hideProgram }) {
+// ── What the output window is ACTUALLY showing ───────────────────────────────
+// The live monitor must mirror the real window, not the rundown selection. Main
+// owns facts that override the program slide entirely — every output window
+// closed, `logo` mode, `cleared`, `idle` — so collapse them into one mode and
+// drive the whole frame off it. The preview monitor is never affected: it shows
+// what is STAGED, which is the point of a preview.
+function liveOutputMode(isLive, outputsEnabled, displayMode) {
+  if (!isLive) return 'content';
+  if (!outputsEnabled) return 'off';
+  if (displayMode === 'logo' || displayMode === 'idle' || displayMode === 'cleared') return displayMode;
+  return 'content';
+}
+
+// The logo THIS channel resolves to (its own logo_override_id, else the global)
+// plus the global scale mode — resolved in main by the same helper emitSlides
+// uses, so the monitor can't drift from the window. Refetched on every program
+// state change, which is also when a logo swap in Settings would reach output.
+function useLogoInfo(channelId, active) {
+  const [info, setInfo] = useState(null);
+  useEffect(() => {
+    if (!active) return;
+    let alive = true;
+    const load = () => window.cue.output.logoInfo?.(channelId ?? null)
+      .then((i) => { if (alive) setInfo(i); });
+    load();
+    const off = window.cue.on('output:state-changed', load);
+    return () => { alive = false; off(); };
+  }, [channelId, active]);
+  return info;
+}
+
+// Full-frame logo layer — JSX mirror of fullscreen.js showLogo() + #logo-wrap CSS.
+function LogoLayer({ info }) {
+  if (!info?.path) return null;
+  const fit = info.scaleMode === 'cover' ? 'cover' : 'contain';
+  const box = { width: '100%', height: '100%', objectFit: fit, display: 'block' };
+  return (
+    <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2 }}>
+      {/\.(mp4|webm|mov|avi|m4v)$/i.test(info.path)
+        ? <video src={mediaUrl(info.path)} style={box} autoPlay loop muted playsInline />
+        : <img src={mediaUrl(info.path)} style={box} alt="" />}
+    </div>
+  );
+}
+
+function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroundPath, displayMode, outputsEnabled = true, channelTemplate, stageChannelId, ltFontScale = 1, transport, overlay, hideProgram }) {
   const wrapRef = useRef(null);
   const [scale, setScale] = useState(0.5);
 
@@ -715,8 +760,21 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
   const style  = slide?.style_json ? JSON.parse(slide.style_json) : null;
   const isLT   = channelTemplate === 'lowerthird';
   const isStage = channelTemplate === 'stage';
+
+  // Program state as the windows see it. A lower-third channel clears its band in
+  // logo mode (lowerthird.js treats 'logo' like 'clear') and a stage screen just
+  // dims, so only a fullscreen channel actually paints the logo.
+  const outMode  = liveOutputMode(isLive, outputsEnabled, displayMode);
+  const showLogo = outMode === 'logo' && !isStage && !isLT;
+  const logoInfo = useLogoInfo(stageChannelId, showLogo);
+  // Only 'content' and 'cleared' put the program slide on screen at all — 'logo',
+  // 'idle' and outputs-off replace or remove it, so the monitor must too.
+  const showProgram = !!slide && (outMode === 'content' || outMode === 'cleared');
+
   const isPresentation = item?.item_type === 'presentation';
-  const isLiveInput = item?.item_type === 'live-input';
+  // A live NDI feed only survives in content mode — clear/logo/idle/outputs-off
+  // all release the receiver, so the monitor must stop showing its last thumbnail.
+  const isLiveInput = item?.item_type === 'live-input' && outMode === 'content';
 
   // Attribution line — scripture slides carry "Book c:v (VERSION)", songs use the
   // song copyright. Scripture sits bottom-right; everything else stays centred.
@@ -724,11 +782,17 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
   const copyrightRight = item?.item_type === 'scripture';
   const copyrightStyle = slide?._refStyle ?? null; // scripture reference style
 
-  // The monitor renders the slide from the payload (no screen-capture). In the
-  // live 'cleared' state the audience output keeps the background but hides the
-  // text, so we mirror that by suppressing the text block. A graphics-only
-  // lower-third channel (hideProgram) likewise never shows the song lyric band.
-  const hideText = (isLive && displayMode === 'cleared') || hideProgram;
+  // The monitor renders the slide from the payload (no screen-capture). Anything
+  // other than live 'content' hides the text: 'cleared' keeps the background but
+  // drops the words, and 'logo'/'idle'/outputs-off drop them with everything else.
+  // A graphics-only lower-third channel (hideProgram) never shows the lyric band.
+  const hideText = (isLive && outMode !== 'content') || hideProgram;
+  // 'cleared' is the only non-content mode that keeps the background on screen.
+  const bgPath = (isLive && outMode !== 'content' && outMode !== 'cleared') ? null : backgroundPath;
+  // A clear payload carries no styleJson and the template runs applyStyle(null), so
+  // the theme gradient and the scrim both drop out with the text — only the media
+  // background survives. Gate the style-derived background layers on content mode.
+  const bgStyle = (isLive && outMode !== 'content') ? null : style;
 
   // Match the output templates' default shadow exactly
   const shadow    = style?.textShadow;
@@ -768,13 +832,26 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
       }`}
     >
       {/* Scaled 1920×1080 canvas — pixel-accurate match of the output template.
-          A stage channel renders even with nothing live: the real stage screen is
-          still showing its clock, presenter timer and message bar, so an idle
-          rundown must not blank the monitor. */}
-      {(slide || isStage) ? (
+          Gated on what the WINDOW is showing, not on the rundown: a stage channel
+          renders with nothing live (its clock/timer/message bar are still up) and
+          a logo-mode channel renders with no slide at all, while outputs-off
+          renders nothing because every output window is closed. */}
+      {outMode === 'off' ? (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-xs">
+          <span className="material-symbols-outlined text-outline-variant" style={{ fontSize: 28 }}>desktop_access_disabled</span>
+          <span className="text-label-sm font-label-sm uppercase tracking-widest text-outline-variant">
+            Outputs Offline
+          </span>
+        </div>
+      ) : (showProgram || isStage || showLogo) ? (
         <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
           <div style={{ width: NATIVE_W, height: NATIVE_H, transform: `scale(${scale})`, transformOrigin: 'top left', position: 'relative' }}>
-                {isStage ? (
+                {showLogo ? (
+                  // Logo mode replaces the program entirely — it must win over the
+                  // slide branches below, or a presentation/media cue would keep
+                  // painting under a logo the audience is actually looking at.
+                  <LogoLayer info={logoInfo} />
+                ) : isStage ? (
                   <StageMonitor
                     slide={slide}
                     item={item}
@@ -792,7 +869,7 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
                 ) : isPresentation ? (
                   <PresentationCanvas
                     elements={slide.elements}
-                    backgroundPath={slide.background_path || backgroundPath}
+                    backgroundPath={slide.background_path || bgPath}
                     hideText={hideText}
                   />
                 ) : (
@@ -804,26 +881,26 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
                     backgroundImage: 'repeating-conic-gradient(#1a1a1a 0% 25%, #222 0% 50%)',
                     backgroundSize: '20px 20px',
                   }} />
-                ) : backgroundPath ? (
+                ) : bgPath ? (
                   <div style={{ position: 'absolute', inset: 0 }}>
-                    {/\.(mp4|webm|mov|m4v|avi|mkv)$/i.test(backgroundPath)
+                    {/\.(mp4|webm|mov|m4v|avi|mkv)$/i.test(bgPath)
                       ? (transport?.active
-                        ? <SyncedVideo src={mediaUrl(backgroundPath)} transport={transport} loop={item?.item_type === 'media' && !!item?.media_loop} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        : <video src={mediaUrl(backgroundPath)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} autoPlay loop muted />)
-                      : /\.(mp3|wav|aac|flac|ogg|m4a)$/i.test(backgroundPath)
+                        ? <SyncedVideo src={mediaUrl(bgPath)} transport={transport} loop={item?.item_type === 'media' && !!item?.media_loop} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        : <video src={mediaUrl(bgPath)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} autoPlay loop muted />)
+                      : /\.(mp3|wav|aac|flac|ogg|m4a)$/i.test(bgPath)
                       ? <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                           <span className="material-symbols-outlined" style={{ fontSize: 220, color: '#4ae176' }}>volume_up</span>
                         </div>
-                      : <img src={mediaUrl(backgroundPath)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />}
+                      : <img src={mediaUrl(bgPath)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />}
                   </div>
-                ) : style?.bgCss ? (
+                ) : bgStyle?.bgCss ? (
                   // Theme CSS gradient/solid background (no media asset) — matches fullscreen.js setBackground
-                  <div style={{ position: 'absolute', inset: 0, background: style.bgCss }} />
+                  <div style={{ position: 'absolute', inset: 0, background: bgStyle.bgCss }} />
                 ) : null}
 
                 {/* Background scrim (style.bgScrim) — matches fullscreen.js #scrim */}
-                {!isLT && style?.bgScrim ? (
-                  <div style={{ position: 'absolute', inset: 0, background: '#000', opacity: Math.max(0, Math.min(1, style.bgScrim)), pointerEvents: 'none' }} />
+                {!isLT && bgStyle?.bgScrim ? (
+                  <div style={{ position: 'absolute', inset: 0, background: '#000', opacity: Math.max(0, Math.min(1, bgStyle.bgScrim)), pointerEvents: 'none' }} />
                 ) : null}
 
                 {/* Content */}
@@ -896,8 +973,10 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
       )}
 
       {/* Broadcast-graphics overlay — independent of the program slide; rides on top
-          of any program output (fullscreen + lower-third), mirroring the real windows. */}
-      {overlay && (
+          of any program output (fullscreen + lower-third), mirroring the real windows.
+          It survives clear/logo (its bus is separate) but not outputs-off, which
+          closes the windows the graphic was riding on. */}
+      {overlay && outMode !== 'off' && (
         <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}>
           <div style={{ width: NATIVE_W, height: NATIVE_H, transform: `scale(${scale})`, transformOrigin: 'top left', position: 'relative' }}>
             <GraphicsOverlayLayer overlay={overlay} />
@@ -914,8 +993,8 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
         </span>
       </div>
 
-      {/* ON AIR badge */}
-      {isLive && item && (
+      {/* ON AIR badge — nothing is on air with every output window closed. */}
+      {isLive && item && outMode !== 'off' && (
         <div className="absolute top-2 right-2 flex items-center gap-xs z-20 bg-secondary-container/80 border border-secondary/40 px-sm py-[2px] rounded">
           <span className="w-[5px] h-[5px] rounded-full bg-secondary dot-pulse block" />
           <span className="text-label-sm font-label-sm text-on-secondary-container tracking-wider">ON AIR</span>
@@ -928,7 +1007,7 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
 
 export default function PreviewLivePanel({
   previewItem, liveItem, previewSlideIdx, liveSlideIdx,
-  displayMode, getSlides, previewBgPath, liveBgPath,
+  displayMode, outputsEnabled = true, getSlides, previewBgPath, liveBgPath,
   onSelectPreviewSlide, onGoAtPreviewSlide, onSelectLiveSlide,
   channelTemplate,
   ltFontScale = 1,
@@ -1078,6 +1157,7 @@ export default function PreviewLivePanel({
             isLive={true}
             backgroundPath={liveBgPath}
             displayMode={displayMode}
+            outputsEnabled={outputsEnabled}
             channelTemplate={selectedTemplate}
             stageChannelId={selectedChannel?.id}
             ltFontScale={ltFontScale}
