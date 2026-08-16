@@ -1,8 +1,8 @@
 name: Build installers
 
 # Builds Cue's distributable installers natively on each target OS — the only
-# reliable way to get a Windows .exe (maker-squirrel needs real Windows; Wine on
-# Apple Silicon is too flaky). Produces a GitHub Release you pull with the gh CLI
+# reliable way to get a Windows .exe (the NSIS wizard + native rebuild need real
+# Windows; Wine on Apple Silicon is too flaky). Produces a GitHub Release you pull with the gh CLI
 # (`gh release download <tag>`) — a CLI download sets no macOS quarantine xattr /
 # no Windows mark-of-the-web, so the installers arrive clean (unlike a browser
 # download). The macOS dmg is ad-hoc signed by forge.config.js's postPackage hook
@@ -64,6 +64,18 @@ jobs:
       # ship the needed toolchain: MSVC+Python on Windows, Xcode CLT on macOS).
       - run: npm ci
 
+      # The Windows installer is an NSIS wizard built by forge.config.js's postMake
+      # hook (see there). makensis ships on the GitHub windows runner, but isn't
+      # always on PATH — ensure it exists (choco fallback) and expose its dir.
+      - name: Ensure NSIS (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Get-Command makensis -ErrorAction SilentlyContinue)) {
+            if (-not (Test-Path 'C:\Program Files (x86)\NSIS\makensis.exe')) { choco install nsis -y }
+          }
+          Add-Content $env:GITHUB_PATH 'C:\Program Files (x86)\NSIS'
+
       # yt-dlp + ffmpeg are NOT bundled — the app auto-downloads them into userData on
       # first YouTube use (see src/main/youtube/bin.js), so there is nothing to fetch here.
       - run: npm run make
@@ -102,7 +114,7 @@ jobs:
             $u=(irm https://api.github.com/repos/will-eze/Cue/releases)[0].assets|?{$_.name -like '*Setup.exe'}|select -First 1 -Expand browser_download_url;$o="$env:TEMP\CueSetup.exe";iwr $u -OutFile $o;Start-Process $o
             ```
 
-            The installer places Cue in `%LocalAppData%\Cue` and adds Start-Menu + Desktop shortcuts (the download to `%TEMP%` is only the installer — the app itself is installed permanently and survives a restart).
+            This opens the Cue setup wizard: choose the install location, pick optional components (Desktop shortcut, launch-at-startup, and pre-downloading the media/scripture modules), and finish. Default install location is `%LOCALAPPDATA%\Programs\Cue` (per-user, no admin needed). The download to `%TEMP%` is only the installer — the app itself is installed permanently and survives a restart.
 
             ### macOS
             The build is ad-hoc signed (not notarized), so a **browser** download gets a quarantine flag that Gatekeeper hard-blocks ("Cue is damaged"). Download with the shell instead — paste this into **Terminal** to fetch, install to Applications, and launch:

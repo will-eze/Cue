@@ -34,20 +34,11 @@ import * as outputManager from './output/manager.js';
 import * as graphicsDb from './db/graphics.js';
 import { isAvailable as ndiAvailable } from './output/ndi.js';
 import { thumbCachePath, getThumbnailDir } from './db/media.js';
-import { ffmpegPath, installBinary } from './youtube/bin.js';
+import { ffmpegPath, installBinary, ensureBinaries } from './youtube/bin.js';
+import * as whisperBin from './scripture-detect/whisper-bin.js';
+import * as embedBin from './scripture-detect/embed-bin.js';
 import { checkForUpdate } from './update/updater.js';
 import * as settings from './db/settings.js';
-import squirrelStartup from 'electron-squirrel-startup';
-
-// Squirrel.Windows drives its install/update/uninstall lifecycle by launching the
-// freshly-installed cue.exe with a --squirrel-* flag; the app is expected to create
-// (or remove) its Start-Menu + Desktop shortcuts via Update.exe and quit immediately.
-// `squirrelStartup` performs that shortcut management and returns true during those
-// phases. Without this, install booted the full app instead, NO shortcut was ever
-// created, and after the one-time post-install launch there was no way to relaunch
-// Cue — it looked like the install "vanished" on restart. Must run before whenReady.
-// (Always false on macOS/Linux, so this is a no-op there.)
-if (squirrelStartup) app.quit();
 
 // Must be called synchronously before app is ready
 protocol.registerSchemesAsPrivileged([
@@ -128,7 +119,42 @@ ipcMain.handle('dialog:openFile', async (_event, options) => {
   return result;
 });
 
+// Headless "prefetch" mode, invoked by the Windows NSIS installer as
+// `cue.exe --prefetch=bins,asr` so the user can OPTIONALLY pull the normally
+// download-on-demand modules DURING installation. It reuses the app's own
+// download routines (single source of truth for URLs/versions) — nothing here
+// changes the runtime default, which remains download-on-demand. Runs before any
+// window/DB boot and quits when done. `bins` = yt-dlp + ffmpeg; `asr` = the
+// Whisper speech model + the MiniLM verse-embedding model. Failures are logged,
+// never fatal — a module the installer couldn't fetch just falls back to its
+// normal first-use download inside the running app.
+async function runPrefetch(arg) {
+  const wanted = new Set(
+    String(arg.split('=')[1] || 'all').split(',').map((s) => s.trim()).filter(Boolean)
+  );
+  const all = wanted.has('all');
+  const log = (m) => { try { process.stdout.write(`[prefetch] ${m}\n`); } catch {} };
+  if (all || wanted.has('bins')) {
+    try { log('media tools (yt-dlp + ffmpeg)…'); await ensureBinaries((p) => log(`bins ${p.pct ?? ''}`)); }
+    catch (e) { log(`bins failed: ${e?.message || e}`); }
+  }
+  if (all || wanted.has('asr')) {
+    try { log('speech model…'); await whisperBin.ensureModel(whisperBin.autoModel()); }
+    catch (e) { log(`asr model failed: ${e?.message || e}`); }
+    try { log('verse-embedding model…'); await embedBin.ensureModel(() => {}); }
+    catch (e) { log(`embed model failed: ${e?.message || e}`); }
+  }
+  log('done');
+}
+
 app.whenReady().then(async () => {
+  const prefetchArg = process.argv.find((a) => a.startsWith('--prefetch'));
+  if (prefetchArg) {
+    await runPrefetch(prefetchArg);
+    app.quit();
+    return;
+  }
+
   // Dev-mode Dock icon. In a packaged build the icon comes from the .app bundle
   // (packagerConfig.icon in forge.config.js); `npm start` runs the generic
   // Electron binary, so set it explicitly here. assets/ isn't packaged, so this

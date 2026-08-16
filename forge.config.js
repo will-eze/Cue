@@ -179,6 +179,54 @@ module.exports = {
         execFileSync('codesign', ['--verify', '--deep', '--strict', app], { stdio: 'inherit' });
       }
     },
+    // Build the Windows NSIS wizard installer. Runs after `make` (so the app is
+    // packaged at out/Cue-win32-x64) and only on Windows. Emits
+    // out/make/nsis/Cue-<ver>.Setup.exe — the release workflow's out/make/**/*.exe
+    // glob then uploads it, and the in-app updater's /setup\.exe$/i still matches.
+    // NSIS ships with the GitHub windows runner (only bundled includes are used —
+    // MUI2/LogicLib/Sections — no external plugins), with a choco fallback in CI.
+    postMake: async (_forgeConfig, makeResults) => {
+      if (process.platform !== 'win32') return makeResults;
+      const { execFileSync } = require('child_process');
+      const version = require('./package.json').version;
+      const appDir = path.join(__dirname, 'out', 'Cue-win32-x64');
+      if (!fs.existsSync(appDir)) {
+        throw new Error(`NSIS: packaged app dir not found at ${appDir}`);
+      }
+      const outDir = path.join(__dirname, 'out', 'make', 'nsis');
+      fs.mkdirSync(outDir, { recursive: true });
+
+      // Resolve makensis: PATH first, then the default install location (NSIS does
+      // not add itself to PATH). CI ensures it exists before `make`.
+      const candidates = [
+        'makensis',
+        'C:\\Program Files (x86)\\NSIS\\makensis.exe',
+        'C:\\Program Files\\NSIS\\makensis.exe',
+      ];
+      let makensis = null;
+      for (const c of candidates) {
+        try { execFileSync(c, ['/VERSION'], { stdio: 'ignore' }); makensis = c; break; } catch {}
+      }
+      if (!makensis) throw new Error('NSIS makensis not found (install NSIS on the build machine).');
+
+      execFileSync(makensis, [
+        `/DVERSION=${version}`,
+        `/DAPPDIR=${appDir}`,
+        `/DOUTDIR=${outDir}`,
+        path.join(__dirname, 'installer', 'cue.nsi'),
+      ], { stdio: 'inherit' });
+
+      const setupExe = path.join(outDir, `Cue-${version}.Setup.exe`);
+      if (!fs.existsSync(setupExe)) throw new Error(`NSIS build produced no ${setupExe}`);
+      // Register the artifact so `make` reports it (upload uses the out/make glob).
+      makeResults.push({
+        artifacts: [setupExe],
+        packageJSON: require('./package.json'),
+        platform: 'win32',
+        arch: 'x64',
+      });
+      return makeResults;
+    },
     packageAfterPrune: async (_forgeConfig, buildPath) => {
       // 1. Native externals (+ their dependency closure) into the packaged
       //    node_modules. Runs after Forge's prune so the modules survive into the asar.
@@ -210,10 +258,14 @@ module.exports = {
   },
   makers: [
     {
-      name: '@electron-forge/maker-squirrel',
-      // setupIcon → the Setup.exe installer icon; loadingGif/iconUrl could be
-      // added later. The packaged app's own icon comes from packagerConfig.icon.
-      config: { name: 'cue', setupIcon: './assets/icon.ico' },
+      // Windows distributables are built by the NSIS wizard in the postMake hook
+      // below (install-location picker + component checkboxes + optional module
+      // prefetch — things Squirrel.Windows can't do). Forge still needs a
+      // win32-capable maker so `npm run make` completes its package step; the zip
+      // is a harmless by-product (not uploaded — the release glob matches *.exe).
+      // maker-zip is cross-platform, so it also emits a mac .zip we likewise ignore.
+      name: '@electron-forge/maker-zip',
+      platforms: ['win32'],
     },
     {
       name: '@electron-forge/maker-dmg',
