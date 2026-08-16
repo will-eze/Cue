@@ -632,7 +632,7 @@ src/
 - `vite.preload.config.js` — builds preloads
 - `vite.renderer.config.js` — builds renderer React app
 - `tailwind.config.js` — custom design tokens (see §10)
-- `forge.config.js` — Electron Forge packaging config. `extraResource` for bundled bibles/hymnal; a `packageAfterPrune` hook copies native externals (+ closure) and the plain-DOM `src/output`/`src/fonts` into the package (see §20); `asar.unpack` keeps native modules on the real filesystem.
+- `forge.config.js` — Electron Forge packaging config. `extraResource` for bundled bibles/hymnal; a `packageAfterPrune` hook copies native externals (+ closure) and the plain-DOM `src/output`/`src/fonts` into the package and prunes `onnxruntime-node` to the build's platform/arch (see §20); a `postMake` hook builds the Windows NSIS installer (`installer/cue.nsi`); `asar.unpack` keeps native modules on the real filesystem.
 - `index.html` — Vite renderer entry HTML
 
 **Project-root data/tooling (outside `src/`):**

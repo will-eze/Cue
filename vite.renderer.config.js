@@ -18,7 +18,7 @@ function gitCommitCount() {
 // schema.js so it can never drift from the schema. Bump MINOR/PATCH by hand per the
 // convention in CLAUDE.md (MINOR = features w/o migration; PATCH = fixes/docs/chores).
 const VERSION_MINOR = 1;
-const VERSION_PATCH = 2;
+const VERSION_PATCH = 3;
 
 function schemaVersion() {
   try {
