@@ -31,6 +31,12 @@ Paste this into **PowerShell** (downloads the latest `Setup.exe` and runs the in
 $u=(irm https://api.github.com/repos/will-eze/Cue/releases)[0].assets|?{$_.name -like '*Setup.exe'}|select -First 1 -Expand browser_download_url;$o="$env:TEMP\CueSetup.exe";iwr $u -OutFile $o;Start-Process $o
 ```
 
+Prefer a live **download meter with a time-remaining estimate**? Windows 10 (1803+) and 11 ship a real `curl.exe` — this variant downloads the same installer but shows curl's progress/ETA readout:
+
+```powershell
+$u=(irm https://api.github.com/repos/will-eze/Cue/releases)[0].assets|?{$_.name -like '*Setup.exe'}|select -First 1 -Expand browser_download_url;$o="$env:TEMP\CueSetup.exe";curl.exe -L $u -o $o;Start-Process $o
+```
+
 > [!NOTE]
 > These commands always fetch the **newest** release (including prereleases). To install a specific version instead, grab the installer from the [Releases page](https://github.com/will-eze/Cue/releases) — but note a browser-downloaded `.dmg` will be quarantined and need `xattr -dr com.apple.quarantine /Applications/Cue.app` before it will open.
 

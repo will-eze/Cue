@@ -13,7 +13,7 @@ import { app, shell } from 'electron';
 import https from 'https';
 import fs from 'fs';
 import path from 'path';
-import { execFile } from 'child_process';
+import { execFile, spawn } from 'child_process';
 import semver from 'semver';
 
 const RELEASES_URL = 'https://api.github.com/repos/will-eze/Cue/releases';
@@ -136,11 +136,24 @@ export async function downloadAndInstall(asset, win) {
     await new Promise((resolve) => execFile('xattr', ['-dr', 'com.apple.quarantine', dest], () => resolve()));
   }
 
-  const err = await shell.openPath(dest); // '' on success
-  if (err) return { ok: false, error: err };
+  // Windows: run the NSIS installer SILENTLY (`/S`) so an in-app update reuses the
+  // existing install dir with no wizard, then relaunches Cue itself (cue.nsi's silent
+  // path). A bare `shell.openPath` would pop the full multi-page wizard on every update.
+  // macOS has no installer — `shell.openPath(dmg)` just mounts it for the user to drag.
+  if (process.platform === 'win32') {
+    try {
+      spawn(dest, ['/S'], { detached: true, stdio: 'ignore' }).unref();
+    } catch (e) {
+      return { ok: false, error: `Failed to launch installer: ${e.message || e}` };
+    }
+  } else {
+    const err = await shell.openPath(dest); // '' on success
+    if (err) return { ok: false, error: err };
+  }
 
   // Give the IPC reply time to reach the renderer, then quit so the installer can
-  // replace the running app (macOS can't overwrite a live .app).
+  // replace the running app (Windows can't overwrite a running exe; macOS can't
+  // overwrite a live .app). The silent installer waits briefly for this exit.
   setTimeout(() => app.quit(), 1200);
   return { ok: true, path: dest };
 }

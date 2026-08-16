@@ -66,6 +66,12 @@ InstallDirRegKey HKCU "Software\${APP_NAME}" "InstallDir"
 Section "!${APP_NAME} (required)" SEC_CORE
   SectionIn RO
   SetOutPath "$INSTDIR"
+  ; Silent update: the in-app auto-updater launches this Setup with `/S` and then
+  ; quits Cue ~1.2s later. The old cue.exe may still be exiting, and Windows can't
+  ; overwrite a running exe — wait a moment so the File overwrite below succeeds.
+  ${If} ${Silent}
+    Sleep 2500
+  ${EndIf}
   ; Wipe a prior version's files first so a reinstall/update can't leave stale
   ; DLLs behind, then lay down the freshly packaged app.
   RMDir /r "$INSTDIR\resources\app.asar.unpacked"
@@ -119,6 +125,15 @@ Section "-Prefetch"
   ${If} $0 != ""
     DetailPrint "Downloading selected modules — this can take several minutes…"
     ExecWait '"$INSTDIR\${EXE_NAME}" --prefetch=$0'
+  ${EndIf}
+SectionEnd
+
+; After a SILENT (auto-update) install the Finish page — and its "Launch Cue"
+; checkbox — never shows, so the app wouldn't restart on its own. Relaunch it.
+; Interactive installs skip this and use the Finish-page RUN option instead.
+Section "-Relaunch"
+  ${If} ${Silent}
+    Exec '"$INSTDIR\${EXE_NAME}"'
   ${EndIf}
 SectionEnd
 

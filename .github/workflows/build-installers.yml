@@ -114,6 +114,12 @@ jobs:
             $u=(irm https://api.github.com/repos/will-eze/Cue/releases)[0].assets|?{$_.name -like '*Setup.exe'}|select -First 1 -Expand browser_download_url;$o="$env:TEMP\CueSetup.exe";iwr $u -OutFile $o;Start-Process $o
             ```
 
+            Prefer a live download meter with a time-remaining estimate? Windows 10 (1803+) and 11 ship a real `curl.exe` — this variant downloads the same installer but shows curl's progress/ETA readout:
+
+            ```powershell
+            $u=(irm https://api.github.com/repos/will-eze/Cue/releases)[0].assets|?{$_.name -like '*Setup.exe'}|select -First 1 -Expand browser_download_url;$o="$env:TEMP\CueSetup.exe";curl.exe -L $u -o $o;Start-Process $o
+            ```
+
             This opens the Cue setup wizard: choose the install location, pick optional components (Desktop shortcut, launch-at-startup, and pre-downloading the media/scripture modules), and finish. Default install location is `%LOCALAPPDATA%\Programs\Cue` (per-user, no admin needed). The download to `%TEMP%` is only the installer — the app itself is installed permanently and survives a restart.
 
             ### macOS
