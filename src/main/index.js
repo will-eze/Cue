@@ -37,6 +37,17 @@ import { thumbCachePath, getThumbnailDir } from './db/media.js';
 import { ffmpegPath, installBinary } from './youtube/bin.js';
 import { checkForUpdate } from './update/updater.js';
 import * as settings from './db/settings.js';
+import squirrelStartup from 'electron-squirrel-startup';
+
+// Squirrel.Windows drives its install/update/uninstall lifecycle by launching the
+// freshly-installed cue.exe with a --squirrel-* flag; the app is expected to create
+// (or remove) its Start-Menu + Desktop shortcuts via Update.exe and quit immediately.
+// `squirrelStartup` performs that shortcut management and returns true during those
+// phases. Without this, install booted the full app instead, NO shortcut was ever
+// created, and after the one-time post-install launch there was no way to relaunch
+// Cue — it looked like the install "vanished" on restart. Must run before whenReady.
+// (Always false on macOS/Linux, so this is a no-op there.)
+if (squirrelStartup) app.quit();
 
 // Must be called synchronously before app is ready
 protocol.registerSchemesAsPrivileged([

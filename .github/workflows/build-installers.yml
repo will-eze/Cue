@@ -92,3 +92,17 @@ jobs:
           make_latest: true
           fail_on_unmatched_files: true
           files: dist/**/*
+          body: |
+            ## Install
+
+            ### Windows
+            The installer is not code-signed, so double-clicking `Cue-...Setup.exe` may trip SmartScreen. Easiest path — paste this into **PowerShell** to download the latest Setup and run it:
+
+            ```powershell
+            $u=(irm https://api.github.com/repos/will-eze/Cue/releases)[0].assets|?{$_.name -like '*Setup.exe'}|select -First 1 -Expand browser_download_url;$o="$env:TEMP\CueSetup.exe";iwr $u -OutFile $o;Start-Process $o
+            ```
+
+            The installer places Cue in `%LocalAppData%\Cue` and adds Start-Menu + Desktop shortcuts (the download to `%TEMP%` is only the installer — the app itself is installed permanently and survives a restart).
+
+            ### macOS
+            Download `Cue.dmg` below, open it, and drag **Cue** to Applications. On first launch, right-click the app → **Open** (the build is ad-hoc signed, not notarized).

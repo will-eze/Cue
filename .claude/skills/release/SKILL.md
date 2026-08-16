@@ -133,6 +133,12 @@ The `v*` tag push triggers `.github/workflows/build-installers.yml`, which build
 dmg (macOS arm64 runner) + exe (Windows runner) and publishes a GitHub Release named
 `Cue v<NEW>`.
 
+The workflow's `softprops/action-gh-release` step sets a fixed `body:` with the
+Windows PowerShell install one-liner + macOS drag-to-Applications instructions, so
+**every** release carries the install notes automatically — do not hand-edit release
+notes for this. If the install steps change, edit that `body:` in the workflow, not
+individual releases.
+
 ---
 
 ## Step 6 — Wait for the build to finish
