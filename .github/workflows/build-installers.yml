@@ -105,4 +105,10 @@ jobs:
             The installer places Cue in `%LocalAppData%\Cue` and adds Start-Menu + Desktop shortcuts (the download to `%TEMP%` is only the installer — the app itself is installed permanently and survives a restart).
 
             ### macOS
-            Download `Cue.dmg` below, open it, and drag **Cue** to Applications. On first launch, right-click the app → **Open** (the build is ad-hoc signed, not notarized).
+            The build is ad-hoc signed (not notarized), so a **browser** download gets a quarantine flag that Gatekeeper hard-blocks ("Cue is damaged"). Download with the shell instead — paste this into **Terminal** to fetch, install to Applications, and launch:
+
+            ```bash
+            U=$(curl -s https://api.github.com/repos/will-eze/Cue/releases | grep -o 'https://[^"]*\.dmg' | head -1); curl -L "$U" -o /tmp/Cue.dmg && hdiutil attach /tmp/Cue.dmg -nobrowse -quiet && rm -rf /Applications/Cue.app && cp -R "/Volumes/Cue/Cue.app" /Applications/ && hdiutil detach "/Volumes/Cue" -quiet && xattr -dr com.apple.quarantine /Applications/Cue.app 2>/dev/null; open /Applications/Cue.app
+            ```
+
+            `curl` sets no quarantine flag, so Cue launches directly — no right-click → Open needed.
