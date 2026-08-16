@@ -227,7 +227,7 @@ module.exports = {
       });
       return makeResults;
     },
-    packageAfterPrune: async (_forgeConfig, buildPath) => {
+    packageAfterPrune: async (_forgeConfig, buildPath, _electronVersion, platform, arch) => {
       // 1. Native externals (+ their dependency closure) into the packaged
       //    node_modules. Runs after Forge's prune so the modules survive into the asar.
       const closure = collectClosure(NATIVE_EXTERNALS, __dirname);
@@ -235,6 +235,28 @@ module.exports = {
         const dest = path.join(buildPath, 'node_modules', name);
         fs.mkdirSync(path.dirname(dest), { recursive: true });
         fs.cpSync(src, dest, { recursive: true, dereference: true });
+      }
+
+      // 1b. Prune onnxruntime-node's prebuilt binaries to THIS build's platform/arch.
+      //     The closure copy above brings the WHOLE bin/napi-v6 tree — darwin, linux
+      //     and win32 × x64/arm64, ~210 MB — but a per-platform installer can only
+      //     ever load one of them (bin/napi-v6/<platform>/<arch>). The other four are
+      //     ~135 MB of dead weight in the installed app AND the compressed installer
+      //     (a Windows x64 build was shipping the macOS/Linux/ARM ONNX runtimes).
+      //     `platform`/`arch` come from Forge's afterPrune args (Node's process.*
+      //     values: win32/darwin/linux × x64/arm64) — exactly onnxruntime's dir names.
+      const buildPlatform = platform || process.platform;
+      const buildArch = arch || process.arch;
+      const ortBin = path.join(buildPath, 'node_modules', 'onnxruntime-node', 'bin', 'napi-v6');
+      if (fs.existsSync(ortBin)) {
+        for (const plat of fs.readdirSync(ortBin)) {
+          const platDir = path.join(ortBin, plat);
+          if (!fs.statSync(platDir).isDirectory()) continue;
+          if (plat !== buildPlatform) { fs.rmSync(platDir, { recursive: true, force: true }); continue; }
+          for (const a of fs.readdirSync(platDir)) {
+            if (a !== buildArch) fs.rmSync(path.join(platDir, a), { recursive: true, force: true });
+          }
+        }
       }
 
       // 2. Plain-DOM output windows (src/output/*.html + their js/css) and the

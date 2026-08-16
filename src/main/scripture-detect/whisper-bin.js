@@ -38,6 +38,25 @@ const QUANT = 'q8';
 function cacheDir() { return userDir('whisper-model'); }
 function readyMarker(name) { return path.join(cacheDir(), `.ready-${name}-${QUANT}`); }
 
+// Delete leftover full-precision / alternate-dtype ONNX weights from a model's cache.
+// We only ever load the `*_quantized.onnx` (q8) files, but a PRE-q8 build fetched the
+// fp32 weights and a dtype re-fetch never deletes them (the ready-marker just forces a
+// new download) — so small.en carried ~920 MB of dead fp32 weights (encoder_model.onnx
+// 336 MB + decoder_model_merged.onnx 587 MB) alongside the 238 MB it actually uses.
+// Runs once after a successful load. Guarded to q8 so it can't misfire on a QUANT change.
+function pruneUnusedWeights(name) {
+  if (QUANT !== 'q8') return; // the keep-pattern below assumes the `_quantized` suffix
+  try {
+    const onnxDir = path.join(cacheDir(), MODELS[name].repo, 'onnx');
+    if (!fs.existsSync(onnxDir)) return;
+    for (const f of fs.readdirSync(onnxDir)) {
+      if (!/\.onnx(_data)?$/i.test(f)) continue;          // weight files only
+      if (/_quantized\.onnx(_data)?$/i.test(f)) continue; // keep the q8 weights we load
+      fs.rmSync(path.join(onnxDir, f), { force: true });
+    }
+  } catch { /* best-effort cleanup — never block model load on a prune failure */ }
+}
+
 // Pick a default model from detected hardware: Apple Silicon (fast) → small.en; a
 // roomy multi-core box → small.en; otherwise base.en (real-time on a modern CPU).
 export function autoModel() {
@@ -160,6 +179,7 @@ export function ensureModel(name, onProgress, opts = {}) {
       });
       pipes.set(target, { pipe: next, promptIds: buildPromptIds(next), tail: Promise.resolve() });
       fs.writeFileSync(readyMarker(target), String(Date.now()));
+      pruneUnusedWeights(target); // reclaim any pre-q8 fp32 leftovers now that q8 loaded
       return { ok: true };
     } catch (err) {
       return { ok: false, error: err.message };
