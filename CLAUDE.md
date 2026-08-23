@@ -93,6 +93,8 @@ Semantic colours:
 
 Typography: **Inter everywhere** — body, headlines, AND labels/chips/badges/buttons/timecodes (the `mono`/`label-sm`/`timecode-lg` tokens all map to Inter; use the `tabular-nums` utility where digits must align). Inter is bundled (`src/fonts/fonts.css`, loaded in the operator + every output window) so it always resolves; keep a sans fallback. Do NOT reintroduce JetBrains Mono or any monospace face for UI chrome. **Oswald is output templates only**, never the operator UI.
 
+**Toolbars/headers must stay responsive — controls must never render off-screen on a small/laptop window.** The app shell is `overflow-hidden`, so a fixed, non-shrinking button row gets *clipped* (silently unreachable), not scrolled. A dense button row uses `components/ResponsiveToolbar.jsx` (descriptor-driven priority-plus: drops labels to icon-only, then collapses trailing non-`pinned` items into a "⋯" `AnchoredMenu`). A simpler title-plus-actions header instead gives the flexible middle `min-w-0 truncate` and marks action clusters `shrink-0` — the label shrinks, the buttons keep their space, never the reverse. Do not add a fixed-width, non-collapsing horizontal control row.
+
 ---
 
 ## Architecture Invariants

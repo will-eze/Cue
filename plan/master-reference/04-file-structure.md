@@ -446,6 +446,10 @@ src/
 │   │                              doesn't also close a host modal). Replaces ad-hoc `absolute` + outside-click-effect
 │   │                              dropdowns in SongListImportModal, StageLayoutEditor, TopBarTabs, LibraryPanel's
 │   │                              Import menu, and ScripturePanel's book picker.
+│   │   ├── ResponsiveToolbar.jsx  Priority-plus toolbar that never renders controls off-screen: measures item
+│   │                              widths in a hidden row, drops button labels to icon-only, then collapses trailing
+│   │                              non-pinned items into a "⋯" AnchoredMenu. Descriptor-driven (`items` array); used by
+│   │                              PresentationEditor's element toolbar and LibraryPanel's tab bar. See design-system §10.
 │   │   ├── UpdateAvailableModal.jsx  Launch-time "Update available" prompt (mounted from App.jsx on the
 │   │   │                          `update:available` event fired by main's auto-check §7/§19). Install Now
 │   │   │                          / Later / Skip This Version (persists update_skipped_version, §5).
