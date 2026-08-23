@@ -66,11 +66,11 @@ export default function ScenesPanel() {
     <div className="flex flex-col h-full bg-surface-container-low min-h-0">
       {/* Toolbar */}
       <div className="flex items-center gap-sm px-md h-11 border-b border-outline-variant/30 shrink-0">
-        <span className="material-symbols-outlined text-[18px] text-primary">bolt</span>
-        <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant">Scenes</span>
-        <span className="text-[10px] font-mono text-on-surface-variant/50 normal-case tracking-normal ml-xs">one-press output state recall</span>
+        <span className="material-symbols-outlined text-[18px] text-primary shrink-0">bolt</span>
+        <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant shrink-0">Scenes</span>
+        <span className="text-[10px] font-mono text-on-surface-variant/50 normal-case tracking-normal ml-xs min-w-0 truncate">one-press output state recall</span>
         <button onClick={() => setEditor({})}
-          className="ml-auto flex items-center gap-xs px-md py-xs rounded text-label-sm font-label-sm bg-primary text-on-primary font-bold hover:brightness-110 cursor-pointer">
+          className="ml-auto shrink-0 flex items-center gap-xs px-md py-xs rounded text-label-sm font-label-sm bg-primary text-on-primary font-bold hover:brightness-110 cursor-pointer">
           <span className="material-symbols-outlined text-[14px]">add</span> New Scene
         </button>
       </div>

@@ -247,7 +247,7 @@ export default function App() {
               ? 'No output windows open — enable outputs with the Live button'
               : 'GO — send preview to live (G)'
           }
-          className="h-7 px-lg text-headline-md font-display-lg font-extrabold uppercase tracking-widest bg-tertiary text-on-tertiary rounded transition-all active:scale-95 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed hover:opacity-90"
+          className="shrink-0 h-7 px-lg text-headline-md font-display-lg font-extrabold uppercase tracking-widest bg-tertiary text-on-tertiary rounded transition-all active:scale-95 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed hover:opacity-90"
         >
           GO
         </button>
@@ -256,7 +256,7 @@ export default function App() {
         <button
           onClick={() => transportRef.current.clear()}
           title="Clear output (Esc)"
-          className={`h-7 px-md text-label-sm font-label-sm font-bold uppercase rounded transition-all active:scale-95 cursor-pointer flex items-center gap-xs ${
+          className={`shrink-0 h-7 px-md text-label-sm font-label-sm font-bold uppercase rounded transition-all active:scale-95 cursor-pointer flex items-center gap-xs ${
             displayMode === 'cleared'
               ? 'bg-error-container text-error border border-error/70 shadow-[0_0_8px_rgba(255,180,171,0.2)]'
               : 'bg-surface-container-high border border-error/40 text-error/80 hover:border-error hover:text-error hover:bg-error/5'
@@ -272,7 +272,7 @@ export default function App() {
         <button
           onClick={() => transportRef.current.logo()}
           title="Show logo (L)"
-          className={`h-7 px-md text-label-sm font-label-sm font-bold uppercase rounded transition-all active:scale-95 cursor-pointer flex items-center gap-xs ${
+          className={`shrink-0 h-7 px-md text-label-sm font-label-sm font-bold uppercase rounded transition-all active:scale-95 cursor-pointer flex items-center gap-xs ${
             displayMode === 'logo'
               ? 'bg-primary-container/40 text-primary border border-primary/70 shadow-[0_0_8px_rgba(173,198,255,0.2)]'
               : 'bg-surface-container-high border border-primary/40 text-primary/80 hover:border-primary hover:text-primary hover:bg-primary/5'
@@ -290,7 +290,7 @@ export default function App() {
         <button
           onClick={() => window.cue.output.setLive(!outputsEnabled)}
           title={outputsEnabled ? 'Outputs running — click to close all output windows' : 'Outputs offline — click to open output windows'}
-          className={`h-7 px-md text-label-sm font-label-sm font-bold uppercase rounded transition-all active:scale-95 cursor-pointer flex items-center gap-xs ${
+          className={`shrink-0 h-7 px-md text-label-sm font-label-sm font-bold uppercase rounded transition-all active:scale-95 cursor-pointer flex items-center gap-xs ${
             outputsEnabled
               ? 'bg-secondary-container/60 border border-secondary/50 text-secondary hover:bg-secondary-container/80'
               : 'bg-surface-container-high border border-outline-variant/30 text-on-surface-variant/50 hover:border-outline-variant/60'
@@ -301,7 +301,7 @@ export default function App() {
         </button>
 
         {/* STAGE — opens confidence monitor controls */}
-        <div className="relative" ref={stagePanelRef}>
+        <div className="relative shrink-0" ref={stagePanelRef}>
           <button
             onClick={() => setStageOpen((v) => !v)}
             title="Stage display controls"

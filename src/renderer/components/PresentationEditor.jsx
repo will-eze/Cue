@@ -16,6 +16,7 @@ import useEditHistory, { useUndoRedoKeys } from '../utils/useEditHistory';
 import { useFonts } from '../utils/fonts';
 import { mediaUrl } from '../utils/mediaUrl';
 import { StaticSlide } from './SlideElements';
+import ResponsiveToolbar from './ResponsiveToolbar';
 import { PRES_LAYOUTS, PLAIN_THEME, buildThemeSlide, reskinSlide, detectThemeId } from '../utils/presentationThemes';
 
 const NATIVE_W = 1920;
@@ -404,7 +405,7 @@ export default function PresentationEditor({ presentationId, onClose, onSave }) 
   // Add a slide from a saved presentation template (uses the template's elements directly).
   async function addTemplateSlide(templateId) {
     setNewSlideOpen(false);
-    const tpl = await window.cue.presentationTemplates.get(templateId);
+    const tpl = await window.cue.presentations.templates.get(templateId);
     if (!tpl) return;
     const nextIdx = slides.length;
     const els = Array.isArray(tpl.elements) ? tpl.elements.map((e) => ({ ...e, id: newId() })) : [];
@@ -564,19 +565,22 @@ export default function PresentationEditor({ presentationId, onClose, onSave }) 
 
         {/* Canvas + add toolbar */}
         <div className="flex-1 min-w-0 flex flex-col bg-background">
-          <div className="flex items-center gap-xs px-md h-11 border-b border-outline-variant/30 bg-surface-container-low shrink-0">
-            <AddBtn icon="title" label="Text" onClick={() => addElement(newTextElement())} />
-            <AddBtn icon="image" label="Image" onClick={() => setPicker('element')} />
-            <AddBtn icon="rectangle" label="Rect" onClick={() => addElement(newShapeElement('rect'))} />
-            <AddBtn icon="circle" label="Ellipse" onClick={() => addElement(newShapeElement('ellipse'))} />
-            <AddBtn icon="horizontal_rule" label="Line" onClick={() => addElement(newShapeElement('line'))} />
-            <div className="w-px h-5 bg-outline-variant/40 mx-xs" />
-            <AddBtn icon="wallpaper" label="Background" onClick={() => setPicker('background')} />
-            {slide?.background_path && <AddBtn icon="hide_image" label="Clear BG" onClick={() => patchSlide({ background_id: null, background_path: null })} />}
-            <div className="ml-auto" />
-            <AddBtn icon="palette" label="Apply Theme" onClick={() => setApplyOpen(true)} />
-            <AddBtn icon="bookmark_add" label="Save as Template" onClick={() => setSaveTemplateOpen(true)} />
-          </div>
+          <ResponsiveToolbar
+            className="px-md h-11 border-b border-outline-variant/30 bg-surface-container-low shrink-0"
+            items={[
+              { kind: 'button', id: 'text', icon: 'title', label: 'Text', onClick: () => addElement(newTextElement()) },
+              { kind: 'button', id: 'image', icon: 'image', label: 'Image', onClick: () => setPicker('element') },
+              { kind: 'button', id: 'rect', icon: 'rectangle', label: 'Rect', onClick: () => addElement(newShapeElement('rect')) },
+              { kind: 'button', id: 'ellipse', icon: 'circle', label: 'Ellipse', onClick: () => addElement(newShapeElement('ellipse')) },
+              { kind: 'button', id: 'line', icon: 'horizontal_rule', label: 'Line', onClick: () => addElement(newShapeElement('line')) },
+              { kind: 'divider' },
+              { kind: 'button', id: 'bg', icon: 'wallpaper', label: 'Background', onClick: () => setPicker('background') },
+              ...(slide?.background_path ? [{ kind: 'button', id: 'clearbg', icon: 'hide_image', label: 'Clear BG', onClick: () => patchSlide({ background_id: null, background_path: null }) }] : []),
+              { kind: 'spacer' },
+              { kind: 'button', id: 'theme', icon: 'palette', label: 'Apply Theme', onClick: () => setApplyOpen(true) },
+              { kind: 'button', id: 'savetpl', icon: 'bookmark_add', label: 'Save as Template', onClick: () => setSaveTemplateOpen(true) },
+            ]}
+          />
           <div className="flex-1 min-h-0 flex items-center justify-center p-lg overflow-hidden">
             <div ref={canvasRef} onPointerDown={() => { setSelId(null); setEditingId(null); }}
               className="relative bg-black shadow-2xl ring-1 ring-white/10 overflow-hidden"
@@ -656,14 +660,6 @@ export default function PresentationEditor({ presentationId, onClose, onSave }) 
   );
 }
 
-function AddBtn({ icon, label, onClick }) {
-  return (
-    <button onClick={onClick} title={label}
-      className="flex items-center gap-xs px-sm py-1 rounded text-label-sm font-label-sm text-on-surface-variant hover:bg-surface-variant hover:text-on-surface transition-colors">
-      <span className="material-symbols-outlined text-[16px]">{icon}</span>{label}
-    </button>
-  );
-}
 function MenuItem({ children, onClick, danger }) {
   return <button onClick={onClick} className={`block w-full text-left px-md py-xs hover:bg-surface-variant transition-colors ${danger ? 'text-error' : 'text-on-surface'}`}>{children}</button>;
 }
@@ -728,7 +724,7 @@ function SaveTemplateModal({ elements, backgroundId, onClose }) {
 
   async function doSave() {
     if (!name.trim()) return;
-    await window.cue.presentationTemplates.create({ name: name.trim(), elements, background_id: backgroundId || null });
+    await window.cue.presentations.templates.create({ name: name.trim(), elements, background_id: backgroundId || null });
     setSaved(true);
     setTimeout(onClose, 1000);
   }
@@ -781,7 +777,7 @@ function NewSlideModal({ currentElements, onAdd, onAddTemplate, onClose }) {
   useEscape(onClose);
 
   useEffect(() => {
-    window.cue.presentationTemplates.list().then(setTemplates);
+    window.cue.presentations.templates.list().then(setTemplates);
   }, []);
 
   // Once themes load, default the selection to the deck's current theme (one-shot, so

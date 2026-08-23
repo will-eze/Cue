@@ -192,11 +192,11 @@ export default function GraphicsPanel() {
     <div className="flex flex-col h-full bg-surface-container-low min-h-0">
       {/* Toolbar */}
       <div className="flex items-center gap-sm px-md h-11 border-b border-outline-variant/30 shrink-0">
-        <span className="material-symbols-outlined text-[18px] text-primary">branding_watermark</span>
-        <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant">Broadcast Graphics</span>
+        <span className="material-symbols-outlined text-[18px] text-primary shrink-0">branding_watermark</span>
+        <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant min-w-0 truncate">Broadcast Graphics</span>
 
         {/* Live destination override — Default, or any combination of kinds */}
-        <div className="ml-md flex items-center gap-[2px] bg-surface-container rounded-lg p-[3px]" title="Where graphics are sent — In-Room = screens, Online = NDI, Stream = the broadcast composite. Combine any.">
+        <div className="ml-md shrink-0 flex items-center gap-[2px] bg-surface-container rounded-lg p-[3px]" title="Where graphics are sent — In-Room = screens, Online = NDI, Stream = the broadcast composite. Combine any.">
           <span className="material-symbols-outlined text-[14px] text-on-surface-variant/50 ml-1">send</span>
           <button onClick={() => { setDest([]); localStorage.setItem('cue.graphics.destOverride', '[]'); }}
             className={`flex items-center gap-xs px-sm py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] transition-colors cursor-pointer ${
@@ -214,7 +214,7 @@ export default function GraphicsPanel() {
           ))}
         </div>
 
-        <div className="ml-auto flex items-center gap-sm">
+        <div className="ml-auto shrink-0 flex items-center gap-sm">
           {anyLive && (
             confirmClearAll ? (
               <div className="flex items-center gap-xs">

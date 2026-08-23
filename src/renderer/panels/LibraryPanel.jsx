@@ -7,6 +7,7 @@ import SongScrapeModal from '../components/SongScrapeModal';
 import SongEditor from '../components/SongEditor';
 import ContextMenu from '../components/ContextMenu';
 import AnchoredMenu from '../components/AnchoredMenu';
+import ResponsiveToolbar from '../components/ResponsiveToolbar';
 import ScripturePanel from './ScripturePanel';
 import GraphicsPanel from './GraphicsPanel';
 import ScenesAndOutputsPanel from './ScenesAndOutputsPanel';
@@ -811,29 +812,24 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
     <div className="flex flex-col h-full bg-surface-container-low border-t border-outline-variant/30">
       {/* Panel header */}
       <div className="flex items-center px-md h-12 bg-surface-container-high border-b border-outline-variant/30 shrink-0">
-        {/* Tabs */}
-        <div className="flex h-full items-center">
-          <LibTab active={tab === 'songs'} onClick={() => setTab('songs')}>
-            Songs{tab === 'songs' && displaySongs.length > 0 ? ` · ${displaySongs.length}` : ''}
-          </LibTab>
-          <LibTab active={tab === 'media'} onClick={() => setTab('media')}>
-            Media{tab === 'media' && mediaSubTab === 'files' && mediaAssets.length > 0 ? ` · ${mediaAssets.length}` : ''}
-          </LibTab>
-          <LibTab active={tab === 'scripture'} onClick={() => setTab('scripture')}>
-            Scripture
-          </LibTab>
-          <LibTab active={tab === 'presentations'} onClick={() => setTab('presentations')}>
-            Presentations{tab === 'presentations' && presentations.length > 0 ? ` · ${presentations.length}` : ''}
-          </LibTab>
-          <LibTab active={tab === 'graphics'} onClick={() => setTab('graphics')}>
-            Graphics
-          </LibTab>
-          <LibTab active={tab === 'scenes'} onClick={() => setTab('scenes')}>
-            Scenes
-          </LibTab>
-        </div>
+        {/* Tabs — collapse into a "⋯" menu when the panel is too narrow for all
+            six; the active tab is pinned so it's always visible. */}
+        <ResponsiveToolbar
+          className="h-full flex-1 min-w-0"
+          gap={0}
+          menuAlign="left"
+          moreClassName="h-full px-md flex items-center gap-xs text-label-sm font-label-sm text-on-surface-variant hover:bg-surface-variant hover:text-on-surface border-b-2 border-transparent cursor-pointer shrink-0"
+          items={[
+            { kind: 'button', id: 'songs', keepLabel: true, active: tab === 'songs', pinned: tab === 'songs', className: libTabCls(tab === 'songs'), onClick: () => setTab('songs'), label: `Songs${tab === 'songs' && displaySongs.length > 0 ? ` · ${displaySongs.length}` : ''}` },
+            { kind: 'button', id: 'media', keepLabel: true, active: tab === 'media', pinned: tab === 'media', className: libTabCls(tab === 'media'), onClick: () => setTab('media'), label: `Media${tab === 'media' && mediaSubTab === 'files' && mediaAssets.length > 0 ? ` · ${mediaAssets.length}` : ''}` },
+            { kind: 'button', id: 'scripture', keepLabel: true, active: tab === 'scripture', pinned: tab === 'scripture', className: libTabCls(tab === 'scripture'), onClick: () => setTab('scripture'), label: 'Scripture' },
+            { kind: 'button', id: 'presentations', keepLabel: true, active: tab === 'presentations', pinned: tab === 'presentations', className: libTabCls(tab === 'presentations'), onClick: () => setTab('presentations'), label: `Presentations${tab === 'presentations' && presentations.length > 0 ? ` · ${presentations.length}` : ''}` },
+            { kind: 'button', id: 'graphics', keepLabel: true, active: tab === 'graphics', pinned: tab === 'graphics', className: libTabCls(tab === 'graphics'), onClick: () => setTab('graphics'), label: 'Graphics' },
+            { kind: 'button', id: 'scenes', keepLabel: true, active: tab === 'scenes', pinned: tab === 'scenes', className: libTabCls(tab === 'scenes'), onClick: () => setTab('scenes'), label: 'Scenes' },
+          ]}
+        />
 
-        <div className="ml-auto flex items-center gap-md">
+        <div className="ml-auto flex items-center gap-md shrink-0">
           {/* GHS number quick-search — shown when the GHS folder is the active filter */}
           {tab === 'songs' && isGhsView && (
             <div className="relative">
@@ -1354,20 +1350,12 @@ function PresentationCard({ pres, onEdit, onAddToRundown, onContextMenu }) {
   );
 }
 
-function LibTab({ active, onClick, children }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`h-full px-lg text-label-sm font-label-sm cursor-pointer transition-colors ${
-        active
-          ? 'text-primary border-b-2 border-primary'
-          : 'text-on-surface-variant hover:bg-surface-variant border-b-2 border-transparent'
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
+const libTabCls = (active) =>
+  `h-full px-lg text-label-sm font-label-sm cursor-pointer transition-colors border-b-2 whitespace-nowrap ${
+    active
+      ? 'text-primary border-primary'
+      : 'text-on-surface-variant hover:bg-surface-variant border-transparent'
+  }`;
 
 // Pill sub-tab inside the Media panel (Files vs Live Inputs).
 function MediaSubTab({ active, onClick, icon, children }) {
