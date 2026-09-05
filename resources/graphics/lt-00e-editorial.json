@@ -1,0 +1,14 @@
+{
+  "name": "Editorial Serif",
+  "kind": "lower_third",
+  "graphic": {
+    "label": "Editorial Serif",
+    "name": "Sarah Bennett",
+    "title": "Worship Pastor",
+    "style_json": {
+      "accentSource": "theme", "fontSource": "custom",
+      "name":  { "fontFamily": "Cormorant Garamond", "fontSize": 62, "color": "#ffffff", "bold": false, "align": "left", "verticalAlign": "bottom", "textBox": { "x": 5, "y": 73, "w": 58, "h": 19 }, "ltBar": { "css": "linear-gradient(to top, rgba(12,10,8,0.94) 0%, rgba(12,10,8,0.8) 62%, rgba(12,10,8,0) 100%)" } },
+      "title": { "fontFamily": "Inter", "fontSize": 22, "color": "#d8ab5a", "bold": false, "align": "left", "uppercase": true, "letterSpacing": 0.1 }
+    }
+  }
+}

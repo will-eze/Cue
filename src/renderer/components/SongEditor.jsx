@@ -8,6 +8,8 @@ import useEditHistory, { useUndoRedoKeys } from '../utils/useEditHistory';
 import { useToast } from './Toast';
 import { mediaUrl } from '../utils/mediaUrl';
 import { sectionOrdinals, sectionLabels, SLIDE_BREAK } from '../utils/sectionLabels';
+import { normalizeLookStyle } from '../utils/presentationThemes';
+import TreatmentOverlays, { glassBoxStyle } from './TreatmentOverlays';
 import { useFonts } from '../utils/fonts';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
@@ -41,10 +43,47 @@ export const DEFAULT_STYLE = {
   textBox:          null,
   boxFill:          null,  // {enabled,color,opacity,radius,pad} — fill panel behind the text box
   ltBar:            null,
+  // Lower-third role overrides. A theme (or song) can style the lower third
+  // independently of the fullscreen look — e.g. drop the shadow on the overlay
+  // while keeping it on the fullscreen slide. Any key PRESENT here overrides the
+  // matching fullscreen value; absent = inherit. See resolveLtStyle().
+  lt:               null,  // { textShadow?, fontFamily?, color?, uppercase?, ... }
+  // Accent — one colour that shows as a rule on the lower third; can be turned off.
+  accent:           null,  // { enabled: bool, color: '#rrggbb' }
   listStyle:        null,  // null|'disc'|'decimal'
   bulletSpacing:    null,  // em — gap after each bullet item
   paragraphSpacing: null,  // em — gap between \n\n-separated blocks
 };
+
+// Which fullscreen style fields the lower-third role may override. Kept in sync
+// with output/lowerthird.js resolveLtStyle (that file can't import from here).
+export const LT_OVERRIDE_KEYS = [
+  'fontFamily', 'color', 'uppercase', 'align', 'bold', 'italic',
+  'letterSpacing', 'lineSpacing', 'textShadow', 'textStroke', 'fontSize',
+];
+
+// Resolve the effective lower-third text style: base fullscreen style with any
+// `style.lt` overrides applied on top. Runs and every non-overridden field are
+// inherited unchanged. Returns the base object untouched when there are no
+// overrides. Mirrored verbatim (plain JS) in output/lowerthird.js.
+export function resolveLtStyle(style) {
+  if (!style || !style.lt) return style;
+  const out = { ...style };
+  for (const k of LT_OVERRIDE_KEYS) if (k in style.lt) out[k] = style.lt[k];
+  return out;
+}
+
+// The accent rule shown beneath the lower-third text when the theme enables it.
+// Authored at 1920×1080 scale; the preview/monitor scale it with the canvas.
+export function accentRuleStyle(accent) {
+  if (!accent || !accent.enabled) return null;
+  return {
+    width: '160px', height: '6px', borderRadius: '3px',
+    background: accent.color || '#e7c98a',
+    margin: '18px auto 0',
+    alignSelf: 'center',
+  };
+}
 
 const TEXTBOX_PRESETS = [
   { label: 'Full',   value: null },
@@ -200,6 +239,7 @@ export function styleIsDefault(s) {
     !s.underline && !s.strikethrough && !s.uppercase && (!s.align || s.align === 'center') &&
     (!s.verticalAlign || s.verticalAlign === 'center') &&
     !s.lineSpacing && !s.letterSpacing && !s.textShadow && !s.textStroke && !s.textBox && !s.boxFill && !s.ltBar &&
+    !s.lt && !s.accent && (!s.bgSpeed || s.bgSpeed === 1) && !s.treatment &&
     !s.bgCss && !s.bgScrim && !s.listStyle && !s.bulletSpacing && !s.paragraphSpacing;
 }
 
@@ -428,12 +468,28 @@ function resizeBox(s, hx, hy, dx, dy) {
 // Snap targets for the text box: frame edges/centre/thirds + the safe-area lines.
 const TB_SNAP_TARGETS = buildSnapTargets({ contentBox: CONTENT_BOX });
 
+// A muted looping background <video> that honours a playback `speed` (theme
+// bgSpeed, default 1× = normal). Mirrors output/fullscreen.js so previews match.
+export function BgVideo({ src, speed = 1, style, className }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const v = ref.current;
+    if (!v) return;
+    const apply = () => { try { v.playbackRate = Math.max(0.1, Math.min(2, Number(speed) || 1)); } catch {} };
+    apply();
+    v.addEventListener('loadedmetadata', apply);
+    return () => v.removeEventListener('loadedmetadata', apply);
+  }, [speed, src]);
+  return <video ref={ref} src={src} style={style} className={className} autoPlay loop muted playsInline />;
+}
+
 export function SlidePreview({ text, runs, style, backgroundPath, copyright, copyrightAlign, copyrightStyle, onTextBoxChange, onRefPosChange, onCanvasTextChange }) {
   const wrapRef  = useRef(null);
   const [scale, setScale] = useState(0.5);
   const scaleRef = useRef(scale);
   scaleRef.current = scale;
   const [isEditing, setIsEditing] = useState(false);
+  const [hovered, setHovered] = useState(false); // reveal the safe-area guide only on hover
   const [guides, setGuides] = useState([]); // smart-snap guide lines during a drag
   const textEditRef = useRef(null);
 
@@ -522,7 +578,9 @@ export function SlidePreview({ text, runs, style, backgroundPath, copyright, cop
     justifyContent: style?.verticalAlign === 'top' ? 'flex-start' : style?.verticalAlign === 'bottom' ? 'flex-end' : 'center',
     overflow:       'hidden',
     boxSizing:      'border-box',
-    ...buildBoxFillCss(style?.boxFill),
+    // Frosted glass panel (treatment.glass) supersedes the plain boxFill. Native px so
+    // the canvas transform:scale shrinks it to match output (like fontSize).
+    ...(glassBoxStyle(style, 1) || buildBoxFillCss(style?.boxFill)),
   };
 
   const textCss = {
@@ -548,6 +606,8 @@ export function SlidePreview({ text, runs, style, backgroundPath, copyright, cop
   return (
     <div
       ref={wrapRef}
+      onPointerEnter={() => setHovered(true)}
+      onPointerLeave={() => setHovered(false)}
       style={{ position: 'relative', width: '100%', aspectRatio: '16/9', background: '#000', borderRadius: '8px', overflow: 'hidden', flexShrink: 0 }}
     >
       {/* Smart-snap guide lines — % positions map 1:1 onto the 16:9 wrapper. */}
@@ -559,7 +619,7 @@ export function SlidePreview({ text, runs, style, backgroundPath, copyright, cop
           {backgroundPath ? (
             <div style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
               {/\.(mp4|webm|mov)$/i.test(backgroundPath)
-                ? <video src={mediaUrl(backgroundPath)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} autoPlay loop muted />
+                ? <BgVideo src={mediaUrl(backgroundPath)} speed={style?.bgSpeed} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 : <img src={mediaUrl(backgroundPath)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />}
             </div>
           ) : style?.bgThumb ? (
@@ -569,17 +629,19 @@ export function SlidePreview({ text, runs, style, backgroundPath, copyright, cop
           ) : style?.bgCss ? (
             <div style={{ position: 'absolute', inset: 0, zIndex: 0, background: style.bgCss }} />
           ) : null}
-          {/* Adjustable dark scrim over the background (style.bgScrim, 0→1) */}
-          {style?.bgScrim ? (
-            <div style={{ position: 'absolute', inset: 0, zIndex: 1, background: '#000', opacity: Math.max(0, Math.min(1, style.bgScrim)), pointerEvents: 'none' }} />
-          ) : null}
-          {/* Content window guide — fixed safe area (not interactive) */}
-          <div style={{
-            position: 'absolute',
-            left: `${(CONTENT_BOX.x / 100) * SLIDE_W}px`, top: `${(CONTENT_BOX.y / 100) * SLIDE_H}px`,
-            width: `${(CONTENT_BOX.w / 100) * SLIDE_W}px`, height: `${(CONTENT_BOX.h / 100) * SLIDE_H}px`,
-            border: '1px dashed rgba(255,255,255,0.18)', boxSizing: 'border-box', zIndex: 1, pointerEvents: 'none',
-          }} />
+          {/* Theme treatment stack (directional scrim, vignette, grain, grade) — mirrors
+              output/fullscreen.js. No z-index so the grade blends with the bg above. */}
+          <TreatmentOverlays style={style} />
+          {/* Content window guide — safe area. Only while editable AND hovered, so a
+              finished-looking preview (theme cards, monitors, read-only) stays clean. */}
+          {tbDraggable && hovered && (
+            <div style={{
+              position: 'absolute',
+              left: `${(CONTENT_BOX.x / 100) * SLIDE_W}px`, top: `${(CONTENT_BOX.y / 100) * SLIDE_H}px`,
+              width: `${(CONTENT_BOX.w / 100) * SLIDE_W}px`, height: `${(CONTENT_BOX.h / 100) * SLIDE_H}px`,
+              border: '1px dashed rgba(255,255,255,0.18)', boxSizing: 'border-box', zIndex: 1, pointerEvents: 'none',
+            }} />
+          )}
 
           {/* Text box content */}
           <div style={{ ...textBoxCss, zIndex: 2 }}>
@@ -687,19 +749,29 @@ export function LowerThirdPreview({ text, runs, style, copyright, copyrightAlign
     return () => ro.disconnect();
   }, []);
 
+  // Lower third gets its own resolved style (fullscreen look + any `lt` overrides).
+  const s = resolveLtStyle(style);
+  const accentCss = accentRuleStyle(s?.accent);
+
+  // Approximate the output's lt.maxLines auto-shrink (output measures precisely; here we
+  // scale by authored line count so the editor shows the cap working).
+  const ltMax = Number(style?.lt?.maxLines) || 0;
+  const ltLineCount = (text || '').split('\n').filter((l) => l.trim()).length || 1;
+  const ltShrink = (ltMax > 0 && ltLineCount > ltMax) ? (ltMax / ltLineCount) : 1;
+
   const textCss = {
-    fontFamily:       style?.fontFamily || undefined,
-    fontSize:         `${style?.fontSize ?? 48}px`,
-    fontWeight:       style?.bold ? 700 : 400,
-    fontStyle:        style?.italic ? 'italic' : 'normal',
-    textDecoration:   buildDecorationCss(style),
-    color:            style?.color || '#ffffff',
-    textAlign:        style?.align || 'center',
-    lineHeight:       style?.lineSpacing ? String(style.lineSpacing) : '1.2',
-    letterSpacing:    style?.letterSpacing ? `${style.letterSpacing}em` : undefined,
-    textTransform:    style?.uppercase ? 'uppercase' : 'none',
-    textShadow:       buildShadowCss(style?.textShadow) || '0 2px 8px rgba(0,0,0,0.6)',
-    WebkitTextStroke: buildStrokeCss(style?.textStroke),
+    fontFamily:       s?.fontFamily || undefined,
+    fontSize:         `${(s?.fontSize ?? 48) * ltShrink}px`,
+    fontWeight:       s?.bold ? 700 : 400,
+    fontStyle:        s?.italic ? 'italic' : 'normal',
+    textDecoration:   buildDecorationCss(s),
+    color:            s?.color || '#ffffff',
+    textAlign:        s?.align || 'center',
+    lineHeight:       s?.lineSpacing ? String(s.lineSpacing) : '1.2',
+    letterSpacing:    s?.letterSpacing ? `${s.letterSpacing}em` : undefined,
+    textTransform:    s?.uppercase ? 'uppercase' : 'none',
+    textShadow:       buildShadowCss(s?.textShadow) || '0 2px 8px rgba(0,0,0,0.6)',
+    WebkitTextStroke: buildStrokeCss(s?.textStroke),
     whiteSpace:       'pre-wrap',
     wordBreak:        'break-word',
   };
@@ -722,18 +794,32 @@ export function LowerThirdPreview({ text, runs, style, copyright, copyrightAlign
       }} />
       <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', zIndex: 1 }}>
         <div style={{ width: `${SLIDE_W}px`, height: `${SLIDE_H}px`, transform: `scale(${scale})`, transformOrigin: 'top left', position: 'relative' }}>
-          {/* Lower third bar — background controlled by style.ltBar; transparent by default. */}
-          <div style={{
-            position: 'absolute', bottom: 0, left: 0, right: 0,
-            padding: '24px 60px 32px',
-            background: buildBarBg(style?.ltBar),
-            minHeight: '160px',
-            display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
-            zIndex: 1,
-          }}>
-            <div style={textCss} dangerouslySetInnerHTML={{ __html: renderTextContent(text || '', runs || [], style) }} />
-            {copyright && <div style={copyrightStyleCss}>{copyright}</div>}
-          </div>
+          {/* Lower third — form (band/box/pill/none) + anchor mirror output/lowerthird.js. */}
+          {(() => {
+            const form = style?.lt?.form || 'band';
+            const anchor = style?.lt?.anchor || 'bottom';
+            const barBg = buildBarBg(s?.ltBar);
+            const isBoxed = form === 'box' || form === 'pill';
+            const anchorCss = anchor === 'top' ? { top: 0, bottom: 'auto', justifyContent: 'flex-start' }
+              : anchor === 'center' ? { top: 0, bottom: 0, justifyContent: 'center' }
+              : { top: 'auto', bottom: 0, justifyContent: 'flex-end' };
+            const alignItems = isBoxed ? (s?.align === 'left' ? 'flex-start' : s?.align === 'right' ? 'flex-end' : 'center') : undefined;
+            const boxCss = isBoxed ? { display: 'inline-block', width: 'auto', background: barBg, padding: form === 'pill' ? '0.35em 1.1em' : '0.4em 0.85em', borderRadius: form === 'pill' ? '999px' : '16px' } : {};
+            return (
+              <div style={{
+                position: 'absolute', left: 0, right: 0, ...anchorCss,
+                padding: '24px 60px 32px',
+                background: (form === 'none' || isBoxed) ? 'transparent' : barBg,
+                minHeight: '160px',
+                display: 'flex', flexDirection: 'column', alignItems,
+                zIndex: 1,
+              }}>
+                <div style={{ ...textCss, ...boxCss }} dangerouslySetInnerHTML={{ __html: renderTextContent(text || '', runs || [], s) }} />
+                {accentCss && <div style={accentCss} />}
+                {copyright && <div style={copyrightStyleCss}>{copyright}</div>}
+              </div>
+            );
+          })()}
         </div>
       </div>
     </div>
@@ -940,7 +1026,9 @@ export function FormattingToolbar({ style, onChange, fonts, hasSelection, execCm
               { key: 'custom',     label: 'My Fonts' },
               { key: 'sans-serif', label: 'Sans-serif' },
               { key: 'serif',      label: 'Serif' },
+              { key: 'slab',       label: 'Slab' },
               { key: 'display',    label: 'Display' },
+              { key: 'script',     label: 'Script' },
               { key: 'monospace',  label: 'Monospace' },
             ];
             return GROUPS.map(({ key, label }) => {
@@ -1328,7 +1416,7 @@ function ArrangementPanel({ sections, arrangement, onChange }) {
   return (
     <div className="border-t border-outline-variant/30 bg-surface-container/40 flex flex-col max-h-[40%]">
       <div className="px-sm py-1.5 border-b border-outline-variant/20 flex items-center justify-between flex-shrink-0">
-        <span className="text-[9px] font-mono text-on-surface-variant/50 uppercase tracking-[0.06em]" title="The order sections play in the service. Repeats allowed — e.g. V1 C V2 C B C C.">
+        <span className="text-[9px] font-mono text-on-surface-variant/50 uppercase tracking-[0.06em]" title="The order sections play live. Repeats allowed — e.g. V1 C V2 C B C C.">
           Arrangement
         </span>
         {active ? (
@@ -1580,10 +1668,11 @@ export default function SongEditor({ song, onClose, onSave }) {
       ?.scrollIntoView({ block: 'nearest' });
   }, [activeSectionKey]);
 
-  // Load themes list for the "Load Theme…" dropdown (song-category themes only)
+  // Themes a song can adopt. Every theme is one portable look — any of them applies
+  // to a song (its style normalises to the text shape). Graphics presets are separate.
   useEffect(() => {
     window.cue.themes.list()
-      .then((list) => setThemeList((list || []).filter((t) => (t.category || 'song') === 'song')))
+      .then((list) => setThemeList((list || []).filter((t) => (t.category || 'song') !== 'graphic')))
       .catch(() => {});
   }, []);
 
@@ -1600,20 +1689,23 @@ export default function SongEditor({ song, onClose, onSave }) {
     const theme = themeList.find((t) => t.id === Number(themeId));
     if (!theme) return;
     try {
-      const themeStyle = theme.style_json ? JSON.parse(theme.style_json) : null;
-      if (!themeStyle) return;
+      const raw = theme.style_json ? JSON.parse(theme.style_json) : null;
+      if (!raw) return;
+      // Normalise any theme shape (incl. a presentation token theme) into the song
+      // text style — one look applies to any content.
+      const themeStyle = normalizeLookStyle(raw);
       const nextStyle = { ...DEFAULT_STYLE, ...themeStyle };
       // Loading a theme is explicit and ONE undo step — its background replaces the
       // current one. (A bgRef download applies the style now and the bg after fetch.)
       if (theme.background_id && theme.background_path) {
         doc.set((d) => ({ ...d, style: nextStyle, songBackground: { id: theme.background_id, path: theme.background_path, filename: theme.background_filename } }));
-      } else if (themeStyle.bgRef) {
+      } else if (raw.bgRef) {
         // Media theme whose background isn't downloaded yet — resolve the
         // background-library item (download → media asset), same as applyTo*.
         doc.set((d) => ({ ...d, style: nextStyle }));
         setBgLoading(true);
         try {
-          const asset = await window.cue.backgrounds.download(themeStyle.bgRef);
+          const asset = await window.cue.backgrounds.download(raw.bgRef);
           setSongBackground({ id: asset.id, path: asset.path, filename: asset.filename });
         } catch {
           // Style applied, but the background couldn't be fetched — surface it

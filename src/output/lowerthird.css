@@ -46,11 +46,30 @@ html, body {
 #text.logo-mode {
   display: flex;
   align-items: center;
+  justify-content: center;
 }
 
 #text .logo-img {
   max-height: 80px;
   object-fit: contain;
+}
+
+/* Fullscreen channel-logo: the L3 output fills edge-to-edge with the operator's PNG
+   (object-fit set inline from logo_scale_mode — cover by default). Overrides the band's
+   bottom-anchored padded layout for the duration of a logo cue. */
+#lowerthird.logo-fullscreen {
+  top: 0; bottom: 0; left: 0; right: 0;
+  padding: 0;
+  min-height: 0;
+}
+#lowerthird.logo-fullscreen #text.logo-mode {
+  width: 100%;
+  height: 100%;
+}
+#lowerthird.logo-fullscreen .logo-img {
+  width: 100%;
+  height: 100%;
+  max-height: none;
 }
 
 #copyright {
@@ -61,3 +80,17 @@ html, body {
 
 /* The broadcast-graphics overlay (name/title bug, ticker, custom HTML) is injected
    and styled by the shared graphics-overlay.js (scoped under #cue-gfx). */
+
+/* Per-theme lower-third entrance animations (style.lt.anim). Applied to #text so they
+   compose with (never fight) the band-level slide transition on #lowerthird. */
+#text.ltin-fade { animation: ltin-fade 0.45s ease both; }
+#text.ltin-up   { animation: ltin-up   0.5s cubic-bezier(0.2,0.7,0.2,1) both; }
+#text.ltin-down { animation: ltin-down 0.5s cubic-bezier(0.2,0.7,0.2,1) both; }
+#text.ltin-left { animation: ltin-left 0.5s cubic-bezier(0.2,0.7,0.2,1) both; }
+@keyframes ltin-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ltin-up   { from { opacity: 0; transform: translateY(0.5em); } to { opacity: 1; transform: none; } }
+@keyframes ltin-down { from { opacity: 0; transform: translateY(-0.5em); } to { opacity: 1; transform: none; } }
+@keyframes ltin-left { from { opacity: 0; transform: translateX(-0.6em); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  #text.ltin-fade, #text.ltin-up, #text.ltin-down, #text.ltin-left { animation: none; }
+}

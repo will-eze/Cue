@@ -1,0 +1,26 @@
+{
+  "name": "Modern Worship",
+  "category": "song",
+  "sort_order": -111,
+  "style": {
+    "collection": "Collections",
+    "fontFamily": "Montserrat",
+    "color": "#ffffff",
+    "fontSize": 92,
+    "letterSpacing": 0,
+    "lineSpacing": 1.12,
+    "textShadow": { "enabled": false },
+    "bgCss": "radial-gradient(120% 120% at 20% 15%, #16324a 0%, #0c1c2e 45%, #060d16 100%)",
+    "treatment": {
+      "scrim": "flat",
+      "scrimStrength": 0.18,
+      "vignette": 0.22,
+      "grain": 0.05,
+      "tint": { "color": "#1fb6c9", "amount": 0.1, "blend": "soft-light" },
+      "glass": { "enabled": true, "blur": 26, "opacity": 0.3, "tint": "#05121e", "radius": 28, "pad": 64 }
+    },
+    "accent": { "enabled": true, "color": "#34d3c6" },
+    "ltBar": { "css": "linear-gradient(to top, rgba(6,20,30,0.94) 0%, rgba(6,20,30,0.8) 70%, rgba(6,20,30,0) 100%)" },
+    "lt": { "fontSize": 60 }
+  }
+}

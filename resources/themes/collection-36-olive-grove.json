@@ -1,0 +1,43 @@
+{
+  "name": "Olive Grove",
+  "category": "song",
+  "sort_order": -85,
+  "style": {
+    "collection": "Collections",
+    "fontFamily": "Cormorant Garamond",
+    "color": "#f6efe0",
+    "fontSize": 100,
+    "lineSpacing": 1.1,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 24,
+      "color": "rgba(0,0,0,0.6)"
+    },
+    "bgRef": "library/unsplash-6gFxye8SVoY.jpg",
+    "treatment": {
+      "scrim": "bottom",
+      "scrimStrength": 0.42,
+      "vignette": 0.34,
+      "grain": 0.1,
+      "tint": {
+        "color": "#8a9a4a",
+        "amount": 0.1,
+        "blend": "soft-light"
+      },
+      "kenBurns": "drift"
+    },
+    "accent": {
+      "enabled": true,
+      "color": "#c9c56a"
+    },
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(12,12,6,0.94) 0%, rgba(12,12,6,0.8) 70%, rgba(12,12,6,0) 100%)"
+    },
+    "lt": {
+      "fontFamily": "Cormorant Garamond",
+      "fontSize": 65
+    }
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "name": "Rosewater",
+  "category": "song",
+  "sort_order": -80,
+  "style": {
+    "collection": "Collections",
+    "fontFamily": "Playfair Display",
+    "color": "#2a1c22",
+    "fontSize": 96,
+    "lineSpacing": 1.06,
+    "textShadow": {
+      "enabled": false
+    },
+    "bgCss": "radial-gradient(120% 100% at 50% 20%, #f4e6e6 0%, #e7cccc 60%, #d8b0b0 100%)",
+    "treatment": {
+      "grain": 0.16,
+      "tint": {
+        "color": "#8a4a5a",
+        "amount": 0.1,
+        "blend": "multiply"
+      }
+    },
+    "accent": {
+      "enabled": true,
+      "color": "#9a5b6e"
+    },
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(244,230,230,0.95) 0%, rgba(244,230,230,0.82) 70%, rgba(244,230,230,0) 100%)"
+    },
+    "lt": {
+      "fontFamily": "Playfair Display",
+      "fontSize": 62,
+      "color": "#2a1c22"
+    }
+  }
+}

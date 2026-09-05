@@ -103,6 +103,7 @@
 
   function buildBarBg(bar) {
     if (!bar) return 'transparent';
+    if (bar.css) return bar.css;
     const c  = bar.color   ?? '#000000';
     const op = bar.opacity ?? 0.8;
     const r  = parseInt(c.slice(1, 3), 16) || 0;
@@ -178,7 +179,7 @@
       const st = t.style || {};
       if (st.position === 'top') { tickerEl.style.top = '0'; tickerEl.style.bottom = 'auto'; tickerEl.style.borderTop = 'none'; tickerEl.style.borderBottom = '3px solid #4d8eff'; }
       else { tickerEl.style.bottom = '0'; tickerEl.style.top = 'auto'; tickerEl.style.borderBottom = 'none'; tickerEl.style.borderTop = '3px solid #4d8eff'; }
-      if (st.bar) { tickerEl.style.background = buildBarBg({ color: st.bar.color, opacity: st.bar.opacity, solid: true }); tickerEl.style.borderTop = 'none'; tickerEl.style.borderBottom = 'none'; }
+      if (st.bar) { tickerEl.style.background = st.bar.css || buildBarBg({ color: st.bar.color, opacity: st.bar.opacity, solid: true }); tickerEl.style.borderTop = 'none'; tickerEl.style.borderBottom = 'none'; }
       else tickerEl.style.background = 'rgba(12,14,18,0.9)';
       applyTextStyle(tickerInner, st, { fontSize: 30, color: '#ffffff' });
       tickerInner.style.textAlign = '';

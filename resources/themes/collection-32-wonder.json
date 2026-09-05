@@ -1,0 +1,43 @@
+{
+  "name": "Wonder",
+  "category": "song",
+  "sort_order": -89,
+  "style": {
+    "collection": "Collections",
+    "fontFamily": "Cormorant Garamond",
+    "color": "#fbeede",
+    "fontSize": 96,
+    "lineSpacing": 1.1,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 20,
+      "color": "rgba(0,0,0,0.55)"
+    },
+    "bgRef": "library/coverr-bokeh-effect-of-christmas-tree-lights-t0covyrbuu.mp4",
+    "bgSpeed": 0.5,
+    "treatment": {
+      "scrim": "bottom",
+      "scrimStrength": 0.5,
+      "vignette": 0.42,
+      "grain": 0.08,
+      "tint": {
+        "color": "#d8a23a",
+        "amount": 0.12,
+        "blend": "soft-light"
+      }
+    },
+    "accent": {
+      "enabled": true,
+      "color": "#e8c06a"
+    },
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(12,8,4,0.94) 0%, rgba(12,8,4,0.8) 70%, rgba(12,8,4,0) 100%)"
+    },
+    "lt": {
+      "fontFamily": "Cormorant Garamond",
+      "fontSize": 62
+    }
+  }
+}

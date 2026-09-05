@@ -1,0 +1,26 @@
+{
+  "name": "Reverence",
+  "category": "song",
+  "sort_order": -101,
+  "style": {
+    "collection": "Collections",
+    "fontFamily": "Marcellus",
+    "color": "#f2f0ea",
+    "fontSize": 88,
+    "letterSpacing": 0.01,
+    "lineSpacing": 1.12,
+    "textShadow": { "enabled": true, "x": 0, "y": 2, "blur": 20, "color": "rgba(0,0,0,0.55)" },
+    "bgCss": "radial-gradient(120% 120% at 50% 20%, #2a3038 0%, #171b21 50%, #0a0d11 100%)",
+    "treatment": {
+      "scrim": "radial",
+      "scrimStrength": 0.3,
+      "vignette": 0.34,
+      "grain": 0.1,
+      "tint": { "color": "#c8a86a", "amount": 0.1, "blend": "soft-light" },
+      "kenBurns": "zoom"
+    },
+    "accent": { "enabled": true, "color": "#c9a568" },
+    "ltBar": { "css": "linear-gradient(to top, rgba(10,13,17,0.95) 0%, rgba(10,13,17,0.82) 70%, rgba(10,13,17,0) 100%)" },
+    "lt": { "fontFamily": "Marcellus", "fontSize": 58 }
+  }
+}

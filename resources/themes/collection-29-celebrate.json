@@ -1,0 +1,45 @@
+{
+  "name": "Celebrate",
+  "category": "song",
+  "sort_order": -92,
+  "style": {
+    "collection": "Collections",
+    "fontFamily": "Archivo",
+    "color": "#ffffff",
+    "fontSize": 86,
+    "lineSpacing": 1.1,
+    "bold": true,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 16,
+      "color": "rgba(0,0,0,0.55)"
+    },
+    "bgRef": "library/coverr-cheering-crowd-v9qvvmj7id.mp4",
+    "bgSpeed": 0.7,
+    "treatment": {
+      "scrim": "bottom",
+      "scrimStrength": 0.55,
+      "vignette": 0.3,
+      "grain": 0.06,
+      "tint": {
+        "color": "#2e6fb0",
+        "amount": 0.08,
+        "blend": "soft-light"
+      }
+    },
+    "accent": {
+      "enabled": true,
+      "color": "#3aa0ff"
+    },
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(6,12,22,0.94) 0%, rgba(6,12,22,0.8) 70%, rgba(6,12,22,0) 100%)"
+    },
+    "lt": {
+      "fontFamily": "Archivo",
+      "fontSize": 56,
+      "bold": true
+    }
+  }
+}

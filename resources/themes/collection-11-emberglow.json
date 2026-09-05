@@ -1,0 +1,27 @@
+{
+  "name": "Emberglow",
+  "category": "song",
+  "sort_order": -102,
+  "style": {
+    "collection": "Collections",
+    "fontFamily": "Bebas Neue",
+    "color": "#fff2e6",
+    "uppercase": true,
+    "fontSize": 116,
+    "letterSpacing": 0.04,
+    "lineSpacing": 0.95,
+    "textShadow": { "enabled": true, "x": 0, "y": 2, "blur": 18, "color": "rgba(0,0,0,0.5)" },
+    "bgCss": "radial-gradient(120% 120% at 50% 78%, #7a1f12 0%, #3a0f0c 45%, #120504 100%)",
+    "treatment": {
+      "scrim": "radial",
+      "scrimStrength": 0.3,
+      "vignette": 0.44,
+      "grain": 0.14,
+      "tint": { "color": "#ff5a2a", "amount": 0.14, "blend": "soft-light" },
+      "kenBurns": "zoom"
+    },
+    "accent": { "enabled": true, "color": "#ff7a3c" },
+    "ltBar": { "css": "linear-gradient(to top, rgba(18,5,4,0.95) 0%, rgba(18,5,4,0.82) 70%, rgba(18,5,4,0) 100%)" },
+    "lt": { "fontFamily": "Bebas Neue", "fontSize": 64, "uppercase": true }
+  }
+}

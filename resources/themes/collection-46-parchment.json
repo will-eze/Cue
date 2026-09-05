@@ -1,0 +1,36 @@
+{
+  "name": "Parchment",
+  "category": "song",
+  "sort_order": -75,
+  "style": {
+    "collection": "Collections",
+    "fontFamily": "EB Garamond",
+    "color": "#2a2118",
+    "fontSize": 96,
+    "lineSpacing": 1.08,
+    "textShadow": {
+      "enabled": false
+    },
+    "bgCss": "radial-gradient(120% 100% at 50% 20%, #f4ecdc 0%, #e7dcc4 60%, #d8cbae 100%)",
+    "treatment": {
+      "grain": 0.18,
+      "tint": {
+        "color": "#8a6a3a",
+        "amount": 0.1,
+        "blend": "multiply"
+      }
+    },
+    "accent": {
+      "enabled": true,
+      "color": "#9a5b2e"
+    },
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(244,236,220,0.95) 0%, rgba(244,236,220,0.82) 70%, rgba(244,236,220,0) 100%)"
+    },
+    "lt": {
+      "fontFamily": "EB Garamond",
+      "fontSize": 62,
+      "color": "#2a2118"
+    }
+  }
+}

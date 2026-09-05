@@ -90,7 +90,7 @@ module.exports = {
     // The YouTube player's yt-dlp + ffmpeg are NOT bundled — `src/main/youtube/bin.js`
     // auto-downloads them into userData/bin on first use (keeps yt-dlp fresh; ~85 MB
     // current-platform only, vs a stale baked-in copy). So nothing for them here.
-    extraResource: ['./resources/bible', './resources/ghs', './resources/themes', './resources/graphics', './resources/media-manifest.json'],
+    extraResource: ['./resources/bible', './resources/ghs', './resources/themes', './resources/graphics', './resources/media-manifest.json', './resources/fonts-manifest.json', './resources/font-previews'],
   },
   rebuildConfig: {
     extraModules: ['better-sqlite3', 'grandi'],

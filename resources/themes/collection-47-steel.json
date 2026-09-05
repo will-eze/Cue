@@ -1,0 +1,42 @@
+{
+  "name": "Steel",
+  "category": "song",
+  "sort_order": -74,
+  "style": {
+    "collection": "Collections",
+    "fontFamily": "Archivo",
+    "color": "#ffffff",
+    "fontSize": 88,
+    "lineSpacing": 1.12,
+    "bold": true,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 16,
+      "color": "rgba(0,0,0,0.5)"
+    },
+    "bgCss": "radial-gradient(130% 120% at 50% 100%, #1c2630 0%, #0e161e 55%, #060b10 100%)",
+    "treatment": {
+      "vignette": 0.2,
+      "grain": 0.04,
+      "tint": {
+        "color": "#3a6a8a",
+        "amount": 0.08,
+        "blend": "soft-light"
+      }
+    },
+    "accent": {
+      "enabled": true,
+      "color": "#6db0d0"
+    },
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(6,11,16,0.94) 0%, rgba(6,11,16,0.8) 70%, rgba(6,11,16,0) 100%)"
+    },
+    "lt": {
+      "fontFamily": "Archivo",
+      "fontSize": 57,
+      "bold": true
+    }
+  }
+}

@@ -296,6 +296,17 @@ export function setItemLoop(itemId, loop) {
   getDb().prepare('UPDATE service_items SET media_loop=? WHERE id=?').run(loop ? 1 : 0, itemId);
 }
 
+// ── Theme cascade (v34) ──────────────────────────────────────────────────────
+// Assign a look at the service or per-item level. NULL = inherit the level above
+// (item → service → app default). No baking — resolution happens live in OperatorView.
+export function setServiceTheme(serviceId, themeId) {
+  getDb().prepare('UPDATE services SET theme_id=? WHERE id=?').run(themeId || null, serviceId);
+}
+
+export function setItemTheme(itemId, themeId) {
+  getDb().prepare('UPDATE service_items SET theme_override_id=? WHERE id=?').run(themeId || null, itemId);
+}
+
 // Auto-advance interval in seconds + loop mode. Falsy / <= 0 seconds clears the
 // interval (stored NULL = manual). loop is 'item' or 'rundown' (default); wrap (only
 // meaningful for 'rundown') wraps to the first item at the end vs stopping there.

@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import OutputChannels from '../settings/OutputChannels';
 import LogoSettings from '../settings/LogoSettings';
-import BackgroundSettings from '../settings/BackgroundSettings';
 import ThemeSettings from '../settings/ThemeSettings';
 import TransitionSettings from '../settings/TransitionSettings';
 import LowerthirdSettings from '../settings/LowerthirdSettings';
@@ -23,7 +22,6 @@ import DangerZone from '../settings/DangerZone';
 export const SECTIONS = [
   { id: 'channels',   icon: 'cast',            label: 'Channels' },
   { id: 'logo',       icon: 'image',           label: 'Logo' },
-  { id: 'background', icon: 'wallpaper',       label: 'Background' },
   { id: 'themes',     icon: 'style',           label: 'Themes' },
   { id: 'transitions', icon: 'animation',      label: 'Motion' },
   { id: 'lowerthird', icon: 'subtitles',       label: 'Lower Third' },
@@ -249,8 +247,7 @@ export default function SettingsView({ activeServiceId, onRundownCleared, onRund
 
         <section ref={setRef('channels')} data-section="channels" className="scroll-mt-lg"><OutputChannels /></section>
         <section ref={setRef('logo')} data-section="logo" className="scroll-mt-lg"><LogoSettings /></section>
-        <section ref={setRef('background')} data-section="background" className="scroll-mt-lg"><BackgroundSettings activeServiceId={activeServiceId} onBackgroundDefaultChanged={onBackgroundDefaultChanged} /></section>
-        <section ref={setRef('themes')} data-section="themes" className="scroll-mt-lg"><ThemeSettings /></section>
+        <section ref={setRef('themes')} data-section="themes" className="scroll-mt-lg"><ThemeSettings activeServiceId={activeServiceId} onBackgroundDefaultChanged={onBackgroundDefaultChanged} /></section>
         <section ref={setRef('transitions')} data-section="transitions" className="scroll-mt-lg"><TransitionSettings /></section>
         <section ref={setRef('lowerthird')} data-section="lowerthird" className="scroll-mt-lg"><LowerthirdSettings /></section>
         <section ref={setRef('bible')} data-section="bible" className="scroll-mt-lg"><BibleSettings /></section>

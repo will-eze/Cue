@@ -45,6 +45,22 @@ export default function LogoSettings() {
     setGlobalLogoAsset(null);
   }
 
+  // Per-output logo override — one screen (e.g. a stage display) can carry a different
+  // mark than the global one. Import + point that channel's logo_override_id at it.
+  async function handleSetChannelLogo(ch) {
+    const result = await window.cue.dialog.openFile({
+      filters: [{ name: 'Images & Videos', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'mp4', 'webm', 'mov'] }],
+      properties: ['openFile'],
+    });
+    if (result.canceled || !result.filePaths.length) return;
+    const imported = await window.cue.media.import(result.filePaths);
+    if (imported.length) { await window.cue.output.channels.update(ch.id, { logo_override_id: imported[0].id }); load(); }
+  }
+  async function handleClearChannelLogo(ch) {
+    await window.cue.output.channels.update(ch.id, { logo_override_id: null });
+    load();
+  }
+
   return (
     <section className="space-y-md">
       <h2 className="text-headline-md font-semibold text-on-surface flex items-center gap-sm">
@@ -129,14 +145,28 @@ export default function LogoSettings() {
 
       {channels.length > 0 && (
         <div className="bg-surface-container border border-outline-variant/30 rounded-xl p-md">
-          <h3 className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wider mb-sm">Per-Channel Status</h3>
-          <div className="space-y-xs">
+          <h3 className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wider">Logo per output</h3>
+          <p className="text-body-sm text-on-surface-variant/70 mt-xs mb-sm">
+            Every output shows the logo above. Give one its own logo to override it here — useful when, say, a stage display needs a different mark than the auditorium screen.
+          </p>
+          <div className="divide-y divide-outline-variant/10">
             {channels.map((ch) => (
-              <div key={ch.id} className="flex items-center justify-between py-xs text-label-sm font-label-sm">
-                <span className="text-on-surface">{ch.name}</span>
-                <span className="text-on-surface-variant">
-                  {ch.logo_override_id ? 'Custom logo' : '↑ Global'}
+              <div key={ch.id} className="flex items-center gap-sm py-xs">
+                <span className="text-body-md text-on-surface flex-1 min-w-0 truncate">{ch.name}</span>
+                <span className={`text-[11px] font-mono uppercase tracking-[0.04em] rounded px-xs py-[1px] border shrink-0 ${
+                  ch.logo_override_id ? 'text-primary border-primary/30' : 'text-on-surface-variant/60 border-outline-variant/25'}`}>
+                  {ch.logo_override_id ? 'Custom logo' : 'Global logo'}
                 </span>
+                <button onClick={() => handleSetChannelLogo(ch)}
+                  className="shrink-0 text-[10px] font-mono uppercase tracking-[0.04em] text-on-surface-variant hover:text-primary cursor-pointer">
+                  Set…
+                </button>
+                {ch.logo_override_id && (
+                  <button onClick={() => handleClearChannelLogo(ch)}
+                    className="shrink-0 text-[10px] font-mono uppercase tracking-[0.04em] text-on-surface-variant/40 hover:text-error cursor-pointer">
+                    Reset
+                  </button>
+                )}
               </div>
             ))}
           </div>

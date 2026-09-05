@@ -1,0 +1,517 @@
+{
+  "version": 1,
+  "note": "Self-hostable OFL/Apache font pack manifest. Publish woff2 files named <id>-latin-<weight>-normal.woff2 at a base URL, then set the settings key font_pack_base to that base. Cue falls back to the @fontsource CDN per weight when a self-hosted file is absent.",
+  "filePattern": "{id}-latin-{weight}-normal.woff2",
+  "fonts": [
+    {
+      "family": "Work Sans",
+      "id": "work-sans",
+      "category": "sans-serif",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Libre Franklin",
+      "id": "libre-franklin",
+      "category": "sans-serif",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Manrope",
+      "id": "manrope",
+      "category": "sans-serif",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Hanken Grotesk",
+      "id": "hanken-grotesk",
+      "category": "sans-serif",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Figtree",
+      "id": "figtree",
+      "category": "sans-serif",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Sora",
+      "id": "sora",
+      "category": "sans-serif",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Public Sans",
+      "id": "public-sans",
+      "category": "sans-serif",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Outfit",
+      "id": "outfit",
+      "category": "sans-serif",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Lexend",
+      "id": "lexend",
+      "category": "sans-serif",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Questrial",
+      "id": "questrial",
+      "category": "sans-serif",
+      "weights": [
+        400
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Josefin Sans",
+      "id": "josefin-sans",
+      "category": "sans-serif",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Nunito Sans",
+      "id": "nunito-sans",
+      "category": "sans-serif",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Open Sans",
+      "id": "open-sans",
+      "category": "sans-serif",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Mulish",
+      "id": "mulish",
+      "category": "sans-serif",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Cabin",
+      "id": "cabin",
+      "category": "sans-serif",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Source Sans 3",
+      "id": "source-sans-3",
+      "category": "sans-serif",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Rubik",
+      "id": "rubik",
+      "category": "sans-serif",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Assistant",
+      "id": "assistant",
+      "category": "sans-serif",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Barlow Semi Condensed",
+      "id": "barlow-semi-condensed",
+      "category": "sans-serif",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Anton",
+      "id": "anton",
+      "category": "display",
+      "weights": [
+        400
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Archivo Narrow",
+      "id": "archivo-narrow",
+      "category": "display",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Fjalla One",
+      "id": "fjalla-one",
+      "category": "display",
+      "weights": [
+        400
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Teko",
+      "id": "teko",
+      "category": "display",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Saira Condensed",
+      "id": "saira-condensed",
+      "category": "display",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Pathway Gothic One",
+      "id": "pathway-gothic-one",
+      "category": "display",
+      "weights": [
+        400
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Staatliches",
+      "id": "staatliches",
+      "category": "display",
+      "weights": [
+        400
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Fraunces",
+      "id": "fraunces",
+      "category": "display",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Bricolage Grotesque",
+      "id": "bricolage-grotesque",
+      "category": "display",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Big Shoulders Display",
+      "id": "big-shoulders-display",
+      "category": "display",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Unbounded",
+      "id": "unbounded",
+      "category": "display",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Libre Baskerville",
+      "id": "libre-baskerville",
+      "category": "serif",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Crimson Pro",
+      "id": "crimson-pro",
+      "category": "serif",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Spectral",
+      "id": "spectral",
+      "category": "serif",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Source Serif 4",
+      "id": "source-serif-4",
+      "category": "serif",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Newsreader",
+      "id": "newsreader",
+      "category": "serif",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "DM Serif Text",
+      "id": "dm-serif-text",
+      "category": "serif",
+      "weights": [
+        400
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Cormorant",
+      "id": "cormorant",
+      "category": "serif",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Cardo",
+      "id": "cardo",
+      "category": "serif",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Alegreya",
+      "id": "alegreya",
+      "category": "serif",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Zilla Slab",
+      "id": "zilla-slab",
+      "category": "slab",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Roboto Slab",
+      "id": "roboto-slab",
+      "category": "slab",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Arvo",
+      "id": "arvo",
+      "category": "slab",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Bitter",
+      "id": "bitter",
+      "category": "slab",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Alfa Slab One",
+      "id": "alfa-slab-one",
+      "category": "slab",
+      "weights": [
+        400
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Sacramento",
+      "id": "sacramento",
+      "category": "script",
+      "weights": [
+        400
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Great Vibes",
+      "id": "great-vibes",
+      "category": "script",
+      "weights": [
+        400
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Caveat",
+      "id": "caveat",
+      "category": "script",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Parisienne",
+      "id": "parisienne",
+      "category": "script",
+      "weights": [
+        400
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Kalam",
+      "id": "kalam",
+      "category": "script",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "Space Mono",
+      "id": "space-mono",
+      "category": "monospace",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "JetBrains Mono",
+      "id": "jetbrains-mono",
+      "category": "monospace",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    },
+    {
+      "family": "IBM Plex Mono",
+      "id": "ibm-plex-mono",
+      "category": "monospace",
+      "weights": [
+        400,
+        700
+      ],
+      "license": "OFL-1.1-or-Apache-2.0"
+    }
+  ]
+}

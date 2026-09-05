@@ -10,6 +10,7 @@ import AnchoredMenu from '../components/AnchoredMenu';
 import ResponsiveToolbar from '../components/ResponsiveToolbar';
 import ScripturePanel from './ScripturePanel';
 import GraphicsPanel from './GraphicsPanel';
+import LibraryThemesTab from './LibraryThemesTab';
 import ScenesAndOutputsPanel from './ScenesAndOutputsPanel';
 import MediaThumb from '../components/MediaThumb';
 import { StaticSlide } from '../components/SlideElements';
@@ -497,9 +498,9 @@ function LiveInputsTab({ onAddLiveInput }) {
   );
 }
 
-const TAB_ORDER = ['songs', 'media', 'scripture', 'presentations', 'graphics', 'scenes'];
+const TAB_ORDER = ['songs', 'media', 'scripture', 'presentations', 'graphics', 'scenes', 'themes'];
 
-export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAddScripture, onScriptureLive, onScripturePreview, onScriptureStyleSaved, onBackgroundDefaultChanged, onAddMedia, onApplyMediaBackground, onSetPreviewBackground, previewSongLabel, onAddYouTube, onAddLiveInput, onAddPresentation, onSongSave, refreshTick = 0, focusSearchRef, cycleTabRef, detectArmed, detectActive, detectDownloadPct, onToggleDetect }) {
+export default function LibraryPanel({ activeServiceId, onThemesChanged, onApplyThemeToItem, onAddToRundown, onAddManyToRundown, onAddScripture, onScriptureLive, onScripturePreview, onScriptureStyleSaved, onBackgroundDefaultChanged, onAddMedia, onApplyMediaBackground, onSetPreviewBackground, previewSongLabel, onAddYouTube, onAddLiveInput, onAddPresentation, onSongSave, refreshTick = 0, focusSearchRef, cycleTabRef, detectArmed, detectActive, detectDownloadPct, onToggleDetect }) {
   const toast = useToast();
   const [tab, setTab] = useState('songs');
   const [searchQuery, setSearchQuery] = useState('');
@@ -826,6 +827,7 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
             { kind: 'button', id: 'presentations', keepLabel: true, active: tab === 'presentations', pinned: tab === 'presentations', className: libTabCls(tab === 'presentations'), onClick: () => setTab('presentations'), label: `Presentations${tab === 'presentations' && presentations.length > 0 ? ` · ${presentations.length}` : ''}` },
             { kind: 'button', id: 'graphics', keepLabel: true, active: tab === 'graphics', pinned: tab === 'graphics', className: libTabCls(tab === 'graphics'), onClick: () => setTab('graphics'), label: 'Graphics' },
             { kind: 'button', id: 'scenes', keepLabel: true, active: tab === 'scenes', pinned: tab === 'scenes', className: libTabCls(tab === 'scenes'), onClick: () => setTab('scenes'), label: 'Scenes' },
+            { kind: 'button', id: 'themes', keepLabel: true, active: tab === 'themes', pinned: tab === 'themes', className: libTabCls(tab === 'themes'), onClick: () => setTab('themes'), label: 'Themes' },
           ]}
         />
 
@@ -1219,9 +1221,11 @@ export default function LibraryPanel({ onAddToRundown, onAddManyToRundown, onAdd
         </div>
       )}
 
-      {tab === 'graphics' && <GraphicsPanel />}
+      {tab === 'graphics' && <GraphicsPanel activeServiceId={activeServiceId} />}
 
       {tab === 'scenes' && <ScenesAndOutputsPanel onBackgroundDefaultChanged={onBackgroundDefaultChanged} />}
+
+      {tab === 'themes' && <LibraryThemesTab activeServiceId={activeServiceId} onThemesChanged={onThemesChanged} onApplyToItem={onApplyThemeToItem} />}
 
       {editPresentation !== null && (
         <PresentationEditor

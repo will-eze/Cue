@@ -1,0 +1,26 @@
+{
+  "name": "Basilica",
+  "category": "song",
+  "sort_order": -112,
+  "style": {
+    "collection": "Collections",
+    "fontFamily": "Cormorant Garamond",
+    "color": "#f6ecd8",
+    "fontSize": 104,
+    "letterSpacing": 0.01,
+    "lineSpacing": 1.08,
+    "textShadow": { "enabled": true, "x": 0, "y": 2, "blur": 24, "color": "rgba(0,0,0,0.55)" },
+    "bgCss": "radial-gradient(120% 100% at 50% 12%, #3a2a17 0%, #1c130a 46%, #0b0704 100%)",
+    "treatment": {
+      "scrim": "radial",
+      "scrimStrength": 0.32,
+      "vignette": 0.4,
+      "grain": 0.16,
+      "tint": { "color": "#c8922e", "amount": 0.14, "blend": "soft-light" },
+      "kenBurns": "zoom"
+    },
+    "accent": { "enabled": true, "color": "#d8ab5a" },
+    "ltBar": { "css": "linear-gradient(to top, rgba(20,12,4,0.95) 0%, rgba(20,12,4,0.82) 68%, rgba(20,12,4,0) 100%)" },
+    "lt": { "fontFamily": "Cormorant Garamond", "fontSize": 66, "uppercase": false }
+  }
+}

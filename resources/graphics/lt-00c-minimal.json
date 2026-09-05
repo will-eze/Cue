@@ -1,0 +1,14 @@
+{
+  "name": "Minimal",
+  "kind": "lower_third",
+  "graphic": {
+    "label": "Minimal",
+    "name": "Sarah Bennett",
+    "title": "Worship Pastor",
+    "style_json": {
+      "accentSource": "theme", "fontSource": "custom",
+      "name":  { "fontFamily": "Inter", "fontSize": 48, "color": "#ffffff", "bold": true, "align": "left", "verticalAlign": "bottom", "textBox": { "x": 5, "y": 78, "w": 55, "h": 14 }, "textShadow": { "enabled": true, "x": 0, "y": 2, "blur": 18, "color": "rgba(0,0,0,0.7)" }, "ltBar": null },
+      "title": { "fontFamily": "Inter", "fontSize": 24, "color": "#7fb0ff", "bold": false, "align": "left", "textShadow": { "enabled": true, "x": 0, "y": 1, "blur": 12, "color": "rgba(0,0,0,0.7)" } }
+    }
+  }
+}

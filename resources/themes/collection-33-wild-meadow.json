@@ -1,0 +1,43 @@
+{
+  "name": "Wild Meadow",
+  "category": "song",
+  "sort_order": -88,
+  "style": {
+    "collection": "Collections",
+    "fontFamily": "Lora",
+    "color": "#f2f6ea",
+    "fontSize": 92,
+    "lineSpacing": 1.1,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 20,
+      "color": "rgba(0,0,0,0.55)"
+    },
+    "bgRef": "library/coverr-deer-on-a-field-s4s9rywhbf.mp4",
+    "bgSpeed": 0.6,
+    "treatment": {
+      "scrim": "bottom",
+      "scrimStrength": 0.48,
+      "vignette": 0.3,
+      "grain": 0.1,
+      "tint": {
+        "color": "#3a6a2e",
+        "amount": 0.1,
+        "blend": "soft-light"
+      }
+    },
+    "accent": {
+      "enabled": true,
+      "color": "#a8cf7a"
+    },
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(8,14,6,0.94) 0%, rgba(8,14,6,0.8) 70%, rgba(8,14,6,0) 100%)"
+    },
+    "lt": {
+      "fontFamily": "Lora",
+      "fontSize": 60
+    }
+  }
+}

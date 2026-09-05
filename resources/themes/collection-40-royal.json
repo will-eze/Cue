@@ -1,0 +1,45 @@
+{
+  "name": "Royal",
+  "category": "song",
+  "sort_order": -81,
+  "style": {
+    "collection": "Collections",
+    "fontFamily": "Cinzel",
+    "color": "#eaf0ff",
+    "uppercase": true,
+    "fontSize": 84,
+    "letterSpacing": 0.06,
+    "lineSpacing": 1.06,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 24,
+      "color": "rgba(0,0,0,0.6)"
+    },
+    "bgCss": "radial-gradient(120% 130% at 50% 12%, #14315e 0%, #0a1836 45%, #04070f 100%)",
+    "treatment": {
+      "scrim": "radial",
+      "scrimStrength": 0.3,
+      "vignette": 0.38,
+      "grain": 0.08,
+      "tint": {
+        "color": "#2a4d8a",
+        "amount": 0.12,
+        "blend": "soft-light"
+      }
+    },
+    "accent": {
+      "enabled": true,
+      "color": "#cbb06a"
+    },
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(4,7,15,0.94) 0%, rgba(4,7,15,0.8) 70%, rgba(4,7,15,0) 100%)"
+    },
+    "lt": {
+      "fontFamily": "Cinzel",
+      "fontSize": 55,
+      "uppercase": true
+    }
+  }
+}

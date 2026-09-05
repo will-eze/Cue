@@ -1,0 +1,42 @@
+{
+  "name": "Blush Serif",
+  "category": "song",
+  "sort_order": -73,
+  "style": {
+    "collection": "Collections",
+    "fontFamily": "Cormorant Garamond",
+    "color": "#f6e6ec",
+    "fontSize": 100,
+    "lineSpacing": 1.1,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 20,
+      "color": "rgba(0,0,0,0.55)"
+    },
+    "bgCss": "radial-gradient(120% 120% at 50% 20%, #3a2630 0%, #1f141a 50%, #0e0810 100%)",
+    "treatment": {
+      "scrim": "radial",
+      "scrimStrength": 0.28,
+      "vignette": 0.34,
+      "grain": 0.1,
+      "tint": {
+        "color": "#c86a8a",
+        "amount": 0.1,
+        "blend": "soft-light"
+      }
+    },
+    "accent": {
+      "enabled": true,
+      "color": "#e0a0b8"
+    },
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(14,8,16,0.94) 0%, rgba(14,8,16,0.8) 70%, rgba(14,8,16,0) 100%)"
+    },
+    "lt": {
+      "fontFamily": "Cormorant Garamond",
+      "fontSize": 65
+    }
+  }
+}

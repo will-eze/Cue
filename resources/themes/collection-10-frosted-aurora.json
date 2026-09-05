@@ -1,0 +1,24 @@
+{
+  "name": "Frosted Aurora",
+  "category": "song",
+  "sort_order": -103,
+  "style": {
+    "collection": "Collections",
+    "fontFamily": "Poppins",
+    "color": "#ffffff",
+    "fontSize": 90,
+    "lineSpacing": 1.1,
+    "textShadow": { "enabled": false },
+    "bgCss": "radial-gradient(70% 90% at 12% 10%, #23a06f 0%, rgba(35,160,111,0) 55%), radial-gradient(80% 90% at 88% 20%, #2160a0 0%, rgba(33,96,160,0) 55%), linear-gradient(160deg, #0a2230 0%, #061019 100%)",
+    "treatment": {
+      "scrim": "flat",
+      "scrimStrength": 0.14,
+      "vignette": 0.24,
+      "grain": 0.05,
+      "glass": { "enabled": true, "blur": 24, "opacity": 0.26, "tint": "#04141c", "radius": 30, "pad": 64 }
+    },
+    "accent": { "enabled": true, "color": "#43e0b0" },
+    "ltBar": { "css": "linear-gradient(to top, rgba(4,20,28,0.94) 0%, rgba(4,20,28,0.8) 70%, rgba(4,20,28,0) 100%)" },
+    "lt": { "fontSize": 58 }
+  }
+}

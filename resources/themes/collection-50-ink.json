@@ -1,0 +1,40 @@
+{
+  "name": "Ink",
+  "category": "song",
+  "sort_order": -71,
+  "style": {
+    "collection": "Collections",
+    "fontFamily": "Playfair Display",
+    "color": "#f2f2f6",
+    "fontSize": 96,
+    "lineSpacing": 1.1,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 18,
+      "color": "rgba(0,0,0,0.5)"
+    },
+    "bgCss": "radial-gradient(120% 120% at 50% 30%, #12151f 0%, #080a12 60%, #04050a 100%)",
+    "treatment": {
+      "vignette": 0.18,
+      "grain": 0.04,
+      "tint": {
+        "color": "#2a3a6a",
+        "amount": 0.06,
+        "blend": "soft-light"
+      }
+    },
+    "accent": {
+      "enabled": true,
+      "color": "#8fa6c0"
+    },
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(4,5,10,0.94) 0%, rgba(4,5,10,0.8) 70%, rgba(4,5,10,0) 100%)"
+    },
+    "lt": {
+      "fontFamily": "Playfair Display",
+      "fontSize": 62
+    }
+  }
+}

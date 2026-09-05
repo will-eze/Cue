@@ -1,0 +1,27 @@
+{
+  "name": "Starlit",
+  "category": "song",
+  "sort_order": -105,
+  "style": {
+    "collection": "Collections",
+    "fontFamily": "Cinzel",
+    "color": "#eaf0ff",
+    "uppercase": true,
+    "fontSize": 84,
+    "letterSpacing": 0.06,
+    "lineSpacing": 1.06,
+    "textShadow": { "enabled": true, "x": 0, "y": 2, "blur": 24, "color": "rgba(0,0,0,0.7)" },
+    "bgCss": "radial-gradient(120% 130% at 50% 8%, #16305e 0%, #0a1836 42%, #04070f 100%)",
+    "treatment": {
+      "scrim": "radial",
+      "scrimStrength": 0.34,
+      "vignette": 0.42,
+      "grain": 0.12,
+      "tint": { "color": "#2a4d8a", "amount": 0.14, "blend": "soft-light" },
+      "kenBurns": "zoom"
+    },
+    "accent": { "enabled": true, "color": "#8fb6ff" },
+    "ltBar": { "css": "linear-gradient(to top, rgba(4,7,15,0.95) 0%, rgba(4,7,15,0.82) 70%, rgba(4,7,15,0) 100%)" },
+    "lt": { "fontFamily": "Cinzel", "fontSize": 56, "uppercase": true }
+  }
+}

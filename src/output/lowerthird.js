@@ -47,6 +47,39 @@ function buildShadow(shadow) {
   return `${shadow.x ?? 0}px ${shadow.y ?? 2}px ${shadow.blur ?? 16}px ${shadow.color ?? '#000'}`;
 }
 
+// Lower-third role overrides — mirrors renderer resolveLtStyle (SongEditor.jsx).
+// A field present in style.lt overrides the matching fullscreen value; absent =
+// inherit. So a theme can drop the shadow (or change font/colour) on the overlay
+// without touching the fullscreen slide.
+const LT_OVERRIDE_KEYS = ['fontFamily', 'color', 'uppercase', 'align', 'bold', 'italic', 'letterSpacing', 'lineSpacing', 'textShadow', 'textStroke', 'fontSize'];
+function resolveLtStyle(style) {
+  if (!style || !style.lt) return style;
+  const out = { ...style };
+  for (const k of LT_OVERRIDE_KEYS) if (k in style.lt) out[k] = style.lt[k];
+  return out;
+}
+
+// The optional accent rule beneath the lower-third text (theme accent, toggleable).
+// Created once and reused; hidden when the theme has no accent or it's disabled.
+let accentEl = null;
+function accentBar() {
+  if (accentEl) return accentEl;
+  accentEl = document.createElement('div');
+  accentEl.id = 'lt-accent';
+  accentEl.style.cssText = 'height:6px;width:160px;border-radius:3px;margin:18px auto 0;display:none';
+  textEl.insertAdjacentElement('afterend', accentEl);
+  return accentEl;
+}
+function applyAccent(accent) {
+  const el = accentBar();
+  if (accent && accent.enabled) {
+    el.style.background = accent.color || '#e7c98a';
+    el.style.display = 'block';
+  } else {
+    el.style.display = 'none';
+  }
+}
+
 function buildBarBg(ltBar) {
   if (!ltBar) return 'transparent';
   // A theme may author an explicit CSS background (gradient/solid) for the bar;
@@ -98,20 +131,93 @@ function applyStyle(el, s, scale = 1) {
   ltDiv.style.background = buildBarBg(s.ltBar);
 }
 
+// Per-theme lower-third entrance animation (style.lt.anim). Applied to #text (a child
+// of #lowerthird) so it never fights the band-level slide transition on #lowerthird.
+// Re-triggered each render by toggling the class off→reflow→on. Default 'none'.
+const LT_ANIM_CLASS = { fade: 'ltin-fade', 'slide-up': 'ltin-up', 'slide-left': 'ltin-left', 'slide-down': 'ltin-down' };
+function applyLtAnim(anim) {
+  const cls = LT_ANIM_CLASS[anim];
+  textEl.classList.remove('ltin-fade', 'ltin-up', 'ltin-left', 'ltin-down');
+  if (!cls) return;
+  void textEl.offsetWidth; // force reflow so the animation restarts
+  textEl.classList.add(cls);
+}
+
+// Per-theme lower-third FORM + ANCHOR (style.lt.form / style.lt.anchor). The bar fill
+// (ltBar) provides the colour; the form decides where it lives:
+//   band  — full-width strap (default, fill on #lowerthird)
+//   box   — a padded rounded panel sized to the text
+//   pill  — a fully-rounded panel sized to the text
+//   none  — no fill, just text
+// anchor moves the strap: bottom (default) / top / center. Called after applyStyle.
+function applyLtForm(form, anchor, barBg) {
+  form = form || 'band';
+  anchor = anchor || 'bottom';
+  if (anchor === 'top') { ltDiv.style.top = '0'; ltDiv.style.bottom = 'auto'; ltDiv.style.justifyContent = 'flex-start'; }
+  else if (anchor === 'center') { ltDiv.style.top = '0'; ltDiv.style.bottom = '0'; ltDiv.style.justifyContent = 'center'; }
+  else { ltDiv.style.top = 'auto'; ltDiv.style.bottom = '0'; ltDiv.style.justifyContent = 'flex-end'; }
+
+  const align = textEl.style.textAlign || 'center';
+  if (form === 'box' || form === 'pill') {
+    ltDiv.style.background = 'transparent';
+    ltDiv.style.alignItems = align === 'left' ? 'flex-start' : align === 'right' ? 'flex-end' : 'center';
+    textEl.style.width = 'auto';
+    textEl.style.display = 'inline-block';
+    textEl.style.background = barBg;
+    textEl.style.padding = form === 'pill' ? '0.35em 1.1em' : '0.4em 0.85em';
+    textEl.style.borderRadius = form === 'pill' ? '999px' : '16px';
+  } else {
+    ltDiv.style.alignItems = '';
+    textEl.style.width = '100%';
+    textEl.style.display = '';
+    textEl.style.padding = '';
+    textEl.style.borderRadius = '';
+    ltDiv.style.background = form === 'none' ? 'transparent' : barBg;
+    textEl.style.background = '';
+  }
+}
+
 // program=0 → graphics-only channel: ignore the program slide entirely so the song
 // lyric band never renders (only the broadcast-graphics overlay shows). Mutable so
 // the operator can toggle it live via content:mode without recreating the window.
 let showProgram = new URLSearchParams(location.search).get('program') !== '0';
 let lastPayload = null; // cached so re-enabling restores the current slide
+// The entrance animation (lt.anim) should play only when the band first APPEARS on air —
+// line-to-line advances are handled by the slide transition, so re-firing it there just
+// double-fades and reads as nothing. This tracks whether the lyric band is currently up.
+let bandVisible = false;
 
 function clearBand() {
   ltDiv.style.background = 'transparent';
+  ltDiv.classList.remove('logo-fullscreen');
   textEl.className = '';
   textEl.innerHTML = '';
   textEl.style.fontSize = '';
   textEl.style.maxHeight = '';
   textEl.style.overflow = '';
   copyright.textContent = '';
+  if (accentEl) accentEl.style.display = 'none';
+  bandVisible = false;
+}
+
+// Render this channel's logo FULLSCREEN (cover), filling the L3 output — the operator
+// designs a PNG in whatever proportions they want and it shows edge-to-edge. Only fired
+// when the channel has its OWN logo override (no global fallback); see renderProgram.
+const LOGO_VIDEO_EXT = ['mp4', 'webm', 'mov', 'm4v', 'avi', 'mkv'];
+function showLtLogo(path, scaleMode) {
+  const url = pathToUrl(path);
+  const isVideo = LOGO_VIDEO_EXT.includes(String(path).split('.').pop().toLowerCase());
+  const fit = scaleMode === 'contain' ? 'contain' : 'cover'; // fullscreen defaults to cover
+  ltDiv.style.background = 'transparent';
+  ltDiv.classList.add('logo-fullscreen');
+  textEl.style.cssText = '';
+  textEl.className = 'logo-mode';
+  textEl.innerHTML = isVideo
+    ? `<video class="logo-img" style="object-fit:${fit}" autoplay loop muted playsinline src="${url}"></video>`
+    : `<img class="logo-img" style="object-fit:${fit}" src="${url}" alt="" />`;
+  copyright.textContent = '';
+  if (accentEl) accentEl.style.display = 'none';
+  bandVisible = false;
 }
 
 // Split-verse auto-fit for the lower third: largest font (≤ maxPx) at which both
@@ -137,16 +243,36 @@ function renderProgram(payload) {
 
   const { type, text, copyright: copy, styleJson } = payload;
 
-  // clear / logo / foreground-media / live-input / presentation all blank the
-  // lower-third lyric band (full-frame items carry no lyric band in v1).
-  if (type === 'clear' || type === 'logo' || payload.media || payload.liveInput || payload.elements) { clearBand(); return; }
+  // clear / foreground-media / live-input / presentation blank the lower-third band.
+  if (type === 'clear' || payload.media || payload.liveInput || payload.elements) { clearBand(); return; }
+  // Logo: an L3 channel shows a logo ONLY when it has its OWN logo override — no global
+  // fallback (so by default an L3 output stays blank on a logo cue while the fullscreen
+  // output shows the global logo). When set, it renders FULLSCREEN so the operator can
+  // design a PNG in any proportions. `logoFromOverride` is main's per-channel flag.
+  if (type === 'logo') {
+    if (payload.logoPath && payload.logoFromOverride) showLtLogo(payload.logoPath, payload.logoScaleMode);
+    else clearBand();
+    return;
+  }
 
   // Global lower-third font scale (fraction of the authored/fullscreen size). Main
   // attaches it to every content payload; default to 1 when absent.
   const scale = (Number(payload.ltFontScale) > 0) ? Number(payload.ltFontScale) : 1;
 
+  // The lower third resolves its own style: the fullscreen look with any `lt`
+  // overrides applied. Everything below styles from ltStyle, not the raw styleJson.
+  const ltStyle = resolveLtStyle(styleJson);
+
+  // Entrance fires only on the band's first appearance (not line-to-line — the slide
+  // transition owns those).
+  const appearing = !bandVisible;
+  bandVisible = true;
+
+  ltDiv.classList.remove('logo-fullscreen'); // drop fullscreen-logo layout when lyrics resume
   textEl.className = '';
-  applyStyle(textEl, styleJson, scale);
+  applyStyle(textEl, ltStyle, scale);
+  applyLtForm(styleJson && styleJson.lt && styleJson.lt.form, styleJson && styleJson.lt && styleJson.lt.anchor, buildBarBg(ltStyle && ltStyle.ltBar));
+  applyAccent(ltStyle && ltStyle.accent);
 
   // Split-verse (compare) view: stack both translations in the band, each with its
   // own attribution. Shrink the base a touch more so two verses fit the lower third.
@@ -154,16 +280,30 @@ function renderProgram(payload) {
   if (Array.isArray(sv) && sv.length > 1) {
     textEl.classList.add('split');
     textEl.innerHTML = sv.map((b) =>
-      `<div class="split-verse"><div class="split-verse-body">${renderWithRuns(b.text || '', styleJson?.runs, scale)}</div>`
+      `<div class="split-verse"><div class="split-verse-body">${renderWithRuns(b.text || '', ltStyle?.runs, scale)}</div>`
       + `<div class="split-verse-attr">${esc(b.attribution || '')}</div></div>`).join('');
     copyright.textContent = '';
     // Auto-fit the stacked translations to fill the band at the largest size that still
     // fits within ~60% of the screen (so a long two-translation reading can't run off
     // the top of the frame). Mirrors fullscreen's approach, capped for the lower third.
-    fitSplitText((Number(styleJson?.fontSize) || 72) * scale, Math.round(window.innerHeight * 0.6));
+    fitSplitText((Number(ltStyle?.fontSize) || 72) * scale, Math.round(window.innerHeight * 0.6));
+    applyLtAnim(appearing ? (styleJson && styleJson.lt && styleJson.lt.anim) : null);
     return;
   }
-  textEl.innerHTML = renderWithRuns(text || '', styleJson?.runs, scale);
+  textEl.innerHTML = renderWithRuns(text || '', ltStyle?.runs, scale);
+  // Lower-third line budget. Primary tool is the shared Max-Lines/slide cap (§A) which
+  // paginates the slide; the L3 INHERITS that cap by default (payload.slideMaxLines) and
+  // auto-fits to it. A theme may override with its own tighter cap (lt.maxLines). Either
+  // way, a permanent safety net keeps the band within ~45% of the frame so a long slide
+  // can never run off screen (§B backup).
+  const ltOverride = Number(styleJson && styleJson.lt && styleJson.lt.maxLines) || 0; // custom, absent = inherit
+  const ltMax = ltOverride || Number(payload.slideMaxLines) || 0;
+  const baseFontPx = (Number(ltStyle?.fontSize) || 72) * scale;
+  const lh = Number(ltStyle?.lineSpacing) || 1.2;
+  const capH = ltMax > 0 ? Math.ceil(ltMax * lh * baseFontPx) : Infinity;
+  const maxH = Math.min(capH, Math.round(window.innerHeight * 0.45));
+  if (Number.isFinite(maxH)) fitSplitText(baseFontPx, maxH);
+  applyLtAnim(appearing ? (styleJson && styleJson.lt && styleJson.lt.anim) : null);
   copyright.textContent = copy || '';
   // Scripture attribution ("John 1:1 (KJV)") right-aligned + stylable; song copyright inherits.
   applyCopyrightStyle(copyright, payload.copyrightStyle, payload.copyrightAlign === 'right' ? 'right' : '');

@@ -1,0 +1,42 @@
+{
+  "name": "Golden Hour",
+  "category": "song",
+  "sort_order": -77,
+  "style": {
+    "collection": "Collections",
+    "fontFamily": "DM Serif Display",
+    "color": "#fff6ec",
+    "fontSize": 94,
+    "lineSpacing": 1.1,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 20,
+      "color": "rgba(0,0,0,0.55)"
+    },
+    "bgCss": "radial-gradient(130% 120% at 50% 100%, #d9a24e 0%, #7e4f2a 42%, #2a1a14 80%, #120b09 100%)",
+    "treatment": {
+      "scrim": "bottom",
+      "scrimStrength": 0.45,
+      "vignette": 0.3,
+      "grain": 0.1,
+      "tint": {
+        "color": "#ff9a4d",
+        "amount": 0.12,
+        "blend": "soft-light"
+      }
+    },
+    "accent": {
+      "enabled": true,
+      "color": "#f4b072"
+    },
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(18,11,9,0.94) 0%, rgba(18,11,9,0.8) 70%, rgba(18,11,9,0) 100%)"
+    },
+    "lt": {
+      "fontFamily": "DM Serif Display",
+      "fontSize": 61
+    }
+  }
+}

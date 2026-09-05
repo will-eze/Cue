@@ -1,0 +1,26 @@
+{
+  "name": "Gather",
+  "category": "song",
+  "sort_order": -114,
+  "style": {
+    "collection": "Collections",
+    "fontFamily": "Archivo",
+    "color": "#ffffff",
+    "bold": true,
+    "fontSize": 86,
+    "lineSpacing": 1.12,
+    "textShadow": { "enabled": true, "x": 0, "y": 2, "blur": 16, "color": "rgba(0,0,0,0.55)" },
+    "bgRef": "library/unsplash-6liebVeAfrY.jpg",
+    "treatment": {
+      "scrim": "bottom",
+      "scrimStrength": 0.6,
+      "vignette": 0.34,
+      "grain": 0.06,
+      "tint": { "color": "#2e6fb0", "amount": 0.08, "blend": "soft-light" },
+      "kenBurns": "zoom"
+    },
+    "accent": { "enabled": true, "color": "#3aa0ff" },
+    "ltBar": { "css": "linear-gradient(to top, rgba(6,12,22,0.95) 0%, rgba(6,12,22,0.82) 74%, rgba(6,12,22,0) 100%)" },
+    "lt": { "fontFamily": "Archivo", "fontSize": 56, "bold": true }
+  }
+}

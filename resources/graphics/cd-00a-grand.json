@@ -1,0 +1,14 @@
+{
+  "name": "Grand Countdown",
+  "kind": "countdown",
+  "graphic": {
+    "label": "Grand Countdown",
+    "text": "Service begins in",
+    "style_json": {
+      "accentSource": "theme", "fontSource": "custom",
+      "mode": "countdown", "source": "duration", "durationSec": 300, "targetClock": "11:00", "format": "24h", "showSeconds": true, "endMessage": "Welcome",
+      "time":    { "fontFamily": "Archivo", "fontSize": 168, "color": "#ffffff", "bold": true, "align": "center", "verticalAlign": "center", "letterSpacing": 0.01, "textBox": { "x": 20, "y": 30, "w": 60, "h": 40 }, "ltBar": null },
+      "message": { "fontFamily": "Inter", "fontSize": 34, "color": "#7fb0ff", "bold": false, "align": "center", "uppercase": true, "letterSpacing": 0.1 }
+    }
+  }
+}

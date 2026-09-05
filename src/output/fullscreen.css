@@ -27,16 +27,37 @@ html, body {
   display: block;
 }
 
-/* Dark scrim between background (z0) and content (z1). Same z-index as the
-   background but later in the DOM, so it paints over the media yet under text.
-   Opacity is driven by the slide style's bgScrim (0 = off). */
+/* Treatment layer between background (z0) and content (z1). Same z-index as the
+   background but later in the DOM, so it paints over the media yet under text. JS
+   (applyTreatment) fills it with the resolved theme's overlay stack — directional
+   scrim, vignette, film grain, colour grade. Empty (transparent) = no treatment. */
+/* NB: no z-index here on purpose — a positioned element with an explicit z-index
+   forms an isolated stacking context, which would stop the grade/tint layer's
+   mix-blend-mode from blending with #background. z-index:auto keeps #scrim in
+   #stage's context (paints above #background by DOM order, under #content z:1). */
 #scrim {
   position: absolute;
   inset: 0;
-  z-index: 0;
-  background: #000;
-  opacity: 0;
   pointer-events: none;
+}
+#scrim > .tx-layer { position: absolute; inset: 0; pointer-events: none; }
+
+/* Frosted glass panel behind text (treatment.glass) — applied to #text-wrap by JS. */
+
+/* Ken Burns motion on still backgrounds (treatment.kenBurns) — a slow, looping
+   drift/zoom that makes a photo feel alive. Applied to the <img> in #background.
+   Honors reduced-motion: the animation is disabled and the still frame shows. */
+#background img.kb { will-change: transform; transform-origin: 50% 50%; }
+#background img.kb-zoom  { animation: kb-zoom 28s ease-in-out infinite alternate; }
+#background img.kb-panlr { animation: kb-panlr 34s ease-in-out infinite alternate; }
+#background img.kb-pantb { animation: kb-pantb 34s ease-in-out infinite alternate; }
+#background img.kb-drift { animation: kb-drift 40s ease-in-out infinite alternate; }
+@keyframes kb-zoom  { from { transform: scale(1.02); } to { transform: scale(1.14); } }
+@keyframes kb-panlr { from { transform: scale(1.12) translateX(-2.4%); } to { transform: scale(1.12) translateX(2.4%); } }
+@keyframes kb-pantb { from { transform: scale(1.12) translateY(-2.2%); } to { transform: scale(1.12) translateY(2.2%); } }
+@keyframes kb-drift { from { transform: scale(1.1) translate(-1.8%, -1.2%); } to { transform: scale(1.1) translate(1.8%, 1.2%); } }
+@media (prefers-reduced-motion: reduce) {
+  #background img.kb { animation: none !important; }
 }
 
 #content {

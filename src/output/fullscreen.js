@@ -118,6 +118,61 @@ function boxFillBg(bf) {
   return `rgba(${r},${g},${b},${bf.opacity != null ? bf.opacity : 0.5})`;
 }
 
+// ── Theme treatment layer ─────────────────────────────────────────────────────
+// MIRRORED VERBATIM from src/renderer/components/TreatmentOverlays.jsx — the output
+// template can't import from the renderer (same rule as programFit()). Keep in exact
+// sync or preview stops matching output. See §5 of plan/theme-redesign.md.
+const _clamp01 = (v) => Math.max(0, Math.min(1, Number(v) || 0));
+const GRAIN_URI =
+  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")";
+
+function scrimBackground(shape, strength) {
+  const s = _clamp01(strength);
+  if (s <= 0 || shape === 'none') return null;
+  const a = (x) => `rgba(0,0,0,${+(s * x).toFixed(3)})`;
+  switch (shape) {
+    case 'bottom': return `linear-gradient(to top, ${a(1)} 0%, ${a(0.55)} 26%, rgba(0,0,0,0) 60%)`;
+    case 'top':    return `linear-gradient(to bottom, ${a(1)} 0%, ${a(0.55)} 26%, rgba(0,0,0,0) 60%)`;
+    case 'radial': return `radial-gradient(125% 95% at 50% 62%, rgba(0,0,0,0) 34%, ${a(1)} 100%)`;
+    case 'flat':
+    default:       return a(1);
+  }
+}
+
+// Ordered overlay descriptors [{ key, css }] as inline-style strings for the #scrim
+// container's child divs.
+function treatmentLayers(style) {
+  const s = style || {};
+  const t = s.treatment || {};
+  const layers = [];
+  if (t.tint && t.tint.color && _clamp01(t.tint.amount) > 0) {
+    layers.push(`background:${t.tint.color};opacity:${_clamp01(t.tint.amount)};mix-blend-mode:${t.tint.blend || 'soft-light'}`);
+  }
+  const shape = t.scrim || (s.bgScrim ? 'flat' : 'none');
+  const strength = t.scrimStrength != null ? t.scrimStrength : (s.bgScrim || 0);
+  const scr = scrimBackground(shape, strength);
+  if (scr) layers.push(`background:${scr}`);
+  if (_clamp01(t.vignette) > 0) {
+    layers.push(`background:radial-gradient(130% 130% at 50% 50%, rgba(0,0,0,0) 52%, rgba(0,0,0,${_clamp01(t.vignette)}) 100%)`);
+  }
+  if (_clamp01(t.grain) > 0) {
+    layers.push(`background-image:${GRAIN_URI};background-size:160px 160px;opacity:${_clamp01(t.grain) * 0.5};mix-blend-mode:overlay`);
+  }
+  return layers;
+}
+
+// Fill the #scrim container with the resolved treatment overlay stack (or clear it).
+function applyTreatment(style) {
+  if (!scrim) return;
+  const layers = style ? treatmentLayers(style) : [];
+  scrim.innerHTML = layers.map((css) => `<div class="tx-layer" style="${css}"></div>`).join('');
+}
+
+// Ken Burns class for a still background <img> from treatment.kenBurns.
+const KB_CLASS = { zoom: 'kb kb-zoom', 'pan-lr': 'kb kb-panlr', 'pan-tb': 'kb kb-pantb', drift: 'kb kb-drift' };
+let _kenBurns = 'none';
+function setKenBurns(mode) { _kenBurns = mode || 'none'; }
+
 // Scale authored 1920×1080 px values to the current viewport size.
 // Uses min(x,y) so the design fits without stretching on any aspect ratio.
 function viewportScale() {
@@ -132,8 +187,8 @@ let _liveCopyrightDefaultAlign = 'center';
 
 function applyStyle(s) {
   _liveStyle = s;
-  // Background scrim (transparent→black) — clamp 0..1; clear when there's no slide.
-  if (scrim) scrim.style.opacity = String(Math.max(0, Math.min(1, (s && s.bgScrim) || 0)));
+  // Treatment layer (directional scrim, vignette, grain, grade) — clears when null.
+  applyTreatment(s);
   if (!s) {
     textWrap.style.cssText = '';
     textEl.style.cssText   = '';
@@ -157,9 +212,22 @@ function applyStyle(s) {
   textWrap.style.overflow  = 'hidden';
   textWrap.style.boxSizing = 'border-box';
 
-  // Box fill — colour panel behind the text box (legibility on busy backgrounds).
-  // px values (radius/padding) scale with the output resolution like font sizes.
-  if (s.boxFill && s.boxFill.enabled) {
+  // Frosted glass panel (treatment.glass) supersedes the plain boxFill — a backdrop-
+  // blurred, tinted, rounded card for legibility on busy photos. px values scale with
+  // the output resolution like font sizes.
+  const glass = s.treatment && s.treatment.glass;
+  textWrap.style.backdropFilter = '';
+  textWrap.style.webkitBackdropFilter = '';
+  textWrap.style.border = '';
+  if (glass && glass.enabled) {
+    const blur = Math.max(0, (glass.blur != null ? glass.blur : 18)) * vs;
+    textWrap.style.background     = boxFillBg({ color: glass.tint || '#0a0e1a', opacity: glass.opacity != null ? glass.opacity : 0.28 });
+    textWrap.style.backdropFilter = `blur(${blur}px) saturate(1.1)`;
+    textWrap.style.webkitBackdropFilter = `blur(${blur}px) saturate(1.1)`;
+    textWrap.style.borderRadius   = Math.round((glass.radius != null ? glass.radius : 22) * vs) + 'px';
+    textWrap.style.padding        = Math.round((glass.pad != null ? glass.pad : 40) * vs) + 'px';
+    textWrap.style.border         = '1px solid rgba(255,255,255,0.08)';
+  } else if (s.boxFill && s.boxFill.enabled) {
     textWrap.style.background   = boxFillBg(s.boxFill);
     textWrap.style.borderRadius = Math.round((s.boxFill.radius != null ? s.boxFill.radius : 0) * vs) + 'px';
     textWrap.style.padding      = Math.round((s.boxFill.pad != null ? s.boxFill.pad : 24) * vs) + 'px';
@@ -250,6 +318,16 @@ function destroyBgController() {
   if (_bgController) { _bgController.destroy(); _bgController = null; }
 }
 
+// Background playback speed (theme `bgSpeed`, default 1× = normal). Backgrounds are
+// muted + looping, so a slower rate calms a distracting clip. Applies to the local
+// <video> element(s) only — NOT the main-process transport clock (foreground media).
+let _bgSpeed = 1;
+function setBgSpeed(rate) {
+  const r = Math.max(0.1, Math.min(2, Number(rate) || 1));
+  _bgSpeed = r;
+  bg.querySelectorAll('video').forEach((v) => { try { v.playbackRate = r; } catch {} });
+}
+
 function createLoopBlendBackground(url) {
   function makeVid() {
     const v = document.createElement('video');
@@ -258,6 +336,7 @@ function createLoopBlendBackground(url) {
     v.preload = 'auto';
     Object.assign(v.style, { position: 'absolute', inset: '0', width: '100%', height: '100%', objectFit: 'cover' });
     v.src = url;
+    v.playbackRate = _bgSpeed;
     bg.appendChild(v);
     return v;
   }
@@ -347,12 +426,14 @@ function setBackground(path, bgCss) {
         v.loop = true;
         Object.assign(v.style, { position: 'absolute', inset: '0', width: '100%', height: '100%', objectFit: 'cover' });
         v.src = url;
+        v.playbackRate = _bgSpeed;
         bg.appendChild(v);
       } else {
         _bgController = createLoopBlendBackground(url);
       }
     } else {
-      bg.innerHTML = `<img src="${url}" alt="" />`;
+      const kb = KB_CLASS[_kenBurns] || '';
+      bg.innerHTML = `<img class="${kb}" src="${url}" alt="" />`;
     }
     return;
   }
@@ -777,6 +858,8 @@ function renderSlide(payload) {
   clearLiveInput();
   hideElements();
   hideLogo();
+  setBgSpeed(styleJson?.bgSpeed);   // before setBackground, so new bg videos inherit it
+  setKenBurns(styleJson?.treatment?.kenBurns); // before setBackground, so a new bg <img> gets the class
   setBackground(backgroundPath, styleJson?.bgCss);
   applyStyle(styleJson);
 

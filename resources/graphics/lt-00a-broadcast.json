@@ -1,0 +1,14 @@
+{
+  "name": "Broadcast",
+  "kind": "lower_third",
+  "graphic": {
+    "label": "Broadcast",
+    "name": "Sarah Bennett",
+    "title": "Worship Pastor",
+    "style_json": {
+      "accentSource": "theme", "fontSource": "custom",
+      "name":  { "fontFamily": "Archivo", "fontSize": 52, "color": "#ffffff", "bold": true, "align": "left", "verticalAlign": "bottom", "letterSpacing": 0, "textBox": { "x": 5, "y": 74, "w": 55, "h": 18 }, "ltBar": { "css": "linear-gradient(to top, rgba(8,12,20,0.96) 0%, rgba(8,12,20,0.86) 60%, rgba(8,12,20,0) 100%)" } },
+      "title": { "fontFamily": "Archivo", "fontSize": 26, "color": "#7fb0ff", "bold": false, "align": "left", "letterSpacing": 0.04, "uppercase": true }
+    }
+  }
+}

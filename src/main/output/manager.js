@@ -752,9 +752,9 @@ function sendStateToWindow(win, channel) {
     const db = getDb();
     const scaleSetting = db.prepare('SELECT value FROM settings WHERE key = ?').get('logo_scale_mode');
     const logoScaleMode = scaleSetting ? JSON.parse(scaleSetting.value) : 'cover';
-    const logoPath = channel ? resolveLogo(channel) : null;
+    const { path: logoPath, fromOverride: logoFromOverride } = channel ? resolveLogo(channel) : { path: null, fromOverride: false };
     win.webContents.send('slide:update', {
-      type: 'logo', logoPath, logoScaleMode, text: null,
+      type: 'logo', logoPath, logoFromOverride, logoScaleMode, text: null,
       backgroundPath: null, copyright: null, sectionLabel: null,
     });
     return;
@@ -800,8 +800,8 @@ function emitSlides() {
 
     const channels = db.prepare('SELECT * FROM output_channels WHERE active = 1').all();
     for (const channel of channels) {
-      const logoPath = resolveLogo(channel);
-      const logoPayload = { type: 'logo', logoPath, logoScaleMode, text: null,
+      const { path: logoPath, fromOverride: logoFromOverride } = resolveLogo(channel);
+      const logoPayload = { type: 'logo', logoPath, logoFromOverride, logoScaleMode, text: null,
         backgroundPath: null, copyright: null, sectionLabel: null, transition };
       if (channel.type === 'ndi') {
         const win = windows.get(`ndi-${channel.id}`);
@@ -819,7 +819,7 @@ function emitSlides() {
     // Stream window uses the global logo (no per-channel override).
     if (streamWin && !streamWin.isDestroyed()) {
       streamWin.webContents.send('slide:update', {
-        type: 'logo', logoPath: resolveLogo({}), logoScaleMode, text: null,
+        type: 'logo', logoPath: resolveLogo({}).path, logoScaleMode, text: null,
         backgroundPath: null, copyright: null, sectionLabel: null, transition,
       });
     }
@@ -862,7 +862,7 @@ function buildMirrorSlide() {
       if (row) logoScaleMode = JSON.parse(row.value);
     } catch { /* default cover */ }
     // The mirror uses the global logo (no per-channel override).
-    return { type: 'logo', logoPath: resolveLogo({}), logoScaleMode, text: null, backgroundPath: null, copyright: null, sectionLabel: null, transition };
+    return { type: 'logo', logoPath: resolveLogo({}).path, logoScaleMode, text: null, backgroundPath: null, copyright: null, sectionLabel: null, transition };
   }
   // content
   return { ...state.livePayload, type: 'content', transport: { ...transport }, transition, ltFontScale: ltFontScaleFraction(), bgLoopMode: bgLoopMode(), bgLoopBlendSecs: bgLoopBlendSecs() };
@@ -1528,30 +1528,44 @@ export function setRemoteStateListener(cb) {
   remoteStateCb = cb;
 }
 
+// Returns { path, fromOverride }. fromOverride is true only when THIS channel's own
+// logo_override_id resolved — the global fallback reports false. The lower-third template
+// shows a logo only on an override (no global fallback), so it needs the distinction.
 function resolveLogo(channel) {
   const db = getDb();
   if (channel.logo_override_id) {
     const a = db.prepare('SELECT * FROM media_assets WHERE id = ?').get(channel.logo_override_id);
-    if (a) return a.path;
+    if (a) return { path: a.path, fromOverride: true };
   }
   const setting = db.prepare('SELECT value FROM settings WHERE key = ?').get('global_logo_id');
   if (setting) {
     const mediaId = JSON.parse(setting.value);
     const a = db.prepare('SELECT * FROM media_assets WHERE id = ?').get(mediaId);
-    if (a) return a.path;
+    if (a) return { path: a.path, fromOverride: false };
   }
-  return null;
+  return { path: null, fromOverride: false };
 }
 
-// Flat background cascade: lock → slot override → song default → live global → black.
-// (Renderer OperatorView.resolveBackground is the live source of truth; this mirror
-// keeps the exported helper honest.)
+// Flat background cascade: lock → slot override → song default → effective theme
+// (item→service→app) → legacy per-surface global → black. (Renderer
+// OperatorView.resolveBackground is the live source of truth; this mirror keeps the
+// exported helper honest. Best-effort: it resolves a theme's media background_id, not
+// an unresolved bgRef download.)
 export function resolveBackground(item) {
   const db = getDb();
   const pathOf = (id) => {
     if (!id) return null;
     const a = db.prepare('SELECT * FROM media_assets WHERE id = ?').get(id);
     return a ? a.path : null;
+  };
+  const settingOf = (k) => {
+    const r = db.prepare('SELECT value FROM settings WHERE key = ?').get(k);
+    return r ? JSON.parse(r.value) : null;
+  };
+  const themeBgPath = (themeId) => {
+    if (!themeId) return null;
+    const t = db.prepare('SELECT background_id FROM themes WHERE id = ?').get(themeId);
+    return t ? pathOf(t.background_id) : null;
   };
   // Locked song: its own default is pinned above everything (override + global ignored).
   if (item.item_type === 'song' && item.song?.background_locked) {
@@ -1561,12 +1575,19 @@ export function resolveBackground(item) {
   if (item.item_type === 'song' && item.song?.default_background_id) {
     const p = pathOf(item.song.default_background_id);
     if (p) return p;
-    // fall through to the live global below
+    // fall through to the theme / live global below
   }
-  if (item.item_type === 'song') {
-    const setting = db.prepare('SELECT value FROM settings WHERE key = ?').get('global_bg_song_id');
-    if (setting) return pathOf(JSON.parse(setting.value));
-  }
+  // Effective theme background (item override → service → per-kind app default → app default).
+  const kindDefault = item.item_type === 'song' ? settingOf('default_theme_id_song')
+    : item.item_type === 'scripture' ? settingOf('default_theme_id_scripture')
+    : (item.item_type === 'slide' || item.item_type === 'presentation') ? settingOf('default_theme_id_slide') : null;
+  const effThemeId = item.theme_override_id || item.service_theme_id || kindDefault || settingOf('default_theme_id') || null;
+  const tb = themeBgPath(effThemeId);
+  if (tb) return tb;
+  // Legacy per-surface global default (fallback for installs with no theme set).
+  if (item.item_type === 'song') return pathOf(settingOf('global_bg_song_id'));
+  if (item.item_type === 'scripture') return pathOf(settingOf('global_bg_scripture_id'));
+  if (item.item_type === 'slide' || item.item_type === 'presentation') return pathOf(settingOf('global_bg_slide_id'));
   return null;
 }
 

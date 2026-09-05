@@ -2,6 +2,31 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import GraphicsEditor, { GraphicsPresetModal, presetToGraphic, fillPlaceholders, flatTextCss, buildBarBg, cdSampleText, CD_DEFAULT_BOX, TIME_BASE, MSG_BASE } from '../components/GraphicsEditor';
 import { CHANNEL_MODES, channelMode, modeToFlags } from '../utils/channelMode';
 import { mediaUrl } from '../utils/mediaUrl';
+import { normalizeLookStyle } from '../utils/presentationThemes';
+
+// Inject the active theme's BRAND (accent colour + optional font) into a graphic's
+// style at fire-time, so broadcast overlays cohere with the program theme without
+// coupling to the per-slide bus (§ graphics↔theme correlation). Only fields the graphic
+// opted into are touched: accent when style.accentSource === 'theme' (the default for
+// NEW graphics — the accent is the title/message colour), font when fontSource === 'theme'.
+// Resolved from the RUNDOWN theme → app default, at fire time only (never re-styles on air).
+function applyThemeBrand(style, kind, brand) {
+  if (!brand) return style;
+  const useAccent = style.accentSource === 'theme' && brand.accent;
+  const useFont = style.fontSource === 'theme' && brand.font;
+  if (!useAccent && !useFont) return style;
+  const s = { ...style };
+  if (kind === 'lower_third') {
+    if (useAccent) s.title = { ...(s.title || {}), color: brand.accent };
+    if (useFont) { s.name = { ...(s.name || {}), fontFamily: brand.font }; s.title = { ...(s.title || {}), fontFamily: brand.font }; }
+  } else if (kind === 'countdown') {
+    if (useAccent) s.message = { ...(s.message || {}), color: brand.accent };
+    if (useFont) { s.time = { ...(s.time || {}), fontFamily: brand.font }; s.message = { ...(s.message || {}), fontFamily: brand.font }; }
+  } else if (kind === 'ticker') {
+    if (useFont) s.fontFamily = brand.font; // ticker text is white; accent left to the bar
+  }
+  return s;
+}
 
 const FRAME_W = 1920, FRAME_H = 1080;
 const DEFAULT_BOX = { x: 4, y: 70, w: 55, h: 22 };
@@ -36,9 +61,27 @@ const EMPTY_KIND_SLOT = { screen: null, ndi: null, stream: null };
 const EMPTY_OVERLAY = { nameTitle: { ...EMPTY_KIND_SLOT }, ticker: { ...EMPTY_KIND_SLOT }, custom: { ...EMPTY_KIND_SLOT }, countdown: { ...EMPTY_KIND_SLOT } };
 const slotAnyLive = (slot) => !!(slot && (slot.screen || slot.ndi || slot.stream));
 
-export default function GraphicsPanel() {
+export default function GraphicsPanel({ activeServiceId }) {
   const [graphics, setGraphics] = useState([]);
   const [overlay, setOverlay] = useState(EMPTY_OVERLAY);
+  // Active theme brand (accent + display font) for graphics that opt into inheriting it.
+  // Resolved from the rundown theme → app default; refreshed on mount / rundown change.
+  const [brand, setBrand] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        let themeId = null;
+        if (activeServiceId) themeId = (await window.cue.services.get(activeServiceId))?.theme_id || null;
+        if (!themeId) themeId = Number(await window.cue.settings.get('default_theme_id')) || null;
+        if (!themeId) { if (alive) setBrand(null); return; }
+        const t = (await window.cue.themes.list()).find((x) => x.id === themeId);
+        const norm = t?.style_json ? (normalizeLookStyle(JSON.parse(t.style_json)) || {}) : {};
+        if (alive) setBrand({ accent: norm.accent?.color || null, font: norm.fontFamily || null });
+      } catch { if (alive) setBrand(null); }
+    })();
+    return () => { alive = false; };
+  }, [activeServiceId]);
   const [editor, setEditor] = useState(null); // {} = new, graphic obj = edit, null = closed
   const [gallery, setGallery] = useState(false); // design gallery open
   const [quickTicker, setQuickTicker] = useState('');
@@ -105,7 +148,7 @@ export default function GraphicsPanel() {
 
   function take(g) {
     const target = resolveTarget(g);
-    const style = parseStyle(g);
+    const style = applyThemeBrand(parseStyle(g), g.kind, brand);
     const autoDismissSec = Number(style.autoDismissSec) || 0;
     const bgPath = g.background_path || null;
     const bgFit  = style.bgFit || null;
@@ -244,41 +287,61 @@ export default function GraphicsPanel() {
 
       <div className="flex-1 overflow-y-auto custom-scrollbar p-md flex flex-col gap-md min-h-0">
         {/* Channel mode switcher — flip a lower-third channel between lyrics/graphics
-            live, without diving into Settings. */}
-        {ltChannels.length > 0 && (
-          <div className="bg-surface-container rounded-lg border border-outline-variant/30 p-md flex flex-col gap-sm">
-            <div className="flex items-center gap-xs">
-              <span className="material-symbols-outlined text-[16px] text-on-surface-variant">tune</span>
-              <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant">Lower-Third Channels</span>
-              <span className="text-[10px] font-mono text-on-surface-variant/50 normal-case tracking-normal">switch what each channel shows</span>
+            live, without diving into Settings. A single channel sits on one row with the
+            heading; multiple channels list below it. */}
+        {ltChannels.length > 0 && (() => {
+          const modeToggle = (ch) => (
+            <div className="flex items-center gap-[2px] bg-surface-container-lowest rounded p-[2px] shrink-0">
+              {CHANNEL_MODES.map((m) => {
+                const active = channelMode(ch) === m.id;
+                return (
+                  <button key={m.id} onClick={() => setChannelModeFor(ch, m.id)} title={m.label}
+                    className={`flex items-center gap-xs px-sm py-[2px] rounded text-[10px] font-label-sm uppercase tracking-[0.04em] transition-colors cursor-pointer ${
+                      active ? 'bg-primary text-on-primary font-bold' : 'text-on-surface-variant hover:text-on-surface'}`}>
+                    <span className="material-symbols-outlined text-[12px]">{m.icon}</span>
+                    {m.short}
+                  </button>
+                );
+              })}
             </div>
-            <div className="flex flex-col gap-xs">
-              {ltChannels.map((ch) => (
-                <div key={ch.id} className="flex items-center gap-sm">
-                  <span className={`w-[6px] h-[6px] rounded-full shrink-0 ${ch.active ? 'bg-tertiary' : 'bg-outline-variant'}`} />
-                  <span className="text-body-md text-on-surface truncate flex-1 min-w-0">{ch.name}</span>
-                  {ch.type === 'ndi' && (
-                    <span className="shrink-0 text-[9px] font-label-sm uppercase tracking-[0.04em] px-xs py-[1px] rounded border border-tertiary/50 text-tertiary bg-tertiary/10">NDI</span>
-                  )}
-                  <div className="flex items-center gap-[2px] bg-surface-container-lowest rounded p-[2px] shrink-0">
-                    {CHANNEL_MODES.map((m) => {
-                      const active = channelMode(ch) === m.id;
-                      return (
-                        <button key={m.id} onClick={() => setChannelModeFor(ch, m.id)} title={m.label}
-                          className={`flex items-center gap-xs px-sm py-[2px] rounded text-[10px] font-label-sm uppercase tracking-[0.04em] transition-colors cursor-pointer ${
-                            active ? 'bg-primary text-on-primary font-bold' : 'text-on-surface-variant hover:text-on-surface'
-                          }`}>
-                          <span className="material-symbols-outlined text-[12px]">{m.icon}</span>
-                          {m.short}
-                        </button>
-                      );
-                    })}
+          );
+          const dot = (ch) => <span className={`w-[6px] h-[6px] rounded-full shrink-0 ${ch.active ? 'bg-tertiary' : 'bg-outline-variant'}`} />;
+          const ndi = (ch) => ch.type === 'ndi' && (
+            <span className="shrink-0 text-[9px] font-label-sm uppercase tracking-[0.04em] px-xs py-[1px] rounded border border-tertiary/50 text-tertiary bg-tertiary/10">NDI</span>
+          );
+          if (ltChannels.length === 1) {
+            const ch = ltChannels[0];
+            return (
+              <div className="bg-surface-container rounded-lg border border-outline-variant/30 p-md flex items-center gap-sm flex-wrap">
+                <span className="material-symbols-outlined text-[16px] text-on-surface-variant shrink-0">tune</span>
+                <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant shrink-0">Lower Third</span>
+                {dot(ch)}
+                <span className="text-body-md text-on-surface truncate min-w-0">{ch.name}</span>
+                {ndi(ch)}
+                <div className="ml-auto shrink-0">{modeToggle(ch)}</div>
+              </div>
+            );
+          }
+          return (
+            <div className="bg-surface-container rounded-lg border border-outline-variant/30 p-md flex flex-col gap-sm">
+              <div className="flex items-center gap-xs">
+                <span className="material-symbols-outlined text-[16px] text-on-surface-variant">tune</span>
+                <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant">Lower-Third Channels</span>
+                <span className="text-[10px] font-mono text-on-surface-variant/50 normal-case tracking-normal">switch what each channel shows</span>
+              </div>
+              <div className="flex flex-col gap-xs">
+                {ltChannels.map((ch) => (
+                  <div key={ch.id} className="flex items-center gap-sm">
+                    {dot(ch)}
+                    <span className="text-body-md text-on-surface truncate flex-1 min-w-0">{ch.name}</span>
+                    {ndi(ch)}
+                    {modeToggle(ch)}
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Quick ticker — fire an ad-hoc announcement without saving */}
         <div className="bg-surface-container rounded-lg border border-outline-variant/30 p-md flex flex-col gap-sm">

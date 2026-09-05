@@ -604,7 +604,7 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, onPrevie
           {onToggleDetect && (
             <button
               onClick={onToggleDetect}
-              title="Auto-detect spoken scripture references and quotes from the service audio"
+              title="Auto-detect spoken scripture references and quotes from the live audio"
               className={`flex items-center gap-xs px-sm h-9 rounded-lg text-label-sm font-label-sm font-bold uppercase tracking-[0.05em] border transition-colors cursor-pointer ${
                 detectArmed
                   ? 'bg-tertiary-container/60 border-tertiary/50 text-tertiary'

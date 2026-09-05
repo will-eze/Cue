@@ -1,0 +1,43 @@
+{
+  "name": "Tidewater",
+  "category": "song",
+  "sort_order": -84,
+  "style": {
+    "collection": "Collections",
+    "fontFamily": "Lato",
+    "color": "#ffffff",
+    "fontSize": 88,
+    "lineSpacing": 1.1,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 18,
+      "color": "rgba(0,0,0,0.45)"
+    },
+    "bgRef": "library/unsplash-fkS-me35j7I.jpg",
+    "treatment": {
+      "scrim": "flat",
+      "scrimStrength": 0.22,
+      "vignette": 0.28,
+      "grain": 0.04,
+      "tint": {
+        "color": "#1f7fa8",
+        "amount": 0.1,
+        "blend": "soft-light"
+      },
+      "kenBurns": "zoom"
+    },
+    "accent": {
+      "enabled": true,
+      "color": "#5fc9e0"
+    },
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(4,16,24,0.94) 0%, rgba(4,16,24,0.8) 70%, rgba(4,16,24,0) 100%)"
+    },
+    "lt": {
+      "fontFamily": "Lato",
+      "fontSize": 57
+    }
+  }
+}

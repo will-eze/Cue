@@ -1,0 +1,14 @@
+{
+  "name": "Minimal Countdown",
+  "kind": "countdown",
+  "graphic": {
+    "label": "Minimal Countdown",
+    "text": "Starting soon",
+    "style_json": {
+      "accentSource": "theme", "fontSource": "custom",
+      "mode": "countdown", "source": "duration", "durationSec": 300, "targetClock": "11:00", "format": "24h", "showSeconds": true, "endMessage": "Now",
+      "time":    { "fontFamily": "Inter", "fontSize": 148, "color": "#ffffff", "bold": true, "align": "center", "verticalAlign": "center", "textBox": { "x": 25, "y": 32, "w": 50, "h": 36 }, "ltBar": null },
+      "message": { "fontFamily": "Inter", "fontSize": 32, "color": "#7fb0ff", "bold": false, "align": "center" }
+    }
+  }
+}

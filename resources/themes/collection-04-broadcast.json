@@ -1,0 +1,26 @@
+{
+  "name": "Broadcast",
+  "category": "song",
+  "sort_order": -109,
+  "style": {
+    "collection": "Collections",
+    "fontFamily": "Archivo",
+    "color": "#ffffff",
+    "fontSize": 88,
+    "bold": true,
+    "letterSpacing": 0,
+    "lineSpacing": 1.12,
+    "textShadow": { "enabled": true, "x": 0, "y": 2, "blur": 14, "color": "rgba(0,0,0,0.5)" },
+    "bgCss": "radial-gradient(140% 110% at 50% 100%, #0e2036 0%, #081320 55%, #04080f 100%)",
+    "treatment": {
+      "scrim": "flat",
+      "scrimStrength": 0.22,
+      "vignette": 0.2,
+      "grain": 0.04,
+      "tint": { "color": "#1e6fb0", "amount": 0.08, "blend": "soft-light" }
+    },
+    "accent": { "enabled": true, "color": "#3aa0ff" },
+    "ltBar": { "css": "linear-gradient(to top, rgba(6,12,22,0.96) 0%, rgba(6,12,22,0.9) 78%, rgba(6,12,22,0) 100%)" },
+    "lt": { "fontFamily": "Archivo", "fontSize": 56, "bold": true }
+  }
+}

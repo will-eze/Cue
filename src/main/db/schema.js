@@ -902,6 +902,18 @@ const migrations = [
       ALTER TABLE songs ADD COLUMN max_lines INTEGER NOT NULL DEFAULT 0;
     `);
   },
+
+  // v34 — Theme cascade: assign a "look" (theme) at the SERVICE and per-ITEM level.
+  // The effective theme for a song resolves item override → service → app default
+  // (settings.default_theme_id) → built-in, mirroring the background cascade. Both
+  // columns are nullable = "inherit the level above"; ON DELETE SET NULL so deleting
+  // a theme just drops back to inheritance rather than orphaning the row.
+  function v34(database) {
+    database.exec(`
+      ALTER TABLE services ADD COLUMN theme_id INTEGER REFERENCES themes(id) ON DELETE SET NULL;
+      ALTER TABLE service_items ADD COLUMN theme_override_id INTEGER REFERENCES themes(id) ON DELETE SET NULL;
+    `);
+  },
 ];
 
 function runMigrations() {

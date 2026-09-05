@@ -1,0 +1,43 @@
+{
+  "name": "Shoreline",
+  "category": "song",
+  "sort_order": -94,
+  "style": {
+    "collection": "Collections",
+    "fontFamily": "Montserrat",
+    "color": "#ffffff",
+    "fontSize": 90,
+    "lineSpacing": 1.1,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 18,
+      "color": "rgba(0,0,0,0.45)"
+    },
+    "bgRef": "library/coverr-cloudy-beach-wteji3b4ev.mp4",
+    "bgSpeed": 0.5,
+    "treatment": {
+      "scrim": "flat",
+      "scrimStrength": 0.2,
+      "vignette": 0.24,
+      "grain": 0.04,
+      "tint": {
+        "color": "#3a7fa0",
+        "amount": 0.1,
+        "blend": "soft-light"
+      }
+    },
+    "accent": {
+      "enabled": true,
+      "color": "#7fd0e6"
+    },
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(6,16,24,0.94) 0%, rgba(6,16,24,0.8) 70%, rgba(6,16,24,0) 100%)"
+    },
+    "lt": {
+      "fontFamily": "Montserrat",
+      "fontSize": 59
+    }
+  }
+}

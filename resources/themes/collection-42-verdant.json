@@ -1,0 +1,42 @@
+{
+  "name": "Verdant",
+  "category": "song",
+  "sort_order": -79,
+  "style": {
+    "collection": "Collections",
+    "fontFamily": "Lora",
+    "color": "#eef2ea",
+    "fontSize": 92,
+    "lineSpacing": 1.1,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 20,
+      "color": "rgba(0,0,0,0.55)"
+    },
+    "bgCss": "radial-gradient(120% 120% at 50% 22%, #16321f 0%, #0c1c12 50%, #060d09 100%)",
+    "treatment": {
+      "scrim": "radial",
+      "scrimStrength": 0.28,
+      "vignette": 0.34,
+      "grain": 0.1,
+      "tint": {
+        "color": "#2e7a4a",
+        "amount": 0.1,
+        "blend": "soft-light"
+      }
+    },
+    "accent": {
+      "enabled": true,
+      "color": "#7fcf9a"
+    },
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(6,13,9,0.94) 0%, rgba(6,13,9,0.8) 70%, rgba(6,13,9,0) 100%)"
+    },
+    "lt": {
+      "fontFamily": "Lora",
+      "fontSize": 60
+    }
+  }
+}

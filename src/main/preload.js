@@ -45,6 +45,8 @@ contextBridge.exposeInMainWorld('cue', {
     setItemBackground: (itemId, mediaId) => ipcRenderer.invoke('services:setItemBackground', itemId, mediaId),
     setItemLoop:  (itemId, loop)  => ipcRenderer.invoke('services:setItemLoop',  itemId, loop),
     setItemAdvance: (itemId, seconds, loop, wrap) => ipcRenderer.invoke('services:setItemAdvance', itemId, seconds, loop, wrap),
+    setServiceTheme: (serviceId, themeId) => ipcRenderer.invoke('services:setServiceTheme', serviceId, themeId),
+    setItemTheme: (itemId, themeId) => ipcRenderer.invoke('services:setItemTheme', itemId, themeId),
     duplicateItem: (itemId) => ipcRenderer.invoke('services:duplicateItem', itemId),
     applyBackgroundToRundown: (serviceId, mediaId) => ipcRenderer.invoke('services:applyBackgroundToRundown', serviceId, mediaId),
     clearItems: (serviceId) => ipcRenderer.invoke('services:clearItems', serviceId),
@@ -224,6 +226,10 @@ contextBridge.exposeInMainWorld('cue', {
     applyToRundown:    (themeId, svcId, setBg)  => ipcRenderer.invoke('themes:applyToRundown', themeId, svcId, setBg),
     applyToAllSongs:   (themeId, setBg)         => ipcRenderer.invoke('themes:applyToAllSongs', themeId, setBg),
     resolveBackground: (themeId)                => ipcRenderer.invoke('themes:resolveBackground', themeId),
+    resetSongToTheme:    (songId)               => ipcRenderer.invoke('themes:resetSongToTheme', songId),
+    resetAllSongsToTheme: ()                    => ipcRenderer.invoke('themes:resetAllSongsToTheme'),
+    export:              (themeId)              => ipcRenderer.invoke('themes:export', themeId),
+    import:              ()                     => ipcRenderer.invoke('themes:import'),
   },
   presentations: {
     list:          ()              => ipcRenderer.invoke('presentations:list'),
@@ -304,6 +310,12 @@ contextBridge.exposeInMainWorld('cue', {
     css: () => ipcRenderer.invoke('fonts:css'),
     import: () => ipcRenderer.invoke('fonts:import'),
     delete: (id) => ipcRenderer.invoke('fonts:delete', id),
+    // Downloadable open-licence font library.
+    catalog: () => ipcRenderer.invoke('fonts:catalog'),
+    previewCss: () => ipcRenderer.invoke('fonts:previewCss'),
+    download: (family) => ipcRenderer.invoke('fonts:download', family),
+    deleteLibrary: (family) => ipcRenderer.invoke('fonts:deleteLibrary', family),
+    ensureService: (serviceId) => ipcRenderer.invoke('fonts:ensureService', serviceId),
   },
   platform: process.platform,
   window: {

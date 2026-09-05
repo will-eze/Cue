@@ -15,7 +15,7 @@ const SURFACES = [
 
 const BATCH = 24; // tiles mounted per page — keeps thumbnail requests + compositor cost bounded
 
-function Tile({ item, busy, onApply, onAdd }) {
+function Tile({ item, busy, onApply, onAdd, onPick }) {
   return (
     <div
       className="group relative aspect-video rounded-lg overflow-hidden border border-outline-variant/30 bg-surface-container"
@@ -45,6 +45,13 @@ function Tile({ item, busy, onApply, onAdd }) {
       <div className="absolute inset-0 bg-background/90 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-xs p-sm">
         {busy ? (
           <span className="material-symbols-outlined text-primary animate-spin text-[28px]">progress_activity</span>
+        ) : onPick ? (
+          // Pick mode — used by "New theme from a background": one action that turns
+          // this background into a new theme (downloads it + auto-derives a look).
+          <button onClick={() => onPick(item)}
+            className="px-md py-[5px] text-[12px] font-label-sm font-bold rounded-md bg-primary/15 border border-primary/40 text-primary hover:bg-primary/25 active:scale-95 transition-all cursor-pointer flex items-center gap-xs">
+            <span className="material-symbols-outlined text-[16px]">add</span>Create theme
+          </button>
         ) : (
           <>
             <span className="text-[10px] font-label-sm uppercase tracking-[0.08em] text-on-surface-variant">Set as default for</span>
@@ -69,7 +76,7 @@ function Tile({ item, busy, onApply, onAdd }) {
   );
 }
 
-function BrowserModal({ items, tagCounts, onClose, onChange }) {
+function BrowserModal({ items, tagCounts, onClose, onChange, onPick, title = 'Backgrounds', busyId: busyIdProp }) {
   const [query, setQuery] = useState('');
   const [activeTag, setActiveTag] = useState(null);
   const [kind, setKind] = useState('all');
@@ -152,7 +159,7 @@ function BrowserModal({ items, tagCounts, onClose, onChange }) {
         <div className="flex items-center justify-between px-lg py-md border-b border-outline-variant/30 bg-surface-container-high flex-shrink-0 gap-md">
           <h3 className="text-label-sm font-label-sm text-on-surface uppercase tracking-[0.05em] flex items-center gap-sm shrink-0">
             <span className="material-symbols-outlined text-primary text-[20px]">wallpaper</span>
-            Backgrounds · {filtered.length}
+            {title} · {filtered.length}
           </h3>
           <div className="flex-1 max-w-sm relative">
             <span className="material-symbols-outlined absolute left-sm top-1/2 -translate-y-1/2 text-on-surface-variant/60 text-[18px]">search</span>
@@ -199,7 +206,7 @@ function BrowserModal({ items, tagCounts, onClose, onChange }) {
             <>
               <div className="grid gap-md" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' }}>
                 {shown.map((it) => (
-                  <Tile key={it.id} item={it} busy={busyId === it.id} onApply={apply} onAdd={add} />
+                  <Tile key={it.id} item={it} busy={(busyIdProp ?? busyId) === it.id} onApply={apply} onAdd={add} onPick={onPick} />
                 ))}
               </div>
               {visible < filtered.length && (
@@ -223,6 +230,32 @@ function BrowserModal({ items, tagCounts, onClose, onChange }) {
       </div>
     </div>,
     document.body
+  );
+}
+
+// Self-loading pick-mode browser — used by the Theme Library's "New from a
+// background" flow. Loads the curated manifest itself, then hands the chosen item
+// back via onPick. `busyId` lets the caller show a spinner on the tile while it
+// downloads + derives a theme.
+export function BackgroundBrowseModal({ onPick, onClose, busyId = null }) {
+  const [items, setItems] = useState([]);
+  const [tagCounts, setTagCounts] = useState({});
+
+  useEffect(() => {
+    window.cue.backgrounds.list().then(setItems).catch(() => setItems([]));
+    window.cue.backgrounds.tagCounts().then(setTagCounts).catch(() => setTagCounts({}));
+  }, []);
+
+  return (
+    <BrowserModal
+      items={items}
+      tagCounts={tagCounts}
+      onClose={onClose}
+      onChange={() => {}}
+      onPick={onPick}
+      busyId={busyId}
+      title="Choose a background"
+    />
   );
 }
 

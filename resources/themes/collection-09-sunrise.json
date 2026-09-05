@@ -1,0 +1,25 @@
+{
+  "name": "Sunrise",
+  "category": "song",
+  "sort_order": -104,
+  "style": {
+    "collection": "Collections",
+    "fontFamily": "Lora",
+    "color": "#fff6ec",
+    "fontSize": 96,
+    "lineSpacing": 1.08,
+    "textShadow": { "enabled": true, "x": 0, "y": 2, "blur": 22, "color": "rgba(0,0,0,0.55)" },
+    "bgCss": "radial-gradient(130% 120% at 50% 100%, #d98a4e 0%, #7e3f3a 40%, #2a1a26 78%, #120b14 100%)",
+    "treatment": {
+      "scrim": "bottom",
+      "scrimStrength": 0.5,
+      "vignette": 0.3,
+      "grain": 0.12,
+      "tint": { "color": "#ff9a4d", "amount": 0.12, "blend": "soft-light" },
+      "kenBurns": "drift"
+    },
+    "accent": { "enabled": true, "color": "#f4b072" },
+    "ltBar": { "css": "linear-gradient(to top, rgba(18,11,20,0.95) 0%, rgba(18,11,20,0.8) 70%, rgba(18,11,20,0) 100%)" },
+    "lt": { "fontFamily": "Lora", "fontSize": 60 }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "name": "Winter's Hush",
+  "category": "song",
+  "sort_order": -115,
+  "style": {
+    "collection": "Collections",
+    "fontFamily": "Cinzel",
+    "color": "#eef4fa",
+    "uppercase": true,
+    "fontSize": 78,
+    "letterSpacing": 0.06,
+    "lineSpacing": 1.06,
+    "textShadow": { "enabled": true, "x": 0, "y": 2, "blur": 24, "color": "rgba(0,0,0,0.6)" },
+    "bgRef": "library/unsplash-NfBNWR7AJ_c.jpg",
+    "treatment": {
+      "scrim": "radial",
+      "scrimStrength": 0.28,
+      "vignette": 0.4,
+      "grain": 0.08,
+      "tint": { "color": "#3a7fa0", "amount": 0.12, "blend": "soft-light" },
+      "kenBurns": "zoom"
+    },
+    "accent": { "enabled": true, "color": "#9fd0e6" },
+    "ltBar": { "css": "linear-gradient(to top, rgba(6,14,20,0.94) 0%, rgba(6,14,20,0.8) 70%, rgba(6,14,20,0) 100%)" },
+    "lt": { "fontFamily": "Cinzel", "fontSize": 54, "uppercase": true }
+  }
+}

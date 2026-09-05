@@ -1,0 +1,35 @@
+{
+  "name": "Obsidian",
+  "category": "song",
+  "sort_order": -78,
+  "style": {
+    "collection": "Collections",
+    "fontFamily": "Montserrat",
+    "color": "#f4f6fa",
+    "fontSize": 90,
+    "lineSpacing": 1.12,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 16,
+      "color": "rgba(0,0,0,0.5)"
+    },
+    "bgCss": "radial-gradient(120% 120% at 50% 45%, #101218 0%, #060709 100%)",
+    "treatment": {
+      "vignette": 0.16,
+      "grain": 0.04
+    },
+    "accent": {
+      "enabled": true,
+      "color": "#8fb6ff"
+    },
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(6,7,9,0.94) 0%, rgba(6,7,9,0.8) 70%, rgba(6,7,9,0) 100%)"
+    },
+    "lt": {
+      "fontFamily": "Montserrat",
+      "fontSize": 59
+    }
+  }
+}

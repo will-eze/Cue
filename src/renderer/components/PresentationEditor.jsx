@@ -17,7 +17,7 @@ import { useFonts } from '../utils/fonts';
 import { mediaUrl } from '../utils/mediaUrl';
 import { StaticSlide } from './SlideElements';
 import ResponsiveToolbar from './ResponsiveToolbar';
-import { PRES_LAYOUTS, PLAIN_THEME, buildThemeSlide, reskinSlide, detectThemeId } from '../utils/presentationThemes';
+import { PRES_LAYOUTS, PLAIN_THEME, buildThemeSlide, reskinSlide, detectThemeId, normalizeToPresTokens } from '../utils/presentationThemes';
 
 const NATIVE_W = 1920;
 const NATIVE_H = 1080;
@@ -426,11 +426,13 @@ export default function PresentationEditor({ presentationId, onClose, onSave }) 
     }
     setApplyOpen(false);
   }
-  // Resolve a photo-backed theme's bgRef → { id, path } (downloads on first use).
+  // Resolve a theme's media background → { id, path }. A resolved media look already
+  // carries background_id; a photo pres-theme with only a bgRef downloads on first use.
   // Returns null for gradient/plain themes (no async work needed).
   async function resolveThemeBg(themeEntry) {
-    if (!themeEntry?.tokens?.bgRef || themeEntry.id === '__plain') return null;
+    if (!themeEntry || themeEntry.id === '__plain') return null;
     if (themeEntry.background_id) return { id: themeEntry.background_id, path: themeEntry.background_path };
+    if (!themeEntry?.tokens?.bgRef) return null;
     try {
       const resolved = await window.cue.themes.resolveBackground(themeEntry.id);
       return resolved?.background_id ? { id: resolved.background_id, path: resolved.background_path } : null;
@@ -695,11 +697,16 @@ function usePresentationThemes() {
       for (const it of (bgItems || [])) if (it.thumb) thumbMap[it.id] = it.thumb;
       const out = [];
       for (const t of (list || [])) {
-        if ((t.category || 'song') !== 'presentation') continue;
-        let tokens = null;
-        try { tokens = typeof t.style_json === 'string' ? JSON.parse(t.style_json) : t.style_json; } catch {}
-        if (!tokens) continue;
-        const bgThumb = tokens.bgRef ? (thumbMap[tokens.bgRef] || null) : null;
+        // One look, any surface: every theme is offered. Graphics presets are a
+        // separate system; skip them. A song/scripture text-style look is converted
+        // into presentation tokens so it re-skins a deck like a native pres theme.
+        if ((t.category || 'song') === 'graphic') continue;
+        let raw = null;
+        try { raw = typeof t.style_json === 'string' ? JSON.parse(t.style_json) : t.style_json; } catch {}
+        if (!raw) continue;
+        const tokens = normalizeToPresTokens(raw);
+        const bgRef = tokens.bgRef || raw.bgRef;
+        const bgThumb = bgRef ? (thumbMap[bgRef] || null) : null;
         out.push({ id: t.id, name: t.name, tokens, background_id: t.background_id ?? null, background_path: t.background_path ?? null, bg_thumb: bgThumb });
       }
       setThemes(out);

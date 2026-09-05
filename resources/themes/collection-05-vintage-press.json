@@ -1,0 +1,23 @@
+{
+  "name": "Vintage Press",
+  "category": "song",
+  "sort_order": -108,
+  "style": {
+    "collection": "Collections",
+    "fontFamily": "Playfair Display",
+    "color": "#241c14",
+    "fontSize": 96,
+    "lineSpacing": 1.06,
+    "textShadow": { "enabled": false },
+    "bgCss": "radial-gradient(120% 100% at 50% 20%, #f4ecdd 0%, #e7dcc6 60%, #d8cbb0 100%)",
+    "treatment": {
+      "scrim": "none",
+      "vignette": 0,
+      "grain": 0.2,
+      "tint": { "color": "#8a6a3a", "amount": 0.12, "blend": "multiply" }
+    },
+    "accent": { "enabled": true, "color": "#9a5b2e" },
+    "ltBar": { "css": "linear-gradient(to top, rgba(244,236,221,0.96) 0%, rgba(244,236,221,0.82) 70%, rgba(244,236,221,0) 100%)" },
+    "lt": { "fontFamily": "Playfair Display", "color": "#241c14", "fontSize": 60 }
+  }
+}

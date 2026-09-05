@@ -260,10 +260,16 @@ Pure CRUD — there is **no `apply()`**. Recall is renderer-orchestrated: `Outpu
 | `create(data)` | `id` | `data` = `{ name, style_json, background_id, category }` (category defaults `'song'`; preserved on duplicate). |
 | `update(id, data)` | void | `{ name, style_json, background_id }`. |
 | `delete(id)` | void | — |
-| `applyToSong(themeId, songId, setBg)` | `sectionCount` | Merges style into the song's sections. With `setBg`: the handler first `await`s `resolveThemeBackground` (downloads a media theme's `bgRef`, no-op otherwise, §9), then writes the song default bg / clears per-slot overrides; a `bgCss` theme clears the media bg to NULL so the gradient shows. |
+| `applyToSong(themeId, songId, setBg)` | `sectionCount` | LEGACY bake path (now the editor's "Advanced" apply, §9). Merges style into the song's sections. With `setBg`: `await`s `resolveThemeBackground` then writes the song default bg / clears per-slot overrides; a `bgCss` theme clears the media bg to NULL. The v34 default is to ASSIGN a theme (`services.setServiceTheme`/`setItemTheme`), not bake. |
 | `applyToRundown(themeId, serviceId, setBg)` | `songCount` | As above for every distinct song in the rundown. |
 | `applyToAllSongs(themeId, setBg)` | `songCount` | As above for every song in the library. |
 | `resolveBackground(themeId)` | `media_asset\|null` | Eagerly resolve + download a media-theme's `bgRef` (no-op for gradient/CSS themes). Used by the Sermon → Slides flow to ensure the theme background is available before building slides. |
+| `resetSongToTheme(songId)` | void | Strip a song's baked base look + own bg + lock + slot overrides so it rejoins the live theme cascade (§9). Rundown song context-menu "Reset to theme". |
+| `resetAllSongsToTheme()` | `count` | `resetSongToTheme` across the whole library (Theme Library button). |
+| `export(themeId)` | `{ok, canceled?}` | Save a theme to a `.cuetheme` file (tiny JSON, keeps `bgRef`). |
+| `import()` | `{ok, theme?, canceled?}` | Import a `.cuetheme` file into the library. |
+
+**Theme assignment** (v34 cascade, §9) — `window.cue.services`: `setServiceTheme(serviceId, themeId\|null)` sets `services.theme_id`; `setItemTheme(itemId, themeId\|null)` sets `service_items.theme_override_id`. App-default assignment writes the `settings.default_theme_id{,_song,_scripture,_slide}` keys.
 
 ### `window.cue.backgrounds` (Background Library — Phase 1b)
 
@@ -410,6 +416,11 @@ Output HTTP surface (view token via `X-Cue-View-Token` header or `?vt=`): `GET /
 - `fonts.css()` — async: `@font-face` CSS for all user fonts (cue-media:// URLs); injected into the operator UI + every output window
 - `fonts.import()` — async: native multi-file picker → copies + registers each; returns `{ok, added, errors, list}` or `{ok:false, canceled}`
 - `fonts.delete(id)` — async: removes a user font (row + file)
+- `fonts.catalog()` — async: the downloadable open-licence library `[{id, family, category, weights, license, installed}]` from `fonts-catalog.js` (§15)
+- `fonts.previewCss()` — async: `@font-face` CSS with inlined subset preview woff2s (data-URI) so uninstalled catalog faces render in their own typeface
+- `fonts.download(family)` — async: fetch + cache a catalog family's weights into `userData/fonts/` (main-process fetch, CSP-exempt)
+- `fonts.deleteLibrary(family)` — async: remove a downloaded library family
+- `fonts.ensureService(serviceId)` — async: pre-download every downloadable font a rundown references before go-live (fire-and-forget determinism guard, §15)
 
 Editors load the merged list via the `useFonts()` hook (`renderer/utils/fonts.js`); the picker groups by category, with user fonts under "My Fonts".
 

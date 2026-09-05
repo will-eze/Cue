@@ -1,0 +1,10 @@
+{
+  "name": "Accent Rail Ticker",
+  "kind": "ticker",
+  "graphic": {
+    "label": "Accent Rail Ticker",
+    "text": "This week at Cornerstone  ·  Youth night Friday 7pm  ·  Baptism Sunday next week  ·  Volunteer sign-ups open now",
+    "speed": 90,
+    "style_json": { "accentSource": "theme", "fontSource": "custom", "fontFamily": "Archivo", "fontSize": 28, "color": "#ffffff", "position": "bottom", "bar": { "color": "#0a0d14", "opacity": 0.94, "solid": true } }
+  }
+}

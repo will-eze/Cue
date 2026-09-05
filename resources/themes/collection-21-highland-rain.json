@@ -1,0 +1,43 @@
+{
+  "name": "Highland Rain",
+  "category": "song",
+  "sort_order": -100,
+  "style": {
+    "collection": "Collections",
+    "fontFamily": "Lora",
+    "color": "#eef2ee",
+    "fontSize": 92,
+    "lineSpacing": 1.1,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 20,
+      "color": "rgba(0,0,0,0.55)"
+    },
+    "bgRef": "library/coverr-rain-falling-in-the-forest-vc1pstukzq.mp4",
+    "bgSpeed": 0.6,
+    "treatment": {
+      "scrim": "bottom",
+      "scrimStrength": 0.5,
+      "vignette": 0.34,
+      "grain": 0.1,
+      "tint": {
+        "color": "#2a4a44",
+        "amount": 0.1,
+        "blend": "soft-light"
+      }
+    },
+    "accent": {
+      "enabled": true,
+      "color": "#8fc9b8"
+    },
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(8,16,14,0.94) 0%, rgba(8,16,14,0.8) 70%, rgba(8,16,14,0) 100%)"
+    },
+    "lt": {
+      "fontFamily": "Lora",
+      "fontSize": 60
+    }
+  }
+}

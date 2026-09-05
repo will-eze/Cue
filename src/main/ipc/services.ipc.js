@@ -19,6 +19,8 @@ export function registerServicesIpc() {
   ipcMain.handle('services:setItemBackground', h((_e, itemId, mediaId) => services.setItemBackground(itemId, mediaId)));
   ipcMain.handle('services:setItemLoop', h((_e, itemId, loop) => services.setItemLoop(itemId, loop)));
   ipcMain.handle('services:setItemAdvance', h((_e, itemId, seconds, loop, wrap) => services.setItemAdvance(itemId, seconds, loop, wrap)));
+  ipcMain.handle('services:setServiceTheme', h((_e, serviceId, themeId) => services.setServiceTheme(serviceId, themeId)));
+  ipcMain.handle('services:setItemTheme', h((_e, itemId, themeId) => services.setItemTheme(itemId, themeId)));
   ipcMain.handle('services:duplicateItem', h((_e, itemId) => services.duplicateItem(itemId)));
   ipcMain.handle('services:applyBackgroundToRundown', h((_e, serviceId, mediaId) =>
     services.applyBackgroundToRundown(serviceId, mediaId)));

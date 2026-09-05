@@ -19,6 +19,65 @@ export function isThemeTokens(sj) {
   return !!(sj && typeof sj === 'object' && sj.kind === 'pres-theme');
 }
 
+// ── One look, any surface ────────────────────────────────────────────────────
+// A theme is a single "look" — there is no song vs scripture vs presentation
+// theme. Songs & scripture consume the text-style shape (DEFAULT_STYLE: fontFamily
+// /color/textShadow/bgCss/ltBar/accent…); presentations consume the token shape
+// above. These two converters let ANY stored theme be applied to ANY surface, so
+// the library is one flat set of looks.
+
+// Presentation tokens → a song/scripture text style (so a token theme can style a
+// lyric slide or a verse). Colours collapse to the title colour; the display font
+// leads; a gradient bg becomes bgCss; the accent rides along for the lower third.
+export function presTokensToStyle(tokens) {
+  const t = tokens || {};
+  const style = {
+    fontFamily: t.display || t.body || 'Inter',
+    color: t.title || '#ffffff',
+    uppercase: !!t.titleUpper,
+  };
+  if (typeof t.bg === 'string' && t.bg) style.bgCss = t.bg;
+  if (t.scrim) style.bgScrim = t.scrim;
+  if (t.treatment) style.treatment = t.treatment; // designed legibility/grade layer (§5)
+  if (t.accent) style.accent = { enabled: true, color: t.accent };
+  return style;
+}
+
+// A song/scripture text style → presentation tokens (so a look applies to a deck).
+// Media backgrounds ride separately (bgMedia in buildThemeSlide/reskinSlide); only a
+// gradient/solid bgCss maps to tokens.bg here.
+export function styleToPresTokens(style) {
+  const s = style || {};
+  const font = s.fontFamily || 'Inter';
+  const color = s.color || '#ffffff';
+  const accent = s.accent?.color || '#4d8eff';
+  return {
+    kind: 'pres-theme',
+    bg: (typeof s.bgCss === 'string' && s.bgCss) ? s.bgCss : null,
+    scrim: s.bgScrim || 0,
+    display: font, body: font, quoteFont: font,
+    title: color, sub: color, bodyColor: color,
+    accent, accentText: '#0a0e1a', kicker: accent,
+    titleUpper: !!s.uppercase, sectionUpper: !!s.uppercase, serif: false,
+    bgRef: s.bgRef || undefined,
+    treatment: s.treatment || undefined, // designed legibility/grade layer (§5)
+  };
+}
+
+// Normalise any stored theme style_json into the text-style shape songs/scripture
+// need — passes a text style through untouched, converts a token theme. Used by the
+// live cascade + every text-surface preview so one theme renders anywhere.
+export function normalizeLookStyle(styleObj) {
+  return isThemeTokens(styleObj) ? presTokensToStyle(styleObj) : (styleObj || null);
+}
+
+// Normalise any stored theme style_json into presentation tokens — passes a token
+// theme through untouched, converts a text-style look.
+export function normalizeToPresTokens(styleObj) {
+  if (!styleObj) return { ...PLAIN_THEME };
+  return isThemeTokens(styleObj) ? styleObj : styleToPresTokens(styleObj);
+}
+
 // "No theme" — neutral tokens with no baked background (the slide's own background_id
 // / global slide background / black shows through), matching the plain blank layouts.
 export const PLAIN_THEME = { kind: 'pres-theme', bg: null, display: 'Inter', body: 'Inter',

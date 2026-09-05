@@ -6,7 +6,10 @@ import ScriptureDetectionPanel from '../panels/ScriptureDetectionPanel';
 import { useScriptureCapture } from '../audio/useScriptureCapture';
 import { useScriptureAsr } from '../audio/useScriptureAsr';
 import { sectionLabelAt, expandSongSections } from '../utils/sectionLabels';
+import { normalizeLookStyle } from '../utils/presentationThemes';
+import { mergeSlideStyle } from '../utils/themeStyle';
 import { useToast } from '../components/Toast';
+import { ensureThemeBg } from '../utils/ensureThemeBg';
 import ShortcutsOverlay from '../components/ShortcutsOverlay';
 import CommandPalette from '../components/CommandPalette';
 import { hasOpenModal } from '../utils/modalGuard';
@@ -128,6 +131,20 @@ export default function OperatorView({
   const [songGlobalBgPath, setSongGlobalBgPath] = useState(null); // live global song default bg | null
   const [ltFontScale, setLtFontScale] = useState(1);              // global lower-third font scale (fraction)
   const [songMaxLines, setSongMaxLines] = useState(0);            // global max lines/slide for songs (0 = unlimited)
+  // THEME CASCADE — a song's effective "look" resolves item override → service
+  // theme → app default (settings.default_theme_id) → built-in, mirroring the
+  // background cascade. Resolved LIVE (no baking): `defaultThemeId` is the app tier,
+  // and `themeMap` caches each referenced theme's parsed style + resolved bg path.
+  const [defaultThemeId, setDefaultThemeId] = useState(null);
+  // Per-content-kind app defaults (songs vs scripture) override the general default at
+  // the APP tier only; service + item overrides still win. Null = fall back to general.
+  const [songDefaultId, setSongDefaultId] = useState(null);
+  const [scriptureDefaultId, setScriptureDefaultId] = useState(null);
+  const [slideDefaultId, setSlideDefaultId] = useState(null);
+  // Bumped when a theme default / rundown assignment changes from the Library Themes
+  // tab, so the live cascade (serviceData + defaults) re-reads and output updates.
+  const [themeTick, setThemeTick] = useState(0);
+  const [themeMap, setThemeMap] = useState({}); // theme id -> { style, bgPath }
 
   const loadScriptureDefaults = useCallback(async () => {
     const styleJson = await window.cue.settings.get('scripture_style_json');
@@ -166,6 +183,74 @@ export default function OperatorView({
     setScriptureSplit(split);
   }, []);
   useEffect(() => { loadScriptureDefaults(); }, [loadScriptureDefaults, bgRefreshTick]);
+
+  // Resolve the theme cascade: gather the app default + this service's theme + every
+  // item override actually in use, load each once (parsed style + resolved bg path),
+  // and cache in themeMap. effectiveTheme(item) then picks item → service → app.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const [defId, songDef, scrDef, slideDef] = (await Promise.all([
+        window.cue.settings.get('default_theme_id'),
+        window.cue.settings.get('default_theme_id_song'),
+        window.cue.settings.get('default_theme_id_scripture'),
+        window.cue.settings.get('default_theme_id_slide'),
+      ])).map((v) => Number(v) || null);
+      if (!alive) return;
+      setDefaultThemeId(defId);
+      setSongDefaultId(songDef);
+      setScriptureDefaultId(scrDef);
+      setSlideDefaultId(slideDef);
+      const svcId = serviceData?.theme_id || null;
+      const itemIds = (serviceData?.items || []).map((i) => i.theme_override_id).filter(Boolean);
+      const ids = [...new Set([defId, songDef, scrDef, slideDef, svcId, ...itemIds].filter(Boolean))];
+      if (!ids.length) { if (alive) setThemeMap({}); return; }
+      const all = await window.cue.themes.list();
+      const map = {};
+      for (const id of ids) {
+        const t = all.find((x) => x.id === id);
+        if (!t) continue;
+        let style = null;
+        // Normalise to the text-style shape so ANY theme — including a presentation
+        // token theme — renders correctly as a song/scripture look (one look, any surface).
+        try { style = t.style_json ? normalizeLookStyle(JSON.parse(t.style_json)) : null; } catch { style = null; }
+        let bgPath = t.background_path || null;
+        // A media theme may carry an unresolved library ref — resolve it to a path.
+        if (!bgPath && style?.bgRef) {
+          try { bgPath = (await window.cue.backgrounds.download(style.bgRef))?.path || null; } catch {}
+        }
+        map[id] = { style, bgPath };
+      }
+      if (alive) setThemeMap(map);
+    })();
+    return () => { alive = false; };
+  }, [serviceData, bgRefreshTick, themeTick]);
+
+  // The effective theme for a rundown item: its own override, else the service look,
+  // else the app default. Returns { style, bgPath } or null. Applies to every content
+  // type (song, scripture, slide, presentation) — the theme is the one source of the
+  // look; there is no separate per-surface "global background".
+  // The app-default for a content kind: songs and scripture can each have their own
+  // app default, falling back to the general default. (Slides/presentations use the
+  // general default.)
+  function appDefaultId(kind) {
+    if (kind === 'song') return songDefaultId || defaultThemeId || null;
+    if (kind === 'scripture') return scriptureDefaultId || defaultThemeId || null;
+    if (kind === 'slide' || kind === 'presentation') return slideDefaultId || defaultThemeId || null;
+    return defaultThemeId || null;
+  }
+
+  function effectiveTheme(item) {
+    const id = item?.theme_override_id || serviceData?.theme_id || appDefaultId(item?.item_type) || null;
+    return id ? (themeMap[id] || null) : null;
+  }
+
+  // The app-default theme alone (no item/service context) — used by non-rundown
+  // synthetic sources (a verse sent straight from the Scriptures tab). Kind-aware.
+  function appTheme(kind) {
+    const id = appDefaultId(kind);
+    return id ? (themeMap[id] || null) : null;
+  }
 
   // ── Scripture detection (listen → suggest verse) ──────────────────────────
   // Detection is a virtual operator, like the network remote: main resolves a
@@ -357,7 +442,11 @@ export default function OperatorView({
   useEffect(() => {
     if (!activeServiceId) { setServiceData(null); return; }
     window.cue.services.get(activeServiceId).then(setServiceData);
-  }, [activeServiceId, bgRefreshTick]);
+    // Ensure every downloadable font this rundown references is present (determinism
+    // guard) — pre-fetch missing ones so text never falls back mid-service on a fresh
+    // machine. Fire-and-forget; downloaded fonts re-inject via the fonts:refresh event.
+    window.cue.fonts?.ensureService?.(activeServiceId).catch(() => {});
+  }, [activeServiceId, bgRefreshTick, themeTick]);
 
   // Live YouTube download progress → patch the matching rundown cue in place (keyed
   // by URL), so the rundown status badge and buildPayload's ready path stay current
@@ -733,7 +822,18 @@ export default function OperatorView({
       // render the two stacked translations; null for everything else.
       scriptureVerses: slide.splitVerses || null,
       backgroundPath: resolveBackground(item),
-      styleJson: slide.style_json ? JSON.parse(slide.style_json) : null,
+      // Songs AND scripture resolve their look through mergeSlideStyle: a baked base
+      // style wins, otherwise the effective theme (item → service → app default) is
+      // inherited LIVE with any inline runs kept on top. So a reset/never-themed song
+      // follows the theme; a song with a baked style keeps it until "Reset to theme".
+      styleJson: (item.item_type === 'song' || item.item_type === 'scripture')
+        ? mergeSlideStyle(slide.style_json ? JSON.parse(slide.style_json) : null, effectiveTheme(item)?.style || null)
+        : (slide.style_json ? JSON.parse(slide.style_json) : null),
+      // The effective Max-Lines/slide cap (per-song → theme → global) — so the lower
+      // third can INHERIT the same line budget as fullscreen and auto-fit to it (§A).
+      slideMaxLines: item.item_type === 'song'
+        ? (Number(item.song?.max_lines) || Number(effectiveTheme(item)?.style?.maxLines) || songMaxLines || 0)
+        : 0,
     };
   }
 
@@ -745,14 +845,50 @@ export default function OperatorView({
     // the per-slot override and the live global default below.
     if (item.song?.background_locked) return item.song.default_background?.path || null;
     if (item.background_override?.path) return item.background_override.path;
-    if (item.item_type === 'scripture') return scriptureBgPath;
-    // Presentation: per-slide background → global slide default.
-    if (item.item_type === 'presentation') return slide?.background_path || slideBgPath || null;
-    // Song: own default → live global default → black.
+    // Scripture: item override (above) → effective theme (item→service→app) → legacy
+    // global scripture bg. A gradient theme returns null so its bgCss shows (the theme
+    // style rides along in buildPayload's styleJson for scripture).
+    if (item.item_type === 'scripture') {
+      const et = effectiveTheme(item);
+      if (et?.bgPath) return et.bgPath;
+      if (et?.style?.bgCss) return null;
+      return scriptureBgPath;
+    }
+    // Presentation: per-slide background → effective theme media bg → global slide
+    // default. (Presentation payloads render `elements`, not the text style, so a
+    // gradient theme falls through to the slide default rather than a black stage.)
+    if (item.item_type === 'presentation') {
+      if (slide?.background_path) return slide.background_path;
+      const et = effectiveTheme(item);
+      if (et?.bgPath) return et.bgPath;
+      return slideBgPath || null;
+    }
+    // A one-line slide inherits the theme's media background, else the slide default.
+    if (item.item_type === 'slide') {
+      const et = effectiveTheme(item);
+      if (et?.bgPath) return et.bgPath;
+      return slideBgPath || null;
+    }
+    // Song: own default → effective theme (item→service→app) → live global → black.
     if (item.song?.default_background?.path) return item.song.default_background.path;
-    if (item.item_type === 'song') return songGlobalBgPath || null;
+    if (item.item_type === 'song') {
+      const et = effectiveTheme(item);
+      if (et?.bgPath) return et.bgPath;                           // media theme
+      if (et?.style) return null;                                // gradient theme → bgCss shows
+      return songGlobalBgPath || null;                           // legacy global default
+    }
     return null;
   }
+
+  // Re-send the live song/scripture when the resolved theme cascade changes, so
+  // audience output reflects the new look immediately (operator monitors re-render
+  // reactively). Both content types inherit their look from the theme now.
+  useEffect(() => {
+    if (!liveItem || (liveItem.item_type !== 'song' && liveItem.item_type !== 'scripture')) return;
+    const payload = buildPayload(liveItem, liveSlideIdx);
+    if (payload) window.cue.output.go(payload);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [themeMap, defaultThemeId, songDefaultId, scriptureDefaultId, slideDefaultId]);
 
   function handleClickItem(item) {
     setPreviewItemId(item.id);
@@ -969,6 +1105,10 @@ export default function OperatorView({
   async function handleScriptureLive(v) {
     const ref = `${v.bookName} ${v.chapter}:${v.verse}`;
     const splitVerses = await resolveSplitVerses(v);
+    // A verse fired straight from the Scriptures tab is a non-rundown source, so it
+    // has no item/service theme — fall back to the app-default theme for its look and
+    // background when the Scriptures tab hasn't set an explicit style/background.
+    const at = appTheme('scripture');
     const payload = {
       type: 'content',
       sectionLabel: ref,
@@ -979,8 +1119,8 @@ export default function OperatorView({
       copyright: `${ref} (${v.versionAbbrev})`,
       copyrightAlign: 'right',
       copyrightStyle: scriptureRefStyle,
-      backgroundPath: scriptureBgPath,
-      styleJson: scriptureStyle,
+      backgroundPath: scriptureBgPath || at?.bgPath || null,
+      styleJson: scriptureStyle || at?.style || null,
       // Two-translation compare view; output templates render stacked blocks when
       // present, else fall back to `text`/`copyright`. Live monitor mirrors via the item.
       scriptureVerses: splitVerses,
@@ -1326,6 +1466,38 @@ export default function OperatorView({
   // Double-clicking a media asset applies it as the background of the selected
   // rundown item(s): the multi-selection if one exists, otherwise the previewed
   // item. Mirrors the pre-"unified-click" behaviour so operators can bulk-apply.
+  // Double-clicking a theme applies it as a per-ITEM override to the selected rundown
+  // item(s) — the theme equivalent of double-clicking a media item to set a background.
+  // Bulk when items are multi-selected, else the preview item. Undoable.
+  async function handleApplyThemeToItem(theme) {
+    if (!theme) return;
+    const bulk = selectedIds.size > 0;
+    const targets = (serviceData?.items || []).filter((i) => (bulk ? selectedIds.has(i.id) : i.id === previewItemId));
+    const applicable = targets.filter((i) => ['song', 'scripture', 'presentation', 'slide'].includes(i.item_type));
+    if (!applicable.length) {
+      toast.show({ message: 'Select a song, verse or slide first', duration: 3000 });
+      return;
+    }
+    await ensureThemeBg(theme, null); // download the photo/video bg if needed
+    const prev = applicable.map((i) => ({ id: i.id, themeId: i.theme_override_id ?? null }));
+    for (const it of applicable) await window.cue.services.setItemTheme(it.id, theme.id);
+    refreshService();
+    const label = applicable.length === 1
+      ? `“${applicable[0].song?.title || applicable[0].scripture?.reference || applicable[0].title || 'item'}”`
+      : `${applicable.length} items`;
+    toast.show({
+      message: `“${theme.name}” applied to ${label}`,
+      duration: 6000,
+      action: {
+        label: 'Undo',
+        onClick: async () => {
+          for (const p of prev) await window.cue.services.setItemTheme(p.id, p.themeId);
+          refreshService();
+        },
+      },
+    });
+  }
+
   async function handleApplyMediaBackground(assetId) {
     if (selectedIds.size > 0) { await handleBulkSetBackground(assetId); return; }
     await handleSetPreviewBackground(assetId);
@@ -1521,6 +1693,15 @@ export default function OperatorView({
   const previewBgPath = previewItem ? resolveBackground(previewItem) : null;
   const liveBgPath    = liveItem    ? resolveBackground(liveItem)    : null;
 
+  // The effective theme style for the monitors — a song/scripture slide with no
+  // baked style inherits it, so the operator preview matches audience output exactly
+  // (mirrors buildPayload's styleJson resolution). Only content types are themed.
+  const themeStyleFor = (it) =>
+    (it && (it.item_type === 'song' || it.item_type === 'scripture'))
+      ? (effectiveTheme(it)?.style || null) : null;
+  const previewThemeStyle = themeStyleFor(previewItem);
+  const liveThemeStyle    = themeStyleFor(liveItem);
+
   // Use the first active program channel's template to drive the monitor frame
   // rendering. Stage channels are confidence monitors, not audience output, so
   // they never drive the operator preview. Falls back to 'fullscreen'.
@@ -1599,6 +1780,8 @@ export default function OperatorView({
             getSlides={getSlides}
             previewBgPath={previewBgPath}
             liveBgPath={liveBgPath}
+            previewThemeStyle={previewThemeStyle}
+            liveThemeStyle={liveThemeStyle}
             onSelectPreviewSlide={handleSelectPreviewSlide}
             onGoAtPreviewSlide={handleGoAtPreviewSlide}
             onSelectLiveSlide={handleSelectLiveSlide}
@@ -1648,6 +1831,9 @@ export default function OperatorView({
       {/* Library */}
       <div className="flex-1 min-h-0 overflow-hidden">
         <LibraryPanel
+          activeServiceId={activeServiceId}
+          onThemesChanged={() => setThemeTick((t) => t + 1)}
+          onApplyThemeToItem={handleApplyThemeToItem}
           onAddToRundown={handleAddToRundown}
           onAddManyToRundown={handleAddManyToRundown}
           onAddScripture={handleAddScripture}

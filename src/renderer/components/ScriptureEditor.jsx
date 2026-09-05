@@ -7,6 +7,7 @@ import UndoRedoButtons from './UndoRedoButtons';
 import useEditHistory, { useUndoRedoKeys } from '../utils/useEditHistory';
 import { useToast } from './Toast';
 import { mediaUrl } from '../utils/mediaUrl';
+import { normalizeLookStyle } from '../utils/presentationThemes';
 import { useFonts } from '../utils/fonts';
 import {
   FormattingToolbar, SlidePreview, LowerThirdPreview, DEFAULT_STYLE, styleIsDefault,
@@ -78,8 +79,11 @@ export default function ScriptureEditor({ onClose, onSave }) {
   // verse, style.refStyle → the reference line, and resolve its bgRef background.
   async function handleLoadTheme(theme) {
     try {
-      const ts = theme.style_json ? JSON.parse(theme.style_json) : null;
-      if (!ts) return;
+      const raw = theme.style_json ? JSON.parse(theme.style_json) : null;
+      if (!raw) return;
+      // Normalise any theme shape (incl. a presentation token theme) into the verse
+      // text style — one look applies to any content.
+      const ts = normalizeLookStyle(raw);
       const { refStyle: refS, ...verse } = ts;
       // Apply verse + reference style as ONE undo step (a theme is one action).
       doc.set((d) => ({
@@ -89,10 +93,10 @@ export default function ScriptureEditor({ onClose, onSave }) {
       }));
       if (theme.background_id && theme.background_path) {
         setBackground({ id: theme.background_id, path: theme.background_path, filename: theme.background_filename });
-      } else if (ts.bgRef) {
+      } else if (raw.bgRef) {
         setBgLoading(true);
         try {
-          const asset = await window.cue.backgrounds.download(ts.bgRef);
+          const asset = await window.cue.backgrounds.download(raw.bgRef);
           setBackground({ id: asset.id, path: asset.path, filename: asset.filename });
         } catch {
           // Style applied, but the background couldn't be fetched — surface it.

@@ -1,0 +1,45 @@
+{
+  "name": "Indigo Night",
+  "category": "song",
+  "sort_order": -76,
+  "style": {
+    "collection": "Collections",
+    "fontFamily": "Cinzel",
+    "color": "#eaf0ff",
+    "uppercase": true,
+    "fontSize": 82,
+    "letterSpacing": 0.06,
+    "lineSpacing": 1.06,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 24,
+      "color": "rgba(0,0,0,0.65)"
+    },
+    "bgCss": "radial-gradient(120% 130% at 50% 10%, #1a2a5e 0%, #0c1636 45%, #04060f 100%)",
+    "treatment": {
+      "scrim": "radial",
+      "scrimStrength": 0.3,
+      "vignette": 0.4,
+      "grain": 0.1,
+      "tint": {
+        "color": "#2a3f8a",
+        "amount": 0.12,
+        "blend": "soft-light"
+      }
+    },
+    "accent": {
+      "enabled": true,
+      "color": "#8fa6ff"
+    },
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(4,6,15,0.94) 0%, rgba(4,6,15,0.8) 70%, rgba(4,6,15,0) 100%)"
+    },
+    "lt": {
+      "fontFamily": "Cinzel",
+      "fontSize": 53,
+      "uppercase": true
+    }
+  }
+}

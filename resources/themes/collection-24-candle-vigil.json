@@ -1,0 +1,43 @@
+{
+  "name": "Candle Vigil",
+  "category": "song",
+  "sort_order": -97,
+  "style": {
+    "collection": "Collections",
+    "fontFamily": "EB Garamond",
+    "color": "#fbeede",
+    "fontSize": 92,
+    "lineSpacing": 1.1,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 20,
+      "color": "rgba(0,0,0,0.55)"
+    },
+    "bgRef": "library/coverr-blurred-candles-in-the-dark-cbvm521zpt.mp4",
+    "bgSpeed": 0.5,
+    "treatment": {
+      "scrim": "bottom",
+      "scrimStrength": 0.58,
+      "vignette": 0.44,
+      "grain": 0.08,
+      "tint": {
+        "color": "#ff8a3c",
+        "amount": 0.12,
+        "blend": "soft-light"
+      }
+    },
+    "accent": {
+      "enabled": true,
+      "color": "#e8b06a"
+    },
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(14,8,4,0.94) 0%, rgba(14,8,4,0.8) 70%, rgba(14,8,4,0) 100%)"
+    },
+    "lt": {
+      "fontFamily": "EB Garamond",
+      "fontSize": 60
+    }
+  }
+}

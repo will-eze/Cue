@@ -1,0 +1,10 @@
+{
+  "name": "Clean Ticker",
+  "kind": "ticker",
+  "graphic": {
+    "label": "Clean Ticker",
+    "text": "Welcome — please silence your phones  ·  Connect card in the app  ·  Kids check-in open until 10:45  ·  Prayer team available after service",
+    "speed": 100,
+    "style_json": { "accentSource": "theme", "fontSource": "custom", "fontFamily": "Inter", "fontSize": 30, "color": "#ffffff", "position": "bottom", "bar": { "css": "linear-gradient(to top, rgba(8,12,20,0.96) 0%, rgba(8,12,20,0.9) 100%)" } }
+  }
+}

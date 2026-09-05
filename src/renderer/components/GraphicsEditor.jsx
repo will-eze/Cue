@@ -33,6 +33,7 @@ function buildShadowCss(shadow) {
 
 export function buildBarBg(bar) {
   if (!bar) return 'transparent';
+  if (bar.css) return bar.css;
   const c  = bar.color   ?? '#000000';
   const op = bar.opacity ?? 0.8;
   const r  = parseInt(c.slice(1, 3), 16) || 0;
@@ -687,6 +688,11 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
       speed: graphic?.speed ?? 100,
       target: graphic?.target || 'ndi', // graphics default to Online (NDI)
       autoDismissSec: Number(parsed.autoDismissSec) || 0, // 0 = sticky; >0 auto-hides after N sec live
+      // Brand inheritance from the active theme (§ graphics↔theme). NEW graphics inherit
+      // the theme accent by default (cohesion); existing keep their look ('custom') until
+      // the user opts in. Font stays custom by default.
+      accentSource: parsed.accentSource || (graphic ? 'custom' : 'theme'),
+      fontSource:   parsed.fontSource   || 'custom',
       nameStyle:   { ...freshNameStyle(),   ...(parsed.name  || {}) },
       titleStyle:  { ...freshTitleStyle(),  ...(parsed.title || {}) },
       tickerStyle: { ...freshTickerStyle(), ...(graphic?.kind === 'ticker' ? parsed : {}) },
@@ -779,14 +785,16 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
     const dis = (isLT || isTK || isCustom) && draft.autoDismissSec > 0 ? { autoDismissSec: draft.autoDismissSec } : {};
     // bgFit stored in style_json only when background media is set (non-default fit).
     const bgFitKey = draft.bgMediaId && draft.bgFit !== 'cover' ? { bgFit: draft.bgFit } : {};
+    // Theme-brand inheritance flags (only meaningful for text-bearing kinds).
+    const brand = (isLT || isTK || isCD) ? { accentSource: draft.accentSource, fontSource: draft.fontSource } : {};
     let style_json = null;
-    if (isLT) style_json = { name: draft.nameStyle, title: draft.titleStyle, ...dis, ...bgFitKey };
+    if (isLT) style_json = { name: draft.nameStyle, title: draft.titleStyle, ...brand, ...dis, ...bgFitKey };
     else if (isTK) {
       // tickerStyle absorbs the whole style_json on load (incl. a stored autoDismissSec),
       // so drop the stale key before re-folding the current toggle state.
       const { autoDismissSec: _drop, ...tickerBase } = draft.tickerStyle;
-      style_json = { ...tickerBase, ...dis, ...bgFitKey };
-    } else if (isCD) style_json = { ...draft.cd, time: draft.timeStyle, message: draft.msgStyle, ...bgFitKey };
+      style_json = { ...tickerBase, ...brand, ...dis, ...bgFitKey };
+    } else if (isCD) style_json = { ...draft.cd, time: draft.timeStyle, message: draft.msgStyle, ...brand, ...bgFitKey };
     else if (isCustom) style_json = dis.autoDismissSec || Object.keys(bgFitKey).length ? { ...dis, ...bgFitKey } : null;
 
     const payload = {
@@ -913,6 +921,26 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
               <span className="material-symbols-outlined text-[16px]">grid_view</span>
               {isCustom ? 'Browse designs' : 'Apply a design'}
             </button>
+
+            {(isLT || isTK || isCD) && (
+              <Field label="Match theme">
+                <div className="flex flex-col gap-xs">
+                  {[['accent', 'Accent', draft.accentSource, (v) => set({ accentSource: v })],
+                    ['font', 'Font', draft.fontSource, (v) => set({ fontSource: v })]].map(([id, label, val, onCh]) => (
+                    <div key={id} className="flex items-center gap-sm">
+                      <span className="text-[10px] font-mono text-on-surface-variant/70 w-12 shrink-0 uppercase">{label}</span>
+                      <div className="flex items-center gap-[2px] bg-surface-container rounded p-[2px]">
+                        {[['theme', 'Theme'], ['custom', 'Custom']].map(([v, l]) => (
+                          <button key={v} onClick={() => onCh(v)}
+                            className={`px-sm py-[3px] text-[10px] font-mono uppercase tracking-[0.04em] rounded transition-colors cursor-pointer ${val === v ? 'bg-primary text-on-primary' : 'text-on-surface-variant/70 hover:text-on-surface'}`}>{l}</button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  <p className="text-[10px] text-on-surface-variant/50 leading-snug">“Theme” pulls the active rundown theme’s accent/font at air time — set once, stays cohesive. Applied on the next fire (never restyles live).</p>
+                </div>
+              </Field>
+            )}
 
             {(isLT || isCustom) && (
               <>

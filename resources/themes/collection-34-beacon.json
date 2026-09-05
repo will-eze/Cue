@@ -1,0 +1,43 @@
+{
+  "name": "Beacon",
+  "category": "song",
+  "sort_order": -87,
+  "style": {
+    "collection": "Collections",
+    "fontFamily": "Montserrat",
+    "color": "#ffffff",
+    "fontSize": 90,
+    "lineSpacing": 1.1,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 18,
+      "color": "rgba(0,0,0,0.45)"
+    },
+    "bgRef": "library/coverr-a-lighthouse-w7zdjfecqv.mp4",
+    "bgSpeed": 0.6,
+    "treatment": {
+      "scrim": "flat",
+      "scrimStrength": 0.2,
+      "vignette": 0.24,
+      "grain": 0.04,
+      "tint": {
+        "color": "#2b6fb0",
+        "amount": 0.08,
+        "blend": "soft-light"
+      }
+    },
+    "accent": {
+      "enabled": true,
+      "color": "#6db0ff"
+    },
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(6,12,22,0.94) 0%, rgba(6,12,22,0.8) 70%, rgba(6,12,22,0) 100%)"
+    },
+    "lt": {
+      "fontFamily": "Montserrat",
+      "fontSize": 59
+    }
+  }
+}

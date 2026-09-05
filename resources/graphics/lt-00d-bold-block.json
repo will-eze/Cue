@@ -1,0 +1,14 @@
+{
+  "name": "Bold Block",
+  "kind": "lower_third",
+  "graphic": {
+    "label": "Bold Block",
+    "name": "Sarah Bennett",
+    "title": "Worship Pastor",
+    "style_json": {
+      "accentSource": "theme", "fontSource": "custom",
+      "name":  { "fontFamily": "Bebas Neue", "fontSize": 68, "color": "#ffffff", "bold": false, "align": "left", "verticalAlign": "bottom", "letterSpacing": 0.02, "uppercase": true, "textBox": { "x": 5, "y": 72, "w": 58, "h": 20 }, "ltBar": { "color": "#0a0d14", "opacity": 0.95, "solid": true } },
+      "title": { "fontFamily": "Inter", "fontSize": 26, "color": "#7fb0ff", "bold": false, "align": "left", "uppercase": true, "letterSpacing": 0.06 }
+    }
+  }
+}

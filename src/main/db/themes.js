@@ -145,6 +145,19 @@ export function seedBundledThemes() {
   setSetting('themes_seeded', true);
 }
 
+// First-run onboarding: give a fresh install a real app-default theme so output is
+// never black out of the box (§4.5). Only sets it when none is chosen — never overrides
+// a user's pick. Prefers an offline gradient Collection (works with no internet), then
+// any curated Collection, then any built-in.
+export function ensureDefaultTheme() {
+  if (getSetting('default_theme_id')) return; // respect an existing / user choice
+  const db = getDb();
+  const pick = db.prepare("SELECT id FROM themes WHERE name=? AND builtin=1").get('Modern Worship')
+    || db.prepare("SELECT id FROM themes WHERE builtin=1 AND style_json LIKE '%\"collection\"%' AND style_json LIKE '%bgCss%' ORDER BY sort_order ASC LIMIT 1").get()
+    || db.prepare("SELECT id FROM themes WHERE builtin=1 ORDER BY sort_order ASC LIMIT 1").get();
+  if (pick) setSetting('default_theme_id', String(pick.id));
+}
+
 // Silently pre-download the full-res background for every unresolved built-in
 // presentation photo theme so the images are cached before the user opens the picker.
 // Fire-and-forget — call once after seedBundledThemes().
@@ -263,4 +276,53 @@ export function applyToAllSongs(themeId, setBg = true) {
     }
   })();
   return songIds.length;
+}
+
+// ─── Reset to theme (adopt the live cascade) ─────────────────────────────────
+// Strip a baked theme look from a section's style_json, keeping only content-level
+// inline runs / textBox so the section falls back to the LIVE theme cascade. Mirrors
+// the renderer's mergeSlideStyle rule (utils/themeStyle.js).
+function stripBakedLook(styleJson) {
+  if (!styleJson) return null;
+  let s;
+  try { s = JSON.parse(styleJson); } catch { return null; }
+  const keep = {};
+  if (Array.isArray(s.runs) && s.runs.length) keep.runs = s.runs;
+  if (s.textBox) keep.textBox = s.textBox;
+  return Object.keys(keep).length ? JSON.stringify(keep) : null;
+}
+
+// "Reset to theme": drop a song's baked per-section styling AND its own default
+// background / lock / rundown slot overrides, so the song follows the live theme
+// cascade (App→Service→Item) everywhere it's used. Inline runs are preserved. This is
+// the escape hatch out of the old paint-bucket bake — the theme can finally override it.
+export function resetSongToTheme(songId) {
+  const db = getDb();
+  db.transaction(() => {
+    const sections = db.prepare('SELECT id, style_json FROM song_sections WHERE song_id=?').all(songId);
+    for (const sec of sections) {
+      db.prepare('UPDATE song_sections SET style_json=? WHERE id=?').run(stripBakedLook(sec.style_json), sec.id);
+    }
+    db.prepare("UPDATE songs SET default_background_id=NULL, background_locked=0, updated_at=datetime('now') WHERE id=?").run(songId);
+    db.prepare("UPDATE service_items SET background_override_id=NULL WHERE item_type='song' AND ref_id=?").run(songId);
+  })();
+  return true;
+}
+
+// "Reset ALL songs to the live theme": the same, library-wide — the one-click hammer
+// that clears every baked look so the theme cascade fully takes over. Returns the count.
+export function resetAllSongsToTheme() {
+  const db = getDb();
+  let count = 0;
+  db.transaction(() => {
+    const sections = db.prepare('SELECT id, style_json FROM song_sections').all();
+    for (const sec of sections) {
+      const next = stripBakedLook(sec.style_json);
+      if (next !== sec.style_json) db.prepare('UPDATE song_sections SET style_json=? WHERE id=?').run(next, sec.id);
+    }
+    db.prepare("UPDATE songs SET default_background_id=NULL, background_locked=0, updated_at=datetime('now')").run();
+    db.prepare("UPDATE service_items SET background_override_id=NULL WHERE item_type='song'").run();
+    count = db.prepare('SELECT COUNT(*) AS c FROM songs').get().c;
+  })();
+  return count;
 }

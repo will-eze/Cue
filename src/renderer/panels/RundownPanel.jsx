@@ -13,6 +13,28 @@ import { useToast } from '../components/Toast';
 import MediaPickerModal from '../components/MediaPickerModal';
 import SongPreviewModal from '../components/SongPreviewModal';
 import SongEditor from '../components/SongEditor';
+import ThemePickerModal from '../components/ThemePickerModal';
+import { ensureThemeBg } from '../utils/ensureThemeBg';
+import { isCuratedTheme } from '../utils/themeSort';
+
+// Does a song rundown item carry legacy BAKED styling that "Clear baked styling" would
+// strip? True if any section has a base look (keys beyond inline runs/textBox), or the
+// song pins its own background / is locked, or the item has a per-slot bg override.
+// Mirrors what db/themes.js resetSongToTheme actually clears.
+const CONTENT_ONLY_KEYS = new Set(['runs', 'textBox']);
+function songHasBakedStyle(item) {
+  if (!item || item.item_type !== 'song') return false;
+  if (item.song?.default_background_id || item.song?.background_locked) return true;
+  if (item.background_override_id) return true;
+  for (const sec of item.sections || []) {
+    if (!sec.style_json) continue;
+    try {
+      const s = JSON.parse(sec.style_json);
+      if (s && Object.keys(s).some((k) => !CONTENT_ONLY_KEYS.has(k))) return true;
+    } catch { /* ignore malformed */ }
+  }
+  return false;
+}
 import PresentationEditor from '../components/PresentationEditor';
 import MediaThumb from '../components/MediaThumb';
 
@@ -224,6 +246,12 @@ function SortableItem({ item, index, bgPath, isPreview, isLive, isSelected, live
             {advanceRemaining != null ? `${advanceRemaining}s` : `${item.advance_seconds}s`}
           </span>
         )}
+        {/* This item overrides the service/app look (item tier of the cascade). */}
+        {item.theme_override_id ? (
+          <span title="Custom theme for this item" className="flex items-center font-label-sm text-[9px] tracking-wider px-xs py-[2px] rounded uppercase bg-primary/10 text-primary border border-primary/25">
+            <span className="material-symbols-outlined text-[11px] leading-none">palette</span>
+          </span>
+        ) : null}
       </div>
     </div>
   );
@@ -346,6 +374,56 @@ function AutoAdvanceModal({ item, onApply, onClose }) {
   );
 }
 
+// The service "look" chip — the SERVICE tier of the theme cascade, shown in the
+// rundown header. It states the effective look and where it comes from (this
+// service, else the app default), and lets the operator set/clear the service look.
+// Setting it re-resolves every song in the rundown live via OperatorView's themeMap.
+function ServiceLookChip({ serviceData, onChanged }) {
+  const toast = useToast();
+  const [appDefaultId, setAppDefaultId] = useState(null);
+  const [names, setNames] = useState({});
+  const [picking, setPicking] = useState(false);
+  useEffect(() => {
+    window.cue.settings.get('default_theme_id').then((v) => setAppDefaultId(Number(v) || null));
+    window.cue.themes.list().then((l) => {
+      const m = {};
+      for (const t of (l || [])) {
+        let accent = null;
+        try { accent = t.style_json ? JSON.parse(t.style_json).accent?.color : null; } catch {}
+        m[t.id] = { name: t.name, accent };
+      }
+      setNames(m);
+    }).catch(() => {});
+  }, [serviceData?.id, picking]);
+
+  const svcId = serviceData?.theme_id || null;
+  const effId = svcId || appDefaultId || null;
+  const eff = effId ? names[effId] : null;
+  const source = svcId ? 'this rundown' : (appDefaultId ? 'app default' : null);
+
+  async function pick(theme) { await ensureThemeBg(theme, toast); await window.cue.services.setServiceTheme(serviceData.id, theme.id); setPicking(false); onChanged?.(); }
+  async function reset()  { await window.cue.services.setServiceTheme(serviceData.id, null); onChanged?.(); }
+
+  return (
+    <div className="flex items-center gap-xs px-sm py-[5px] border-b border-outline-variant/20 bg-surface-container/40 shrink-0">
+      <span className="material-symbols-outlined text-[14px] text-on-surface-variant/50">palette</span>
+      <button onClick={() => setPicking(true)} title="Choose this rundown’s theme"
+        className="flex items-center gap-xs min-w-0 text-[11px] text-on-surface-variant hover:text-on-surface cursor-pointer">
+        <span className="w-2.5 h-2.5 rounded-sm shrink-0 border border-white/10" style={{ background: eff?.accent || '#4d8eff' }} />
+        <span className="truncate">Theme: <b className="text-on-surface font-semibold">{eff?.name || 'Default'}</b></span>
+        {source && <span className="text-on-surface-variant/50 shrink-0 whitespace-nowrap">· from {source}</span>}
+        <span className="material-symbols-outlined text-[15px] text-on-surface-variant/50 shrink-0">expand_more</span>
+      </button>
+      {svcId && (
+        <button onClick={reset} title="Reset to app default" className="shrink-0 w-4 h-4 flex items-center justify-center text-on-surface-variant/40 hover:text-on-surface cursor-pointer">
+          <span className="material-symbols-outlined text-[13px]">close</span>
+        </button>
+      )}
+      {picking && <ThemePickerModal category="song" currentId={svcId || appDefaultId} onPick={(t) => pick(t)} onClose={() => setPicking(false)} />}
+    </div>
+  );
+}
+
 export default function RundownPanel({
   services, activeServiceId, serviceData, previewItemId, liveItemId,
   selectedIds = new Set(),
@@ -376,10 +454,11 @@ export default function RundownPanel({
   const [editPresentation, setEditPresentation] = useState(null);
   const [themes, setThemes] = useState([]);
 
-  // Load themes for the song context menu's "Apply Theme" entries (song-category only).
+  // Themes for the item-look menu + the service-look chip. Every theme is one
+  // portable look; graphics presets are a separate system, so exclude only those.
   useEffect(() => {
     window.cue.themes.list()
-      .then((list) => setThemes((list || []).filter((t) => (t.category || 'song') === 'song')))
+      .then((list) => setThemes((list || []).filter((t) => (t.category || 'song') !== 'graphic')))
       .catch(() => {});
   }, [serviceData?.id]);
 
@@ -581,7 +660,7 @@ export default function RundownPanel({
               onChange={(e) => onSelectService(Number(e.target.value))}
               className="flex-1 min-w-0 bg-surface-container-lowest border border-outline-variant/30 rounded px-sm py-xs text-[11px] font-label-sm text-on-surface outline-none cursor-pointer"
             >
-              {services.length === 0 && <option value="">No services</option>}
+              {services.length === 0 && <option value="">No rundowns</option>}
               {services.map((s) => (
                 <option key={s.id} value={s.id}>{s.title}</option>
               ))}
@@ -598,14 +677,14 @@ export default function RundownPanel({
                 </button>
                 <button
                   onClick={startRename}
-                  title="Rename service"
+                  title="Rename rundown"
                   className="shrink-0 w-5 h-5 flex items-center justify-center text-on-surface-variant/40 hover:text-on-surface-variant cursor-pointer transition-colors"
                 >
                   <span className="material-symbols-outlined text-[13px]">edit</span>
                 </button>
                 <button
                   onClick={() => setConfirmDelete(true)}
-                  title="Delete service"
+                  title="Delete rundown"
                   className="shrink-0 w-5 h-5 flex items-center justify-center text-on-surface-variant/40 hover:text-error cursor-pointer transition-colors"
                 >
                   <span className="material-symbols-outlined text-[13px]">delete</span>
@@ -622,13 +701,18 @@ export default function RundownPanel({
         )}
       </div>
 
+      {/* Service look — the SERVICE tier of the theme cascade (inherits app default). */}
+      {activeServiceId && serviceData && (
+        <ServiceLookChip serviceData={serviceData} onChanged={onRefresh} />
+      )}
+
       {/* New service input */}
       {showNewService && (
         <div className="flex gap-sm px-sm py-xs bg-surface-container border-b border-outline-variant/20 shrink-0">
           <input
             autoFocus
             className="flex-1 bg-surface-container-lowest border border-outline-variant/30 rounded px-sm py-xs text-[11px] font-label-sm text-on-surface outline-none"
-            placeholder="Service title…"
+            placeholder="Rundown title…"
             value={newServiceTitle}
             onChange={(e) => setNewServiceTitle(e.target.value)}
             onKeyDown={(e) => {
@@ -796,30 +880,41 @@ export default function RundownPanel({
               ...(themes.length ? [
                 { separator: true },
                 {
-                  label: 'Apply Theme',
-                  submenu: themes.map((t) => ({
+                  // Live theme override for THIS item (item tier of the cascade). Non-
+                  // destructive — the song keeps no baked style; resolution is live.
+                  label: contextMenu.item.theme_override_id ? 'Change theme for this item' : 'Set theme for this item',
+                  submenu: themes.filter((t) => isCuratedTheme(t) || t.id === contextMenu.item.theme_override_id).map((t) => ({
                     label: t.name,
                     onClick: async () => {
-                      // setBg:true — a media or CSS-gradient theme applies its background;
-                      // a text-only theme leaves backgrounds untouched (handled in db/themes.js).
-                      // A media theme downloads its background on first apply, so wrap in a
-                      // spinner toast (debounced — instant gradient/local themes don't flash).
-                      const songName = contextMenu.item.song?.title || 'song';
-                      const songId = contextMenu.item.song.id;
+                      await ensureThemeBg(t, toast); // download the photo/video bg first
+                      await window.cue.services.setItemTheme(contextMenu.item.id, t.id);
                       setContextMenu(null);
-                      try {
-                        await toast.promise(
-                          window.cue.themes.applyToSong(t.id, songId, true),
-                          {
-                            pending: `Applying “${t.name}” to ${songName}…`,
-                            success: `Applied “${t.name}” to ${songName}`,
-                            error: `Couldn't apply “${t.name}”`,
-                          },
-                        );
-                        onRefresh?.();
-                      } catch { /* error toast already shown */ }
+                      onRefresh?.();
                     },
                   })),
+                },
+                ...(contextMenu.item.theme_override_id ? [{
+                  label: 'Reset to rundown theme',
+                  onClick: async () => {
+                    await window.cue.services.setItemTheme(contextMenu.item.id, null);
+                    setContextMenu(null);
+                    onRefresh?.();
+                  },
+                }] : []),
+              ] : []),
+              ...(songHasBakedStyle(contextMenu.item) ? [
+                { separator: true },
+                {
+                  // Escape the old baked-theme paint-bucket: strip this song's stored
+                  // style + background so it follows the live theme cascade again. Only
+                  // offered when the song actually carries a baked style/background.
+                  label: 'Clear baked styling (follow theme)',
+                  onClick: async () => {
+                    await window.cue.themes.resetSongToTheme(contextMenu.item.song.id);
+                    setContextMenu(null);
+                    onSongEdited?.();
+                    onRefresh?.();
+                  },
                 },
               ] : []),
             ] : []),
@@ -837,6 +932,31 @@ export default function RundownPanel({
                   setContextMenu(null);
                 },
               }] : []),
+              ...(themes.length ? [
+                { separator: true },
+                {
+                  // Item-tier theme override for a scripture verse — same live cascade
+                  // as songs (a scripture look inherits from the service / app default).
+                  label: contextMenu.item.theme_override_id ? 'Change theme for this item' : 'Set theme for this item',
+                  submenu: themes.filter((t) => isCuratedTheme(t) || t.id === contextMenu.item.theme_override_id).map((t) => ({
+                    label: t.name,
+                    onClick: async () => {
+                      await ensureThemeBg(t, toast); // download the photo/video bg first
+                      await window.cue.services.setItemTheme(contextMenu.item.id, t.id);
+                      setContextMenu(null);
+                      onRefresh?.();
+                    },
+                  })),
+                },
+                ...(contextMenu.item.theme_override_id ? [{
+                  label: 'Reset to rundown theme',
+                  onClick: async () => {
+                    await window.cue.services.setItemTheme(contextMenu.item.id, null);
+                    setContextMenu(null);
+                    onRefresh?.();
+                  },
+                }] : []),
+              ] : []),
             ] : []),
             ...(contextMenu.item.item_type === 'presentation' ? [
               { separator: true },
@@ -872,7 +992,7 @@ export default function RundownPanel({
             ...(services.filter((s) => s.id !== activeServiceId).length > 0 ? [
               { separator: true },
               {
-                label: 'Copy to Service ›',
+                label: 'Copy to Rundown ›',
                 submenu: services.filter((s) => s.id !== activeServiceId).map((s) => ({
                   label: s.title,
                   onClick: async () => {
@@ -888,7 +1008,7 @@ export default function RundownPanel({
                 })),
               },
               {
-                label: 'Move to Service ›',
+                label: 'Move to Rundown ›',
                 submenu: services.filter((s) => s.id !== activeServiceId).map((s) => ({
                   label: s.title,
                   onClick: async () => {

@@ -66,7 +66,7 @@ export default function TransitionSettings() {
     <section className="space-y-md">
       <h2 className="text-headline-md font-semibold text-on-surface flex items-center gap-sm">
         <span className="material-symbols-outlined text-primary">animation</span>
-        Transitions
+        Motion
       </h2>
       <p className="text-body-md text-on-surface-variant -mt-xs">
         Animate how the program output changes. Slides with a video background or a video
@@ -76,7 +76,64 @@ export default function TransitionSettings() {
       {TRIGGERS.map((t) => (
         <TriggerRow key={t.id} trigger={t} value={cfg[t.id]} onChange={(patch) => update(t.id, patch)} />
       ))}
+
+      <VideoLoopCard />
     </section>
+  );
+}
+
+// Video-background loop behaviour — how a looping video background behaves at the
+// loop point (crossfade vs jump-cut). Relocated here from the retired Background
+// section; the settings keys (bg_loop_mode / bg_loop_blend_secs) are unchanged so
+// output/fullscreen.js reads them exactly as before.
+function VideoLoopCard() {
+  const [loopMode, setLoopMode] = useState('blend'); // 'blend' | 'jump'
+  const [loopBlendSecs, setLoopBlendSecs] = useState(2.0);
+
+  useEffect(() => {
+    window.cue.settings.get('bg_loop_mode').then((v) => { if (v) setLoopMode(v); });
+    window.cue.settings.get('bg_loop_blend_secs').then((v) => { if (v != null) setLoopBlendSecs(Number(v)); });
+  }, []);
+
+  function changeMode(mode) { setLoopMode(mode); window.cue.settings.set('bg_loop_mode', mode); }
+  function changeBlend(secs) { setLoopBlendSecs(secs); window.cue.settings.set('bg_loop_blend_secs', secs); }
+
+  return (
+    <div className="bg-surface-container-high p-lg rounded-xl border border-outline-variant/30 space-y-md">
+      <div className="flex items-start gap-md">
+        <span className="material-symbols-outlined text-primary mt-xs">motion_photos_on</span>
+        <div className="flex-1">
+          <h4 className="text-headline-md font-semibold text-on-surface">Video Background Loop</h4>
+          <p className="text-body-sm text-on-surface-variant mt-xs">How a looping video background behaves at the loop point.</p>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-sm">
+        {[
+          { id: 'blend', label: 'Smooth blend', desc: 'Crossfade end → start' },
+          { id: 'jump',  label: 'Jump cut',     desc: 'Restart immediately' },
+        ].map((opt) => (
+          <button
+            key={opt.id}
+            onClick={() => changeMode(opt.id)}
+            className={`px-md py-sm rounded-lg border-2 text-left transition-all cursor-pointer ${
+              loopMode === opt.id ? 'border-primary bg-primary/8' : 'border-outline-variant/30 bg-surface-container-low hover:border-outline-variant/60'
+            }`}
+          >
+            <div className={`text-label-sm font-label-sm font-bold ${loopMode === opt.id ? 'text-primary' : 'text-on-surface'}`}>{opt.label}</div>
+            <div className="text-body-sm text-on-surface-variant/70 mt-[2px]">{opt.desc}</div>
+          </button>
+        ))}
+      </div>
+      <div
+        className={`flex items-center gap-lg ${loopMode !== 'blend' ? 'opacity-40 pointer-events-none' : ''}`}
+        title={loopMode !== 'blend' ? 'Select "Smooth blend" above to configure blend duration' : undefined}
+      >
+        <span className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em] shrink-0">Blend duration</span>
+        <input type="range" min={0.5} max={5} step={0.5} value={loopBlendSecs}
+          onChange={(e) => changeBlend(Number(e.target.value))} className="flex-1 accent-primary cursor-pointer" />
+        <span className="text-label-sm font-label-sm text-primary tabular-nums w-12 text-right">{loopBlendSecs.toFixed(1)} s</span>
+      </div>
+    </div>
   );
 }
 

@@ -82,11 +82,13 @@ contextBridge.exposeInMainWorld('cueOutput', {
 // files are served through the cue-media:// protocol.
 function injectUserFonts() {
   ipcRenderer.invoke('fonts:css').then((css) => {
-    if (!css) return;
-    const el = document.createElement('style');
-    el.id = 'cue-user-fonts';
-    el.textContent = css;
-    document.head.appendChild(el);
+    let el = document.getElementById('cue-user-fonts');
+    if (!el) {
+      el = document.createElement('style');
+      el.id = 'cue-user-fonts';
+      document.head.appendChild(el);
+    }
+    el.textContent = css || '';
   }).catch(() => {});
 }
 if (document.readyState === 'loading') {
@@ -94,3 +96,5 @@ if (document.readyState === 'loading') {
 } else {
   injectUserFonts();
 }
+// Re-inject when a font is downloaded/removed mid-session (broadcast from main).
+ipcRenderer.on('fonts:refresh', injectUserFonts);

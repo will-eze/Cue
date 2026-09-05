@@ -1,0 +1,25 @@
+{
+  "name": "Autumn Praise",
+  "category": "song",
+  "sort_order": -113,
+  "style": {
+    "collection": "Collections",
+    "fontFamily": "Lora",
+    "color": "#fff3e6",
+    "fontSize": 94,
+    "lineSpacing": 1.08,
+    "textShadow": { "enabled": true, "x": 0, "y": 2, "blur": 20, "color": "rgba(0,0,0,0.5)" },
+    "bgRef": "library/coverr-beautiful-scenery-of-an-autumn-forest-zdv2akmmhp.mp4",
+    "bgSpeed": 0.5,
+    "treatment": {
+      "scrim": "bottom",
+      "scrimStrength": 0.5,
+      "vignette": 0.3,
+      "grain": 0.1,
+      "tint": { "color": "#d98a2e", "amount": 0.12, "blend": "soft-light" }
+    },
+    "accent": { "enabled": true, "color": "#eab073" },
+    "ltBar": { "css": "linear-gradient(to top, rgba(16,10,4,0.94) 0%, rgba(16,10,4,0.8) 70%, rgba(16,10,4,0) 100%)" },
+    "lt": { "fontFamily": "Lora", "fontSize": 60 }
+  }
+}

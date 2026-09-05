@@ -1,0 +1,25 @@
+{
+  "name": "Cathedral Light",
+  "category": "song",
+  "sort_order": -119,
+  "style": {
+    "collection": "Collections",
+    "fontFamily": "Cormorant Garamond",
+    "color": "#f6efe0",
+    "fontSize": 100,
+    "lineSpacing": 1.08,
+    "textShadow": { "enabled": true, "x": 0, "y": 2, "blur": 24, "color": "rgba(0,0,0,0.6)" },
+    "bgRef": "library/unsplash-6fRHGqbp1_4.jpg",
+    "treatment": {
+      "scrim": "bottom",
+      "scrimStrength": 0.45,
+      "vignette": 0.34,
+      "grain": 0.12,
+      "tint": { "color": "#c8922e", "amount": 0.1, "blend": "soft-light" },
+      "kenBurns": "drift"
+    },
+    "accent": { "enabled": true, "color": "#d8ab5a" },
+    "ltBar": { "css": "linear-gradient(to top, rgba(16,11,4,0.94) 0%, rgba(16,11,4,0.8) 70%, rgba(16,11,4,0) 100%)" },
+    "lt": { "fontFamily": "Cormorant Garamond", "fontSize": 62 }
+  }
+}

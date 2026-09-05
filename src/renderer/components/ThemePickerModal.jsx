@@ -2,7 +2,10 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { SlidePreview, DEFAULT_STYLE } from './SongEditor';
 import { useModalGuard } from '../utils/modalGuard';
-import { sortThemes } from '../utils/themeSort';
+import { sortThemes, filterBrowseThemes, isCuratedTheme } from '../utils/themeSort';
+import { normalizeLookStyle } from '../utils/presentationThemes';
+import { themeSearchText } from '../utils/themeSearch';
+import LazyVisible from './LazyVisible';
 
 // Reusable "click a theme to apply it" picker — a grid of live theme previews
 // (media built-ins → gradient built-ins → custom, with a separator before the
@@ -11,8 +14,9 @@ import { sortThemes } from '../utils/themeSort';
 const SAMPLE = 'Amazing Grace\nHow Sweet the Sound';
 
 function PickCard({ theme, bgThumb, onPick }) {
-  const style = theme.style_json ? { ...DEFAULT_STYLE, ...JSON.parse(theme.style_json) } : { ...DEFAULT_STYLE };
-  const isMedia = !!style.bgRef || !!theme.background_id;
+  const raw = theme.style_json ? JSON.parse(theme.style_json) : null;
+  const style = { ...DEFAULT_STYLE, ...(normalizeLookStyle(raw) || {}) };
+  const isMedia = !!(raw && raw.bgRef) || !!theme.background_id;
   return (
     // A <div> (not <button>) so SlidePreview's width:100%/aspect-ratio lays out
     // correctly — matches the Settings "view all" card. Button semantics added.
@@ -24,7 +28,9 @@ function PickCard({ theme, bgThumb, onPick }) {
       className="bg-surface-container border border-outline-variant/30 rounded-xl overflow-hidden flex flex-col cursor-pointer hover:border-primary/50 hover:ring-1 hover:ring-primary/30 active:scale-[0.99] transition-all"
     >
       <div className="p-sm pb-0">
-        <SlidePreview text={SAMPLE} runs={[]} style={bgThumb ? { ...style, bgThumb } : style} backgroundPath={theme.background_path ?? null} />
+        <LazyVisible placeholder={<div className="w-full aspect-video rounded-lg bg-surface-container-high animate-pulse" />}>
+          <SlidePreview text={SAMPLE} runs={[]} style={bgThumb ? { ...style, bgThumb } : style} backgroundPath={theme.background_path ?? null} />
+        </LazyVisible>
       </div>
       <div className="px-md py-sm flex items-center gap-xs">
         <span className="text-label-sm font-mono font-bold text-on-surface truncate min-w-0">{theme.name}</span>
@@ -36,14 +42,20 @@ function PickCard({ theme, bgThumb, onPick }) {
   );
 }
 
-export default function ThemePickerModal({ onPick, onClose, category = 'song' }) {
+export default function ThemePickerModal({ onPick, onClose, category = 'song', currentId = null }) {
   useModalGuard();
   const [themes, setThemes] = useState([]);
   const [bgThumbs, setBgThumbs] = useState({});
   const [query, setQuery] = useState('');
+  const [showLegacy, setShowLegacy] = useState(false);
+  const [group, setGroup] = useState('all'); // all | collections | mine
 
   useEffect(() => {
-    window.cue.themes.list().then((list) => setThemes(list.filter((t) => (t.category || 'song') === category))).catch(() => {});
+    // One look, any content — a theme applies to songs, scripture and presentations
+    // alike (its style normalises per surface). Graphics presets are a separate system.
+    window.cue.themes.list()
+      .then((list) => setThemes((list || []).filter((t) => (t.category || 'song') !== 'graphic')))
+      .catch(() => {});
     window.cue.backgrounds?.list?.().then((items) => {
       const map = {};
       for (const it of items) if (it.thumb) map[it.id] = it.thumb;
@@ -57,11 +69,18 @@ export default function ThemePickerModal({ onPick, onClose, category = 'song' })
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  // Legacy built-ins are hidden by default (presentation decks keep theirs — they carry
+  // layouts Collections don't). The current selection is always kept so it still shows.
+  const hasLegacy = useMemo(() => themes.some((t) => t.builtin && !isCuratedTheme(t)), [themes]);
   const sorted = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const list = q ? themes.filter((t) => t.name.toLowerCase().includes(q)) : themes;
+    let list = q ? themes.filter((t) => themeSearchText(t).includes(q)) : themes;
+    list = filterBrowseThemes(list, { showLegacy: showLegacy || category === 'presentation', keepIds: [currentId] });
+    if (group === 'mine') list = list.filter((t) => !t.builtin);
+    else if (group === 'collections') list = list.filter((t) => t.builtin);
     return sortThemes(list);
-  }, [themes, query]);
+  }, [themes, query, showLegacy, group, category, currentId]);
+  const mineCount = useMemo(() => themes.filter((t) => !t.builtin).length, [themes]);
 
   const bgThumbFor = (theme) => {
     try { const r = theme.style_json ? JSON.parse(theme.style_json).bgRef : null; return r ? bgThumbs[r] : null; } catch { return null; }
@@ -97,10 +116,27 @@ export default function ThemePickerModal({ onPick, onClose, category = 'song' })
             <span className="material-symbols-outlined absolute left-sm top-1/2 -translate-y-1/2 text-on-surface-variant/60 text-[18px]">search</span>
             <input
               value={query} onChange={(e) => setQuery(e.target.value)} autoFocus
-              placeholder="Search themes…"
+              placeholder="Search name or mood (serif, video, dark…)"
               className="w-full pl-[34px] pr-sm py-xs text-body-sm bg-surface-container rounded-lg border border-outline-variant/30 text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:border-primary/50"
             />
           </div>
+          {category !== 'presentation' && (
+            <div className="flex items-center gap-[2px] bg-surface-container rounded-lg p-[2px] shrink-0">
+              {[['all', 'All'], ['collections', 'Collections'], ['mine', `Yours${mineCount ? ` · ${mineCount}` : ''}`]].map(([id, label]) => (
+                <button key={id} onClick={() => setGroup(id)}
+                  className={`px-sm py-[3px] text-[10px] font-mono uppercase tracking-[0.04em] rounded transition-colors cursor-pointer ${group === id ? 'bg-primary text-on-primary' : 'text-on-surface-variant/70 hover:text-on-surface'}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+          {hasLegacy && category !== 'presentation' && (
+            <button onClick={() => setShowLegacy((v) => !v)}
+              className="shrink-0 text-[10px] font-label-sm uppercase tracking-[0.05em] text-on-surface-variant/60 hover:text-on-surface-variant flex items-center gap-[3px] cursor-pointer">
+              <span className="material-symbols-outlined text-[15px]">{showLegacy ? 'visibility_off' : 'history'}</span>
+              {showLegacy ? 'Hide legacy' : 'Show legacy'}
+            </button>
+          )}
           <button onClick={onClose} className="text-on-surface-variant hover:text-on-surface cursor-pointer flex items-center shrink-0">
             <span className="material-symbols-outlined">close</span>
           </button>

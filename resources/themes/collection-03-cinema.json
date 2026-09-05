@@ -1,0 +1,27 @@
+{
+  "name": "Cinema",
+  "category": "song",
+  "sort_order": -110,
+  "style": {
+    "collection": "Collections",
+    "fontFamily": "Oswald",
+    "color": "#f2f2f2",
+    "uppercase": true,
+    "fontSize": 104,
+    "letterSpacing": 0.04,
+    "lineSpacing": 1.0,
+    "textShadow": { "enabled": true, "x": 0, "y": 2, "blur": 18, "color": "rgba(0,0,0,0.6)" },
+    "bgCss": "linear-gradient(180deg, #05070b 0%, #0a0f16 50%, #05070b 100%)",
+    "treatment": {
+      "scrim": "bottom",
+      "scrimStrength": 0.7,
+      "vignette": 0.45,
+      "grain": 0.14,
+      "tint": { "color": "#12324a", "amount": 0.16, "blend": "multiply" },
+      "kenBurns": "pan-lr"
+    },
+    "accent": { "enabled": true, "color": "#e0b15a" },
+    "ltBar": { "css": "linear-gradient(to top, rgba(3,5,9,0.96) 0%, rgba(3,5,9,0.85) 74%, rgba(3,5,9,0) 100%)" },
+    "lt": { "fontFamily": "Oswald", "fontSize": 58, "uppercase": true }
+  }
+}

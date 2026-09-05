@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import SlideList from '../components/SlideList';
-import { renderWithRuns, copyrightCss, buildDecorationCss, buildBoxFillCss } from '../components/SongEditor';
+import { renderWithRuns, copyrightCss, buildDecorationCss, buildBoxFillCss, resolveLtStyle, accentRuleStyle, BgVideo } from '../components/SongEditor';
+import TreatmentOverlays, { glassBoxStyle } from '../components/TreatmentOverlays';
 import { flatTextCss, buildBarBg as buildGraphicBarBg, fmtDuration as fmtGfxDuration, fmtClock as fmtGfxClock, CD_DEFAULT_BOX, TIME_BASE as GFX_TIME_BASE, MSG_BASE as GFX_MSG_BASE } from '../components/GraphicsEditor';
 import { mediaUrl } from '../utils/mediaUrl';
+import { mergeSlideStyle } from '../utils/themeStyle';
 
 const GFX_BOX_DEFAULT = { x: 4, y: 70, w: 55, h: 22 };
 const GFX_NAME_BASE  = { fontSize: 54, color: '#ffffff', fontWeight: 700 };
@@ -565,7 +567,7 @@ function LiveInputMonitor({ liveInput }) {
   );
 }
 
-function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroundPath, displayMode, channelTemplate, stageChannelId, ltFontScale = 1, transport, overlay, hideProgram }) {
+function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroundPath, themeStyle = null, displayMode, channelTemplate, stageChannelId, ltFontScale = 1, transport, overlay, hideProgram }) {
   const wrapRef = useRef(null);
   const [scale, setScale] = useState(0.5);
 
@@ -580,7 +582,10 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
 
   const slides = getSlides(item ?? null);
   const slide  = item ? slides[slideIdx] : null;
-  const style  = slide?.style_json ? JSON.parse(slide.style_json) : null;
+  // A baked base style wins; otherwise inherit the effective theme (keeping inline
+  // runs), so the monitor matches audience output. Mirrors OperatorView.buildPayload.
+  const sectionStyle = slide?.style_json ? JSON.parse(slide.style_json) : null;
+  const style  = themeStyle ? mergeSlideStyle(sectionStyle, themeStyle) : sectionStyle;
   const isLT   = channelTemplate === 'lowerthird';
   const isStage = channelTemplate === 'stage';
   const isPresentation = item?.item_type === 'presentation';
@@ -598,29 +603,38 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
   // lower-third channel (hideProgram) likewise never shows the song lyric band.
   const hideText = (isLive && displayMode === 'cleared') || hideProgram;
 
+  // The lower third resolves its own style (fullscreen look + `lt` overrides) so the
+  // monitor matches output/lowerthird.js exactly; fullscreen is unchanged.
+  const s = isLT ? resolveLtStyle(style) : style;
+  const ltAccentCss = isLT ? accentRuleStyle(s?.accent) : null;
+
   // Match the output templates' default shadow exactly
-  const shadow    = style?.textShadow;
+  const shadow    = s?.textShadow;
   const shadowCss = shadow
     ? (shadow.enabled ? `${shadow.x ?? 0}px ${shadow.y ?? 2}px ${shadow.blur ?? 16}px ${shadow.color ?? '#000'}` : 'none')
     : (isLT ? '0 2px 8px rgba(0,0,0,0.6)' : '0 2px 16px rgba(0,0,0,0.8), 0 0 40px rgba(0,0,0,0.6)');
-  const stroke = style?.textStroke;
+  const stroke = s?.textStroke;
 
   // Text styles at native 1920×1080 resolution — no scaling needed, CSS transform handles it.
   // Lower-third lyric size mirrors output/lowerthird.js exactly: base = authored size or
   // the FULLSCREEN default (72px), then × the global L3 font scale. Fullscreen is unscaled.
   const ltScale = isLT ? (Number(ltFontScale) > 0 ? Number(ltFontScale) : 1) : 1;
-  const baseFontPx = isLT ? (Number(style?.fontSize) || 72) * ltScale : (style?.fontSize ?? 72);
+  // Lower-third max-lines shrink (approx by authored line count; mirrors output auto-fit).
+  const ltMax = isLT ? (Number(style?.lt?.maxLines) || 0) : 0;
+  const ltLineCount = (slide?.content || '').split('\n').filter((l) => l.trim()).length || 1;
+  const ltShrink = (ltMax > 0 && !slide?.splitVerses && ltLineCount > ltMax) ? (ltMax / ltLineCount) : 1;
+  const baseFontPx = (isLT ? (Number(s?.fontSize) || 72) * ltScale : (s?.fontSize ?? 72)) * ltShrink;
   const textStyle = {
-    fontFamily:       style?.fontFamily || undefined,
+    fontFamily:       s?.fontFamily || undefined,
     fontSize:         baseFontPx + 'px',
-    textAlign:        style?.align || 'center',
-    fontWeight:       style?.bold ? 700 : 400,
-    fontStyle:        style?.italic ? 'italic' : 'normal',
-    textDecoration:   buildDecorationCss(style),
-    textTransform:    style?.uppercase ? 'uppercase' : 'none',
-    color:            style?.color || '#ffffff',
-    lineHeight:       style?.lineSpacing ? String(style.lineSpacing) : (isLT ? '1.2' : '1.25'),
-    letterSpacing:    style?.letterSpacing ? `${style.letterSpacing}em` : undefined,
+    textAlign:        s?.align || 'center',
+    fontWeight:       s?.bold ? 700 : 400,
+    fontStyle:        s?.italic ? 'italic' : 'normal',
+    textDecoration:   buildDecorationCss(s),
+    textTransform:    s?.uppercase ? 'uppercase' : 'none',
+    color:            s?.color || '#ffffff',
+    lineHeight:       s?.lineSpacing ? String(s.lineSpacing) : (isLT ? '1.2' : '1.25'),
+    letterSpacing:    s?.letterSpacing ? `${s.letterSpacing}em` : undefined,
     textShadow:       shadowCss,
     WebkitTextStroke: (stroke?.enabled) ? `${stroke.width ?? 2}px ${stroke.color ?? '#000'}` : undefined,
     whiteSpace:       'pre-wrap',
@@ -673,7 +687,7 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
                     {/\.(mp4|webm|mov|m4v|avi|mkv)$/i.test(backgroundPath)
                       ? (transport?.active
                         ? <SyncedVideo src={mediaUrl(backgroundPath)} transport={transport} loop={item?.item_type === 'media' && !!item?.media_loop} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        : <video src={mediaUrl(backgroundPath)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} autoPlay loop muted />)
+                        : <BgVideo src={mediaUrl(backgroundPath)} speed={style?.bgSpeed} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />)
                       : /\.(mp3|wav|aac|flac|ogg|m4a)$/i.test(backgroundPath)
                       ? <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                           <span className="material-symbols-outlined" style={{ fontSize: 220, color: '#4ae176' }}>volume_up</span>
@@ -685,10 +699,9 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
                   <div style={{ position: 'absolute', inset: 0, background: style.bgCss }} />
                 ) : null}
 
-                {/* Background scrim (style.bgScrim) — matches fullscreen.js #scrim */}
-                {!isLT && style?.bgScrim ? (
-                  <div style={{ position: 'absolute', inset: 0, background: '#000', opacity: Math.max(0, Math.min(1, style.bgScrim)), pointerEvents: 'none' }} />
-                ) : null}
+                {/* Theme treatment stack (scrim, vignette, grain, grade) — matches
+                    fullscreen.js #scrim. No z-index so the grade blends with the bg. */}
+                {!isLT ? <TreatmentOverlays style={style} /> : null}
 
                 {/* Content */}
                 {!hideText && (isLT ? (
@@ -696,15 +709,16 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
                   <div style={{
                     position: 'absolute', bottom: 0, left: 0, right: 0,
                     padding: '24px 60px 32px',
-                    background: buildBarBg(style?.ltBar),
+                    background: buildBarBg(s?.ltBar),
                     minHeight: 160,
                     display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
                   }}>
                     {slide.splitVerses ? (
-                      <SplitVerses verses={slide.splitVerses} baseStyle={textStyle} maxFontPx={baseFontPx} maxHeightPx={Math.round(NATIVE_H * 0.6)} runs={style?.runs} scale={ltScale} attrColor={copyrightStyle?.color} />
+                      <SplitVerses verses={slide.splitVerses} baseStyle={textStyle} maxFontPx={baseFontPx} maxHeightPx={Math.round(NATIVE_H * 0.6)} runs={s?.runs} scale={ltScale} attrColor={copyrightStyle?.color} />
                     ) : (
-                      <p style={textStyle} dangerouslySetInnerHTML={{ __html: renderWithRuns(slide.content, style?.runs, ltScale) }} />
+                      <p style={textStyle} dangerouslySetInnerHTML={{ __html: renderWithRuns(slide.content, s?.runs, ltScale) }} />
                     )}
+                    {ltAccentCss && !slide.splitVerses && <div style={ltAccentCss} />}
                     {copyrightText && !slide.splitVerses && (
                       <div style={{ fontSize: 18, color: 'rgba(255,255,255,0.7)', marginTop: 4, ...copyrightCss(copyrightStyle, copyrightRight ? 'right' : 'left', false), paddingLeft: undefined, paddingRight: undefined }}>
                         {copyrightText}
@@ -724,7 +738,8 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
                                     : 'center',
                       overflow: 'hidden',
                       boxSizing: 'border-box',
-                      ...buildBoxFillCss(style?.boxFill),
+                      // Frosted glass panel (treatment.glass) supersedes plain boxFill.
+                      ...(glassBoxStyle(style, 1) || buildBoxFillCss(style?.boxFill)),
                     }}>
                       {slide.splitVerses ? (
                         <SplitVerses verses={slide.splitVerses} baseStyle={textStyle} maxFontPx={baseFontPx} maxHeightPx={Math.round((tb.h / 100) * NATIVE_H)} runs={style?.runs} scale={1} attrColor={copyrightStyle?.color} />
@@ -793,6 +808,7 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
 export default function PreviewLivePanel({
   previewItem, liveItem, previewSlideIdx, liveSlideIdx,
   displayMode, getSlides, previewBgPath, liveBgPath,
+  previewThemeStyle = null, liveThemeStyle = null,
   onSelectPreviewSlide, onGoAtPreviewSlide, onSelectLiveSlide,
   channelTemplate,
   ltFontScale = 1,
@@ -911,6 +927,7 @@ export default function PreviewLivePanel({
             emptyLabel="Nothing in Preview"
             isLive={false}
             backgroundPath={previewBgPath}
+            themeStyle={previewThemeStyle}
             channelTemplate={channelTemplate}
             stageChannelId={selectedChannel?.id}
             ltFontScale={ltFontScale}
@@ -941,6 +958,7 @@ export default function PreviewLivePanel({
             emptyLabel="Nothing Live"
             isLive={true}
             backgroundPath={liveBgPath}
+            themeStyle={liveThemeStyle}
             displayMode={displayMode}
             channelTemplate={selectedTemplate}
             stageChannelId={selectedChannel?.id}

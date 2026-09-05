@@ -17,6 +17,8 @@ src/
 │   ├── output-preload.js     Minimal contextBridge for output windows → window.cueOutput only. Also injects
 │   │                         user-installed @font-face rules (fonts:css) into every output window on load.
 │   ├── fonts.js              BUNDLED_FONTS array + DEFAULT_FONT. Imported by preload.js.
+│   ├── fonts-catalog.js      FONT_CATALOG (52 downloadable OFL/Apache families: id/category/weights/license/pairing)
+│   │                         + fontsourceUrl(id, weight). Feeds db/fonts.js downloads + the picker previews (§15).
 │   │
 │   ├── db/
 │   │   ├── schema.js         SQLite init, migration runner (v1→v33), getDb() singleton, closeDb() (releases
@@ -317,10 +319,13 @@ src/
 │   │   │                          live monitor, filtered by the selected channel's kind + content mode (show_program/
 │   │   │                          show_graphics → hideProgram/hideGraphics). Subscribes to output:overlay-changed.
 │   │   │                          Props: allChannels, liveChannelIdx, onSetLiveChannelIdx.
-│   │   ├── LibraryPanel.jsx       Songs tab (react-window virtualised list) + Media tab (grid) + Scripture tab.
+│   │   ├── LibraryPanel.jsx       Songs tab (react-window virtualised list) + Media tab (grid) + Scripture tab + Themes tab.
 │   │   │                          Song search + tag filter (left-panel folders = tags). Clicking a tag SWITCHES to it
 │   │   │                          (single-select; clicking the lone active tag clears); Shift-click adds/removes for
 │   │   │                          multi-select (AND semantics). Media import.
+│   │   ├── LibraryThemesTab.jsx   Operator Library → Themes tab (v34). SlidePreview gallery for one-tap "Use for this
+│   │   │                          rundown" / "Set as default" (all/song/scripture/slide) without opening Settings;
+│   │   │                          bumps OperatorView.themeTick so the live cascade re-reads.
 │   │   │                          Import dropdown (Songs tab): "Import from File…" (dialog → songs.importParse →
 │   │   │                          SongImportModal), "Import GHS Hymnal" (songs.importGhs → same modal), and
 │   │   │                          "Find Song Online…" (opens SongScrapeModal — web lyric search + preview + save).
@@ -395,9 +400,16 @@ src/
 │   │   │                          gallery (GraphicsPresetModal — per-kind filter tabs, live tiles) restyling the draft.
 │   │   │                          Default-destination selector. Exports fillPlaceholders, flatTextCss, buildBarBg,
 │   │   │                          GraphicsPresetModal, presetToGraphic (shared with GraphicsPanel + monitor).
-│   │   ├── ThemePickerModal.jsx   Reusable click-to-apply theme gallery (category prop). Full-screen grid of live
-│   │   │                          SlidePreview tiles (sortThemes order, bgThumb for media themes). onPick(theme) —
-│   │   │                          caller decides apply. Used by SongEditor (theme picker) + ScriptureEditor (Load Theme).
+│   │   ├── ThemePickerModal.jsx   Reusable click-to-apply theme gallery. Full-screen grid of live SlidePreview tiles
+│   │   │                          (filterBrowseThemes hides legacy; presentation decks bypass — they need layout themes).
+│   │   │                          onPick(theme) — caller decides apply. Used by SongEditor + ScriptureEditor.
+│   │   ├── TreatmentOverlays.jsx   Pure builders for the theme TREATMENT layer (§9): treatmentLayers/scrimBackground/
+│   │   │                          glassBoxStyle/hasTreatment + the React <TreatmentOverlays>. MIRRORED VERBATIM in
+│   │   │                          output/fullscreen.js. Used by SlidePreview + PreviewLivePanel monitors.
+│   │   ├── ThemeCascadeBar.jsx     The inline "Theme: X · from {rundown|app default}" chip — shows where the effective
+│   │   │                          theme is inherited from + change/reset actions (the visible-inheritance glue, §9).
+│   │   ├── LazyVisible.jsx         IntersectionObserver wrapper — defers rendering an off-screen theme card's live
+│   │   │                          preview until scrolled into view (gallery perf with 50+ animated previews).
 │   │   ├── OnlineBibleModal.jsx   getbible.net catalog browser. Multi-select download with licence warning.
 │   │   ├── PresentationEditor.jsx Full-screen presentation editor (createPortal). Slide sidebar (DnD reorder, built-in
 │   │   │                          LAYOUTS: Blank/Title/Title+Subtitle/Title+Body/Section). Element canvas — a fixed
@@ -466,14 +478,17 @@ src/
 │   │   │                          Also the global "Program audio output" device picker (program_audio_device; labels
 │   │   │                          unlocked lazily on first interaction, never eagerly — see §13).
 │   │   ├── LogoSettings.jsx      Global logo picker.
-│   │   ├── BackgroundSettings.jsx Global song/scripture/slide background pickers. Bulk apply actions.
-│   │   ├── ThemeSettings.jsx     Theme library. Category tabs (Songs/Scripture/… auto-derived from present themes);
-│   │   │                          grid of theme cards (SlidePreview thumbnail, bgThumb for media themes; Edit/Delete;
-│   │   │                          song cards get "Apply background" toggle + Apply-to-rundown + Apply-to-all-songs,
-│   │   │                          non-song cards show an "open the … editor" hint). Built-ins read-only. ThemeEditorModal
-│   │   │                          reuses SongEditor's FormattingToolbar + SlidePreview/LowerThirdPreview. Background picker.
-│   │   ├── BackgroundLibrary.jsx  Settings → Background Library (Phase 1b). Tag-filter grid of hotlinked remote thumbs
-│   │   │                          (window.cue.backgrounds.*); hover actions set the global default bg per surface.
+│   │   │                          (BackgroundSettings.jsx REMOVED in v34 — the standalone global-background pickers are
+│   │   │                          retired; background lives in the theme + explicit overrides, §9. Video-loop control
+│   │   │                          moved to Motion.)
+│   │   ├── ThemeSettings.jsx     Theme Library + Theme Studio (v34). One flat gallery of "themes" (no category tabs) —
+│   │   │                          cards lead with "Set as default" (all/song/scripture/slide chips) + "Use for this
+│   │   │                          rundown"; the legacy bake is under Advanced. Curated 50 Collections + user themes shown
+│   │   │                          (legacy built-ins hidden behind "Show legacy", themeSort.filterBrowseThemes). Two-pane
+│   │   │                          Studio: token controls (background/surface/accent/motion/treatment/typography, L3 tab)
+│   │   │                          + live multi-surface SlidePreview. New-from-a-background, Edit-a-copy, import/export.
+│   │   ├── BackgroundLibrary.jsx  Settings → Background Library. Tag-filter grid of hotlinked remote thumbs
+│   │   │                          (window.cue.backgrounds.*); "New from a background" auto-derives an editable theme.
 │   │   ├── TransitionSettings.jsx Settings → Motion. Per trigger (slide/logo/clear): style picker (§13 library) +
 │   │   │                          duration slider + easing + click-to-play NOW→NEXT preview. Persists `output_transitions`.
 │   │   ├── LowerthirdSettings.jsx Settings → Lower Third. Global L3 font scale (1–150%, slider + presets) as a % of the
@@ -523,7 +538,17 @@ src/
 │       │                         centre alignment guides against siblings and the canvas, with a pixel threshold.
 │       ├── useFocusTrap.js       useFocusTrap(ref, active) — traps Tab focus inside a modal + restores focus on close.
 │       │                         Used by the import/scrape/YouTube/usage modals.
-│       ├── themeSort.js          themeKind(theme) + sortThemes(list): media → gradient → custom ordering for the pickers.
+│       ├── themeSort.js          themeKind(theme) + sortThemes(list): Collection → media → gradient → custom ordering.
+│       │                         v34: isCuratedTheme / filterBrowseThemes gate the gallery to Collections + user themes
+│       │                         (legacy built-ins hidden behind "Show legacy"; current selection kept via keepIds).
+│       ├── themeStyle.js         mergeSlideStyle(sectionStyle, themeStyle) — the shared live-theme merge rule (§9): a baked
+│       │                         BASE style wins, but an inline-only/null section inherits the theme with its runs on top.
+│       │                         Used by OperatorView buildPayload + the monitors.
+│       ├── ensureThemeBg.js      Download a theme's photo/video bgRef on every assignment (spinner toast only on a real
+│       │                         fetch) so go-live never shows black; wraps themes.resolveBackground.
+│       ├── contrast.js           WCAG contrast helpers for the theme editor (text-on-background legibility readouts).
+│       ├── themeSearch.js        Theme gallery search/filter (name + mood/collection tags).
+│       ├── themeFavorites.js     Font/theme favourites (pin-to-top), persisted in localStorage.
 │       ├── pdfText.js            extractPdfText(bytes) → plain text string (pdfjs, DOM-side). Reconstructs lines from
 │       │                         text-item `hasEOL`/y-position info so sub-point structure survives PDF extraction.
 │       │                         Used by SermonImportModal to extract text before passing it to `sermon:generate`.

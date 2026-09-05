@@ -9,7 +9,7 @@
 
 ### Migration system
 
-`schema.js` creates `db_version` table (single integer row) on first run and applies pending migrations in order inside a transaction. **Never delete `db_version`** — it is required to exist before any user-facing build. Current version: **33**. Migrations run with foreign keys disabled, so table-rebuild migrations (v6, v7, v11, v16, v20, v21, v23) do not cascade-delete referencing rows.
+`schema.js` creates `db_version` table (single integer row) on first run and applies pending migrations in order inside a transaction. **Never delete `db_version`** — it is required to exist before any user-facing build. Current version: **34**. Migrations run with foreign keys disabled, so table-rebuild migrations (v6, v7, v11, v16, v20, v21, v23) do not cascade-delete referencing rows.
 
 | Version | Change |
 |---|---|
@@ -46,6 +46,7 @@
 | v31 | Live video inputs + song arrangements + CCLI usage log. (a) Rebuilt `service_items` to add `'live-input'` to the `item_type` CHECK (v7-pattern rebuild) — a live-input cue stores `{sourceName, name}` JSON in `content`, `ref_id` NULL (the NDI feed is resolved live at GO, never a `media_assets` row; §14). (b) Added `songs.arrangement_json` (TEXT) — the played section ORDER as a JSON array of 0-based section positions with repeats; NULL = natural order (§16). (c) Created `song_usage` (CCLI reporting log; one snapshotted row per song aired, no FK on `song_id`) + `idx_song_usage_used_at`. |
 | v32 | Added `output_channels.content_font_scale` (INTEGER NOT NULL DEFAULT 100) — per-channel percentage multiplier on the fullscreen fill-target font size (100 = neutral), independent of the global `lowerthird_font_scale`. Rides the window's `?cfs=` query param and live-updates via `content:scale` (no window recreate — the NDI sender survives). §13. |
 | v33 | Added `songs.max_lines` (INTEGER NOT NULL DEFAULT 0) — a per-song cap on AUTHORED lines per display slide; overflow auto-paginates (`expandSongSections` → `splitByMaxLines`). 0 = inherit: falls through to a section's theme `style_json.maxLines` then the global `song_max_lines` setting (§8, §16). |
+| v34 | Theme cascade — "assign a theme, don't bake it" (§9). Added `services.theme_id` and `service_items.theme_override_id`, both `REFERENCES themes(id) ON DELETE SET NULL` and nullable (= inherit the level above). The effective theme resolves item override → service → per-kind app default (`settings.default_theme_id_{song\|scripture\|slide}`) → app default (`default_theme_id`) → built-in. Themes resolve LIVE (`mergeSlideStyle`), no longer copied into `song_sections.style_json`. |
 
 ### All tables
 
@@ -275,9 +276,14 @@ Known keys:
 | Key | Type | Description |
 |---|---|---|
 | `global_logo_id` | number\|null | Media asset ID for global logo |
-| `global_bg_song_id` | number\|null | Global default background for songs |
-| `global_bg_scripture_id` | number\|null | Global default background for scripture |
-| `global_bg_slide_id` | number\|null | Global default background for slides |
+| `global_bg_song_id` | number\|null | LEGACY (v34): fallback song background when no theme is set — the standalone global-background UI is retired (§9) |
+| `global_bg_scripture_id` | number\|null | LEGACY (v34): fallback scripture background when no theme is set (§9) |
+| `global_bg_slide_id` | number\|null | LEGACY (v34): fallback slide background when no theme is set (§9) |
+| `default_theme_id` | number\|null | App-default theme — the base of the v34 cascade (§9) |
+| `default_theme_id_song` | number\|null | Per-kind app-default theme for songs; overrides `default_theme_id` for songs only |
+| `default_theme_id_scripture` | number\|null | Per-kind app-default theme for scripture |
+| `default_theme_id_slide` | number\|null | Per-kind app-default theme for slides/presentations |
+| `font_pack_base` | string\|null | Optional base URL for a self-hosted OFL font pack; `downloadLibraryFont` tries it before the @fontsource CDN (§15). `null`/absent = CDN only |
 | `scripture_style_json` | object\|null | Global style_json applied to every scripture verse; `null` = template defaults |
 | `scripture_ref_style_json` | object\|null | Global style_json for the scripture reference line; optional `pos:{x,y}` free-positions it; `null` = default right-aligned bottom |
 | `lowerthird_font_scale` | number | Global lower-third font scale, percent (1–150, default 100). Lower-third font size = `(authored size or 72) × pct/100`; rides every content payload as `ltFontScale` (a fraction). Set via Settings → Lower Third / `output.lowerthird.setFontScale`. Fullscreen unaffected |

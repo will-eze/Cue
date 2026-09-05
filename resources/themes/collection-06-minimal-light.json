@@ -1,0 +1,23 @@
+{
+  "name": "Minimal Light",
+  "category": "song",
+  "sort_order": -107,
+  "style": {
+    "collection": "Collections",
+    "fontFamily": "Inter",
+    "color": "#14171c",
+    "fontSize": 88,
+    "letterSpacing": -0.01,
+    "lineSpacing": 1.12,
+    "textShadow": { "enabled": false },
+    "bgCss": "linear-gradient(180deg, #fbfbfd 0%, #eef0f4 100%)",
+    "treatment": {
+      "scrim": "none",
+      "vignette": 0,
+      "grain": 0
+    },
+    "accent": { "enabled": true, "color": "#1a7f5a" },
+    "ltBar": { "css": "linear-gradient(to top, rgba(251,251,253,0.96) 0%, rgba(251,251,253,0.82) 70%, rgba(251,251,253,0) 100%)" },
+    "lt": { "color": "#14171c", "fontSize": 58 }
+  }
+}

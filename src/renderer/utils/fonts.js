@@ -24,19 +24,27 @@ export async function injectUserFontFaces() {
   } catch { /* ignore — bundled fonts still work */ }
 }
 
-// Returns the merged [bundled…, user…] font list. User fonts arrive async and
-// carry category 'custom' so the picker groups them under their own heading.
-// `bump` forces a reload after an import/delete in Settings.
+// Returns the merged [bundled…, downloaded-library…, user…] font list. Library
+// and user fonts arrive async; user fonts carry category 'custom' so the picker
+// groups them under their own heading. `bump` forces a reload after an
+// import/download/delete in Settings.
 export function useFonts(bump = 0) {
-  const [userFonts, setUserFonts] = useState([]);
+  const [extraFonts, setExtraFonts] = useState([]);
   useEffect(() => {
     let alive = true;
-    window.cue.fonts.listUser().then((list) => {
+    Promise.all([
+      window.cue.fonts.listUser().catch(() => []),
+      window.cue.fonts.catalog ? window.cue.fonts.catalog().catch(() => []) : Promise.resolve([]),
+    ]).then(([userList, catalog]) => {
       if (!alive) return;
-      setUserFonts((list || []).map((f) => ({ family: f.family, label: f.label || f.family, category: 'custom', user: true })));
+      const lib = (catalog || [])
+        .filter((f) => f.downloaded)
+        .map((f) => ({ family: f.family, label: f.label || f.family, category: f.category || 'sans-serif', downloaded: true }));
+      const user = (userList || []).map((f) => ({ family: f.family, label: f.label || f.family, category: 'custom', user: true }));
+      setExtraFonts([...lib, ...user]);
       if (!injected) injectUserFontFaces();
     }).catch(() => {});
     return () => { alive = false; };
   }, [bump]);
-  return [...BUNDLED, ...userFonts];
+  return [...BUNDLED, ...extraFonts];
 }

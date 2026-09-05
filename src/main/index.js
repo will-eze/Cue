@@ -29,7 +29,7 @@ import { autoSnapshot } from './db/backup.js';
 import * as remoteServer from './remote/server.js';
 import { seedBundledBibles } from './db/bible.js';
 import { seedGhsHymnal } from './db/songs.js';
-import { seedBundledThemes, preloadPresentationThemeBgs } from './db/themes.js';
+import { seedBundledThemes, preloadPresentationThemeBgs, ensureDefaultTheme } from './db/themes.js';
 import * as outputManager from './output/manager.js';
 import * as graphicsDb from './db/graphics.js';
 import { isAvailable as ndiAvailable } from './output/ndi.js';
@@ -421,6 +421,7 @@ app.whenReady().then(async () => {
   seedBundledBibles();
   seedGhsHymnal();
   seedBundledThemes();
+  ensureDefaultTheme(); // never a black first run — pick an offline Collection as the app default
   setImmediate(() => preloadPresentationThemeBgs().catch(() => {}));
 
   // Ephemeral YouTube downloads never survive a session. Wipe any leftover files

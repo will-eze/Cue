@@ -1,0 +1,36 @@
+{
+  "name": "Graphite",
+  "category": "song",
+  "sort_order": -82,
+  "style": {
+    "collection": "Collections",
+    "fontFamily": "Inter",
+    "color": "#f4f6fa",
+    "fontSize": 88,
+    "letterSpacing": -0.01,
+    "lineSpacing": 1.12,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 16,
+      "color": "rgba(0,0,0,0.5)"
+    },
+    "bgCss": "radial-gradient(120% 120% at 50% 40%, #14171d 0%, #0a0c10 100%)",
+    "treatment": {
+      "vignette": 0.12,
+      "grain": 0.03
+    },
+    "accent": {
+      "enabled": true,
+      "color": "#4ae1a0"
+    },
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(10,12,16,0.94) 0%, rgba(10,12,16,0.8) 70%, rgba(10,12,16,0) 100%)"
+    },
+    "lt": {
+      "fontFamily": "Inter",
+      "fontSize": 57
+    }
+  }
+}

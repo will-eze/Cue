@@ -1,0 +1,46 @@
+{
+  "name": "Chapel",
+  "category": "song",
+  "sort_order": -93,
+  "style": {
+    "collection": "Collections",
+    "fontFamily": "Cinzel",
+    "color": "#eef2f8",
+    "uppercase": true,
+    "fontSize": 82,
+    "letterSpacing": 0.06,
+    "lineSpacing": 1.06,
+    "textShadow": {
+      "enabled": true,
+      "x": 0,
+      "y": 2,
+      "blur": 24,
+      "color": "rgba(0,0,0,0.65)"
+    },
+    "bgRef": "library/coverr-daraga-church-cfglb6chok.mp4",
+    "bgSpeed": 0.6,
+    "treatment": {
+      "scrim": "radial",
+      "scrimStrength": 0.3,
+      "vignette": 0.4,
+      "grain": 0.1,
+      "tint": {
+        "color": "#c8a86a",
+        "amount": 0.1,
+        "blend": "soft-light"
+      }
+    },
+    "accent": {
+      "enabled": true,
+      "color": "#d8b878"
+    },
+    "ltBar": {
+      "css": "linear-gradient(to top, rgba(10,10,14,0.94) 0%, rgba(10,10,14,0.8) 70%, rgba(10,10,14,0) 100%)"
+    },
+    "lt": {
+      "fontFamily": "Cinzel",
+      "fontSize": 53,
+      "uppercase": true
+    }
+  }
+}
