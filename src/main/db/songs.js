@@ -4,6 +4,7 @@ import path from 'path';
 import { getDb } from './schema.js';
 import { get as getSetting, set as setSetting } from './settings.js';
 import { parseGhsItems } from '../import/songs-import.js';
+import { words as _words, distinctive as _distinctive, ftsQuery as _ftsQuery, rankByOverlap, matchSetList } from '../../shared/setlist-match.js';
 
 export function search(query) {
   const db = getDb();
@@ -55,10 +56,11 @@ export function search(query) {
           LIMIT 60
         `).all(expr);
         const sectionsStmt = db.prepare('SELECT content FROM song_sections WHERE song_id = ?');
+        const textOf = (id) => sectionsStmt.all(id).map((x) => x.content).join('\n');
         const have = new Set(rows.map((r) => r.id));
         // Already best-first; keep only plausible matches and append in order so the
         // OR-recall block always sits beneath the strict AND results.
-        for (const c of _rankByOverlap(escaped, escaped, ftsRows, sectionsStmt)) {
+        for (const c of rankByOverlap(escaped, escaped, ftsRows, textOf)) {
           if (have.has(c.id) || !(c.phrase >= 2 || c.cov >= 0.34)) continue;
           rows.push({ id: c.id, title: c.title, author: c.author });
           have.add(c.id);
@@ -398,213 +400,11 @@ export function setLock(songId, locked) {
 }
 
 // ── Paste Song List matcher ───────────────────────────────────────────────────
-// Operators are handed a set list that is almost never a clean column of titles.
-// Each entry is usually the FIRST LINE OF LYRICS ("As the deer panteth for the
-// waters…"), not the library title ("As the Deer"), and the block is sprinkled
-// with list numbers, repeat markers ("x2"), voice-part cues and set-section
-// headers ("Worship", "Praise"). So we do NOT treat each line as a title and FTS
-// the title column — we treat each block as a lyric snippet and FTS the whole
-// index (title + content), then rank by how much of the snippet the song's
-// lyrics actually contain. Title equality is still the top tier when it happens.
-
-function _norm(s) {
-  // Apostrophes are STRIPPED first (not spaced) so "God's" → "gods" and matches an
-  // input that dropped the apostrophe ("Gods"), instead of splitting into "god" + "s"
-  // (where "s" is then dropped as sub-3-char noise and the words never line up).
-  // Covers straight + curly + modifier-letter apostrophes that pasted lyrics mix.
-  // THEN replace remaining punctuation with spaces so "holy.What" → "holy what", and
-  // collapse runs — including Unicode separators (NBSP, word-joiner) pasted lists are
-  // full of — to single ASCII spaces.
-  return (s || '').toLowerCase()
-    .replace(/['’‘ʼ´`]/g, '')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .replace(/\s+/g, ' ').trim();
-}
-
-// Function words that say nothing about WHICH song this is. Kept out of the FTS
-// expression and out of coverage scoring so "the/of/you" don't manufacture hits.
-const _STOP = new Set((
-  'the a an and or of to in on at is are was were be been am i you he she it we they ' +
-  'my your his her our their me him us them this that these those there here for with ' +
-  'as so but if then than oh yeah na la will shall would could unto thee thy thou o ' +
-  'into onto from by up down out all not no yes do does did have has had'
-).split(' '));
-
-function _words(s) { return _norm(s).split(' ').filter(Boolean); }
-// Distinctive = the words worth indexing/scoring on (drop stopwords + 1–2 letter noise).
-function _distinctive(s) { return _words(s).filter((w) => w.length >= 3 && !_STOP.has(w)); }
-
-function _stripLeadingNumber(line) {
-  return line.replace(/^\s*\d+[\.\)\-]\s*/, '').trim();
-}
-
-// Strip repeat directives a chorister scribbles after a line: "x2", "2x",
-// "(x3)", "3 times", "repeat". They are not part of the lyric to match on.
-function _stripRepeat(line) {
-  return String(line || '')
-    .replace(/[\s(\[]*(?:x\s*\d+|\d+\s*x|\d+\s*times?|repeat(?:\s+all)?)[\s)\]]*/gi, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-// A leading "1." / "2)" / "3 -" list marker. Requires text after it so a bare "1"
-// lyric line isn't read as a new entry.
-const _NUMBERED_RE = /^\s*\d{1,3}[\.\)\-]?\s+\S/;
-
-// Section-header markers (Verse 2, Chorus:, [Bridge], Pre-Chorus…). These are never
-// an entry of their own — they belong to the lyrics of the block they sit in.
-const _SECTION_KW = 'verse|chorus|bridge|pre[-\\s]?chorus|prechorus|tag|intro|outro|refrain|vamp|interlude|ending';
-const _SECTION_HEADER_RES = [
-  new RegExp('^\\[(.{1,40}?)\\]\\s*:?\\s*$'),
-  new RegExp(`^(${_SECTION_KW})\\s*\\d*\\s*:?\\s*$`, 'i'),
-];
-function _isSectionHeader(line) {
-  const t = (line || '').trim();
-  if (!t || t.length > 60) return false;
-  return _SECTION_HEADER_RES.some((re) => re.test(t));
-}
-
-// Set-list segment labels the operator uses to group the running order
-// ("Worship", "Praise", "Offering"…). They caption a block of songs, they are not
-// a song. Dropped only when a whole line is exactly one of these (an exact-membership
-// test, so "Worship the King" — a real lyric — is never mistaken for a label).
-const _SEGMENT_HEADERS = new Set([
-  'worship', 'praise', 'praise and worship', 'offering', 'offertory', 'communion',
-  'altar', 'altar call', 'call to worship', 'prayer', 'intercession', 'thanksgiving',
-  'adoration', 'consecration', 'dedication', 'sermon', 'message', 'preaching',
-  'announcements', 'welcome', 'opening', 'closing', 'benediction', 'fast', 'slow',
-  'fast songs', 'slow songs', 'hymn', 'hymns', 'medley', 'special', 'ministration',
-]);
-function _isSegmentHeader(line) {
-  const t = _norm(_stripRepeat(line));
-  return !!t && _SEGMENT_HEADERS.has(t);
-}
-
-// Turn a raw pasted block into matchable entries: { label, query }. `label` is the
-// human-readable first line shown in the modal; `query` is the full snippet text fed
-// to FTS + coverage. Segmentation prefers blank-line BLOCKS (the most reliable signal
-// in a dirty list); a dense numbered run inside one block is split further, and a list
-// with no blank lines at all falls back to numbered-marker splitting.
-function _parsePastedList(raw) {
-  const lines = (raw || '').replace(/\r\n?/g, '\n').split('\n');
-  const hasBlank = lines.some((l) => l.trim() === '');
-
-  // Split a block that holds ≥2 numbered lines into one sub-block per numbered line.
-  function splitNumbered(block) {
-    const subs = [];
-    let cur = null;
-    for (const l of block) {
-      if (!l.trim()) continue;
-      if (_NUMBERED_RE.test(l)) { if (cur) subs.push(cur); cur = [l]; }
-      else if (cur) cur.push(l);
-      else cur = [l];
-    }
-    if (cur) subs.push(cur);
-    return subs;
-  }
-
-  let blocks;
-  if (hasBlank) {
-    blocks = [];
-    let cur = [];
-    for (const l of lines) {
-      if (l.trim() === '') { if (cur.length) { blocks.push(cur); cur = []; } }
-      else cur.push(l);
-    }
-    if (cur.length) blocks.push(cur);
-  } else {
-    blocks = [lines.filter((l) => l.trim() !== '')];
-  }
-
-  const entries = [];
-  for (const block of blocks) {
-    const numbered = block.filter((l) => _NUMBERED_RE.test(l)).length;
-    const subBlocks = numbered >= 2 ? splitNumbered(block) : [block];
-    for (const sub of subBlocks) {
-      // Strip list numbers + section headers; a leading segment label is dropped too.
-      let cleaned = sub
-        .map((l) => _stripLeadingNumber(l))
-        .map((l) => l.trim())
-        .filter((l) => l && !_isSectionHeader(l));
-      while (cleaned.length && _isSegmentHeader(cleaned[0])) cleaned = cleaned.slice(1);
-      if (!cleaned.length) continue;            // block was only headers/labels
-      // Trim leading non-alphanumeric noise (stray bullets, NBSP, word-joiners that
-      // pasted lists carry) so the display label is clean and exact-title still matches.
-      const label = (_stripRepeat(cleaned[0]) || cleaned[0]).replace(/^[^\p{L}\p{N}"'(]+/u, '').trim();
-      const query = cleaned.join('\n');
-      if (label) entries.push({ label, query });
-    }
-  }
-  return entries;
-}
-
-// Build a safe FTS5 MATCH expression from a free-text snippet. FTS5 treats
-// (), ", :, * as operators, so we never feed the raw string in — we extract
-// distinctive prefix tokens and OR them across ALL columns (title + content),
-// capped so a long pasted verse stays a bounded query. ORing (not ANDing) lets a
-// snippet that words a line differently still surface the song; bm25 ranks by overlap.
-function _ftsQuery(text) {
-  let toks = [...new Set(_distinctive(text))];
-  if (!toks.length) toks = [...new Set(_words(text))]; // snippet was all stopwords
-  if (!toks.length) return '';
-  return toks.slice(0, 16).map((t) => t + '*').join(' OR ');
-}
-
-// Longest contiguous run of snippet words that appears verbatim in the song text.
-// This is the single strongest signal that a lyric snippet belongs to a song —
-// "as the deer panteth" matching as a 4-word run beats any bag-of-words overlap.
-function _longestPhrase(query, songNorm) {
-  const qw = _words(query);
-  const hay = ` ${songNorm} `;
-  let best = 0;
-  for (let i = 0; i < qw.length; i++) {
-    let phrase = qw[i];
-    if (hay.indexOf(` ${phrase} `) === -1) continue;
-    let len = 1;
-    for (let j = i + 1; j < qw.length; j++) {
-      const next = `${phrase} ${qw[j]}`;
-      if (hay.indexOf(` ${next} `) === -1) break;
-      phrase = next; len++;
-    }
-    if (len > best) best = len;
-  }
-  return best;
-}
-
-// Rank songs by how well their title+lyrics overlap a free-text snippet. Shared by
-// the paste-list matcher (matchTitles) and the lyric-tolerant fallback in search().
-// `rows` are per-section FTS hits with { id, title, author, bm }; collapse to the best
-// (lowest bm25) row per song, then score the strongest handful against full lyrics. The
-// longest verbatim phrase run dominates; lyric + title word coverage fill in. Returns
-// [{ id, title, author, cov, titleCov, phrase, score }] best-first. `label` is the
-// title-oriented query (the paste-list title); pass query for both when there's no
-// separate title (a pure lyric search).
-function _rankByOverlap(query, label, rows, sectionsStmt) {
-  const bySong = new Map();
-  for (const r of rows) { const p = bySong.get(r.id); if (!p || r.bm < p.bm) bySong.set(r.id, r); }
-  const top8 = [...bySong.values()].sort((a, b) => a.bm - b.bm).slice(0, 8);
-
-  const qWords = new Set(_distinctive(query || label));
-  const qTitleWords = new Set(_distinctive(label));
-  const scored = top8.map((r) => {
-    const songNorm = _norm(`${r.title}\n${sectionsStmt.all(r.id).map((x) => x.content).join('\n')}`);
-    const songWords = new Set(songNorm.split(' ').filter(Boolean));
-    const cov = qWords.size ? [...qWords].filter((w) => songWords.has(w)).length / qWords.size : 0;
-    const titleCov = qTitleWords.size ? [...qTitleWords].filter((w) => songWords.has(w)).length / qTitleWords.size : 0;
-    const phrase = _longestPhrase(query || label, songNorm);
-    // Phrase run dominates; lyric coverage and title overlap fill in.
-    const score = Math.max(cov, titleCov) + (phrase >= 4 ? 0.4 : phrase >= 3 ? 0.25 : phrase >= 2 ? 0.1 : 0);
-    return { id: r.id, title: r.title, author: r.author, cov, titleCov, phrase, score };
-  });
-  scored.sort((a, b) => b.score - a.score || a.id - b.id);
-  return scored;
-}
-
+// Paste-a-set-list matcher. All segmentation + matching logic lives in
+// src/shared/setlist-match.js (pure, unit-tested); this just hands it the library:
+// a title/first-line index, FTS5 recall over title+lyrics, and lyric text per song.
 export function matchTitles(rawText) {
   const db = getDb();
-  const entries = _parsePastedList(rawText);
-
-  const exactStmt = db.prepare('SELECT id, title, author FROM songs WHERE title = ? COLLATE NOCASE');
   // bm25 column weights: title ≫ content ≫ author. Lower bm25 = better → ORDER BY asc.
   const ftsStmt = db.prepare(`
     SELECT ss.song_id AS id, s.title, s.author, bm25(songs_fts, 8.0, 1.0, 4.0) AS bm
@@ -615,45 +415,28 @@ export function matchTitles(rawText) {
     ORDER BY bm
     LIMIT 60
   `);
-  const sectionsStmt = db.prepare('SELECT content FROM song_sections WHERE song_id = ?');
+  const sectionsStmt = db.prepare('SELECT content FROM song_sections WHERE song_id = ? ORDER BY order_index');
+  const textCache = new Map();
+  const textOf = (id) => {
+    if (!textCache.has(id)) textCache.set(id, sectionsStmt.all(id).map((x) => x.content).join('\n'));
+    return textCache.get(id);
+  };
+  // First line of every section ("As the deer panteth…", a chorus's opening line) —
+  // set lists name songs by these as often as by title.
+  const firstLines = new Map();
+  for (const r of db.prepare('SELECT song_id, content FROM song_sections ORDER BY song_id, order_index').all()) {
+    const line = String(r.content || '').split('\n').find((l) => l.trim() && !/^\s*⁂\s*$/.test(l));
+    if (!line) continue;
+    const a = firstLines.get(r.song_id);
+    if (a) { if (a.length < 6) a.push(line); } else firstLines.set(r.song_id, [line]);
+  }
+  const songs = db.prepare('SELECT id, title, author FROM songs').all()
+    .map((s) => ({ ...s, firstLines: firstLines.get(s.id) || [] }));
 
-  const slim = (r) => ({ id: r.id, title: r.title, author: r.author });
-
-  return entries.map(({ label, query }) => {
-    try {
-      // 1. Exact title equality — the only 'exact' tier.
-      const exact = exactStmt.get(label.trim());
-      if (exact) return { input: label, match: slim(exact), alternates: [], confidence: 'exact' };
-
-      const expr = _ftsQuery(query || label);
-      if (!expr) return { input: label, match: null, alternates: [], confidence: 'none' };
-      let rows = [];
-      try { rows = ftsStmt.all(expr); } catch { rows = []; }
-      if (!rows.length) return { input: label, match: null, alternates: [], confidence: 'none' };
-
-      // Collapse per-section hits to the best row per song, then phrase/coverage-rank
-      // the strongest handful against full lyrics (shared with search()'s fallback).
-      const scored = _rankByOverlap(query || label, label, rows, sectionsStmt);
-
-      const top = scored[0];
-      const second = scored[1];
-      const margin = second ? top.score - second.score : top.score;
-
-      let confidence;
-      if (top.phrase >= 4 || top.cov >= 0.7 || top.titleCov >= 0.85) confidence = 'high';
-      else if (top.phrase >= 2 || top.cov >= 0.35 || top.titleCov >= 0.5) confidence = 'low';
-      else confidence = 'none';
-      // Two near-tied strong candidates → not confident which; demote so the
-      // operator eyeballs it (the match is still pre-selected as the top pick).
-      if (confidence === 'high' && top.phrase < 4 && margin < 0.08) confidence = 'low';
-
-      const alternates = scored.slice(1, 4).map(slim);
-      if (confidence === 'none') return { input: label, match: null, alternates: scored.slice(0, 3).map(slim), confidence: 'none' };
-      return { input: label, match: slim(top), alternates, confidence };
-    } catch {
-      // One bad entry must not abort the whole batch — report it as not found.
-      return { input: label, match: null, alternates: [], confidence: 'none' };
-    }
+  return matchSetList(rawText, {
+    songs,
+    textOf,
+    fts: (expr) => ftsStmt.all(expr),
   });
 }
 
