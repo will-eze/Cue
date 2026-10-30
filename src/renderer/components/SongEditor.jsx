@@ -1629,6 +1629,30 @@ function offsetInBody(body, node, offset) {
   return extractContentAndRuns(tmp, { trim: false }).text.length;
 }
 
+// Put the caret at a content offset inside a section body (inverse of offsetInBody;
+// clamps to the end when the text got shorter, e.g. after an undo).
+function placeCaretAtOffset(body, offset) {
+  const sel = window.getSelection();
+  const r = document.createRange();
+  const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, {
+    acceptNode: (n) => (n.parentElement?.closest('[data-break]') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
+  });
+  let placed = false;
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    const start = offsetInBody(body, n, 0);
+    if (offset <= start + n.textContent.length) {
+      r.setStart(n, Math.max(0, Math.min(n.textContent.length, offset - start)));
+      placed = true;
+      break;
+    }
+  }
+  if (!placed) { r.selectNodeContents(body); r.collapse(false); }
+  r.collapse(true);
+  sel.removeAllRanges();
+  sel.addRange(r);
+  (r.startContainer.parentElement || body).scrollIntoView?.({ block: 'nearest' });
+}
+
 // Split style runs at a content offset → [runs before, runs after (rebased)].
 function splitRunsAt(runs, at) {
   const before = [];
@@ -1717,8 +1741,26 @@ export default function SongEditor({ song, onClose, onSave }) {
     doc.set((d) => ({ ...d, arrangement: typeof updater === 'function' ? updater(d.arrangement) : updater }));
   const setMaxLines = field('maxLines');
   const [domSyncTick, setDomSyncTick] = useState(0); // bumped on undo/redo to re-render the active section's DOM
-  const handleUndo = useCallback(() => { doc.undo(); setDomSyncTick((t) => t + 1); }, [doc.undo]);
-  const handleRedo = useCallback(() => { doc.redo(); setDomSyncTick((t) => t + 1); }, [doc.redo]);
+  // Undo/redo re-render the document, which drops the selection — remember where the
+  // caret was (section + text offset) so the layout effect can put it back.
+  const historyCaret = useRef(null);
+  const rememberCaret = () => {
+    const root = editorRef.current;
+    const sel = window.getSelection();
+    historyCaret.current = null;
+    if (!root || !sel || !sel.rangeCount || !root.contains(sel.anchorNode)) return;
+    let head = null;
+    for (const h of root.querySelectorAll('[data-head]')) {
+      if (h.compareDocumentPosition(sel.anchorNode) & Node.DOCUMENT_POSITION_FOLLOWING) head = h;
+    }
+    if (!head) return;
+    const index = [...root.querySelectorAll('[data-head]')].indexOf(head);
+    const body = head.nextElementSibling;
+    const offset = body?.dataset?.body && body.contains(sel.anchorNode) ? offsetInBody(body, sel.anchorNode, sel.anchorOffset) : 0;
+    historyCaret.current = { key: head.dataset.key, index, offset };
+  };
+  const handleUndo = useCallback(() => { rememberCaret(); doc.undo(); setDomSyncTick((t) => t + 1); }, [doc.undo]); // eslint-disable-line react-hooks/exhaustive-deps
+  const handleRedo = useCallback(() => { rememberCaret(); doc.redo(); setDomSyncTick((t) => t + 1); }, [doc.redo]); // eslint-disable-line react-hooks/exhaustive-deps
   useUndoRedoKeys(handleUndo, handleRedo);
 
   const [allTags, setAllTags]     = useState([]);
@@ -1942,6 +1984,19 @@ export default function SongEditor({ song, onClose, onSave }) {
         sel.addRange(r);
         head.scrollIntoView({ block: 'nearest' });
       }
+    } else if (historyCaret.current) {
+      const { key, index, offset } = historyCaret.current;
+      historyCaret.current = null;
+      // Same section if it still exists; if the undo removed it, the end of the
+      // section before it (where it was usually split off from).
+      const heads = [...root.querySelectorAll('[data-head]')];
+      const same = root.querySelector(headSel(key));
+      const head = same || heads[Math.max(0, Math.min(index - 1, heads.length - 1))];
+      const body = head?.nextElementSibling;
+      if (body?.dataset?.body) {
+        root.focus({ preventScroll: true });
+        placeCaretAtOffset(body, same ? offset : Infinity);
+      }
     }
     syncActiveFromSelection();
   }, [domSyncTick, showPaste]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -2014,17 +2069,30 @@ export default function SongEditor({ song, onClose, onSave }) {
     }
     const sel = window.getSelection();
     const anchor = sel && sel.rangeCount ? sel.anchorNode : null;
-    if (!anchor || !root.contains(anchor)) return;
+    const frameActiveSection = () => {
+      // No caret in the lyrics (focus is elsewhere, or a re-render dropped it):
+      // keep the frame on the active section's first slide, never at a stale spot.
+      const head = (activeKeyRef.current && root.querySelector(headSel(activeKeyRef.current))) || root.querySelector('[data-head]');
+      if (!head) { setActiveFrame(null); return; }
+      if (head.dataset.key !== activeKeyRef.current) setActiveSectionKey(head.dataset.key);
+      const after = [...root.querySelectorAll('[data-head],[data-break]')].find((b) => b !== head && (head.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING));
+      const firstMark = marks.find((m) => m.key === head.dataset.key && m.part === 0);
+      const top = root.offsetTop + head.offsetTop;
+      let bottom = root.offsetTop + (after ? after.offsetTop : root.offsetHeight);
+      if (firstMark && firstMark.y < bottom) bottom = firstMark.y;
+      setActiveFrame({ top: top + 2, height: Math.max(24, bottom - top) });
+    };
+    if (!anchor || !root.contains(anchor) || anchor === root) { frameActiveSection(); return; }
     const blocks = [...root.querySelectorAll('[data-head],[data-break]')];
     let bi = -1;
     blocks.forEach((b, i) => {
       if (b === anchor || b.contains(anchor) || (b.compareDocumentPosition(anchor) & Node.DOCUMENT_POSITION_FOLLOWING)) bi = i;
     });
-    if (bi < 0) return;
+    if (bi < 0) { frameActiveSection(); return; }
     let hi = bi;
     while (hi > 0 && !blocks[hi].dataset.head) hi--;
     const head = blocks[hi];
-    if (!head?.dataset.head) return;
+    if (!head?.dataset.head) { frameActiveSection(); return; }
     const key = head.dataset.key;
     if (key !== activeKeyRef.current) setActiveSectionKey(key);
     const manualPart = bi - hi;
@@ -2944,7 +3012,7 @@ export default function SongEditor({ song, onClose, onSave }) {
                   {/* Frame around the slide the caret is in (EasyWorship's selected slide). */}
                   {activeFrame && (
                     <div
-                      className="absolute left-[6px] right-[6px] rounded-md border border-primary/50 bg-primary/[0.06] pointer-events-none"
+                      className="absolute left-[6px] right-[6px] rounded-md border border-primary/50 bg-primary/[0.06] pointer-events-none transition-[top,height] duration-100 ease-out motion-reduce:transition-none"
                       style={{ top: activeFrame.top, height: activeFrame.height }}
                     />
                   )}
