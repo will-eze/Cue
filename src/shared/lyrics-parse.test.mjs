@@ -49,6 +49,7 @@ const LYRICS = [
   'Tag, you\'re it', 'End of the road', 'Amazing grace how sweet the sound', 'C', 'Intro to the King of glory',
   'Time is filled with swift transition', 'Building on the rock',
 ];
+LYRICS.push('Another stanza', 'Holy Chorus of angels', 'Joyful verse');
 for (const line of LYRICS) ok(`not a header: ${line}`, parseHeaderLine(line) === null, parseHeaderLine(line));
 
 // Inline header + lyric: the lyric survives as the section's first line.

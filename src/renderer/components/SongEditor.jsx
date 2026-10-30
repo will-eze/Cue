@@ -191,7 +191,7 @@ export function renderTextContent(text, runs, style = {}, scale = 1) {
   return renderWithRuns(text, runs, scale);
 }
 
-function extractContentAndRuns(el) {
+function extractContentAndRuns(el, { trim = true } = {}) {
   let text = '';
   const runs = [];
   function walk(node, style) {
@@ -231,7 +231,7 @@ function extractContentAndRuns(el) {
     for (const child of node.childNodes) walk(child, s);
   }
   walk(el, {});
-  return { text: text.trimEnd(), runs };
+  return { text: trim ? text.trimEnd() : text, runs };
 }
 
 export function styleIsDefault(s) {
@@ -1572,6 +1572,47 @@ function splitOnHeaderLines(sections, newKeyFn, onlyKeys) {
   return { sections: out, changed, caretKey, added };
 }
 
+// ── Copy / paste between songs ──────────────────────────────────────────────
+// Copying from the lyrics pane puts two formats on the clipboard: an exact Cue
+// payload (section types, ⁂ breaks, style runs) for pasting into another Cue song,
+// and readable text WITH section labels ("Verse 1 / Chorus …") for other apps — and
+// for the lyrics parser, if that's all that comes back.
+const CUE_SONG_MIME = 'application/x-cue-song';
+
+// Character offset of a DOM point inside a section body, in content terms.
+function offsetInBody(body, node, offset) {
+  const r = document.createRange();
+  r.selectNodeContents(body);
+  try { r.setEnd(node, offset); } catch { return 0; }
+  const tmp = document.createElement('div');
+  tmp.appendChild(r.cloneContents());
+  return extractContentAndRuns(tmp, { trim: false }).text.length;
+}
+
+// Split style runs at a content offset → [runs before, runs after (rebased)].
+function splitRunsAt(runs, at) {
+  const before = [];
+  const after = [];
+  for (const r of runs || []) {
+    if (r.start < at) before.push({ ...r, end: Math.min(r.end, at) });
+    if (r.end > at) after.push({ ...r, start: Math.max(0, r.start - at), end: r.end - at });
+  }
+  return [before.filter((r) => r.end > r.start), after.filter((r) => r.end > r.start)];
+}
+const shiftRuns = (runs, by) => (runs || []).map((r) => ({ ...r, start: r.start + by, end: r.end + by }));
+
+// Plain-text form of copied sections (labels on their own line; a slide break
+// becomes a blank line, which is what other apps and the parser expect).
+function songDataToText(data, { labels = true } = {}) {
+  const parts = [];
+  const body = (c) => (c || '').replace(/\n?⁂\n?/g, '\n\n');
+  if (data.leading?.content) parts.push(body(data.leading.content));
+  for (const sec of data.sections || []) {
+    parts.push((labels ? `${sec.label || sec.type}\n${body(sec.content)}` : body(sec.content)).trim());
+  }
+  return parts.join('\n\n');
+}
+
 // ─── Paste view ───────────────────────────────────────────────────────────
 
 function PasteView({ onParse, onCancel }) {
@@ -1668,7 +1709,8 @@ export default function SongEditor({ song, onClose, onSave }) {
   }, [song?.id]);
   const sidebarRef   = useRef(null);   // lyrics document scroller
   const caretTarget  = useRef(null);   // { key, atEnd } — where to put the caret after a re-render
-  const scanHeaders  = useRef(false);  // next input came from Enter/paste → look for typed section names
+  const scanHeaders  = useRef(false);
+  const plainCopy    = useRef(false);  // next copy event = lyrics only (⌘⇧C)  // next input came from Enter/paste → look for typed section names
   const [headMenu, setHeadMenu] = useState(null); // { key, x, y } section menu from a header click
   const fonts        = useFonts();
   const sensors      = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -1803,10 +1845,15 @@ export default function SongEditor({ song, onClose, onSave }) {
 
   // Escape to close
   useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape' && !saving && !showBgPicker) onClose(); };
+    // Esc closes an open section menu first, never the whole editor under it.
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      if (headMenu) { setHeadMenu(null); return; }
+      if (!saving && !showBgPicker) onClose();
+    };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [onClose, saving, showBgPicker]);
+  }, [onClose, saving, showBgPicker, headMenu]);
 
   // ── Continuous editor: state → DOM ─────────────────────────────────────
   // Re-render the whole song document from `sections` — on load, after structural
@@ -1943,56 +1990,229 @@ export default function SongEditor({ song, onClose, onSave }) {
     syncActiveFromSelection();
   }
 
+  // ── Copy: selection → { leading, sections } (exact) + labelled text ──────
+  function selectionToSongData() {
+    const root = editorRef.current;
+    const sel = window.getSelection();
+    if (!root || !sel || !sel.rangeCount || sel.isCollapsed) return null;
+    const range = sel.getRangeAt(0);
+    if (!root.contains(range.commonAncestorContainer)) return null;
+    const tmp = document.createElement('div');
+    tmp.appendChild(range.cloneContents());
+    // Labels are unselectable, so decide whether the section the selection STARTS
+    // in comes along as a section (label + type) or as loose lines: as a section
+    // when the copy spans other sections too, or covers that section's whole text.
+    const elOf = (n) => (n.nodeType === Node.ELEMENT_NODE ? n : n.parentElement);
+    const startBody = elOf(range.startContainer)?.closest?.('[data-body]');
+    let startHead = null;
+    if (startBody && root.contains(startBody)) {
+      const pre = document.createRange();
+      pre.selectNodeContents(startBody);
+      pre.setEnd(range.startContainer, range.startOffset);
+      const atStart = !pre.toString().trim();
+      const spans = !!tmp.querySelector('[data-head]');
+      const post = document.createRange();
+      post.selectNodeContents(startBody);
+      post.setStart(range.endContainer, range.endOffset);
+      const toEnd = startBody.contains(range.endContainer) ? !post.toString().trim() : true;
+      const h = startBody.previousElementSibling;
+      if (atStart && (spans || toEnd) && h?.dataset?.head) startHead = h;
+    }
+    const groups = [];
+    let cur = { head: startHead, nodes: [] };
+    for (const n of [...tmp.childNodes]) {
+      if (n.nodeType === Node.ELEMENT_NODE && n.dataset?.head) { groups.push(cur); cur = { head: n, nodes: [] }; }
+      else cur.nodes.push(n);
+    }
+    groups.push(cur);
+    const data = { leading: null, sections: [] };
+    for (const g of groups) {
+      const holder = document.createElement('div');
+      g.nodes.forEach((n) => holder.appendChild(n));
+      const { text, runs } = extractContentAndRuns(holder);
+      const content = text.replace(/^\n+/, '');
+      const lead = text.length - content.length;
+      const rr = shiftRuns(runs, -lead).filter((r) => r.end > 0).map((r) => ({ ...r, start: Math.max(0, r.start) }));
+      if (!g.head) { if (content.trim()) data.leading = { content, runs: rr }; continue; }
+      data.sections.push({
+        type: g.head.dataset.type || 'verse',
+        label: g.head.querySelector('[data-label]')?.textContent || '',
+        content, runs: rr,
+      });
+    }
+    return data.leading || data.sections.length ? data : null;
+  }
+
+  // ⌘C = lyrics WITH section labels (+ the exact Cue format for pasting into another
+  // song). ⌘⇧C = lyrics only — no labels, slides separated by blank lines.
+  function handleEditorCopy(e) {
+    const data = selectionToSongData();
+    if (!data) return;
+    e.preventDefault();
+    if (plainCopy.current) {
+      plainCopy.current = false;
+      e.clipboardData.setData('text/plain', songDataToText(data, { labels: false }));
+      return;
+    }
+    e.clipboardData.setData('text/plain', songDataToText(data));
+    e.clipboardData.setData(CUE_SONG_MIME, JSON.stringify(data));
+  }
+
+  function handleEditorCut(e) {
+    handleEditorCopy(e);
+    if (e.defaultPrevented) document.execCommand('delete');
+  }
+
+  // ── Paste ────────────────────────────────────────────────────────────────
+  // 1. Copied from a Cue song → exact sections at the cursor.
+  // 2. Text with section names ("Verse 1 — Ada", "Chorus") → full lyrics parser.
+  // 3. Text in blank-line stanzas → one section per stanza (a stanza that repeats
+  //    is the chorus), with a "Keep as one section" undo-ish escape on the toast.
+  // 4. Anything else (a line or two) → typed in as plain text.
   function handleEditorPaste(e) {
     e.preventDefault();
-    const text = e.clipboardData.getData('text/plain');
-    // A whole song (it has section names) goes through the full lyrics parser —
-    // sections, singer notes / chords / CCLI stripped, repeats → play order.
-    const lines = text.replace(/\r\n?/g, '\n').split('\n');
+    const cue = e.clipboardData.getData(CUE_SONG_MIME);
+    if (cue) {
+      try {
+        const data = JSON.parse(cue);
+        insertSectionsAtCaret((data.sections || []).map((x) => ({ type: x.type, content: x.content, runs: x.runs || [] })),
+          { leading: data.leading, message: data.sections?.length ? `Pasted ${data.sections.length} section${data.sections.length === 1 ? '' : 's'}` : null });
+        return;
+      } catch { /* fall through to plain text */ }
+    }
+    const text = e.clipboardData.getData('text/plain').replace(/\r\n?/g, '\n');
+    const lines = text.split('\n');
+    const nonBlank = lines.filter((l) => l.trim()).length;
     const headerLines = lines.filter((l) => { const h = l.trim() && l.trim().length <= 60 ? parseHeaderLine(l) : null; return h && !h.tail; }).length;
-    if (headerLines >= 1 && lines.filter((l) => l.trim()).length >= 3) { pasteWholeSong(text); return; }
+    const stanzas = text.split(/\n[ \t]*\n+/).filter((b) => b.trim()).length;
+    const root = editorRef.current;
+    const songEmpty = root ? extractSongSections(root, sectionsRef.current).every((x) => !(x.content || '').trim()) : true;
+    if ((headerLines >= 1 && nonBlank >= 3) || stanzas >= 2) {
+      const p = parseLyrics(text, { detectTitle: songEmpty });
+      if (p.sections.length > 1 || (p.sections.length === 1 && headerLines >= 1)) {
+        insertSectionsAtCaret(p.sections.map((x) => ({ type: x.type, content: x.content, runs: [] })), {
+          arrangement: p.arrangement,
+          meta: { title: p.title, author: p.author, copyright: p.copyright },
+          message: `Pasted as ${p.sections.length} section${p.sections.length === 1 ? '' : 's'}`,
+          keepAsOne: headerLines ? null : text,
+        });
+        return;
+      }
+    }
     // A pasted line that is a section name ("Chorus") splits into a new section.
     if (/\n/.test(text)) scanHeaders.current = true;
     document.execCommand('insertText', false, text);
   }
 
-  // Pasted song → sections. Into an empty song it becomes the song (incl. play order
-  // and title/author/copyright when those are blank); otherwise the new sections go
-  // after the section the caret is in (replacing it if that one is empty).
-  function pasteWholeSong(text) {
+  // Insert sections at the cursor: the current section is split there (text before
+  // keeps its identity, text after continues as a section of the same type after
+  // the pasted ones). Into an empty song the paste becomes the song, with the play
+  // order it implied and blank title/author/copyright filled.
+  function insertSectionsAtCaret(newSecs, { leading = null, arrangement = null, meta = null, message = null, keepAsOne = null } = {}) {
     const root = editorRef.current;
-    const p = parseLyrics(text, { detectTitle: true });
-    if (!p.sections.length) { document.execCommand('insertText', false, text); return; }
-    const mapped = p.sections.map((x) => ({ _key: newKey(), type: x.type, content: x.content, runs: [] }));
-    const cur = root ? extractSongSections(root, sectionsRef.current) : sectionsRef.current;
-    const empty = cur.every((x) => !(x.content || '').trim());
-    const fill = (d) => ({
-      title: d.title.trim() ? d.title : (p.title || d.title),
-      author: d.author.trim() ? d.author : (p.author || d.author),
-      copyright: d.copyright.trim() ? d.copyright : (p.copyright || d.copyright),
+    if (!root) return;
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount && !sel.isCollapsed && root.contains(sel.anchorNode)) document.execCommand('delete');
+    const cur = extractSongSections(root, sectionsRef.current);
+    const mapped = newSecs.map((x) => ({ _key: newKey(), type: x.type || 'verse', content: x.content || '', runs: x.runs || [] }));
+    const fill = (d) => (!meta ? {} : {
+      title: d.title.trim() ? d.title : (meta.title || d.title),
+      author: d.author.trim() ? d.author : (meta.author || d.author),
+      copyright: d.copyright.trim() ? d.copyright : (meta.copyright || d.copyright),
     });
-    if (empty) {
+
+    // Where is the cursor? (section + offset in its content)
+    const key = caretSectionKey(root);
+    let idx = cur.findIndex((x) => x._key === key);
+    if (idx < 0) idx = cur.length - 1;
+    const sec = cur[idx];
+    let off = (sec?.content || '').length;
+    const head = sec && root.querySelector(headSel(sec._key));
+    const body = head?.nextElementSibling;
+    if (body && sel?.rangeCount && body.contains(sel.focusNode)) off = Math.min(off, offsetInBody(body, sel.focusNode, sel.focusOffset));
+    const snapshot = { sections: cur, key: sec?._key, off };
+
+    const songEmpty = cur.every((x) => !(x.content || '').trim());
+    if (songEmpty && mapped.length) {
+      const list = leading?.content ? [{ _key: newKey(), type: 'verse', content: leading.content, runs: leading.runs || [] }, ...mapped] : mapped;
       doc.set((d) => ({
-        ...d, ...fill(d), sections: mapped,
-        arrangement: Array.isArray(p.arrangement) ? p.arrangement.map((i) => mapped[i]?._key).filter(Boolean) : null,
+        ...d, ...fill(d), sections: list,
+        arrangement: Array.isArray(arrangement) && !leading?.content ? arrangement.map((i) => mapped[i]?._key).filter(Boolean) : null,
       }));
-      caretTarget.current = { key: mapped[0]._key };
+      caretTarget.current = { key: list[0]._key };
       setDomSyncTick((t) => t + 1);
-    } else {
-      const at = root ? caretSectionKey(root) : null;
-      let idx = cur.findIndex((x) => x._key === at);
-      if (idx < 0) idx = cur.length - 1;
-      const replace = cur[idx] && !(cur[idx].content || '').trim();
+    } else if (sec) {
+      const content = sec.content || '';
+      const [rb, ra] = splitRunsAt(sec.runs, off);
+      let before = content.slice(0, off);
+      let beforeRuns = rb;
+      if (leading?.content) {
+        beforeRuns = [...beforeRuns, ...shiftRuns(leading.runs, before.length)];
+        before += leading.content;
+      }
+      let after = content.slice(off);
+      const afterLead = after.length - after.replace(/^\n+/, '').length;
+      after = after.slice(afterLead);
+      const afterRuns = shiftRuns(ra, -afterLead).filter((r) => r.end > 0);
+      const beforeTrim = before.replace(/\n+$/, '');
       const list = [...cur];
-      list.splice(replace ? idx : idx + 1, replace ? 1 : 0, ...mapped);
-      const anchorKey = replace ? cur[idx - 1]?._key : cur[idx]?._key;
-      const added = mapped.map((m, i) => [i === 0 ? anchorKey : mapped[i - 1]._key, m._key]).filter(([a]) => a);
-      restructure((d) => ({ ...d, ...fill(d), sections: list }), mapped[0]._key, false, added);
+      const replacement = [];
+      if (!mapped.length) {
+        // Loose lines only (copied without a label): merge into this section.
+        const glue = beforeTrim && after ? '\n' : '';
+        replacement.push({ ...sec, content: beforeTrim + glue + after, runs: [...beforeRuns.filter((r) => r.start < beforeTrim.length), ...shiftRuns(afterRuns, beforeTrim.length + glue.length)] });
+      } else {
+        if (beforeTrim.trim()) replacement.push({ ...sec, content: beforeTrim, runs: beforeRuns.filter((r) => r.start < beforeTrim.length) });
+        replacement.push(...mapped);
+        if (after.trim()) replacement.push({ _key: beforeTrim.trim() ? newKey() : sec._key, type: sec.type, content: after, runs: afterRuns });
+      }
+      list.splice(idx, 1, ...replacement);
+      // New sections join an existing play order in sequence after this one.
+      const added = [];
+      let prev = beforeTrim.trim() ? sec._key : cur[idx - 1]?._key;
+      for (const r of replacement) { if (r._key !== sec._key && prev) added.push([prev, r._key]); prev = r._key; }
+      const caretKey = mapped[0]?._key || sec._key;
+      restructure((d) => ({ ...d, ...fill(d), sections: list }), caretKey, !mapped.length, added);
     }
-    toast.show({ message: `Pasted song split into ${mapped.length} section${mapped.length === 1 ? '' : 's'}`, duration: 3000 });
+
+    if (message) {
+      toast.show({
+        message,
+        duration: keepAsOne ? 6000 : 3000,
+        action: keepAsOne ? {
+          label: 'Keep as one section',
+          onClick: () => {
+            // Back to the moment before the paste, with the text typed in as-is.
+            const { sections: snap, key: k, off: o } = snapshot;
+            const t = keepAsOne;
+            if (!k) {
+              restructure((d) => ({ ...d, sections: [{ _key: newKey(), type: 'verse', content: t, runs: [] }] }), null);
+              return;
+            }
+            restructure((d) => ({
+              ...d,
+              sections: snap.map((x) => x._key !== k ? x : {
+                ...x,
+                content: (x.content || '').slice(0, o) + t + (x.content || '').slice(o),
+                runs: (x.runs || []).map((r) => (r.start >= o ? { ...r, start: r.start + t.length, end: r.end + t.length } : r)),
+              }),
+            }), k);
+          },
+        } : undefined,
+      });
+    }
   }
 
   function handleEditorKeyDown(e) {
+    // ⌘⇧C / Ctrl+Shift+C → copy the lyrics without section labels.
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'c' || e.key === 'C')) {
+      e.preventDefault();
+      plainCopy.current = true;
+      document.execCommand('copy');
+      plainCopy.current = false;
+      toast.show({ message: 'Copied lyrics without section labels', duration: 2000 });
+      return;
+    }
     // Alt+↑/↓ → previous / next section.
     if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
       e.preventDefault();
@@ -2569,6 +2789,8 @@ export default function SongEditor({ song, onClose, onSave }) {
                     spellCheck
                     onInput={handleEditorInput}
                     onPaste={handleEditorPaste}
+                    onCopy={handleEditorCopy}
+                    onCut={handleEditorCut}
                     onKeyDown={handleEditorKeyDown}
                     onMouseDown={handleEditorMouseDown}
                     className="relative outline-none caret-primary text-[13px] leading-[1.5] text-on-surface whitespace-pre-wrap break-words pr-sm"
@@ -2576,7 +2798,8 @@ export default function SongEditor({ song, onClose, onSave }) {
                 </div>
                 <p className="px-md pb-md text-[12px] text-on-surface-variant/70">
                   Type a section name (“Chorus”, “Verse 2”) on its own line and press Enter to start a new section ·
-                  ⌘/Ctrl+Enter starts a new slide · click a section name to change or move it
+                  ⌘/Ctrl+Enter starts a new slide · click a section name to change or move it ·
+                  ⌘/Ctrl+C copies with section labels, ⌘/Ctrl+Shift+C copies lyrics only
                 </p>
               </div>
 

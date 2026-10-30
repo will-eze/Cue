@@ -224,7 +224,10 @@ export function parseHeaderLine(line) {
   let leadNames = [];
   if (!m) {
     // Name-first form: "Mary - Verse 1", "Mary & John: Chorus", "(Mary) Verse 2", "Men – Chorus".
-    const nf = /^\(?([\p{L}'’.]+(?:\s*(?:&|and|\+|,|\/)\s*[\p{L}'’.]+|\s+[\p{L}'’.]+){0,3})\)?\s*(?:[-–—:|/]\s*|\s+)(.+)$/u.exec(body);
+    // Needs a real separator ("Mary - Verse 1", "Mary: Chorus") or brackets
+    // ("(Mary) Verse 2") — a bare space would read "Another stanza" as a label.
+    const nf = /^\(([^()]{1,40})\)\s*(.+)$/u.exec(body)
+      || /^([\p{L}'’.]+(?:\s*(?:&|and|\+|,|\/)\s*[\p{L}'’.]+|\s+[\p{L}'’.]+){0,3})\s*[-–—:|/]\s*(.+)$/u.exec(body);
     if (nf) {
       const nameWords = nf[1].split(/\s*(?:&|and|\+|,|\/)\s*|\s+/).filter(Boolean);
       const allNames = nameWords.every((w) => isCapWord(w) || ROLE_TOKENS.has(w.toLowerCase()));
