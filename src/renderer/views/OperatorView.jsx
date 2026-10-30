@@ -1055,12 +1055,12 @@ export default function OperatorView({
     outputWarnRef.current = now;
     if (!outputsEnabled) {
       toast.show({
-        message: "Outputs are off — the audience can't see this.",
+        message: "Outputs are off, so the audience can't see this.",
         duration: 6000,
         action: { label: 'Turn on outputs', onClick: () => onToggleLive?.() },
       });
     } else {
-      toast.show({ message: 'No output windows are open — check Output Channels in Settings.', duration: 6000 });
+      toast.show({ message: 'No screens are showing this. Check Settings › Output Channels.', duration: 6000 });
     }
   }
 

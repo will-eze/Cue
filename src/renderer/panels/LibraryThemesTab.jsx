@@ -186,7 +186,7 @@ export default function LibraryThemesTab({ activeServiceId, onThemesChanged, onA
               await window.cue.services.setServiceTheme(activeServiceId, null);
               reloadSvc();
               onThemesChanged?.();
-              toast.success('Rundown theme cleared — defaults now apply');
+              toast.success('Rundown theme cleared. Defaults now apply.');
             } : null}
           />
         )}
@@ -203,7 +203,7 @@ export default function LibraryThemesTab({ activeServiceId, onThemesChanged, onA
           <div className="h-full flex flex-col items-center justify-center gap-sm text-on-surface-variant/70 px-lg text-center">
             <span className="material-symbols-outlined text-5xl">palette</span>
             <span className="text-label-sm font-label-sm">
-              {group === 'mine' ? 'No themes of your own yet' : group === 'selected' ? 'No themes enabled yet' : group === 'favorites' ? 'No favorites yet — tap ★ on a theme' : 'No themes'}
+              {group === 'mine' ? 'No themes of your own yet' : group === 'selected' ? 'No themes enabled yet' : group === 'favorites' ? 'No favorites yet. Tap ★ on a theme.' : 'No themes'}
             </span>
             {group === 'mine' && (
               <p className="text-body-sm text-on-surface-variant/60 max-w-xs mt-xs">

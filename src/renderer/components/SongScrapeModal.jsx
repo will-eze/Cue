@@ -65,7 +65,7 @@ export default function SongScrapeModal({ onClose, onSaved }) {
   }
 
   async function save() {
-    if (!draftLyrics.trim()) { setError('Nothing to save — the lyrics are empty.'); return; }
+    if (!draftLyrics.trim()) { setError('Nothing to save. The lyrics are empty.'); return; }
     setSaving(true); setError('');
     try {
       // Re-parse the (possibly edited) lyrics text through the same pipeline so

@@ -409,7 +409,7 @@ function LiveInputsTab({ onAddLiveInput }) {
         {enableBar}
         <div className="flex flex-col items-center justify-center flex-1 gap-xs text-on-surface-variant/70 px-lg text-center">
           <span className="material-symbols-outlined text-4xl">videocam_off</span>
-          <span className="text-label-sm font-label-sm">Live Inputs Disabled</span>
+          <span className="text-label-sm font-label-sm">Live inputs disabled</span>
           <span className="text-[12px] text-on-surface-variant/60 max-w-[300px] leading-snug">
             NDI receive is switched off. Nothing is pulled from the network and live-video
             cues are blocked from going live. Flip the switch above to re-enable.
@@ -702,7 +702,7 @@ export default function LibraryPanel({ activeServiceId, onThemesChanged, onApply
     const full = await window.cue.songs.get(song.id);
     const result = await window.cue.songs.delete(song.id);
     if (result.hasReferences) {
-      toast.error(`Can't delete — "${song.title}" is in ${result.count} rundown${result.count !== 1 ? 's' : ''}. Remove it from all rundowns first.`);
+      toast.error(`"${song.title}" is in ${result.count} rundown${result.count !== 1 ? 's' : ''}. Remove it from those rundowns before deleting.`);
       return;
     }
     loadSongs();
@@ -1101,7 +1101,7 @@ export default function LibraryPanel({ activeServiceId, onThemesChanged, onApply
               <div className="flex flex-col items-center justify-center h-full gap-xs text-on-surface-variant/70 px-lg text-center">
                 <span className="material-symbols-outlined text-4xl">{searchQuery || ghsQuery ? 'search_off' : 'library_music'}</span>
                 <span className="text-label-sm font-label-sm">
-                  {searchQuery || ghsQuery ? 'No Songs Found' : 'No Songs Yet'}
+                  {searchQuery || ghsQuery ? 'No songs found' : 'No Songs Yet'}
                 </span>
                 <span className="text-[12px] text-on-surface-variant/60 max-w-[240px] leading-snug">
                   {searchQuery || ghsQuery
@@ -1220,7 +1220,7 @@ export default function LibraryPanel({ activeServiceId, onThemesChanged, onApply
             {presentations.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full gap-sm text-on-surface-variant/70">
                 <span className="material-symbols-outlined text-4xl">slideshow</span>
-                <span className="text-label-sm font-label-sm">No Presentations Yet</span>
+                <span className="text-label-sm font-label-sm">No presentations yet</span>
               </div>
             ) : (
               <div className="grid gap-md" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>

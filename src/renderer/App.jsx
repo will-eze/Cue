@@ -197,22 +197,6 @@ export default function App() {
         </div>
 
         <span className="w-px h-3 bg-outline-variant/40 shrink-0" />
-        <button
-          onClick={outputWindows === 0 ? () => window.cue.output.setLive(true) : undefined}
-          title={outputWindows === 0 ? 'Click to open output windows' : `${outputWindows} output window${outputWindows !== 1 ? 's' : ''} open`}
-          className={`flex items-center gap-xs ${outputWindows === 0 ? 'cursor-pointer hover:opacity-80 transition-opacity' : 'cursor-default'}`}
-        >
-          <span
-            className={`material-symbols-outlined text-[14px] ${outputWindows > 0 ? 'text-tertiary' : 'text-on-surface-variant/70'}`}
-            style={{ fontVariationSettings: "'FILL' 1" }}
-          >
-            monitor
-          </span>
-          <span className={`text-label-sm font-label-sm ${outputWindows > 0 ? 'text-tertiary' : 'text-on-surface-variant/60'}`}>
-            {outputWindows > 0 ? `${outputWindows} output${outputWindows !== 1 ? 's' : ''}` : 'No outputs'}
-          </span>
-        </button>
-        <span className="w-px h-3 bg-outline-variant/40 shrink-0" />
         <span className="text-label-sm font-timecode-lg text-on-surface tabular-nums">{clock}</span>
         {headerState.micActive && (
           <div className="flex items-center gap-xs px-sm py-[2px] bg-tertiary/10 border border-tertiary/30 rounded text-tertiary text-label-sm font-label-sm" title="Scripture detection listening">
@@ -244,8 +228,8 @@ export default function App() {
             !headerState.canGo
               ? 'Select a rundown item to preview first'
               : outputWindows === 0
-              ? 'No output windows open — enable outputs with the Live button'
-              : 'GO — send preview to live (G)'
+              ? 'No screens are open. Turn on Outputs first.'
+              : 'Send preview to live (G)'
           }
           className="shrink-0 h-7 px-lg text-headline-md font-display-lg font-extrabold bg-tertiary text-on-tertiary rounded transition-all active:scale-95 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed hover:opacity-90"
         >
@@ -302,10 +286,10 @@ export default function App() {
               onClick={() => window.cue.output.setLive(!outputsEnabled)}
               aria-pressed={outputsEnabled}
               title={!outputsEnabled
-                ? 'Outputs are OFF — the audience sees nothing. Click to open the output windows.'
+                ? 'Outputs are off, so the audience sees nothing. Click to open the output windows.'
                 : noScreens
-                  ? 'Outputs are on, but no output window is open — check Settings › Output Channels (is the display connected?). Click to turn outputs off.'
-                  : `Outputs are ON — ${outputWindows} window${outputWindows !== 1 ? 's' : ''} showing. Click to close all output windows.`}
+                  ? 'Outputs are on, but no screen is open. Check Settings › Output Channels and that the display is connected. Click to turn outputs off.'
+                  : `Outputs are on: ${outputWindows} window${outputWindows !== 1 ? 's' : ''} showing. Click to close all output windows.`}
               className={`shrink-0 h-7 pl-sm pr-md text-body-md font-semibold rounded transition-all active:scale-95 cursor-pointer flex items-center gap-xs ${tone}`}
             >
               <span className="material-symbols-outlined text-[17px]" style={{ fontVariationSettings: "'FILL' 1" }}>
@@ -739,7 +723,7 @@ function StagePanel() {
 
           <p className="text-[11px] text-outline leading-tight">
             {remaining < 0
-              ? 'Over time — Pause to stop the overrun, ↺ to reset.'
+              ? 'Over time. Pause to stop the overrun, ↺ to reset.'
               : 'Type minutes (10) or MM:SS (10:30) · Enter to set'}
           </p>
         </div>

@@ -292,7 +292,7 @@ function ElementContent({ el, clock }) {
     case 'videoCountdown': return bar(el.label, '--:--', '#4ae176');
     case 'message':        return (
       <div className="w-full h-full flex items-center bg-[#1a1c20] px-2" style={{ justifyContent: justify(el.align) }}>
-        <span className="text-[11px] font-medium text-white/25">No Messages</span>
+        <span className="text-[11px] font-medium text-white/25">No messages</span>
       </div>
     );
     case 'currentText':    return (

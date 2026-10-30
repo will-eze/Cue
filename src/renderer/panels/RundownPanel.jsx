@@ -591,7 +591,7 @@ export default function RundownPanel({
   async function handleExportPdf() {
     if (!activeServiceId || exporting) return;
     if (typeof window.cue?.services?.exportPdf !== 'function') {
-      toast.error('PDF export is unavailable — restart the app to load the latest version.');
+      toast.error('PDF export is unavailable. Restart the app to load the latest version.');
       return;
     }
     setExporting(true);
@@ -789,7 +789,7 @@ export default function RundownPanel({
           <div className="flex flex-col items-center justify-center h-full gap-xs text-on-surface-variant/70 px-lg text-center">
             <span className="material-symbols-outlined text-4xl">calendar_today</span>
             <span className="text-label-sm font-label-sm">
-              {services.length === 0 ? 'No Service Yet' : 'Select a Service'}
+              {services.length === 0 ? 'No service yet' : 'Select a Service'}
             </span>
             <span className="text-[12px] text-on-surface-variant/60 max-w-[220px] leading-snug">
               {services.length === 0
@@ -800,7 +800,7 @@ export default function RundownPanel({
         ) : items.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-xs text-on-surface-variant/70 px-lg text-center">
             <span className="material-symbols-outlined text-4xl">playlist_add</span>
-            <span className="text-label-sm font-label-sm">Empty Rundown</span>
+            <span className="text-label-sm font-label-sm">Empty rundown</span>
             <span className="text-[12px] text-on-surface-variant/60 max-w-[240px] leading-snug">
               Search and add songs from the Library below, or press <span className="font-mono text-on-surface-variant">⌘K</span> (Ctrl+K) to find songs, scripture, scenes &amp; media.
             </span>

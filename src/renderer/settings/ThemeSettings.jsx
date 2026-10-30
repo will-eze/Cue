@@ -1172,7 +1172,7 @@ export default function ThemeSettings({ activeServiceId, onBackgroundDefaultChan
       setBrowsingBg(false);
       const created = list.find((t) => t.id === newId);
       if (created) setEditingTheme(created);
-      toast.success('Theme created — tweak and save');
+      toast.success('Theme created. Tweak it and save.');
     } catch (e) {
       toast.error('Couldn’t create theme: ' + (e?.message || e));
     } finally {
@@ -1438,7 +1438,7 @@ export default function ThemeSettings({ activeServiceId, onBackgroundDefaultChan
                 onClearRundown={activeServiceId ? async () => {
                   await window.cue.services.setServiceTheme(activeServiceId, null);
                   refreshServiceLook();
-                  toast.success('Rundown theme cleared — defaults now apply');
+                  toast.success('Rundown theme cleared. Defaults now apply.');
                 } : null}
               />
             )}

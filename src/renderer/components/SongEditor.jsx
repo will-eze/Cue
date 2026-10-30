@@ -2686,7 +2686,7 @@ export default function SongEditor({ song, onClose, onSave }) {
                         bgSource === 'Locked' ? 'Locked: this background is pinned and ignores rundown overrides and the global default.'
                         : bgSource === 'Song' ? "This song's own background."
                         : bgSource === 'Global' ? 'Falling back to the global song background (changes when you change the global).'
-                        : 'No background — output shows black.'
+                        : 'No background. The output shows black.'
                       }
                     >
                       {bgSource}
@@ -2719,7 +2719,7 @@ export default function SongEditor({ song, onClose, onSave }) {
                         return { ...d, bgLocked: next, songBackground };
                       })}
                       title={bgLocked
-                        ? 'Background locked — pinned above rundown overrides and the global default. Click to unlock.'
+                        ? 'Background locked. Pinned above rundown overrides and the global default. Click to unlock.'
                         : 'Lock this background so rundown overrides, the global default, and "apply to all" can\'t change it.'}
                       className={`flex items-center gap-[3px] text-[11px] font-mono px-sm py-[3px] rounded border cursor-pointer transition-colors
                         ${bgLocked
@@ -2924,7 +2924,7 @@ export default function SongEditor({ song, onClose, onSave }) {
                   <div className="text-label-sm text-on-surface-variant">
                     {(Number(maxLines) || globalMaxLines)
                       ? `Splits shown as dashed lines in the lyrics${Number(maxLines) ? '' : ` · using app default (${globalMaxLines})`}`
-                      : 'Off — sections show as one slide · 0 = app default'}
+                      : 'Off: each section is one slide · 0 = app default'}
                   </div>
                 </div>
                 <input

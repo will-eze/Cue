@@ -674,17 +674,13 @@ function MonitorTile({ monitor, screens, onRemove }) {
         className={`material-symbols-outlined text-xl ${isConnected ? 'text-primary' : 'text-error'}`}
         style={{ fontVariationSettings: "'FILL' 1" }}
       >
-        {isConnected ? 'monitor' : 'monitor_off'}
+        {isConnected ? 'monitor' : 'desktop_access_disabled'}
       </span>
       <div className="text-center w-full min-w-0">
         <div className="text-[11px] font-label-sm text-on-surface-variant leading-tight truncate">{name}</div>
         {showRes && <div className="font-mono text-[11px] text-on-surface-variant/60 leading-none mt-[1px] tabular-nums">{res}</div>}
+        {!isConnected && <div className="text-[11px] font-label-sm text-error leading-tight">Disconnected</div>}
       </div>
-      {!isConnected && (
-        <span className="absolute top-1 left-1 text-[11px] font-label-sm text-error">
-          Disconnected
-        </span>
-      )}
       <button
         onClick={onRemove}
         className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-surface-container-high border border-outline-variant/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:bg-error hover:border-error hover:text-white"

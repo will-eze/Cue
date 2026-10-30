@@ -690,7 +690,7 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, onPrevie
           ) : (
             <div className="flex flex-1 h-full flex-col items-center justify-center gap-sm text-on-surface-variant/70">
               <span className="material-symbols-outlined text-4xl">menu_book</span>
-              <span className="text-label-sm font-label-sm">Type a Reference Above</span>
+              <span className="text-label-sm font-label-sm">Type a reference above</span>
               <p className="text-body-sm text-on-surface-variant max-w-sm text-center px-md">
                 e.g. type <span className="text-on-surface">Ge</span> → Genesis, Tab → chapter, Tab → verse, Enter to go live.
                 Then use ↑ / ↓ to advance verses live.

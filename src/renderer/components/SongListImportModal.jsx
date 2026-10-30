@@ -14,7 +14,7 @@ const VIA_LABEL = {
   firstline: 'Matched by a first lyric line',
   lyrics: 'Matched by lyrics',
   fuzzy: 'Matched by a similar title (check spelling)',
-  alias: 'Remembered — you matched this name to this song before',
+  alias: 'Remembered: you matched this name to this song before',
 };
 
 // Raw matcher rows → modal rows. Confident hits are pre-ticked; a repeat of a song
@@ -557,7 +557,7 @@ export default function SongListImportModal({ onCancel, onAddManyToRundown }) {
               <h2 className="text-headline-md font-bold text-on-surface tracking-tight">Paste Song List</h2>
               <p className="text-label-sm font-label-sm text-on-surface-variant">
                 {step === 'input'
-                  ? 'Paste a set list — titles or lyrics, however messy — to match against your library'
+                  ? 'Paste a set list, titles or lyrics, however messy, to match against your library'
                   : step === 'matching'
                     ? 'Matching…'
                     : step === 'adding'

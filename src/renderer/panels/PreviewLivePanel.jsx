@@ -1006,7 +1006,7 @@ export default function PreviewLivePanel({
             item={previewItem}
             slideIdx={previewSlideIdx}
             getSlides={getSlides}
-            emptyLabel="Nothing in Preview"
+            emptyLabel="Nothing in preview"
             isLive={false}
             backgroundPath={previewBgPath}
             themeStyle={previewThemeStyle}
@@ -1033,7 +1033,7 @@ export default function PreviewLivePanel({
               />
             ) : (
               <div className="flex items-center justify-center h-full text-label-sm font-label-sm text-on-surface-variant/70">
-                Nothing in Preview
+                Nothing in preview
               </div>
             )}
           </div>
@@ -1045,7 +1045,7 @@ export default function PreviewLivePanel({
             item={liveItem}
             slideIdx={liveSlideIdx}
             getSlides={getSlides}
-            emptyLabel="Nothing Live"
+            emptyLabel="Nothing live"
             isLive={true}
             backgroundPath={liveBgPath}
             themeStyle={liveThemeStyle}
@@ -1223,7 +1223,7 @@ export default function PreviewLivePanel({
               />
             ) : (
               <div className="flex items-center justify-center h-full text-label-sm font-label-sm text-on-surface-variant/70">
-                Nothing Live
+                Nothing live
               </div>
             )}
           </div>

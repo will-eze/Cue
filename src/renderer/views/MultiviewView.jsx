@@ -275,7 +275,7 @@ function ScreenMonitorTile({ channel, monitor, isLive }) {
           : 'bg-surface-container-high border-outline-variant/20'
       }`}>
         <span className={`material-symbols-outlined text-[13px] shrink-0 ${tallyLive ? 'text-secondary' : 'text-outline'}`} style={{ fontVariationSettings: "'FILL' 1" }}>
-          {hasCapture ? 'monitor' : 'monitor_off'}
+          {hasCapture ? 'monitor' : 'desktop_access_disabled'}
         </span>
         <span className={`text-[11px] font-label-sm truncate ${tallyLive ? 'text-secondary/80' : 'text-on-surface-variant'}`}>
           {label}
@@ -291,7 +291,7 @@ function NoSignal() {
   return (
     <div className="w-full h-full flex flex-col items-center justify-center gap-xs bg-black">
       <span className="material-symbols-outlined text-[28px] text-outline-variant/30">signal_disconnected</span>
-      <span className="text-[11px] font-label-sm text-outline-variant/40">No Signal</span>
+      <span className="text-[11px] font-label-sm text-outline-variant/40">No signal</span>
     </div>
   );
 }
