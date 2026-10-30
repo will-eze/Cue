@@ -73,6 +73,18 @@ const ROLE_TOKENS = new Set([
   'drums', 'drums only', 'keys', 'keys only', 'piano', 'guitar', 'only', 'twice', 'again', 'x2', 'x3', 'x4',
   'pause', 'stop', 'break', 'hold', 'ritard', 'rit', 'fine', 'end', 'segue', 'medley', 'tag',
 ]);
+// The subset of ROLE_TOKENS that is unambiguous on its own: nobody sings a line
+// that is just "Sopranos" or "Unison". Everything else in ROLE_TOKENS ("echo",
+// "hold", "people", "again", "end"…) is an ordinary lyric word and only counts as a
+// cue when the line is explicitly marked as one — wrapped in ( ) / [ ] or ending ":".
+const STRONG_CUES = new Set([
+  'all', 'unison', 'solo', 'duet', 'trio', 'quartet', 'tutti', 'men', 'women', 'ladies', 'gents',
+  'soprano', 'sopranos', 'alto', 'altos', 'tenor', 'tenors', 'bass', 'basses', 'baritone', 'baritones', 'descant',
+  'leader', 'worship leader', 'song leader', 'cantor', 'choir', 'chorale', 'congregation', 'cong', 'bv', 'bvs',
+  'instrumental', 'instrumentals', 'interlude', 'vamp', 'reprise', 'modulation', 'key change',
+  'acapella', 'acappella', 'a cappella', 'adlib', 'ad lib', 'ad-lib', 'spontaneous', 'free worship', 'humming', 'clapping',
+]);
+
 // Glue words allowed inside an annotation ("sung by Mary and the choir").
 const ANNOTATION_GLUE = new Set(['and', 'the', 'by', 'with', 'led', 'lead', 'sung', 'sang', 'sings', 'then', 'on', 'of', 'to', 'in', 'only', 'from', 'for', 'at', 'a', 'times', 'time']);
 
@@ -283,7 +295,7 @@ const VOICE_PARTS = new Set(['solo', 'duet', 'trio', 'quartet', 'lead', 'leader'
   'men', 'women', 'ladies', 'gents', 'sopranos', 'soprano', 'altos', 'alto', 'tenors', 'tenor', 'bass', 'basses',
   'unison', 'harmony', 'cantor', 'worship leader', 'song leader', 'backing', 'bv', 'bvs', 'kids', 'youth', 'congregation']);
 // Capitalised words that are lyrics, not singers ("Leader: Hallelujah").
-const WORSHIP_WORDS = new Set(['hallelujah', 'halleluyah', 'alleluia', 'amen', 'hosanna', 'jesus', 'lord', 'god', 'christ',
+const WORSHIP_WORDS = new Set(['faith', 'hope', 'joy', 'mercy', 'peace', 'light', 'life', 'truth', 'heaven', 'zion', 'israel', 'hallelujah', 'halleluyah', 'alleluia', 'amen', 'hosanna', 'jesus', 'lord', 'god', 'christ',
   'father', 'spirit', 'holy', 'glory', 'praise', 'worthy', 'yahweh', 'jehovah', 'emmanuel', 'immanuel', 'king', 'saviour',
   'savior', 'messiah', 'redeemer', 'abba', 'adonai', 'elohim', 'oh', 'yes', 'yeah', 'thank', 'thanks', 'grace', 'love', 'jah']);
 export function roleWithNames(line) {
@@ -307,27 +319,41 @@ export function roleWithNames(line) {
 // lyric: "All", "Men:", "(Women)", "Leader - Mary", "x2", "Mary & John:".
 // `names` = singer names learned from this paste's headers.
 export function isDirectiveLine(line, names = new Set()) {
-  let t = stripInvisible(line).trim();
-  if (!t || t.length > 48) return false;
-  const { text } = unwrap(t);
-  t = text;
+  const raw = stripInvisible(line).trim();
+  if (!raw || raw.length > 48) return false;
+  // Explicitly marked as a note: the whole line in ( ) / [ ], or ending with ":".
+  const marked = /^[(\[].*[)\]]$/.test(raw) || /:\s*$/.test(raw);
+  const { text } = unwrap(raw);
+  let t = text;
   if (!t) return true;
-  if (REPEAT_RE.test(t)) return true;
+  // Repeat counts. Bare "again" / "twice" are lyric words — only as marked notes.
+  if (/^\(?\s*(?:x\s*\d+|\d+\s*x|[*×]\s*\d+|\d+\s*times?|repeat(?:\s*all)?)\s*\)?$/i.test(t)) return true;
+  if (marked && REPEAT_RE.test(t)) return true;
   t = t.replace(REPEAT_SUFFIX_RE, '').trim().replace(/[.,;!?]+$/, '').trim();
-  if (!t) return true;
+  if (!t) return marked; // a bare "Again" / "Twice" is a lyric
+  const isName = (w) => names.has(w) && !WORSHIP_WORDS.has(w);
   const parts = t.split(/\s*[-–—/:|,]\s*|\s+(?:&|and|\+)\s+|\s*&\s*/).map((p) => p.trim()).filter(Boolean);
   if (!parts.length) return false;
-  const known = (p) => {
+  // Unmarked: every part must be a clear cue word or a known singer ("All",
+  // "All - Unison", "Men & Women", "Mary & John"). Marked: ordinary role words and
+  // glue are allowed too ("(echo)", "(sung by the men)", "Leader:").
+  const partOk = (p) => {
     const lw = p.toLowerCase().replace(/\s*\d+$/, '').trim();
-    return ROLE_TOKENS.has(lw) || ROLE_TOKENS.has(p.toLowerCase()) || /^\d+$/.test(p) || names.has(lw)
-      || lw.split(/\s+/).every((w) => ROLE_TOKENS.has(w) || ANNOTATION_GLUE.has(w) || names.has(w));
+    if (/^\d+$/.test(lw)) return true;
+    if (STRONG_CUES.has(lw) || isName(lw)) return true;
+    if (!marked) return false;
+    const ws = lw.split(/\s+/);
+    return ROLE_TOKENS.has(lw) || ws.every((w) => ROLE_TOKENS.has(w) || ANNOTATION_GLUE.has(w) || isName(w))
+      && ws.some((w) => ROLE_TOKENS.has(w) || isName(w));
   };
-  if (parts.every(known)) return true;
+  if (parts.every(partOk)) return true;
   if (roleWithNames(t)) return true;
-  // "Mary:" / "Mary & John:" alone on a line — a speaker cue (1–3 capitalised words + colon).
-  if (/:\s*$/.test(stripInvisible(line).trim())) {
+  // "Mary:" / "Mary & John:" alone on a line — a speaker cue (1–3 capitalised
+  // words + colon), unless the words are worship words ("Lord:", "Hallelujah:").
+  if (/:\s*$/.test(raw)) {
     const words = t.split(/\s+|\s*&\s*/).filter(Boolean);
-    if (words.length <= 3 && words.every((w) => isCapWord(w) || ANNOTATION_GLUE.has(w.toLowerCase()))) return true;
+    if (words.length <= 3 && words.every((w) => (isCapWord(w) && !WORSHIP_WORDS.has(w.toLowerCase().replace(/[^a-z]/g, ''))) || ANNOTATION_GLUE.has(w.toLowerCase()))
+      && words.some((w) => isCapWord(w))) return true;
   }
   return false;
 }
@@ -339,7 +365,7 @@ export function isDirectiveLine(line, names = new Set()) {
 function stripSpeaker(line, names) {
   const known = (s) => s.split(/\s*(?:&|and|\+|,|\/)\s*/).filter(Boolean).every((w) => {
     const lw = w.toLowerCase().trim();
-    return ROLE_TOKENS.has(lw) || names.has(lw);
+    return STRONG_CUES.has(lw) || (names.has(lw) && !WORSHIP_WORDS.has(lw));
   });
   let out = line;
   let m = /^\s*([\p{L}'’]+(?:\s*(?:&|and|\+|,|\/)\s*[\p{L}'’]+){0,3})\s*:\s+(?=\S)/u.exec(out);

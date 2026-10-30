@@ -235,6 +235,19 @@ for (const [l, yes] of [['Solo - Tammi', true], ['Duet – Tammi & Mary', true],
   ok('cleanup: slide break untouched', cleanSectionText('Line\n⁂\nLine 2', [], names) === null);
 }
 
+// Over-reach guard: ordinary lyric lines are never singer notes.
+for (const l of ['All the people', 'Hold on', 'Hold on, hold on', 'All in all', 'Echo', 'Only You', 'Call upon the Lord',
+  'Children of God', 'Again and again', 'Stop', 'Sing it again', 'Everybody praise', 'Together we stand', 'Men and women of God',
+  'All of the people', 'Hallelujah', 'Lord:', 'Glory, glory', 'Hold on to me', 'Time after time', 'In the end', 'Break every chain',
+  'All for You', 'Again', 'Twice', 'Melody', 'Keys to the kingdom', 'Build', 'Fine', 'Jesus:', 'Everyone']) {
+  ok(`lyric kept: ${l}`, !isDirectiveLine(l));
+}
+// …while real notes are still caught.
+for (const l of ['All', 'All:', 'Men:', '(Women)', 'All - Unison', '(echo)', '(x2)', 'x2', 'Leader:', 'Solo - Tammi', 'Choir',
+  'Instrumental', '(Men only)', 'Sopranos & Altos', '(sung by Mary and the choir)', 'Mary:', '[All]', 'Repeat', '(again)', 'Men & Women']) {
+  ok(`note caught: ${l}`, isDirectiveLine(l, new Set(['mary'])), l);
+}
+
 // Directive line detection.
 ok('directive: All', isDirectiveLine('All'));
 ok('directive: Men & Women:', isDirectiveLine('Men & Women:'));
