@@ -1718,7 +1718,11 @@ export default function SongEditor({ song, onClose, onSave }) {
       doc.reset({
         title: song?.prefillTitle || '', author: song?.prefillAuthor || '', copyright: song?.prefillCopyright || '',
         sections: mapped, style: { ...DEFAULT_STYLE }, songBackground: null, bgLocked: false, selectedTagIds: [],
-        arrangement: null, maxLines: 0,
+        // Played order implied by the source paste (positions into prefillSections).
+        arrangement: seeded.length && Array.isArray(song?.prefillArrangement)
+          ? song.prefillArrangement.map((i) => mapped[i]?._key).filter(Boolean)
+          : null,
+        maxLines: 0,
       });
       setActiveSectionKey(mapped[0]._key);
       setPreviewContent({ text: mapped[0].content, runs: mapped[0].runs });

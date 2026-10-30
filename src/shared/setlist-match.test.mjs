@@ -232,7 +232,7 @@ Walking through the valley green
 Chorus
 You are good, You are kind`;
   const rows = run(txt);
-  ok('unknown lyrics: one row', rows.length === 1 && !rows[0].match, titles(rows));
+  ok('unknown lyrics: one row, not found', rows.length === 1 && !rows[0].match && rows[0].confidence === 'none', titles(rows));
   ok('unknown lyrics: parsed sections', rows[0].parsed && rows[0].parsed.sections.length === 2 && rows[0].parsed.title === 'Brand New Song', rows[0].parsed);
   ok('unknown lyrics: no singer name', !/Mary/.test(JSON.stringify(rows[0].parsed?.sections)), rows[0].parsed);
 }

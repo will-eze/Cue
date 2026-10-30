@@ -443,7 +443,10 @@ export function parseLyrics(rawText, opts = {}) {
     if (t.length <= 70 && !/[,;]$/.test(t)) {
       const parts = unwrap(t).text.split(/\s+[-–—|]\s+|\s+by\s+/i);
       title = parts[0].trim() || null;
-      if (parts[1] && !author && parts[1].length <= 60) author = parts[1].trim();
+      // "Title – Ada" where Ada sings a verse is the leader, not the songwriter.
+      const who = (parts[1] || '').trim();
+      const isSinger = who && who.split(/\s*(?:&|and|,|\/)\s*/).every((w) => names.has(w.toLowerCase()));
+      if (who && !author && who.length <= 60 && !isSinger) author = who;
       preBlocks.shift();
     }
   }

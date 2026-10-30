@@ -6,11 +6,15 @@ import { get as getSetting, set as setSetting } from './settings.js';
 import { parseGhsItems } from '../import/songs-import.js';
 import { words as _words, distinctive as _distinctive, ftsQuery as _ftsQuery, rankByOverlap, matchSetList } from '../../shared/setlist-match.js';
 
+// Natural title order: "GHS 2" before "GHS 10", "10,000 Reasons" after "9…".
+const _titleCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+const _byTitle = (a, b) => _titleCollator.compare(a.title || '', b.title || '');
+
 export function search(query) {
   const db = getDb();
   const tagsStmt = _listTagsForSongStmt();
   if (!query || !query.trim()) {
-    return db.prepare('SELECT id, title, author FROM songs ORDER BY title COLLATE NOCASE').all()
+    return db.prepare('SELECT id, title, author FROM songs').all().sort(_byTitle)
       .map((s) => ({ ...s, tags: tagsStmt.all(s.id) }));
   }
   // Strip apostrophes (straight + curly + modifier) so the query collapses "God's" →
@@ -80,7 +84,7 @@ const _listTagsForSongStmt = () => getDb().prepare(
 );
 
 export function listAll() {
-  const songs = _listAllSongsStmt().all();
+  const songs = _listAllSongsStmt().all().sort(_byTitle);
   const tagsStmt = _listTagsForSongStmt();
   return songs.map((s) => ({ ...s, tags: tagsStmt.all(s.id) }));
 }

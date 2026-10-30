@@ -195,6 +195,11 @@ CCLI License # 123456`;
   ok('no detectTitle → leading line kept as verse', r2.sections.length === 2, r2.sections);
 }
 
+{
+  const r = parseLyrics('Brand New Song - Ada\nVerse 1 — Ada\nWalking through the valley', { detectTitle: true });
+  ok('singer on title line is not the author', r.title === 'Brand New Song' && r.author === null, [r.title, r.author]);
+}
+
 // Directive line detection.
 ok('directive: All', isDirectiveLine('All'));
 ok('directive: Men & Women:', isDirectiveLine('Men & Women:'));

@@ -461,6 +461,9 @@ function matchUnit(titleLine, query, lib) {
   let best = t;
   if (x && x.confidence !== 'none' && (!best || RANK[x.confidence] > RANK[best.confidence]
       || (RANK[x.confidence] === RANK[best.confidence] && best.via === 'fuzzy' && x.song.phrase >= 3 && !(best.kind === 'title' && best.score >= 0.9)))) best = x;
+  // Several pasted lyric lines that share no phrase with the song (only scattered
+  // common words — "good", "valley") is a song we don't have, not a fuzzy match.
+  if (best && best.via === 'lyrics' && best.confidence === 'low' && best.song.phrase < 3 && words(queryClean).length >= 8) best = null;
   // A title hit corroborated by the lyrics is beyond doubt.
   if (t && x && x.song && t.song.id === x.song.id && t.confidence === 'low' && x.confidence !== 'none') best = { ...t, confidence: 'high' };
   const altPool = [...(best?.others || []), ...((x?.scored || []).map((s) => s))];

@@ -4,6 +4,33 @@ import SongEditor from './SongEditor';
 import AnchoredMenu from './AnchoredMenu';
 import { useModalGuard } from '../utils/modalGuard';
 
+// How a row was matched — shown as the confidence badge's tooltip so the operator
+// can judge a guess ("similar title" deserves a look; "hymn number" doesn't).
+const VIA_LABEL = {
+  title: 'Matched by title',
+  number: 'Matched by hymn number',
+  firstline: 'Matched by a first lyric line',
+  lyrics: 'Matched by lyrics',
+  fuzzy: 'Matched by a similar title (check spelling)',
+};
+
+// Raw matcher rows → modal rows. Confident hits are pre-ticked; a repeat of a song
+// already in the list starts unticked (usually a paste artefact, not a reprise).
+function toRows(raw) {
+  const seen = new Set();
+  return raw.map((r) => {
+    const dup = !!(r.match && seen.has(r.match.id));
+    if (r.match) seen.add(r.match.id);
+    return {
+      ...r,
+      alternates: r.alternates || [],
+      lines: r.lines || [r.input],
+      selected: !dup && (r.confidence === 'exact' || r.confidence === 'high'),
+      override: null,
+    };
+  });
+}
+
 const CONFIDENCE_META = {
   exact: { icon: 'check_circle', cls: 'text-tertiary', label: 'Exact' },
   high:  { icon: 'check_circle', cls: 'text-primary',  label: 'Match' },
@@ -35,7 +62,7 @@ function SongOption({ song, current, onPick, onPreview, isPreviewing }) {
   );
 }
 
-function ResultRow({ row, onChange, onPreview, onCreate, previewId }) {
+function ResultRow({ row, index, dupOf, onChange, onPreview, onCreate, onSplit, previewId }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const [results, setResults] = useState([]);
@@ -81,11 +108,13 @@ function ResultRow({ row, onChange, onPreview, onCreate, previewId }) {
     setQ('');
   }
   function create() {
-    // Hand the new-song flow a title (the typed search, or the pasted line) and the
-    // pasted line as a starting verse; apply the saved song back onto this row.
+    // Hand the new-song flow a title (the typed search, or the pasted title) and the
+    // pasted lyrics already split into sections when the paste carried them;
+    // apply the saved song back onto this row.
     onCreate({
-      title: q.trim() || row.input,
-      text: row.input,
+      title: q.trim() || row.parsed?.title || row.input,
+      parsed: row.parsed,
+      text: row.parsed ? null : row.input,
       apply: (song) => onChange({ ...row, override: song, selected: true }),
     });
     setOpen(false);
@@ -110,8 +139,21 @@ function ResultRow({ row, onChange, onPreview, onCreate, previewId }) {
       />
 
       {/* Input snippet (title or lyric line the operator pasted) */}
+      <span className="w-6 shrink-0 text-right text-label-sm text-on-surface-variant tabular-nums">{index + 1}</span>
       <div className="flex-1 min-w-0 basis-0">
-        <p className="text-body-md text-on-surface font-medium truncate" title={row.input}>{row.input}</p>
+        <p className="text-body-md text-on-surface font-medium truncate" title={row.query || row.input}>{row.input}</p>
+        {(row.lines.length > 1 || dupOf != null) && (
+          <p className="flex items-center gap-sm text-label-sm text-on-surface-variant mt-[1px]">
+            {row.lines.length > 1 && (
+              <span title={row.query} className="truncate">
+                {row.lyrics ? `Pasted lyrics · ${row.lines.length} lines` : `${row.lines.length} lines combined`}
+              </span>
+            )}
+            {dupOf != null && (
+              <span className="shrink-0 text-yellow-400" title="This song is already earlier in the list">Repeat of #{dupOf + 1}</span>
+            )}
+          </p>
+        )}
       </div>
 
       {/* Arrow */}
@@ -140,7 +182,7 @@ function ResultRow({ row, onChange, onPreview, onCreate, previewId }) {
       </div>
 
       {/* Confidence badge */}
-      <span className={`shrink-0 text-label-sm font-label-sm uppercase tracking-[0.05em] px-sm py-[2px] rounded-full border ${
+      <span title={overridden ? 'Chosen by you' : (VIA_LABEL[row.via] || (row.confidence === 'none' ? 'No library song matched' : ''))} className={`shrink-0 text-label-sm font-label-sm uppercase tracking-[0.05em] px-sm py-[2px] rounded-full border ${
         overridden || row.confidence === 'exact' ? 'text-tertiary border-tertiary/40 bg-tertiary/10'
         : row.confidence === 'high' ? 'text-primary border-primary/40 bg-primary/10'
         : row.confidence === 'low'  ? 'text-yellow-400 border-yellow-400/40 bg-yellow-400/10'
@@ -219,15 +261,68 @@ function ResultRow({ row, onChange, onPreview, onCreate, previewId }) {
               )}
             </div>
 
+            {/* Wrongly combined? Match each pasted line on its own. */}
+            {row.lines.length > 1 && !row.lyrics && (
+              <button
+                onClick={() => { setOpen(false); onSplit(); }}
+                className="shrink-0 border-t border-outline-variant/20 px-md py-sm flex items-center gap-sm text-left hover:bg-surface-variant transition-colors cursor-pointer text-on-surface"
+              >
+                <span className="material-symbols-outlined text-[18px]">call_split</span>
+                <span className="text-body-md truncate">Split into {row.lines.length} separate songs</span>
+              </button>
+            )}
+
             {/* Not in the library? Create it. */}
             <button
               onClick={create}
               className="shrink-0 border-t border-outline-variant/20 px-md py-sm flex items-center gap-sm text-left hover:bg-surface-variant transition-colors cursor-pointer text-tertiary"
             >
               <span className="material-symbols-outlined text-[18px]">add_circle</span>
-              <span className="text-body-md truncate">{q.trim() ? `Create “${q.trim()}”…` : 'Create new song…'}</span>
+              <span className="text-body-md truncate">
+                {q.trim() ? `Create “${q.trim()}”…` : row.parsed ? `Create “${row.parsed.title || row.input}” from pasted lyrics…` : 'Create new song…'}
+              </span>
             </button>
         </AnchoredMenu>
+      </div>
+    </div>
+  );
+}
+
+// Input-step side pane: what the matcher sees in the paste, updated as you type.
+function DetectedPane({ live, text }) {
+  const rows = live.text === text ? live.rows : null;
+  const matched = rows ? rows.filter((r) => r.match).length : 0;
+  return (
+    <div className="w-80 shrink-0 border-l border-outline-variant/20 bg-surface-container-lowest flex flex-col min-h-0">
+      <div className="px-lg py-md border-b border-outline-variant/20 shrink-0 flex items-center justify-between gap-sm">
+        <p className="text-body-md font-semibold text-on-surface">
+          {rows ? `${rows.length} song${rows.length === 1 ? '' : 's'} detected` : 'Detected songs'}
+        </p>
+        {live.busy && <span className="material-symbols-outlined text-[16px] text-on-surface-variant animate-spin" style={{ animationDuration: '1s' }}>progress_activity</span>}
+        {!live.busy && rows && rows.length > 0 && (
+          <span className="text-label-sm text-on-surface-variant tabular-nums">{matched} in library</span>
+        )}
+      </div>
+      <div className="flex-1 overflow-y-auto custom-scrollbar py-xs">
+        {!rows || rows.length === 0 ? (
+          <p className="px-lg py-md text-body-md text-on-surface-variant/70">
+            {text.trim() ? (live.busy ? 'Reading the list…' : 'No songs found in this text yet.') : 'Each song you paste will appear here as it’s recognised.'}
+          </p>
+        ) : rows.map((r, i) => {
+          const meta = CONFIDENCE_META[r.confidence] || CONFIDENCE_META.none;
+          return (
+            <div key={i} className="flex items-start gap-sm px-lg py-[6px]" title={r.match ? `→ ${r.match.title}` : 'Not in the library'}>
+              <span className="w-5 shrink-0 text-right text-label-sm text-on-surface-variant tabular-nums pt-[2px]">{i + 1}</span>
+              <span className={`material-symbols-outlined text-[16px] shrink-0 pt-[2px] ${meta.cls}`}>{meta.icon}</span>
+              <div className="min-w-0">
+                <p className="text-body-md text-on-surface truncate">{r.input}</p>
+                {r.match && r.match.title.toLowerCase() !== r.input.toLowerCase() && (
+                  <p className="text-label-sm text-on-surface-variant truncate">{r.match.title}</p>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -328,29 +423,46 @@ export default function SongListImportModal({ onCancel, onAddManyToRundown }) {
     if (song && song.id) setPreview({ id: song.id, title: song.title, author: song.author });
   }
 
-  function startCreate({ title, text, apply }) {
+  function startCreate({ title, text, parsed, apply }) {
     setCreating({
       prefillTitle: title || '',
-      prefillSections: text ? [{ type: 'verse', content: text }] : [],
+      prefillAuthor: parsed?.author || '',
+      prefillCopyright: parsed?.copyright || '',
+      prefillSections: parsed?.sections?.length ? parsed.sections : (text ? [{ type: 'verse', content: text }] : []),
+      prefillArrangement: parsed?.arrangement || null,
       apply,
     });
   }
+
+  // Live detection while typing/pasting: the operator sees how the list was split
+  // and what matched BEFORE committing, so a bad split is obvious immediately.
+  const [live, setLive] = useState({ text: '', rows: null, busy: false });
+  useEffect(() => {
+    if (step !== 'input') return;
+    const t = text;
+    if (!t.trim()) { setLive({ text: '', rows: null, busy: false }); return; }
+    setLive((l) => ({ ...l, busy: true }));
+    let alive = true;
+    const timer = setTimeout(async () => {
+      try {
+        const raw = await window.cue.songs.matchTitles(t);
+        if (alive) setLive({ text: t, rows: Array.isArray(raw) ? raw : null, busy: false });
+      } catch { if (alive) setLive({ text: t, rows: null, busy: false }); }
+    }, 350);
+    return () => { alive = false; clearTimeout(timer); };
+  }, [text, step]);
 
   async function handleMatch() {
     if (!text.trim()) return;
     setError(null);
     setStep('matching');
     try {
-      const raw = await window.cue.songs.matchTitles(text);
+      // Reuse the live result when it's for exactly this text.
+      const raw = live.text === text && live.rows ? live.rows : await window.cue.songs.matchTitles(text);
       if (!Array.isArray(raw)) throw new Error('No response from the matcher.');
-      const mapped = raw.map((r) => ({
-        ...r,
-        alternates: r.alternates || [],
-        // Pre-tick only confident hits. Fuzzy/ambiguous matches still show their best
-        // guess + alternates, but the operator opts in so a wrong guess isn't added silently.
-        selected: r.confidence === 'exact' || r.confidence === 'high',
-        override: null,
-      }));
+      // Pre-tick only confident hits. Fuzzy/ambiguous matches still show their best
+      // guess + alternates, but the operator opts in so a wrong guess isn't added silently.
+      const mapped = toRows(raw);
       setRows(mapped);
       setStep('results');
       // Auto-preview the first row that has a match so the pane isn't empty.
@@ -360,6 +472,19 @@ export default function SongListImportModal({ onCancel, onAddManyToRundown }) {
       // Surface the failure instead of silently bouncing back to an unchanged screen.
       setError(e?.message || 'Matching failed. Reopen the app if it was just updated.');
       setStep('input');
+    }
+  }
+
+  // Replace one combined row with a row per pasted line, each matched on its own.
+  async function splitRow(i) {
+    const row = rows[i];
+    if (!row || row.lines.length < 2) return;
+    try {
+      const parts = await Promise.all(row.lines.map((l) => window.cue.songs.matchTitles(l)));
+      const replacement = toRows(parts.flat());
+      setRows((prev) => [...prev.slice(0, i), ...replacement, ...prev.slice(i + 1)]);
+    } catch (e) {
+      setError(e?.message || 'Could not split that entry.');
     }
   }
 
@@ -378,7 +503,21 @@ export default function SongListImportModal({ onCancel, onAddManyToRundown }) {
 
   const selectedCount = rows.filter((r) => r.selected && (r.override ?? r.match)).length;
   const notFoundCount = rows.filter((r) => r.confidence === 'none' && !r.override).length;
+  const checkCount = rows.filter((r) => r.confidence === 'low' && !r.override).length;
   const totalCount = rows.length;
+  // Duplicate detection follows overrides: "Repeat of #N" for a song already above.
+  const dupOf = (() => {
+    const first = new Map();
+    return rows.map((r, i) => {
+      const id = (r.override ?? r.match)?.id;
+      if (id == null) return null;
+      if (first.has(id)) return first.get(id);
+      first.set(id, i);
+      return null;
+    });
+  })();
+  const selectable = rows.filter((r) => r.override ?? r.match);
+  const allSelected = selectable.length > 0 && selectable.every((r) => r.selected);
 
   return createPortal(
     <>
@@ -403,7 +542,7 @@ export default function SongListImportModal({ onCancel, onAddManyToRundown }) {
                     ? 'Matching…'
                     : step === 'adding'
                       ? `Adding ${selectedCount} to rundown…`
-                      : `${totalCount} titles · ${selectedCount} matched · ${notFoundCount} not found`
+                      : `${totalCount} song${totalCount === 1 ? '' : 's'} found · ${selectedCount} selected${checkCount ? ` · ${checkCount} to check` : ''}${notFoundCount ? ` · ${notFoundCount} not in library` : ''}`
                 }
               </p>
             </div>
@@ -420,43 +559,62 @@ export default function SongListImportModal({ onCancel, onAddManyToRundown }) {
         {/* Body */}
         <div className="flex-1 min-h-0 flex">
           {(step === 'input' || step === 'matching') && (
-            <div className="p-lg flex flex-col gap-md h-full w-full overflow-y-auto custom-scrollbar">
-              <p className="text-body-md text-on-surface-variant">
-                Paste the set list exactly as you received it. Each entry can be a title or just
-                a remembered lyric line — they're matched against song lyrics, not only titles.
-                Numbers, "x2" markers and section labels like "Worship" / "Praise" are handled.
-              </p>
-              <textarea
-                ref={textareaRef}
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                disabled={step === 'matching'}
-                placeholder={"Worship\n1. As the deer panteth for the waters\n\n2. We bring the sacrifice of praise\n\nOh come let us adore him"}
-                className="flex-1 min-h-[240px] bg-surface-container-lowest border border-outline-variant/30 rounded-lg p-md text-body-md text-on-surface font-mono resize-none focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/20 disabled:opacity-50 placeholder:text-on-surface-variant/40"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleMatch();
-                }}
-              />
-              {error && (
-                <div className="flex items-start gap-sm px-md py-sm rounded-lg border border-error/40 bg-error/10 text-error">
-                  <span className="material-symbols-outlined text-[18px] shrink-0">error</span>
-                  <p className="text-body-md">{error}</p>
-                </div>
-              )}
-            </div>
+            <>
+              <div className="p-lg flex flex-col gap-md h-full flex-1 min-w-0 overflow-y-auto custom-scrollbar">
+                <p className="text-body-md text-on-surface-variant">
+                  Paste the set list exactly as you received it — titles, first lines or full
+                  lyrics, numbered or not, grouped under headings like “Praise” / “Worship”.
+                  Singer names, keys and “x2” notes are ignored.
+                </p>
+                <textarea
+                  ref={textareaRef}
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  disabled={step === 'matching'}
+                  placeholder={"Praise\n1. Way Maker – Mary (Key: E)\n2. Goodness of God\n\nWorship\nAs the deer panteth for the water\nGHS 47"}
+                  className="flex-1 min-h-[240px] bg-surface-container-lowest border border-outline-variant/30 rounded-lg p-md text-body-md text-on-surface leading-relaxed resize-none focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/20 disabled:opacity-50 placeholder:text-on-surface-variant/40"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleMatch();
+                  }}
+                />
+                {error && (
+                  <div className="flex items-start gap-sm px-md py-sm rounded-lg border border-error/40 bg-error/10 text-error">
+                    <span className="material-symbols-outlined text-[18px] shrink-0">error</span>
+                    <p className="text-body-md">{error}</p>
+                  </div>
+                )}
+              </div>
+              <DetectedPane live={live} text={text} />
+            </>
           )}
 
           {step === 'results' && (
             <>
               <div className="flex-1 min-w-0 overflow-y-auto custom-scrollbar px-lg py-sm space-y-xs">
                 {rows.length === 0 && (
-                  <div className="py-xl text-center text-label-sm font-label-sm uppercase tracking-widest text-outline-variant">
-                    No titles detected
+                  <div className="py-xl text-center text-body-md text-on-surface-variant">
+                    No songs found in that text — go back and check the paste.
+                  </div>
+                )}
+                {rows.length > 0 && (
+                  <div className="flex items-center gap-md px-md py-xs">
+                    <label className="flex items-center gap-sm cursor-pointer text-label-sm text-on-surface-variant hover:text-on-surface">
+                      <input
+                        type="checkbox"
+                        checked={allSelected}
+                        onChange={(e) => setRows((prev) => prev.map((r) => ((r.override ?? r.match) ? { ...r, selected: e.target.checked } : r)))}
+                        className="accent-primary w-4 h-4 cursor-pointer"
+                      />
+                      {allSelected ? 'Deselect all' : 'Select all matched'}
+                    </label>
                   </div>
                 )}
                 {rows.map((row, i) => (
                   <ResultRow
                     key={i}
+                    index={i}
+                    dupOf={dupOf[i]}
+                    onSplit={() => splitRow(i)}
                     row={row}
                     previewId={preview?.id ?? null}
                     onPreview={requestPreview}
@@ -530,7 +688,13 @@ export default function SongListImportModal({ onCancel, onAddManyToRundown }) {
           it don't bubble through the React tree to the backdrop's onCancel. */}
       {creating && (
         <SongEditor
-          song={{ prefillTitle: creating.prefillTitle, prefillSections: creating.prefillSections }}
+          song={{
+            prefillTitle: creating.prefillTitle,
+            prefillAuthor: creating.prefillAuthor,
+            prefillCopyright: creating.prefillCopyright,
+            prefillSections: creating.prefillSections,
+            prefillArrangement: creating.prefillArrangement,
+          }}
           onClose={() => setCreating(null)}
           onSave={async (newId) => {
             try {
