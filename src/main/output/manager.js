@@ -268,7 +268,21 @@ function createMonitorWindow(channel, monitor) {
   // Template tag: live-input frames are only fanned out to program-video windows
   // (fullscreen template); stage/lower-third windows never render full-frame video.
   win._cueTemplate = channel.template || 'fullscreen';
+  // A window closed by any route other than closeMonitor (display unplugged, closed
+  // from the OS) must leave the map too, or the operator keeps counting a dead
+  // screen. The identity check stops a superseded window (syncChannel recreate)
+  // from removing its replacement.
+  win.on('closed', () => {
+    if (windows.get(monitor.id) === win) { windows.delete(monitor.id); outputsChanged(); }
+  });
   return win;
+}
+
+// The set of output windows changed → tell the operator (outputs button, GO
+// warnings, monitors) and recompute the program-audio tap.
+function outputsChanged() {
+  notifyMainWindow('output:state-changed', getState());
+  updateAudioTapState();
 }
 
 // The primary audio monitor = first active monitor of the first active non-NDI,
@@ -445,6 +459,7 @@ export async function openMonitor(channelId, monitor) {
   const win = createMonitorWindow(channel, monitor);
   if (!win) return;
   windows.set(monitor.id, win);
+  outputsChanged();
 
   // Re-dispatch current state once the template is ready.
   win.webContents.once('did-finish-load', () => {
@@ -452,10 +467,12 @@ export async function openMonitor(channelId, monitor) {
   });
 }
 
-export function closeMonitor(monitorId) {
+export function closeMonitor(monitorId, { silent = false } = {}) {
   const win = windows.get(monitorId);
+  const had = windows.delete(monitorId); // before close(), so its 'closed' handler is a no-op
   if (win && !win.isDestroyed()) win.close();
-  windows.delete(monitorId);
+  // Batch callers (syncChannel / closeChannel) report once at the end instead.
+  if (had && !silent) outputsChanged();
 }
 
 // Re-sync all windows for a channel (e.g. after template/active change).
@@ -466,7 +483,7 @@ export async function syncChannel(channelId) {
   const allMonitors = db
     .prepare('SELECT * FROM channel_monitors WHERE channel_id = ?')
     .all(channelId);
-  for (const m of allMonitors) closeMonitor(m.id);
+  for (const m of allMonitors) closeMonitor(m.id, { silent: true });
 
   // Close NDI window if present.
   stopNdiCapture(channelId);
@@ -549,13 +566,14 @@ export function closeChannel(channelId) {
   const monitors = db
     .prepare('SELECT * FROM channel_monitors WHERE channel_id = ?')
     .all(channelId);
-  for (const m of monitors) closeMonitor(m.id);
+  for (const m of monitors) closeMonitor(m.id, { silent: true });
 
   stopNdiCapture(channelId);
   const ndiKey = `ndi-${channelId}`;
   const ndiWin = windows.get(ndiKey);
   if (ndiWin && !ndiWin.isDestroyed()) ndiWin.close();
   windows.delete(ndiKey);
+  outputsChanged();
 }
 
 export function closeAll() {
@@ -1512,7 +1530,7 @@ export function getState() {
     isLive: state.displayMode !== 'idle',
     displayMode: state.displayMode,
     livePayload: state.livePayload,
-    activeWindows: windows.size,
+    activeWindows: [...windows.values()].filter((w) => w && !w.isDestroyed()).length,
     activeChannels: [...windows.keys()],
     outputsEnabled,
     transport: { ...transport },
