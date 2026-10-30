@@ -567,7 +567,40 @@ function LiveInputMonitor({ liveInput }) {
   );
 }
 
-function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroundPath, themeStyle = null, displayMode, channelTemplate, stageChannelId, ltFontScale = 1, transport, overlay, hideProgram }) {
+// What the selected output channel shows while LOGO is up — mirrors the templates:
+// fullscreen draws the channel's logo (its own override, else the global logo) on
+// black with the Logo-settings fit; a lower third shows a logo ONLY when the channel
+// has its own override (otherwise its band is simply empty). Without this the live
+// monitor kept the last slide, so pressing Logo looked like it did nothing.
+function LogoMonitor({ logo, isLT }) {
+  const path = logo?.path && (!isLT || logo.fromOverride) ? logo.path : null;
+  const fit = logo?.scale === 'contain' ? 'contain' : 'cover';
+  const isVideo = path && /\.(mp4|webm|mov|m4v|avi)$/i.test(path);
+  return (
+    <div
+      className="absolute inset-0"
+      style={isLT && !path
+        ? { backgroundImage: 'repeating-conic-gradient(#1a1a1a 0% 25%, #222 0% 50%)', backgroundSize: '20px 20px' }
+        : { background: '#000' }}
+    >
+      {path ? (
+        isVideo
+          ? <video src={mediaUrl(path)} autoPlay loop muted playsInline style={{ width: '100%', height: '100%', objectFit: fit }} />
+          : <img src={mediaUrl(path)} alt="Logo" style={{ width: '100%', height: '100%', objectFit: fit }} />
+      ) : logo && (
+        <div className="absolute inset-0 flex items-center justify-center px-lg text-center">
+          <p className="text-[13px] text-on-surface-variant">
+            {isLT
+              ? 'Logo is on — this lower third has no logo of its own, so it shows nothing.'
+              : 'Logo is on, but no logo is set (Settings › Logo) — screens show black.'}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroundPath, themeStyle = null, displayMode, channelTemplate, stageChannelId, ltFontScale = 1, transport, overlay, hideProgram, logo = null }) {
   const wrapRef = useRef(null);
   const [scale, setScale] = useState(0.5);
 
@@ -650,7 +683,9 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
       }`}
     >
       {/* Scaled 1920×1080 canvas — pixel-accurate match of the output template */}
-      {slide ? (
+      {isLive && displayMode === 'logo' && !isStage ? (
+        <LogoMonitor logo={logo} isLT={isLT} />
+      ) : slide ? (
         <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
           <div style={{ width: NATIVE_W, height: NATIVE_H, transform: `scale(${scale})`, transformOrigin: 'top left', position: 'relative' }}>
                 {isLiveInput && !isStage ? (
@@ -824,6 +859,30 @@ export default function PreviewLivePanel({
   const liveSlides    = liveItem    ? getSlides(liveItem)    : [];
 
   const selectedChannel  = allChannels[liveChannelIdx] ?? allChannels[0] ?? null;
+
+  // Resolve the selected channel's logo while LOGO is up (same rule as main's
+  // resolveLogo: the channel's own override asset, else the global logo).
+  const [liveLogo, setLiveLogo] = useState(null);
+  useEffect(() => {
+    if (displayMode !== 'logo') return undefined;
+    let alive = true;
+    (async () => {
+      try {
+        const scale = (await window.cue.settings.get('logo_scale_mode')) || 'cover';
+        let asset = null, fromOverride = false;
+        if (selectedChannel?.logo_override_id) {
+          asset = await window.cue.media.get(selectedChannel.logo_override_id).catch(() => null);
+          fromOverride = !!asset;
+        }
+        if (!asset) {
+          const gid = await window.cue.settings.get('global_logo_id');
+          asset = gid ? await window.cue.media.get(Number(gid)).catch(() => null) : null;
+        }
+        if (alive) setLiveLogo({ path: asset?.path || null, fromOverride, scale });
+      } catch { if (alive) setLiveLogo({ path: null, fromOverride: false, scale: 'cover' }); }
+    })();
+    return () => { alive = false; };
+  }, [displayMode, selectedChannel?.id, selectedChannel?.logo_override_id]);
   const selectedTemplate = selectedChannel?.template ?? channelTemplate;
   const multiChannel = allChannels.length > 1;
 
@@ -977,6 +1036,7 @@ export default function PreviewLivePanel({
             backgroundPath={liveBgPath}
             themeStyle={liveThemeStyle}
             displayMode={displayMode}
+            logo={liveLogo}
             channelTemplate={selectedTemplate}
             stageChannelId={selectedChannel?.id}
             ltFontScale={ltFontScale}
