@@ -3,6 +3,7 @@ import { useToast } from '../components/Toast';
 import { FixedSizeList as List } from 'react-window';
 import SongImportModal from '../components/SongImportModal';
 import SongListImportModal from '../components/SongListImportModal';
+import SingerNotesCleanupModal from '../components/SingerNotesCleanupModal';
 import SongScrapeModal from '../components/SongScrapeModal';
 import SongEditor from '../components/SongEditor';
 import ContextMenu from '../components/ContextMenu';
@@ -568,6 +569,7 @@ export default function LibraryPanel({ activeServiceId, onThemesChanged, onApply
   const [clipboardYt, setClipboardYt] = useState(null);     // YouTube link detected in the clipboard
   const clipboardSeenRef = useRef(null);                    // last clipboard link we already offered/dismissed
   const [songListModal, setSongListModal] = useState(false);
+  const [cleanupModal, setCleanupModal] = useState(false);
   const [scrapeModal, setScrapeModal] = useState(false);
 
   useEffect(() => { loadSongs(); window.cue.tags.list().then(setTags); }, [refreshTick]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -950,6 +952,16 @@ export default function LibraryPanel({ activeServiceId, onThemesChanged, onApply
                       </span>
                     </button>
                     <button
+                      onClick={() => { setImportMenuOpen(false); setCleanupModal(true); }}
+                      className="w-full flex items-start gap-sm px-md py-sm text-left hover:bg-surface-variant transition-colors cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-[16px] text-on-surface-variant mt-[1px]">cleaning_services</span>
+                      <span className="flex flex-col">
+                        <span className="text-body-md text-on-surface">Clean Up Singer Notes…</span>
+                        <span className="text-label-sm font-label-sm text-on-surface-variant tracking-normal normal-case">Remove “Solo - Tammi” style lines from existing songs</span>
+                      </span>
+                    </button>
+                    <button
                       onClick={() => { setImportMenuOpen(false); setSheetImport(true); }}
                       className="w-full flex items-start gap-sm px-md py-sm text-left hover:bg-surface-variant transition-colors cursor-pointer"
                     >
@@ -1286,6 +1298,11 @@ export default function LibraryPanel({ activeServiceId, onThemesChanged, onApply
           preview={importPreview}
           onCancel={() => setImportPreview(null)}
           onImported={handleImportedSongs} />
+      )}
+      {cleanupModal && (
+        <SingerNotesCleanupModal
+          onClose={() => setCleanupModal(false)}
+          onDone={(n) => { setCleanupModal(false); loadSongs(); onSongSave?.(); toast.success(`Cleaned ${n} song${n === 1 ? '' : 's'}`); }} />
       )}
       {songListModal && (
         <SongListImportModal

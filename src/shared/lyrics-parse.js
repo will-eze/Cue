@@ -16,6 +16,8 @@
 // rewrites or inserts text — so each section's content stays a subsequence of the
 // source. Don't add a transform that substitutes characters.
 
+const SLIDE_BREAK_CHAR = '⁂';
+
 export const SECTION_TYPES = ['verse', 'chorus', 'refrain', 'bridge', 'pre-chorus', 'tag', 'intro', 'outro'];
 
 // Section keyword → type. Order is irrelevant; KEYWORD_RE sorts longest-first.
@@ -273,6 +275,34 @@ export function parseHeaderLine(line) {
   };
 }
 
+// "Solo - Tammi", "Duet – Tammi & Mary", "Lead: John", "All (Choir)", "Tammi - Solo":
+// a voice-part word plus 1–3 capitalised names, nothing else. Returns the names
+// (lowercased) or null. Lyrics never have this shape: "All - Glory to God" fails
+// because "to" isn't a capitalised name, "Solo" alone is caught elsewhere.
+const VOICE_PARTS = new Set(['solo', 'duet', 'trio', 'quartet', 'lead', 'leader', 'all', 'choir', 'call', 'response',
+  'men', 'women', 'ladies', 'gents', 'sopranos', 'soprano', 'altos', 'alto', 'tenors', 'tenor', 'bass', 'basses',
+  'unison', 'harmony', 'cantor', 'worship leader', 'song leader', 'backing', 'bv', 'bvs', 'kids', 'youth', 'congregation']);
+// Capitalised words that are lyrics, not singers ("Leader: Hallelujah").
+const WORSHIP_WORDS = new Set(['hallelujah', 'halleluyah', 'alleluia', 'amen', 'hosanna', 'jesus', 'lord', 'god', 'christ',
+  'father', 'spirit', 'holy', 'glory', 'praise', 'worthy', 'yahweh', 'jehovah', 'emmanuel', 'immanuel', 'king', 'saviour',
+  'savior', 'messiah', 'redeemer', 'abba', 'adonai', 'elohim', 'oh', 'yes', 'yeah', 'thank', 'thanks', 'grace', 'love', 'jah']);
+export function roleWithNames(line) {
+  const t = stripInvisible(line).trim().replace(/[.:;,!]+\s*$/, '').replace(/\s+/g, ' ').trim();
+  if (!t || t.length > 48) return null;
+  const parts = t.split(/\s*[-–—:|([\]]\s*/).map((x) => x.replace(/[)\]]/g, '').trim()).filter(Boolean);
+  if (parts.length < 2 || parts.length > 3) return null;
+  let role = false;
+  const names = [];
+  for (const part of parts) {
+    if (VOICE_PARTS.has(part.toLowerCase())) { role = true; continue; }
+    const ws = part.split(/\s*(?:&|\+|,|\/)\s*|\s+and\s+|\s+/).filter(Boolean);
+    if (!ws.length || ws.length > 4 || !ws.every((w) => isCapWord(w) && w.length <= 20
+      && !ROLE_TOKENS.has(w.toLowerCase()) && !WORSHIP_WORDS.has(w.toLowerCase().replace(/[^a-z]/g, '')))) return null;
+    names.push(...ws.map((w) => w.toLowerCase().replace(/[.']+$/, '')));
+  }
+  return role ? names : null; // [] = voice parts only ("All (Choir)")
+}
+
 // True when a whole line is a performance/voice-part directive rather than
 // lyric: "All", "Men:", "(Women)", "Leader - Mary", "x2", "Mary & John:".
 // `names` = singer names learned from this paste's headers.
@@ -293,6 +323,7 @@ export function isDirectiveLine(line, names = new Set()) {
       || lw.split(/\s+/).every((w) => ROLE_TOKENS.has(w) || ANNOTATION_GLUE.has(w) || names.has(w));
   };
   if (parts.every(known)) return true;
+  if (roleWithNames(t)) return true;
   // "Mary:" / "Mary & John:" alone on a line — a speaker cue (1–3 capitalised words + colon).
   if (/:\s*$/.test(stripInvisible(line).trim())) {
     const words = t.split(/\s+|\s*&\s*/).filter(Boolean);
@@ -318,6 +349,68 @@ function stripSpeaker(line, names) {
   m = /\s+[(\[]([^()\[\]]{1,30})[)\]]\s*$/.exec(out);
   if (m && known(m[1])) out = out.slice(0, m.index);
   return out;
+}
+
+// Length of a known speaker cue at the start of a lyric line ("Tammi: ", "(Men) "),
+// 0 when none. Same rule as stripSpeaker, as a prefix length (for range removal).
+function speakerPrefixLen(line, names) {
+  const before = line.length;
+  const stripped = stripSpeaker(line, names);
+  return line.endsWith(stripped) && stripped.length < before && stripped.trim() ? before - stripped.length : 0;
+}
+
+// Names of singers a stored song's text reveals: role + name lines ("Solo - Tammi").
+export function singerNamesIn(texts) {
+  const names = new Set();
+  for (const t of texts) for (const line of String(t || '').split('\n')) {
+    const rn = roleWithNames(line);
+    if (rn) rn.forEach((n) => names.add(n));
+    const h = parseHeaderLine(line);
+    if (h) h.names.forEach((n) => names.add(n.toLowerCase()));
+  }
+  return names;
+}
+
+// Clean ONE stored section: drop whole cue lines ("Solo - Tammi", "All:", "x2") and
+// known speaker prefixes ("Tammi: …"), remapping style-run offsets so formatting
+// stays on the same words. Delete-only. Returns null when nothing changes, else
+// { content, runs, removed: [text] }. Used by the library "Clean up singer notes".
+export function cleanSectionText(content, runs = [], names = new Set()) {
+  const src = String(content || '');
+  const lines = src.split('\n');
+  const cuts = [];
+  const removed = [];
+  let pos = 0;
+  for (const line of lines) {
+    const start = pos;
+    const end = pos + line.length;
+    pos = end + 1;
+    if (!line.trim() || line.includes(SLIDE_BREAK_CHAR)) continue;
+    if (parseHeaderLine(line) && !roleWithNames(line)) continue; // a real section label is not ours to delete
+    if (isDirectiveLine(line, names)) { cuts.push([start, Math.min(end + 1, src.length)]); removed.push(line.trim()); continue; }
+    const n = speakerPrefixLen(line, names);
+    if (n) { cuts.push([start, start + n]); removed.push(line.slice(0, n).trim()); }
+  }
+  if (!cuts.length) return null;
+  const map = new Array(src.length + 1);
+  let out = '';
+  let ci = 0;
+  for (let i = 0; i < src.length; i++) {
+    map[i] = out.length;
+    while (ci < cuts.length && i >= cuts[ci][1]) ci++;
+    if (!(ci < cuts.length && i >= cuts[ci][0] && i < cuts[ci][1])) out += src[i];
+  }
+  map[src.length] = out.length;
+  const lead = out.match(/^\n*/)[0].length;
+  const text = out.slice(lead).replace(/\n+$/, '');
+  const newRuns = (runs || [])
+    .map((r) => ({
+      ...r,
+      start: Math.max(0, map[Math.min(Math.max(0, r.start), src.length)] - lead),
+      end: Math.min(text.length, map[Math.min(Math.max(0, r.end), src.length)] - lead),
+    }))
+    .filter((r) => r.end > r.start);
+  return { content: text, runs: newRuns, removed };
 }
 
 // Strip WhatsApp/markdown emphasis wrapping a whole lyric line: "*Way maker*".
@@ -374,6 +467,7 @@ export function parseLyrics(rawText, opts = {}) {
     if (t && CHORD_ONLY_RE.test(t) && /[A-G]/.test(t)) continue;
     const h = parseHeaderLine(lines[i]);
     if (h) for (const n of h.names) names.add(n.toLowerCase());
+    else { const rn = roleWithNames(lines[i]); if (rn) rn.forEach((n) => names.add(n)); }
     keep.push(lines[i]);
   }
   lines = keep;

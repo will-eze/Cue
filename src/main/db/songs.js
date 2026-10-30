@@ -4,6 +4,7 @@ import path from 'path';
 import { getDb } from './schema.js';
 import { get as getSetting, set as setSetting } from './settings.js';
 import { parseGhsItems } from '../import/songs-import.js';
+import { cleanSectionText, singerNamesIn } from '../../shared/lyrics-parse.js';
 import { words as _words, distinctive as _distinctive, ftsQuery as _ftsQuery, rankByOverlap, matchSetList, aliasKey, titleKeys } from '../../shared/setlist-match.js';
 
 // Natural title order: "GHS 2" before "GHS 10", "10,000 Reasons" after "9…".
@@ -575,4 +576,56 @@ export function usageReport(fromIso, toIso) {
 
 export function usageClear() {
   getDb().prepare('DELETE FROM song_usage').run();
+}
+
+// ── Clean up singer notes in existing songs ─────────────────────────────────
+// Songs imported before the lyrics parser learned about choir annotations carry
+// lines like "Solo - Tammi" / "All:" and prefixes like "Tammi: …" in their lyrics.
+// scan → preview (nothing written); apply → rewrite only the chosen songs. Style
+// runs are remapped so inline formatting stays on the same words.
+function _cleanSong(sections) {
+  const names = singerNamesIn(sections.map((s) => s.content));
+  const out = [];
+  for (const sec of sections) {
+    let style = null;
+    try { style = sec.style_json ? JSON.parse(sec.style_json) : null; } catch { style = null; }
+    const res = cleanSectionText(sec.content, style?.runs || [], names);
+    if (res) out.push({ sec, style, res });
+  }
+  return out;
+}
+
+export function scanSingerNotes() {
+  const db = getDb();
+  const sectionsOf = db.prepare('SELECT id, content, style_json FROM song_sections WHERE song_id = ? ORDER BY order_index');
+  const songs = db.prepare('SELECT id, title FROM songs').all().sort(_byTitle);
+  const found = [];
+  for (const s of songs) {
+    const edits = _cleanSong(sectionsOf.all(s.id));
+    if (edits.length) found.push({ id: s.id, title: s.title, removed: edits.flatMap((e) => e.res.removed) });
+  }
+  return found;
+}
+
+export function applySingerNotes(songIds = []) {
+  const db = getDb();
+  const sectionsOf = db.prepare('SELECT id, content, style_json FROM song_sections WHERE song_id = ? ORDER BY order_index');
+  const upd = db.prepare('UPDATE song_sections SET content = ?, style_json = ? WHERE id = ?');
+  const touch = db.prepare("UPDATE songs SET updated_at = datetime('now') WHERE id = ?");
+  let changed = 0;
+  db.transaction(() => {
+    for (const id of songIds) {
+      const edits = _cleanSong(sectionsOf.all(id));
+      for (const { sec, style, res } of edits) {
+        let sj = sec.style_json;
+        if (style) {
+          const next = { ...style, runs: res.runs.length ? res.runs : undefined };
+          sj = JSON.stringify(next);
+        }
+        upd.run(res.content, sj, sec.id);
+      }
+      if (edits.length) { touch.run(id); changed++; }
+    }
+  })();
+  return { changed };
 }

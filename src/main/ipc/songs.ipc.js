@@ -22,6 +22,8 @@ export function registerSongsIpc() {
     catch (err) { return { ok: false, error: err.message }; }
   });
   ipcMain.handle('songs:matchTitles', h((_e, rawText) => songs.matchTitles(rawText)));
+  ipcMain.handle('songs:scanSingerNotes', h(() => songs.scanSingerNotes()));
+  ipcMain.handle('songs:applySingerNotes', h((_e, ids) => songs.applySingerNotes(ids)));
   ipcMain.handle('songs:rememberAliases', h((_e, pairs) => songs.rememberAliases(pairs)));
   ipcMain.handle('songs:listAliases', h((_e, songId) => songs.listAliases(songId)));
   ipcMain.handle('songs:forgetAlias', h((_e, songId, alias) => songs.forgetAlias(songId, alias)));

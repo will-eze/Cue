@@ -1,6 +1,6 @@
 // Unit tests for the shared lyrics → sections parser. Run with:
 //   node --experimental-detect-module src/shared/lyrics-parse.test.mjs
-import { parseLyrics, parseHeaderLine, isDirectiveLine } from './lyrics-parse.js';
+import { parseLyrics, parseHeaderLine, isDirectiveLine, cleanSectionText, singerNamesIn } from './lyrics-parse.js';
 
 let pass = 0, fail = 0;
 const ok = (label, cond, extra) => { if (cond) pass++; else { fail++; console.error(`✗ ${label}`, extra !== undefined ? JSON.stringify(extra) : ''); } };
@@ -198,6 +198,41 @@ CCLI License # 123456`;
 {
   const r = parseLyrics('Brand New Song - Ada\nVerse 1 — Ada\nWalking through the valley', { detectTitle: true });
   ok('singer on title line is not the author', r.title === 'Brand New Song' && r.author === null, [r.title, r.author]);
+}
+
+// Voice part + singer name lines (no section header naming them).
+{
+  const r = parseLyrics(`Verse 1
+Solo - Tammi
+The One who made the heavens, made my heart and soul
+Before I drew a breath, I was loved and known
+
+Verse 2
+Duet - Tammi & Mary
+I am His creation, the Maker's masterpiece
+Tammi: And all that He designs will be done in me
+All - Glory to God`);
+  ok('role-name lines dropped', !/Tammi|Mary|Solo|Duet/.test(allText(r)), allText(r));
+  ok('lyric with All - kept', /All - Glory to God/.test(allText(r)), allText(r));
+  ok('learned names', r.names.includes('tammi') && r.names.includes('mary'), r.names);
+}
+for (const [l, yes] of [['Solo - Tammi', true], ['Duet – Tammi & Mary', true], ['Lead: John', true], ['Tammi - Solo', true], ['All (Choir)', true],
+  ['All - Glory to God', false], ['Lord - You are good', false], ['Jesus - Saviour', false]]) {
+  ok(`role+names: ${l}`, !!isDirectiveLine(l) === yes, isDirectiveLine(l));
+}
+
+// Library cleanup of stored sections (runs remapped).
+{
+  const v1 = 'Solo - Tammi\nThe One who made the heavens\nBefore I drew a breath';
+  const v2 = 'Duet - Tammi & Mary\nTammi: I am His creation\nAll - Glory to God';
+  const names = singerNamesIn([v1, v2]);
+  const a = cleanSectionText(v1, [{ start: 13, end: 20, bold: true }], names); // "The One"
+  ok('cleanup: line dropped', a && a.content === 'The One who made the heavens\nBefore I drew a breath', a);
+  ok('cleanup: run follows its words', a && a.runs[0].start === 0 && a.runs[0].end === 7 && a.content.slice(0, 7) === 'The One', a?.runs);
+  const b = cleanSectionText(v2, [], names);
+  ok('cleanup: prefix stripped, lyric kept', b && b.content === 'I am His creation\nAll - Glory to God', b);
+  ok('cleanup: nothing to do → null', cleanSectionText('Amazing grace\nHow sweet', [], names) === null);
+  ok('cleanup: slide break untouched', cleanSectionText('Line\n⁂\nLine 2', [], names) === null);
 }
 
 // Directive line detection.

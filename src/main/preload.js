@@ -18,6 +18,8 @@ contextBridge.exposeInMainWorld('cue', {
     importGhs: () => ipcRenderer.invoke('songs:importGhs'),
     importCommit: (parsedSongs) => ipcRenderer.invoke('songs:importCommit', parsedSongs),
     matchTitles: (rawText) => ipcRenderer.invoke('songs:matchTitles', rawText),
+    scanSingerNotes: () => ipcRenderer.invoke('songs:scanSingerNotes'),
+    applySingerNotes: (ids) => ipcRenderer.invoke('songs:applySingerNotes', ids),
     rememberAliases: (pairs) => ipcRenderer.invoke('songs:rememberAliases', pairs),
     listAliases: (songId) => ipcRenderer.invoke('songs:listAliases', songId),
     forgetAlias: (songId, alias) => ipcRenderer.invoke('songs:forgetAlias', songId, alias),
