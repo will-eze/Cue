@@ -589,11 +589,25 @@ function LogoMonitor({ logo, isLT }) {
           : <img src={mediaUrl(path)} alt="Logo" style={{ width: '100%', height: '100%', objectFit: fit }} />
       ) : logo && (
         <div className="absolute inset-0 flex items-center justify-center px-lg text-center">
-          <p className="text-[13px] text-on-surface-variant">
-            {isLT
-              ? 'Logo is on — this lower third has no logo of its own, so it shows nothing.'
-              : 'Logo is on, but no logo is set (Settings › Logo) — screens show black.'}
-          </p>
+          {isLT ? (
+            <div className="space-y-xs">
+              <p className="text-[14px] font-semibold text-on-surface">Logo is on.</p>
+              <p className="text-[13px] text-on-surface-variant">
+                This lower third has no logo of its own, so it shows nothing. By default,
+                lower thirds stay blank while the logo is on.
+              </p>
+              <p className="text-[13px] text-on-surface-variant">
+                To show a logo here, give this channel its own logo in Settings › Logo.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-xs">
+              <p className="text-[14px] font-semibold text-on-surface">Logo is on.</p>
+              <p className="text-[13px] text-on-surface-variant">
+                No logo has been set, so the screens show black. Add one in Settings › Logo.
+              </p>
+            </div>
+          )}
         </div>
       )}
     </div>
