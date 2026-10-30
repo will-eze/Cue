@@ -76,7 +76,7 @@ export default function TagSettings() {
           onChange={(e) => setNewName(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') handleCreate(); }}
           placeholder="New tag name…"
-          className="flex-1 bg-background border border-outline-variant/30 rounded-lg px-md py-sm text-body-md text-on-surface placeholder:text-outline-variant focus:border-primary focus:outline-none"
+          className="flex-1 bg-background border border-outline-variant/30 rounded-lg px-md py-sm text-body-md text-on-surface placeholder:text-on-surface-variant/70 focus:border-primary focus:outline-none"
         />
         <button
           onClick={handleCreate}
@@ -90,9 +90,9 @@ export default function TagSettings() {
 
       {/* Existing tags */}
       {tags.length === 0 ? (
-        <div className="border-2 border-dashed border-outline-variant/20 rounded-xl py-xl flex flex-col items-center gap-sm text-outline-variant">
+        <div className="border-2 border-dashed border-outline-variant/20 rounded-xl py-xl flex flex-col items-center gap-sm text-on-surface-variant/70">
           <span className="material-symbols-outlined text-3xl">sell</span>
-          <span className="text-label-sm font-label-sm uppercase tracking-[0.05em]">No tags yet</span>
+          <span className="text-label-sm font-label-sm">No tags yet</span>
         </div>
       ) : (
         <div className="space-y-sm">
@@ -113,11 +113,11 @@ export default function TagSettings() {
                   />
                   <button
                     onClick={handleSaveEdit}
-                    className="text-[10px] font-mono text-tertiary hover:text-tertiary/70 cursor-pointer uppercase tracking-[0.04em] border border-tertiary/40 px-sm py-[3px] rounded transition-colors"
+                    className="text-[11px] font-mono text-tertiary hover:text-tertiary/70 cursor-pointer border border-tertiary/40 px-sm py-[3px] rounded transition-colors"
                   >Save</button>
                   <button
                     onClick={() => { setEditing(null); setError(''); }}
-                    className="text-[10px] font-mono text-on-surface-variant hover:text-on-surface cursor-pointer uppercase tracking-[0.04em]"
+                    className="text-[11px] font-mono text-on-surface-variant hover:text-on-surface cursor-pointer"
                   >Cancel</button>
                 </>
               ) : (
@@ -129,14 +129,14 @@ export default function TagSettings() {
                   </span>
                   {confirmDelete === tag.id ? (
                     <div className="flex items-center gap-sm shrink-0">
-                      <span className="text-[10px] font-mono text-error uppercase tracking-[0.04em]">Delete?</span>
+                      <span className="text-[11px] font-mono text-error">Delete?</span>
                       <button
                         onClick={() => handleDelete(tag.id)}
-                        className="text-[10px] font-mono text-error hover:text-error/70 cursor-pointer uppercase tracking-[0.04em] border border-error/40 px-sm py-[2px] rounded transition-colors"
+                        className="text-[11px] font-mono text-error hover:text-error/70 cursor-pointer border border-error/40 px-sm py-[2px] rounded transition-colors"
                       >Yes</button>
                       <button
                         onClick={() => setConfirmDelete(null)}
-                        className="text-[10px] font-mono text-on-surface-variant hover:text-on-surface cursor-pointer uppercase tracking-[0.04em]"
+                        className="text-[11px] font-mono text-on-surface-variant hover:text-on-surface cursor-pointer"
                       >No</button>
                     </div>
                   ) : (

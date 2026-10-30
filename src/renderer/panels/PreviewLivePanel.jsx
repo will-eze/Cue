@@ -768,7 +768,7 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
       ) : (
         // No content selected
         <div className="absolute inset-0 flex items-center justify-center">
-          <span className="text-label-sm font-label-sm uppercase tracking-widest text-outline-variant">
+          <span className="text-label-sm font-label-sm text-on-surface-variant/70">
             {emptyLabel}
           </span>
         </div>
@@ -786,7 +786,7 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
 
       {/* State badge */}
       <div className="absolute top-2 left-2 z-10">
-        <span className={`px-sm py-[2px] text-label-sm font-label-sm rounded font-bold uppercase tracking-widest ${
+        <span className={`px-sm py-[2px] text-label-sm font-label-sm rounded font-bold ${
           isLive ? 'bg-secondary text-on-secondary' : 'bg-primary text-on-primary'
         }`}>
           {isLive ? 'LIVE' : 'PREVIEW'}
@@ -797,7 +797,7 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
       {isLive && item && (
         <div className="absolute top-2 right-2 flex items-center gap-xs z-20 bg-secondary-container/80 border border-secondary/40 px-sm py-[2px] rounded">
           <span className="w-[5px] h-[5px] rounded-full bg-secondary dot-pulse block" />
-          <span className="text-label-sm font-label-sm text-on-secondary-container tracking-wider">ON AIR</span>
+          <span className="text-label-sm font-label-sm text-on-secondary-container">ON AIR</span>
         </div>
       )}
     </div>
@@ -942,7 +942,7 @@ export default function PreviewLivePanel({
                 variant="preview"
               />
             ) : (
-              <div className="flex items-center justify-center h-full text-label-sm font-label-sm text-outline-variant uppercase tracking-widest">
+              <div className="flex items-center justify-center h-full text-label-sm font-label-sm text-on-surface-variant/70">
                 Nothing in Preview
               </div>
             )}
@@ -975,10 +975,10 @@ export default function PreviewLivePanel({
                 <span className="material-symbols-outlined text-[14px] text-tertiary shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>
                   {liveMediaType === 'audio' ? 'volume_up' : 'movie'}
                 </span>
-                <span className="text-[9px] font-mono uppercase tracking-[0.05em] text-on-surface-variant truncate flex-1 min-w-0">
+                <span className="text-[11px] font-mono text-on-surface-variant truncate flex-1 min-w-0">
                   {liveMediaName}
                 </span>
-                <span className="text-[9px] font-mono text-on-surface-variant tabular-nums shrink-0">
+                <span className="text-[11px] font-mono text-on-surface-variant tabular-nums shrink-0">
                   {fmtClock(position)} / {mediaDuration ? fmtClock(mediaDuration) : '--:--'}
                 </span>
               </div>
@@ -1036,7 +1036,7 @@ export default function PreviewLivePanel({
                   value={playRate}
                   onChange={handleRate}
                   title="Playback speed"
-                  className={`h-6 rounded border bg-surface-container text-[10px] font-mono tabular-nums px-xs outline-none cursor-pointer shrink-0 transition-colors ${
+                  className={`h-6 rounded border bg-surface-container text-[11px] font-mono tabular-nums px-xs outline-none cursor-pointer shrink-0 transition-colors ${
                     playRate !== 1
                       ? 'border-primary/50 text-primary'
                       : 'border-outline-variant/30 text-on-surface-variant hover:border-primary/50'
@@ -1063,7 +1063,7 @@ export default function PreviewLivePanel({
                         key={ch.id}
                         onClick={() => onSetLiveChannelIdx?.(idx)}
                         title={`View ${ch.name}`}
-                        className={`flex items-center gap-xs px-sm h-6 rounded border text-[9px] font-mono uppercase tracking-[0.05em] transition-colors cursor-pointer flex-shrink-0 ${
+                        className={`flex items-center gap-xs px-sm h-6 rounded border text-[11px] font-mono transition-colors cursor-pointer flex-shrink-0 ${
                           isSelected
                             ? 'bg-primary/15 border-primary/50 text-primary'
                             : 'bg-surface-container border-outline-variant/30 text-on-surface-variant hover:border-outline-variant hover:text-on-surface'
@@ -1073,13 +1073,13 @@ export default function PreviewLivePanel({
                           <span className={`w-[5px] h-[5px] rounded-full flex-shrink-0 ${isSelected ? 'bg-tertiary' : 'bg-outline-variant'}`} />
                         )}
                         {!isNdi && (
-                          <span className="material-symbols-outlined text-[10px]" style={{ fontVariationSettings: "'FILL' 1" }}>
+                          <span className="material-symbols-outlined text-[11px]" style={{ fontVariationSettings: "'FILL' 1" }}>
                             monitor
                           </span>
                         )}
                         <span className="truncate max-w-[80px]">{ch.name}</span>
                         {isNdi && (
-                          <span className={`text-[8px] ${isSelected ? 'text-primary/60' : 'text-outline-variant'}`}>NDI</span>
+                          <span className={`text-[11px] ${isSelected ? 'text-primary/60' : 'text-on-surface-variant/70'}`}>NDI</span>
                         )}
                       </button>
                     );
@@ -1091,13 +1091,13 @@ export default function PreviewLivePanel({
                   <button
                     onClick={onToggleBareArmed}
                     title="Arm the bare transport keys (GO / Output / Clear). Disarmed, they're ignored so a stray keystroke can't air."
-                    className={`flex items-center gap-xs text-[9px] font-mono uppercase tracking-[0.05em] px-xs py-[2px] rounded border transition-colors cursor-pointer ${
+                    className={`flex items-center gap-xs text-[11px] font-mono px-xs py-[2px] rounded border transition-colors cursor-pointer ${
                       bareArmed
                         ? 'bg-tertiary/10 border-tertiary/40 text-tertiary'
                         : 'bg-surface-container border-outline-variant/30 text-on-surface-variant/60 hover:text-on-surface-variant'
                     }`}
                   >
-                    <span className="material-symbols-outlined text-[10px]">bolt</span>
+                    <span className="material-symbols-outlined text-[11px]">bolt</span>
                     Hotkeys {bareArmed ? 'ON' : 'OFF'}
                   </button>
                 )}
@@ -1105,13 +1105,13 @@ export default function PreviewLivePanel({
                   <button
                     onClick={onToggleJumpArmed}
                     title="Toggle Q/W/E… verse-jump keys for the live item"
-                    className={`flex items-center gap-xs text-[9px] font-mono uppercase tracking-[0.05em] px-xs py-[2px] rounded border transition-colors cursor-pointer ${
+                    className={`flex items-center gap-xs text-[11px] font-mono px-xs py-[2px] rounded border transition-colors cursor-pointer ${
                       jumpArmed
                         ? 'bg-tertiary/10 border-tertiary/40 text-tertiary'
                         : 'bg-surface-container border-outline-variant/30 text-on-surface-variant/60 hover:text-on-surface-variant'
                     }`}
                   >
-                    <span className="material-symbols-outlined text-[10px]">keyboard</span>
+                    <span className="material-symbols-outlined text-[11px]">keyboard</span>
                     Jump {jumpArmed ? 'ON' : 'OFF'}
                   </button>
                 )}
@@ -1128,7 +1128,7 @@ export default function PreviewLivePanel({
                 jumpKeys={jumpKeys}
               />
             ) : (
-              <div className="flex items-center justify-center h-full text-label-sm font-label-sm text-outline-variant uppercase tracking-widest">
+              <div className="flex items-center justify-center h-full text-label-sm font-label-sm text-on-surface-variant/70">
                 Nothing Live
               </div>
             )}

@@ -98,7 +98,7 @@ export default function ShortcutSettings() {
         </div>
         <button
           onClick={() => setShowAll(true)}
-          className="shrink-0 mt-xs px-md py-xs text-label-sm font-label-sm font-bold uppercase tracking-[0.05em] text-primary border border-primary/40 rounded-lg hover:bg-primary-container/20 active:scale-95 transition-all cursor-pointer flex items-center gap-xs"
+          className="shrink-0 mt-xs px-md py-xs text-label-sm font-label-sm font-bold text-primary border border-primary/40 rounded-lg hover:bg-primary-container/20 active:scale-95 transition-all cursor-pointer flex items-center gap-xs"
         >
           <span className="material-symbols-outlined text-[16px]">visibility</span>
           View All
@@ -108,7 +108,7 @@ export default function ShortcutSettings() {
       {/* Configurable bare transport keys */}
       <div className="bg-surface-container-low border border-outline-variant/30 rounded-xl overflow-hidden">
         <div className="px-md py-sm border-b border-outline-variant/20">
-          <span className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em]">
+          <span className="text-label-sm font-label-sm text-on-surface-variant">
             Transport Keys (bare — press without a modifier)
           </span>
         </div>
@@ -118,14 +118,14 @@ export default function ShortcutSettings() {
             className={`px-md py-sm flex items-center gap-lg ${i < ACTIONS.length - 1 ? 'border-b border-outline-variant/20' : ''}`}
           >
             <div className="w-40 shrink-0">
-              <p className="text-label-sm font-label-sm text-on-surface uppercase tracking-[0.05em]">{action.label}</p>
+              <p className="text-label-sm font-label-sm text-on-surface">{action.label}</p>
               <p className="text-[11px] text-on-surface-variant mt-[2px]">{action.desc}</p>
             </div>
             <input
               value={(keys[action.key] ?? '').toUpperCase()}
               onChange={(e) => handleKeyInput(action.key, e)}
               maxLength={2}
-              className="w-10 h-8 text-center text-label-sm font-mono text-on-surface bg-surface-container-lowest border border-outline-variant/50 rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 uppercase"
+              className="w-10 h-8 text-center text-label-sm font-mono text-on-surface bg-surface-container-lowest border border-outline-variant/50 rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary/30"
             />
           </div>
         ))}
@@ -147,7 +147,7 @@ export default function ShortcutSettings() {
           <span className={`absolute top-[3px] w-[18px] h-[18px] rounded-full bg-on-surface transition-all ${armBare ? 'left-[19px]' : 'left-[3px]'}`} />
         </button>
         <div className="flex-1">
-          <p className="text-label-sm font-label-sm text-on-surface uppercase tracking-[0.05em]">Arm bare GO / Clear / Output</p>
+          <p className="text-label-sm font-label-sm text-on-surface">Arm bare GO / Clear / Output</p>
           <p className="text-[11px] text-on-surface-variant mt-[2px]">
             When armed, a single press of the bare <span className="font-mono">GO</span>, <span className="font-mono">Esc</span> (Clear)
             or <span className="font-mono">Output Toggle</span> key goes straight to air. Disarm to lock those keys — a stray
@@ -167,7 +167,7 @@ export default function ShortcutSettings() {
           <span className={`absolute top-[3px] w-[18px] h-[18px] rounded-full bg-on-surface transition-all ${armJump ? 'left-[19px]' : 'left-[3px]'}`} />
         </button>
         <div className="flex-1">
-          <p className="text-label-sm font-label-sm text-on-surface uppercase tracking-[0.05em]">Arm verse-jump keys</p>
+          <p className="text-label-sm font-label-sm text-on-surface">Arm verse-jump keys</p>
           <p className="text-[11px] text-on-surface-variant mt-[2px]">
             When armed, the positional keys <span className="font-mono">Q W E R …</span> jump the
             LIVE item straight to slide 1, 2, 3 … and air it — direct on-air navigation instead of
@@ -177,12 +177,12 @@ export default function ShortcutSettings() {
       </div>
 
       <div className="flex items-center justify-between">
-        <p className="text-[11px] text-on-surface-variant/50 font-mono">
+        <p className="text-[11px] text-on-surface-variant/60 font-mono">
           Changes take effect after returning to Operator view.
         </p>
         <button
           onClick={handleSave}
-          className={`px-lg py-sm text-label-sm font-label-sm font-bold rounded-lg transition-all cursor-pointer uppercase tracking-[0.05em] ${
+          className={`px-lg py-sm text-label-sm font-label-sm font-bold rounded-lg transition-all cursor-pointer ${
             saved
               ? 'bg-tertiary-container text-on-tertiary-container'
               : 'bg-primary-container text-on-primary hover:brightness-110 active:scale-95'
@@ -199,7 +199,7 @@ function ReferenceCard({ title, rows }) {
   return (
     <div className="bg-surface-container-low border border-outline-variant/30 rounded-xl overflow-hidden">
       <div className="px-md py-sm border-b border-outline-variant/20">
-        <span className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em]">{title}</span>
+        <span className="text-label-sm font-label-sm text-on-surface-variant">{title}</span>
       </div>
       {rows.map((row, i) => (
         <div

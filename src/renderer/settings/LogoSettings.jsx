@@ -86,7 +86,7 @@ export default function LogoSettings() {
               />
             )
           ) : (
-            <span className="material-symbols-outlined text-outline-variant text-3xl">image</span>
+            <span className="material-symbols-outlined text-on-surface-variant/70 text-3xl">image</span>
           )}
         </div>
 
@@ -120,7 +120,7 @@ export default function LogoSettings() {
       {/* Scale mode */}
       <div className="bg-surface-container border border-outline-variant/30 rounded-xl p-md space-y-sm">
         <div>
-          <h4 className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em]">Logo Scale</h4>
+          <h4 className="text-label-sm font-label-sm text-on-surface-variant">Logo Scale</h4>
           <p className="text-body-sm text-on-surface-variant/70 mt-xs">
             How the logo image is sized on the output screen.
           </p>
@@ -145,7 +145,7 @@ export default function LogoSettings() {
 
       {channels.length > 0 && (
         <div className="bg-surface-container border border-outline-variant/30 rounded-xl p-md">
-          <h3 className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wider">Logo per output</h3>
+          <h3 className="text-label-sm font-label-sm text-on-surface-variant">Logo per output</h3>
           <p className="text-body-sm text-on-surface-variant/70 mt-xs mb-sm">
             Every output shows the logo above. Give one its own logo to override it here — useful when, say, a stage display needs a different mark than the auditorium screen.
           </p>
@@ -153,17 +153,17 @@ export default function LogoSettings() {
             {channels.map((ch) => (
               <div key={ch.id} className="flex items-center gap-sm py-xs">
                 <span className="text-body-md text-on-surface flex-1 min-w-0 truncate">{ch.name}</span>
-                <span className={`text-[11px] font-mono uppercase tracking-[0.04em] rounded px-xs py-[1px] border shrink-0 ${
+                <span className={`text-[11px] font-mono rounded px-xs py-[1px] border shrink-0 ${
                   ch.logo_override_id ? 'text-primary border-primary/30' : 'text-on-surface-variant/60 border-outline-variant/25'}`}>
                   {ch.logo_override_id ? 'Custom logo' : 'Global logo'}
                 </span>
                 <button onClick={() => handleSetChannelLogo(ch)}
-                  className="shrink-0 text-[10px] font-mono uppercase tracking-[0.04em] text-on-surface-variant hover:text-primary cursor-pointer">
+                  className="shrink-0 text-[11px] font-mono text-on-surface-variant hover:text-primary cursor-pointer">
                   Set…
                 </button>
                 {ch.logo_override_id && (
                   <button onClick={() => handleClearChannelLogo(ch)}
-                    className="shrink-0 text-[10px] font-mono uppercase tracking-[0.04em] text-on-surface-variant/40 hover:text-error cursor-pointer">
+                    className="shrink-0 text-[11px] font-mono text-on-surface-variant/60 hover:text-error cursor-pointer">
                     Reset
                   </button>
                 )}
@@ -193,7 +193,7 @@ function ScaleOption({ active, onClick, icon, label, description }) {
         >
           {icon}
         </span>
-        <span className={`text-label-sm font-label-sm font-bold uppercase tracking-[0.05em] ${active ? 'text-primary' : 'text-on-surface'}`}>
+        <span className={`text-label-sm font-label-sm font-bold ${active ? 'text-primary' : 'text-on-surface'}`}>
           {label}
         </span>
         {active && (

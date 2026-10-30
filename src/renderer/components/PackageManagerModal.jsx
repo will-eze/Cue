@@ -108,7 +108,7 @@ export default function PackageManagerModal({ onClose }) {
       >
         <div className="flex items-center gap-sm px-lg h-12 bg-surface-container-high border-b border-outline-variant/30 shrink-0">
           <span className="material-symbols-outlined text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>inventory_2</span>
-          <span className="text-label-sm font-label-sm uppercase tracking-widest text-on-surface">Package Manager</span>
+          <span className="text-label-sm font-label-sm text-on-surface">Package Manager</span>
           <button
             onClick={onClose}
             disabled={!!busyId}
@@ -256,7 +256,7 @@ function PackageCard({
               <div className="h-1.5 rounded-full bg-surface-container-high overflow-hidden">
                 <div className="h-full bg-primary transition-all" style={{ width: `${pct}%` }} />
               </div>
-              <span className="block text-right text-[10px] font-label-sm text-primary tabular-nums mt-[3px]">{pct}%</span>
+              <span className="block text-right text-[11px] font-label-sm text-primary tabular-nums mt-[3px]">{pct}%</span>
             </div>
           ) : busy ? (
             <span className="text-label-sm font-label-sm text-primary animate-pulse">Working…</span>
@@ -272,7 +272,7 @@ function PackageCard({
                 </button>
               )}
               {!pkg.removable && !pkg.managed && (
-                <span className="text-[10px] font-label-sm text-on-surface-variant/60 text-right">
+                <span className="text-[11px] font-label-sm text-on-surface-variant/60 text-right">
                   {pkg.kind === 'external' ? 'System install' : 'On PATH'}
                 </span>
               )}
@@ -326,13 +326,13 @@ function PackageCard({
 function StatusPill({ installed, managed }) {
   if (installed) {
     return (
-      <span className="inline-flex items-center gap-xs px-xs h-5 rounded-full bg-tertiary/15 text-tertiary text-[10px] font-label-sm uppercase tracking-[0.06em]">
+      <span className="inline-flex items-center gap-xs px-xs h-5 rounded-full bg-tertiary/15 text-tertiary text-[11px] font-label-sm">
         <span className="material-symbols-outlined text-[12px]">check_circle</span>Installed
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center px-xs h-5 rounded-full bg-surface-container-highest text-on-surface-variant/70 text-[10px] font-label-sm uppercase tracking-[0.06em]">
+    <span className="inline-flex items-center px-xs h-5 rounded-full bg-surface-container-highest text-on-surface-variant/70 text-[11px] font-label-sm">
       Not installed
     </span>
   );
@@ -448,7 +448,7 @@ function GpuPackageCard({ anyBusy, onBusy, busyId }) {
               <div className="h-1.5 rounded-full bg-surface-container-high overflow-hidden">
                 <div className="h-full bg-primary transition-all" style={{ width: `${percent}%` }} />
               </div>
-              <span className="block text-right text-[10px] font-label-sm text-primary tabular-nums mt-[3px]">{percent}%</span>
+              <span className="block text-right text-[11px] font-label-sm text-primary tabular-nums mt-[3px]">{percent}%</span>
             </div>
           ) : busy ? (
             <span className="text-label-sm font-label-sm text-primary animate-pulse">Working…</span>

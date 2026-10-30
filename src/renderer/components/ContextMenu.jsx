@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useModalGuard } from '../utils/modalGuard';
 
 const ITEM_CLS = (item) =>
-  `w-full text-left px-md py-sm text-label-sm font-label-sm uppercase tracking-[0.05em] transition-colors flex items-center justify-between gap-sm ${
+  `w-full text-left px-md py-sm text-label-sm font-label-sm transition-colors flex items-center justify-between gap-sm ${
     item.disabled
       ? 'opacity-40 cursor-not-allowed text-on-surface-variant'
       : item.danger
@@ -99,14 +99,14 @@ export default function ContextMenu({ x, y, items, onClose }) {
           if (confirmIdx === i) {
             return (
               <div key={i} className="flex items-center gap-xs px-md py-sm">
-                <span className="text-[10px] font-mono text-error uppercase tracking-[0.04em] flex-1 truncate">Delete?</span>
+                <span className="text-[11px] font-mono text-error flex-1 truncate">Delete?</span>
                 <button
                   onClick={() => { item.onClick(); onCloseRef.current(); }}
-                  className="text-[10px] font-mono text-error hover:text-error/70 cursor-pointer uppercase tracking-[0.04em] border border-error/40 px-sm py-[2px] rounded transition-colors shrink-0"
+                  className="text-[11px] font-mono text-error hover:text-error/70 cursor-pointer border border-error/40 px-sm py-[2px] rounded transition-colors shrink-0"
                 >Yes</button>
                 <button
                   onClick={() => setConfirmIdx(null)}
-                  className="text-[10px] font-mono text-on-surface-variant hover:text-on-surface cursor-pointer uppercase tracking-[0.04em] transition-colors shrink-0"
+                  className="text-[11px] font-mono text-on-surface-variant hover:text-on-surface cursor-pointer transition-colors shrink-0"
                 >No</button>
               </div>
             );

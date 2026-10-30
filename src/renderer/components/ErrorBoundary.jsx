@@ -44,13 +44,13 @@ export default class ErrorBoundary extends React.Component {
             <div className="flex items-center justify-end gap-sm">
               <button
                 onClick={() => this.setState({ error: null })}
-                className="px-md py-xs text-label-sm font-label-sm font-bold text-on-surface-variant border border-outline-variant/40 rounded-lg hover:text-on-surface hover:border-outline-variant transition-all cursor-pointer uppercase tracking-[0.05em]"
+                className="px-md py-xs text-label-sm font-label-sm font-bold text-on-surface-variant border border-outline-variant/40 rounded-lg hover:text-on-surface hover:border-outline-variant transition-all cursor-pointer"
               >
                 Try again
               </button>
               <button
                 onClick={() => window.location.reload()}
-                className="px-lg py-xs text-label-sm font-label-sm font-bold bg-primary-container text-on-primary rounded-lg hover:brightness-110 active:scale-95 transition-all cursor-pointer uppercase tracking-[0.05em]"
+                className="px-lg py-xs text-label-sm font-label-sm font-bold bg-primary-container text-on-primary rounded-lg hover:brightness-110 active:scale-95 transition-all cursor-pointer"
               >
                 Reload UI
               </button>

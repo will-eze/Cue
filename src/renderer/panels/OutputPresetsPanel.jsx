@@ -141,8 +141,8 @@ export default function OutputPresetsPanel({ onBackgroundDefaultChanged }) {
     <div className="flex flex-col h-full bg-surface-container-low min-h-0">
       <div className="flex items-center gap-sm px-md h-11 border-b border-outline-variant/30 shrink-0">
         <span className="material-symbols-outlined text-[18px] text-primary shrink-0">tune</span>
-        <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant shrink-0">Output Presets</span>
-        <span className="text-[10px] font-mono text-on-surface-variant/50 normal-case tracking-normal ml-xs min-w-0 truncate">save &amp; recall your output rig</span>
+        <span className="text-label-sm font-label-sm text-on-surface-variant shrink-0">Output Presets</span>
+        <span className="text-[11px] font-mono text-on-surface-variant/60 normal-case tracking-normal ml-xs min-w-0 truncate">save &amp; recall your output rig</span>
         <button onClick={() => setEditor({})}
           className="ml-auto shrink-0 flex items-center gap-xs px-md py-xs rounded text-label-sm font-label-sm bg-primary text-on-primary font-bold hover:brightness-110 cursor-pointer">
           <span className="material-symbols-outlined text-[14px]">add</span> New Preset
@@ -151,14 +151,14 @@ export default function OutputPresetsPanel({ onBackgroundDefaultChanged }) {
 
       <div className="flex-1 overflow-y-auto custom-scrollbar p-md min-h-0">
         {presets.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-xl gap-sm text-outline-variant">
+          <div className="flex flex-col items-center justify-center py-xl gap-sm text-on-surface-variant/70">
             <span className="material-symbols-outlined text-4xl">tune</span>
-            <span className="text-label-sm font-label-sm uppercase tracking-widest">No output presets yet</span>
+            <span className="text-label-sm font-label-sm">No output presets yet</span>
             <span className="text-body-md text-on-surface-variant/60 max-w-[440px] text-center">
               Set your output channels the way you want (which are on, their screens, NDI, stream),
               then capture them into a preset to re-rig your outputs in one tap.
             </span>
-            <button onClick={() => setEditor({})} className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-primary hover:underline cursor-pointer">Create one</button>
+            <button onClick={() => setEditor({})} className="text-label-sm font-label-sm text-primary hover:underline cursor-pointer">Create one</button>
           </div>
         ) : (
           <div className="grid gap-md" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
@@ -199,11 +199,11 @@ function PresetCard({ preset, applied, onTake, onEdit, onDelete }) {
         <div className="flex items-center gap-xs opacity-0 group-hover:opacity-100 transition-opacity">
           {confirmingDelete ? (
             <>
-              <span className="text-[10px] font-mono text-error uppercase tracking-[0.04em] shrink-0">Delete?</span>
+              <span className="text-[11px] font-mono text-error shrink-0">Delete?</span>
               <button onClick={() => { setConfirmingDelete(false); onDelete(); }}
-                className="text-[10px] font-mono text-error hover:text-error/70 cursor-pointer uppercase tracking-[0.04em] border border-error/40 px-sm py-[2px] rounded transition-colors">Yes</button>
+                className="text-[11px] font-mono text-error hover:text-error/70 cursor-pointer border border-error/40 px-sm py-[2px] rounded transition-colors">Yes</button>
               <button onClick={() => setConfirmingDelete(false)}
-                className="text-[10px] font-mono text-on-surface-variant hover:text-on-surface cursor-pointer uppercase tracking-[0.04em] transition-colors">No</button>
+                className="text-[11px] font-mono text-on-surface-variant hover:text-on-surface cursor-pointer transition-colors">No</button>
             </>
           ) : (
             <>
@@ -220,23 +220,23 @@ function PresetCard({ preset, applied, onTake, onEdit, onDelete }) {
 
       <div className="px-md py-sm flex flex-wrap gap-xs min-h-[2.2rem]">
         {inc.channels && total > 0 && (
-          <span className="flex items-center gap-xs px-sm py-[2px] rounded bg-tertiary/10 border border-tertiary/30 text-tertiary text-[10px] font-label-sm uppercase tracking-[0.04em]">
+          <span className="flex items-center gap-xs px-sm py-[2px] rounded bg-tertiary/10 border border-tertiary/30 text-tertiary text-[11px] font-label-sm">
             <span className="material-symbols-outlined text-[12px]">power_settings_new</span>{on}/{total} on
           </span>
         )}
         {layers.filter((l) => l.id !== 'channels').map((l) => (
-          <span key={l.id} className="flex items-center gap-xs px-sm py-[2px] rounded bg-surface-container-high text-on-surface-variant text-[10px] font-label-sm uppercase tracking-[0.04em]">
+          <span key={l.id} className="flex items-center gap-xs px-sm py-[2px] rounded bg-surface-container-high text-on-surface-variant text-[11px] font-label-sm">
             <span className="material-symbols-outlined text-[12px]">{l.icon}</span>{l.label}
           </span>
         ))}
         {layers.length === 0 && (
-          <span className="px-sm py-[2px] rounded text-on-surface-variant/40 text-[10px] font-label-sm uppercase tracking-[0.04em]">Empty preset</span>
+          <span className="px-sm py-[2px] rounded text-on-surface-variant/60 text-[11px] font-label-sm">Empty preset</span>
         )}
       </div>
 
       <div className="px-md pb-md">
         <button onClick={onTake}
-          className={`w-full px-md py-1.5 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] font-bold cursor-pointer transition-colors ${
+          className={`w-full px-md py-1.5 rounded text-label-sm font-label-sm font-bold cursor-pointer transition-colors ${
             applied ? 'bg-tertiary text-on-tertiary' : 'bg-tertiary-container text-on-tertiary hover:brightness-110'
           }`}>
           {applied ? 'Recalled ✓' : 'Recall'}
@@ -309,7 +309,7 @@ function PresetEditor({ preset, onClose, onSaved }) {
       <div className="w-full max-w-[520px] bg-surface-container-high rounded-xl border border-outline-variant/40 flex flex-col max-h-full overflow-hidden" onMouseDown={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-sm px-lg h-12 border-b border-outline-variant/30 shrink-0">
           <span className="material-symbols-outlined text-[18px] text-primary">tune</span>
-          <span className="text-label-md font-label-sm uppercase tracking-[0.05em] text-on-surface">{preset ? 'Edit Output Preset' : 'New Output Preset'}</span>
+          <span className="text-label-md font-label-sm text-on-surface">{preset ? 'Edit Output Preset' : 'New Output Preset'}</span>
           <button onClick={onClose} className="ml-auto text-on-surface-variant/60 hover:text-on-surface cursor-pointer">
             <span className="material-symbols-outlined text-[18px]">close</span>
           </button>
@@ -321,16 +321,16 @@ function PresetEditor({ preset, onClose, onSaved }) {
             <button onClick={captureNow} disabled={busy}
               className="flex items-center justify-center gap-sm px-md py-sm rounded-lg border border-primary/50 bg-primary/10 text-primary hover:bg-primary/15 cursor-pointer disabled:opacity-50">
               <span className="material-symbols-outlined text-[18px]">photo_camera</span>
-              <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] font-bold">{captured ? 'Re-capture current output' : 'Capture current output'}</span>
+              <span className="text-label-sm font-label-sm font-bold">{captured ? 'Re-capture current output' : 'Capture current output'}</span>
             </button>
-            <div className="text-[11px] font-mono text-on-surface-variant/50">
+            <div className="text-[11px] font-mono text-on-surface-variant/60">
               {captured ? <span className="text-tertiary">Snapshotted the current output rig.</span> : 'Snapshot which channels are on, their displays/NDI, stream and background settings.'}
             </div>
           </div>
 
           {/* Name */}
           <label className="flex flex-col gap-xs">
-            <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant">Name</span>
+            <span className="text-label-sm font-label-sm text-on-surface-variant">Name</span>
             <input value={name} onChange={(e) => setName(e.target.value)} autoFocus placeholder="Live Broadcast"
               className="bg-surface-container-lowest border border-outline-variant/40 rounded-lg px-sm py-1.5 text-body-md text-on-surface focus:outline-none focus:border-primary" />
           </label>
@@ -338,8 +338,8 @@ function PresetEditor({ preset, onClose, onSaved }) {
           {/* Layer include checklist */}
           <div className="flex flex-col gap-sm">
             <div className="flex items-center">
-              <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant">Include layers</span>
-              <button onClick={toggleAll} className="ml-auto text-[10px] font-mono uppercase tracking-[0.04em] text-primary hover:underline cursor-pointer">
+              <span className="text-label-sm font-label-sm text-on-surface-variant">Include layers</span>
+              <button onClick={toggleAll} className="ml-auto text-[11px] font-mono text-primary hover:underline cursor-pointer">
                 {allOn ? 'Clear all' : 'Select all'}
               </button>
             </div>
@@ -351,7 +351,7 @@ function PresetEditor({ preset, onClose, onSaved }) {
                   <span className="material-symbols-outlined text-[16px] text-on-surface-variant mt-[1px]">{l.icon}</span>
                   <span className="flex flex-col">
                     <span className="text-body-md text-on-surface">{l.label}</span>
-                    <span className="text-[11px] font-mono text-on-surface-variant/50">{l.hint}</span>
+                    <span className="text-[11px] font-mono text-on-surface-variant/60">{l.hint}</span>
                   </span>
                 </label>
               ))}
@@ -361,10 +361,10 @@ function PresetEditor({ preset, onClose, onSaved }) {
           {/* Channel preview */}
           {includes.channels && data?.channels?.length > 0 && (
             <div className="flex flex-col gap-xs">
-              <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant">Channels in this preset</span>
+              <span className="text-label-sm font-label-sm text-on-surface-variant">Channels in this preset</span>
               <div className="rounded-lg border border-outline-variant/30 bg-surface-container p-md flex flex-wrap gap-xs">
                 {data.channels.map((c) => (
-                  <span key={c.id} className={`flex items-center gap-xs px-sm py-[2px] rounded text-[10px] font-label-sm uppercase tracking-[0.04em] ${
+                  <span key={c.id} className={`flex items-center gap-xs px-sm py-[2px] rounded text-[11px] font-label-sm ${
                     c.active ? 'bg-tertiary/10 border border-tertiary/30 text-tertiary' : 'bg-surface-container-high text-on-surface-variant/60'
                   }`}>
                     <span className="material-symbols-outlined text-[12px]">{c.active ? 'check_circle' : 'radio_button_unchecked'}</span>
@@ -377,9 +377,9 @@ function PresetEditor({ preset, onClose, onSaved }) {
         </div>
 
         <div className="flex items-center gap-sm px-lg h-14 border-t border-outline-variant/30 shrink-0">
-          <button onClick={onClose} className="ml-auto px-md py-1.5 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant hover:text-on-surface cursor-pointer">Cancel</button>
+          <button onClick={onClose} className="ml-auto px-md py-1.5 rounded text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface cursor-pointer">Cancel</button>
           <button onClick={save} disabled={!name.trim() || !captured}
-            className="px-lg py-1.5 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] font-bold bg-primary text-on-primary hover:brightness-110 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">Save</button>
+            className="px-lg py-1.5 rounded text-label-sm font-label-sm font-bold bg-primary text-on-primary hover:brightness-110 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">Save</button>
         </div>
       </div>
     </div>
@@ -392,7 +392,7 @@ function ConfirmDisruptive({ reasons, onCancel, onConfirm }) {
       <div className="w-full max-w-[420px] bg-surface-container-high rounded-xl border border-secondary/40 flex flex-col overflow-hidden" onMouseDown={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-sm px-lg h-12 border-b border-outline-variant/30 shrink-0">
           <span className="material-symbols-outlined text-[18px] text-secondary">warning</span>
-          <span className="text-label-md font-label-sm uppercase tracking-[0.05em] text-on-surface">Reconfigure live output?</span>
+          <span className="text-label-md font-label-sm text-on-surface">Reconfigure live output?</span>
         </div>
         <div className="p-lg flex flex-col gap-sm">
           <span className="text-body-md text-on-surface-variant">This preset changes outputs that are currently on air:</span>
@@ -405,9 +405,9 @@ function ConfirmDisruptive({ reasons, onCancel, onConfirm }) {
           </ul>
         </div>
         <div className="flex items-center gap-sm px-lg h-14 border-t border-outline-variant/30 shrink-0">
-          <button onClick={onCancel} className="ml-auto px-md py-1.5 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant hover:text-on-surface cursor-pointer">Cancel</button>
+          <button onClick={onCancel} className="ml-auto px-md py-1.5 rounded text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface cursor-pointer">Cancel</button>
           <button onClick={onConfirm}
-            className="px-lg py-1.5 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] font-bold bg-secondary text-on-secondary hover:brightness-110 cursor-pointer">Reconfigure</button>
+            className="px-lg py-1.5 rounded text-label-sm font-label-sm font-bold bg-secondary text-on-secondary hover:brightness-110 cursor-pointer">Reconfigure</button>
         </div>
       </div>
     </div>

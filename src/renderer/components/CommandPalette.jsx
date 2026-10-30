@@ -112,9 +112,9 @@ export default function CommandPalette({ onClose, onAddSong, onAddScripture, onA
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onKey}
             placeholder="Search songs, scripture, scenes, presentations, media…"
-            className="flex-1 h-12 bg-transparent text-body-md text-on-surface placeholder:text-on-surface-variant/50 outline-none"
+            className="flex-1 h-12 bg-transparent text-body-md text-on-surface placeholder:text-on-surface-variant/60 outline-none"
           />
-          <span className="text-[11px] text-on-surface-variant/50 font-mono shrink-0">{isMac ? '⌘' : 'Ctrl'}K</span>
+          <span className="text-[11px] text-on-surface-variant/60 font-mono shrink-0">{isMac ? '⌘' : 'Ctrl'}K</span>
         </div>
         <div ref={listRef} className="max-h-[50vh] overflow-auto py-xs">
           {results.length === 0 ? (
@@ -122,7 +122,7 @@ export default function CommandPalette({ onClose, onAddSong, onAddScripture, onA
               <p className="px-md py-lg text-center text-body-sm text-on-surface-variant/60">No matches</p>
             ) : (
               <div className="px-md py-md">
-                <p className="text-[10px] font-label-sm text-on-surface-variant/50 uppercase tracking-[0.08em] mb-sm">Keyboard Shortcuts</p>
+                <p className="text-[11px] font-label-sm text-on-surface-variant/60 mb-sm">Keyboard Shortcuts</p>
                 <div className="grid grid-cols-2 gap-x-lg gap-y-xs text-[11px] text-on-surface-variant">
                   {[
                     [isMac ? '⌘G / G' : 'Ctrl+G / G', 'GO (send preview live)'],
@@ -137,12 +137,12 @@ export default function CommandPalette({ onClose, onAddSong, onAddScripture, onA
                     ['`', 'Stage controls'],
                   ].map(([key, desc]) => (
                     <div key={key} className="flex items-center gap-sm">
-                      <span className="font-mono text-on-surface bg-surface-container-high border border-outline-variant/30 rounded px-xs py-[1px] text-[10px] shrink-0">{key}</span>
+                      <span className="font-mono text-on-surface bg-surface-container-high border border-outline-variant/30 rounded px-xs py-[1px] text-[11px] shrink-0">{key}</span>
                       <span className="text-on-surface-variant/70">{desc}</span>
                     </div>
                   ))}
                 </div>
-                <p className="text-[10px] text-on-surface-variant/40 mt-sm">Type to search songs, scripture (e.g. "John 3:16"), scenes, presentations, and media.</p>
+                <p className="text-[11px] text-on-surface-variant/60 mt-sm">Type to search songs, scripture (e.g. "John 3:16"), scenes, presentations, and media.</p>
               </div>
             )
           ) : (
@@ -151,7 +151,7 @@ export default function CommandPalette({ onClose, onAddSong, onAddScripture, onA
               return (
                 <React.Fragment key={r.key}>
                   {showCat && (
-                    <p className="px-md pt-sm pb-[2px] text-label-sm font-label-sm text-on-surface-variant/50 uppercase tracking-[0.08em]">{r.category}</p>
+                    <p className="px-md pt-sm pb-[2px] text-label-sm font-label-sm text-on-surface-variant/60">{r.category}</p>
                   )}
                   <button
                     data-idx={i}
@@ -164,7 +164,7 @@ export default function CommandPalette({ onClose, onAddSong, onAddScripture, onA
                       <span className="block text-body-sm text-on-surface truncate">{r.label}</span>
                       {r.sublabel && <span className="block text-[11px] text-on-surface-variant/60 truncate">{r.sublabel}</span>}
                     </span>
-                    {i === sel && <span className="material-symbols-outlined text-[16px] text-on-surface-variant/50 shrink-0">keyboard_return</span>}
+                    {i === sel && <span className="material-symbols-outlined text-[16px] text-on-surface-variant/60 shrink-0">keyboard_return</span>}
                   </button>
                 </React.Fragment>
               );

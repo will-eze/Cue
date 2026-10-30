@@ -79,7 +79,7 @@ export default function RemoteSettings() {
         {/* Enable */}
         <div className="px-md py-sm border-b border-outline-variant/20 flex items-center gap-lg">
           <div className="w-44 shrink-0">
-            <p className="text-label-sm font-label-sm text-on-surface uppercase tracking-[0.05em]">Remote Server</p>
+            <p className="text-label-sm font-label-sm text-on-surface">Remote Server</p>
             <p className="text-[11px] text-on-surface-variant mt-[2px]">
               {cfg.running ? 'Running' : 'Stopped'}
             </p>
@@ -87,7 +87,7 @@ export default function RemoteSettings() {
           <Toggle on={enabled} disabled={busy} onClick={() => apply({ enabled: !enabled })} />
           <span className="flex items-center gap-xs ml-auto">
             <span className={`w-[6px] h-[6px] rounded-full shrink-0 ${cfg.running ? 'bg-tertiary' : 'bg-outline-variant'}`} />
-            <span className={`text-label-sm font-mono uppercase tracking-[0.05em] ${cfg.running ? 'text-tertiary' : 'text-on-surface-variant/50'}`}>
+            <span className={`text-label-sm font-mono ${cfg.running ? 'text-tertiary' : 'text-on-surface-variant/60'}`}>
               {cfg.running ? 'Online' : 'Offline'}
             </span>
           </span>
@@ -96,7 +96,7 @@ export default function RemoteSettings() {
         {/* Port */}
         <div className="px-md py-sm border-b border-outline-variant/20 flex items-center gap-lg">
           <div className="w-44 shrink-0">
-            <p className="text-label-sm font-label-sm text-on-surface uppercase tracking-[0.05em]">Port</p>
+            <p className="text-label-sm font-label-sm text-on-surface">Port</p>
             <p className="text-[11px] text-on-surface-variant mt-[2px]">TCP port to listen on</p>
           </div>
           <input
@@ -112,7 +112,7 @@ export default function RemoteSettings() {
         {/* Allow LAN */}
         <div className="px-md py-sm flex items-center gap-lg">
           <div className="w-44 shrink-0">
-            <p className="text-label-sm font-label-sm text-on-surface uppercase tracking-[0.05em]">Allow LAN Access</p>
+            <p className="text-label-sm font-label-sm text-on-surface">Allow LAN Access</p>
             <p className="text-[11px] text-on-surface-variant mt-[2px]">
               Bind all interfaces so other devices can connect
             </p>
@@ -131,11 +131,11 @@ export default function RemoteSettings() {
       {enabled && cfg.token && (
         <div className="bg-surface-container-low border border-outline-variant/30 rounded-xl overflow-hidden">
           <div className="px-md py-sm border-b border-outline-variant/20 flex items-center justify-between">
-            <span className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em]">Pairing</span>
+            <span className="text-label-sm font-label-sm text-on-surface-variant">Pairing</span>
             <button
               onClick={regenerate}
               disabled={busy}
-              className="text-[11px] font-mono uppercase tracking-[0.05em] text-on-surface-variant hover:text-error transition-colors cursor-pointer flex items-center gap-xs disabled:opacity-40"
+              className="text-[11px] font-mono text-on-surface-variant hover:text-error transition-colors cursor-pointer flex items-center gap-xs disabled:opacity-40"
             >
               <span className="material-symbols-outlined text-[14px]">autorenew</span>
               Regenerate Token
@@ -144,7 +144,7 @@ export default function RemoteSettings() {
 
           {/* Token */}
           <div className="px-md py-sm border-b border-outline-variant/20">
-            <p className="text-[10px] font-mono uppercase tracking-[0.1em] text-outline mb-xs">Token</p>
+            <p className="text-[11px] font-mono text-outline mb-xs">Token</p>
             <div className="flex items-center gap-sm">
               <code className="flex-1 min-w-0 truncate text-label-sm font-mono text-on-surface bg-surface-container-lowest border border-outline-variant/40 rounded-lg px-sm py-[6px]">
                 {cfg.token}
@@ -155,7 +155,7 @@ export default function RemoteSettings() {
 
           {/* Connect URL(s) */}
           <div className="px-md py-sm">
-            <p className="text-[10px] font-mono uppercase tracking-[0.1em] text-outline mb-xs">
+            <p className="text-[11px] font-mono text-outline mb-xs">
               Open on a phone (token included)
             </p>
             <div className="flex items-center gap-sm">
@@ -187,7 +187,7 @@ export default function RemoteSettings() {
       <div className="bg-surface-container-low border border-outline-variant/30 rounded-xl overflow-hidden">
         <div className="px-md py-sm border-b border-outline-variant/20 flex items-center gap-lg">
           <div className="w-44 shrink-0">
-            <p className="text-label-sm font-label-sm text-on-surface uppercase tracking-[0.05em]">Remote Output</p>
+            <p className="text-label-sm font-label-sm text-on-surface">Remote Output</p>
             <p className="text-[11px] text-on-surface-variant mt-[2px]">
               Mirror the live program (with audio) to a phone or laptop
             </p>
@@ -195,7 +195,7 @@ export default function RemoteSettings() {
           <Toggle on={cfg.outputEnabled} disabled={busy} onClick={() => apply({ outputEnabled: !cfg.outputEnabled })} />
           <span className="flex items-center gap-xs ml-auto">
             <span className={`w-[6px] h-[6px] rounded-full shrink-0 ${cfg.outputEnabled && cfg.running ? 'bg-tertiary' : 'bg-outline-variant'}`} />
-            <span className={`text-label-sm font-mono uppercase tracking-[0.05em] ${cfg.outputEnabled && cfg.running ? 'text-tertiary' : 'text-on-surface-variant/50'}`}>
+            <span className={`text-label-sm font-mono ${cfg.outputEnabled && cfg.running ? 'text-tertiary' : 'text-on-surface-variant/60'}`}>
               {cfg.outputEnabled && cfg.running ? 'Live' : 'Off'}
             </span>
           </span>
@@ -204,18 +204,18 @@ export default function RemoteSettings() {
         {cfg.outputEnabled && viewUrl && (
           <>
             <div className="px-md py-sm border-b border-outline-variant/20 flex items-center justify-between">
-              <span className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em]">View Link</span>
+              <span className="text-label-sm font-label-sm text-on-surface-variant">View Link</span>
               <button
                 onClick={regenerateView}
                 disabled={busy}
-                className="text-[11px] font-mono uppercase tracking-[0.05em] text-on-surface-variant hover:text-error transition-colors cursor-pointer flex items-center gap-xs disabled:opacity-40"
+                className="text-[11px] font-mono text-on-surface-variant hover:text-error transition-colors cursor-pointer flex items-center gap-xs disabled:opacity-40"
               >
                 <span className="material-symbols-outlined text-[14px]">autorenew</span>
                 Regenerate Link
               </button>
             </div>
             <div className="px-md py-sm">
-              <p className="text-[10px] font-mono uppercase tracking-[0.1em] text-outline mb-xs">
+              <p className="text-[11px] font-mono text-outline mb-xs">
                 Scan or open to watch the program (view-only)
               </p>
               <div className="flex items-center gap-sm">
@@ -242,7 +242,7 @@ export default function RemoteSettings() {
       {enabled && (
         <div className="bg-surface-container-low border border-outline-variant/30 rounded-xl overflow-hidden">
           <div className="px-md py-sm border-b border-outline-variant/20">
-            <span className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em]">
+            <span className="text-label-sm font-label-sm text-on-surface-variant">
               HTTP API (Stream Deck / Companion)
             </span>
           </div>
@@ -307,7 +307,7 @@ function CopyBtn({ copied, onClick }) {
     <button
       onClick={onClick}
       title="Copy"
-      className={`h-8 px-sm shrink-0 rounded-lg border text-[11px] font-mono uppercase tracking-[0.05em] transition-colors cursor-pointer flex items-center gap-xs ${
+      className={`h-8 px-sm shrink-0 rounded-lg border text-[11px] font-mono transition-colors cursor-pointer flex items-center gap-xs ${
         copied
           ? 'bg-tertiary-container/60 border-tertiary/50 text-tertiary'
           : 'bg-surface-container-high border-outline-variant/40 text-on-surface-variant hover:text-on-surface hover:border-outline-variant'
@@ -322,7 +322,7 @@ function CopyBtn({ copied, onClick }) {
 function ApiRow({ method, path, desc }) {
   return (
     <div className="flex items-center gap-sm">
-      <span className="text-[10px] font-mono font-bold text-tertiary bg-tertiary-container/30 border border-tertiary/30 rounded px-[6px] py-[2px] shrink-0">
+      <span className="text-[11px] font-mono font-bold text-tertiary bg-tertiary-container/30 border border-tertiary/30 rounded px-[6px] py-[2px] shrink-0">
         {method}
       </span>
       <code className="text-label-sm font-mono text-on-surface truncate">{path}</code>

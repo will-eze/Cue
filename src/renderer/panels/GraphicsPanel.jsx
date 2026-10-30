@@ -236,20 +236,20 @@ export default function GraphicsPanel({ activeServiceId }) {
       {/* Toolbar */}
       <div className="flex items-center gap-sm px-md h-11 border-b border-outline-variant/30 shrink-0">
         <span className="material-symbols-outlined text-[18px] text-primary shrink-0">branding_watermark</span>
-        <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant min-w-0 truncate">Broadcast Graphics</span>
+        <span className="text-label-sm font-label-sm text-on-surface-variant min-w-0 truncate">Broadcast Graphics</span>
 
         {/* Live destination override — Default, or any combination of kinds */}
         <div className="ml-md shrink-0 flex items-center gap-[2px] bg-surface-container rounded-lg p-[3px]" title="Where graphics are sent — In-Room = screens, Online = NDI, Stream = the broadcast composite. Combine any.">
-          <span className="material-symbols-outlined text-[14px] text-on-surface-variant/50 ml-1">send</span>
+          <span className="material-symbols-outlined text-[14px] text-on-surface-variant/60 ml-1">send</span>
           <button onClick={() => { setDest([]); localStorage.setItem('cue.graphics.destOverride', '[]'); }}
-            className={`flex items-center gap-xs px-sm py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] transition-colors cursor-pointer ${
+            className={`flex items-center gap-xs px-sm py-1 rounded text-label-sm font-label-sm transition-colors cursor-pointer ${
               dest.length === 0 ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'
             }`}>
             <span className="material-symbols-outlined text-[13px]">tune</span>Default
           </button>
           {KIND_OPTS.map((d) => (
             <button key={d.id} onClick={() => toggleDest(d.id)}
-              className={`flex items-center gap-xs px-sm py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] transition-colors cursor-pointer ${
+              className={`flex items-center gap-xs px-sm py-1 rounded text-label-sm font-label-sm transition-colors cursor-pointer ${
                 dest.includes(d.id) ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'
               }`}>
               <span className="material-symbols-outlined text-[13px]">{d.icon}</span>{d.label}
@@ -261,15 +261,15 @@ export default function GraphicsPanel({ activeServiceId }) {
           {anyLive && (
             confirmClearAll ? (
               <div className="flex items-center gap-xs">
-                <span className="text-[10px] font-mono text-error uppercase tracking-[0.04em] shrink-0">Clear all?</span>
+                <span className="text-[11px] font-mono text-error shrink-0">Clear all?</span>
                 <button onClick={() => { setConfirmClearAll(false); clearAll(); }}
-                  className="text-[10px] font-mono text-error hover:text-error/70 cursor-pointer uppercase tracking-[0.04em] border border-error/40 px-sm py-[2px] rounded transition-colors">Yes</button>
+                  className="text-[11px] font-mono text-error hover:text-error/70 cursor-pointer border border-error/40 px-sm py-[2px] rounded transition-colors">Yes</button>
                 <button onClick={() => setConfirmClearAll(false)}
-                  className="text-[10px] font-mono text-on-surface-variant hover:text-on-surface cursor-pointer uppercase tracking-[0.04em] transition-colors">No</button>
+                  className="text-[11px] font-mono text-on-surface-variant hover:text-on-surface cursor-pointer transition-colors">No</button>
               </div>
             ) : (
               <button onClick={() => setConfirmClearAll(true)}
-                className="flex items-center gap-xs px-md py-xs rounded text-label-sm font-label-sm uppercase tracking-[0.05em] bg-surface-container-high border border-secondary/50 text-secondary hover:bg-surface-variant cursor-pointer">
+                className="flex items-center gap-xs px-md py-xs rounded text-label-sm font-label-sm bg-surface-container-high border border-secondary/50 text-secondary hover:bg-surface-variant cursor-pointer">
                 <span className="material-symbols-outlined text-[14px]">block</span> Clear All
               </button>
             )
@@ -296,7 +296,7 @@ export default function GraphicsPanel({ activeServiceId }) {
                 const active = channelMode(ch) === m.id;
                 return (
                   <button key={m.id} onClick={() => setChannelModeFor(ch, m.id)} title={m.label}
-                    className={`flex items-center gap-xs px-sm py-[2px] rounded text-[10px] font-label-sm uppercase tracking-[0.04em] transition-colors cursor-pointer ${
+                    className={`flex items-center gap-xs px-sm py-[2px] rounded text-[11px] font-label-sm transition-colors cursor-pointer ${
                       active ? 'bg-primary text-on-primary font-bold' : 'text-on-surface-variant hover:text-on-surface'}`}>
                     <span className="material-symbols-outlined text-[12px]">{m.icon}</span>
                     {m.short}
@@ -307,14 +307,14 @@ export default function GraphicsPanel({ activeServiceId }) {
           );
           const dot = (ch) => <span className={`w-[6px] h-[6px] rounded-full shrink-0 ${ch.active ? 'bg-tertiary' : 'bg-outline-variant'}`} />;
           const ndi = (ch) => ch.type === 'ndi' && (
-            <span className="shrink-0 text-[9px] font-label-sm uppercase tracking-[0.04em] px-xs py-[1px] rounded border border-tertiary/50 text-tertiary bg-tertiary/10">NDI</span>
+            <span className="shrink-0 text-[11px] font-label-sm px-xs py-[1px] rounded border border-tertiary/50 text-tertiary bg-tertiary/10">NDI</span>
           );
           if (ltChannels.length === 1) {
             const ch = ltChannels[0];
             return (
               <div className="bg-surface-container rounded-lg border border-outline-variant/30 p-md flex items-center gap-sm flex-wrap">
                 <span className="material-symbols-outlined text-[16px] text-on-surface-variant shrink-0">tune</span>
-                <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant shrink-0">Lower Third</span>
+                <span className="text-label-sm font-label-sm text-on-surface-variant shrink-0">Lower Third</span>
                 {dot(ch)}
                 <span className="text-body-md text-on-surface truncate min-w-0">{ch.name}</span>
                 {ndi(ch)}
@@ -326,8 +326,8 @@ export default function GraphicsPanel({ activeServiceId }) {
             <div className="bg-surface-container rounded-lg border border-outline-variant/30 p-md flex flex-col gap-sm">
               <div className="flex items-center gap-xs">
                 <span className="material-symbols-outlined text-[16px] text-on-surface-variant">tune</span>
-                <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant">Lower-Third Channels</span>
-                <span className="text-[10px] font-mono text-on-surface-variant/50 normal-case tracking-normal">switch what each channel shows</span>
+                <span className="text-label-sm font-label-sm text-on-surface-variant">Lower-Third Channels</span>
+                <span className="text-[11px] font-mono text-on-surface-variant/60 normal-case tracking-normal">switch what each channel shows</span>
               </div>
               <div className="flex flex-col gap-xs">
                 {ltChannels.map((ch) => (
@@ -346,10 +346,10 @@ export default function GraphicsPanel({ activeServiceId }) {
         {/* Quick ticker — fire an ad-hoc announcement without saving */}
         <div className="bg-surface-container rounded-lg border border-outline-variant/30 p-md flex flex-col gap-sm">
           <div className="flex items-center justify-between gap-sm">
-            <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant shrink-0">Quick Ticker</span>
+            <span className="text-label-sm font-label-sm text-on-surface-variant shrink-0">Quick Ticker</span>
             <div className="flex items-center gap-sm">
               {/* Borrow the look of a saved ticker design (or a plain default) */}
-              <label className="flex items-center gap-xs text-[10px] font-mono text-on-surface-variant/60 uppercase tracking-[0.05em]">
+              <label className="flex items-center gap-xs text-[11px] font-mono text-on-surface-variant/60">
                 Style
                 <select
                   value={quickStyleId ?? ''}
@@ -363,7 +363,7 @@ export default function GraphicsPanel({ activeServiceId }) {
                 </select>
               </label>
               {/* Optional auto-dismiss — hides the ticker N seconds after it airs (0 = sticky) */}
-              <label className="flex items-center gap-xs text-[10px] font-mono text-on-surface-variant/60 uppercase tracking-[0.05em]" title="Auto-hide this ticker after N seconds (0 = stay until cleared)">
+              <label className="flex items-center gap-xs text-[11px] font-mono text-on-surface-variant/60" title="Auto-hide this ticker after N seconds (0 = stay until cleared)">
                 <span className="material-symbols-outlined text-[13px]">timer</span>
                 <input type="number" min="0" max="3600" value={quickDismiss || ''} placeholder="0"
                   onChange={(e) => setQuickDismiss(Math.max(0, Number(e.target.value) || 0))}
@@ -371,7 +371,7 @@ export default function GraphicsPanel({ activeServiceId }) {
                 <span className="normal-case tracking-normal">sec</span>
               </label>
               {tickerLive && (
-                <span className="flex items-center gap-xs text-label-sm font-label-sm uppercase tracking-[0.05em] text-secondary shrink-0">
+                <span className="flex items-center gap-xs text-label-sm font-label-sm text-secondary shrink-0">
                   <span className="w-[6px] h-[6px] rounded-full bg-secondary dot-pulse" /> On Air
                 </span>
               )}
@@ -386,9 +386,9 @@ export default function GraphicsPanel({ activeServiceId }) {
               className="flex-1 bg-surface-container-lowest border border-outline-variant/40 rounded-lg px-sm py-1.5 text-body-md text-on-surface focus:outline-none focus:border-primary"
             />
             <button onClick={fireQuickTicker} disabled={!quickTicker.trim()}
-              className="px-md py-1.5 rounded-lg text-label-sm font-label-sm uppercase tracking-[0.05em] font-bold bg-tertiary-container text-on-tertiary hover:brightness-110 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">Start</button>
+              className="px-md py-1.5 rounded-lg text-label-sm font-label-sm font-bold bg-tertiary-container text-on-tertiary hover:brightness-110 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">Start</button>
             <button onClick={() => window.cue.output.ticker.hide(quickTarget())} disabled={!tickerLive}
-              className="px-md py-1.5 rounded-lg text-label-sm font-label-sm uppercase tracking-[0.05em] bg-surface-container-high border border-secondary/50 text-secondary hover:bg-surface-variant cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">Stop</button>
+              className="px-md py-1.5 rounded-lg text-label-sm font-label-sm bg-surface-container-high border border-secondary/50 text-secondary hover:bg-surface-variant cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">Stop</button>
           </div>
         </div>
 
@@ -397,7 +397,7 @@ export default function GraphicsPanel({ activeServiceId }) {
           if (!items.length) return null;
           return (
             <div key={key} className="flex flex-col gap-sm">
-              <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-outline px-xs">{title}</span>
+              <span className="text-label-sm font-label-sm text-outline px-xs">{title}</span>
               <div className="grid gap-md" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(248px, 1fr))' }}>
                 {items.map((g) => (
                   <GraphicCard key={g.id} g={g} liveOn={liveDests(g)} dismissAt={liveDismissAt(g)} paused={livePaused(g)} destLabel={(() => { const t = resolveTarget(g); return Array.isArray(t) ? t.map((k) => TARGET_LABEL[k]).join(' + ') : TARGET_LABEL[t]; })()}
@@ -410,10 +410,10 @@ export default function GraphicsPanel({ activeServiceId }) {
         })}
 
         {graphics.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-xl gap-sm text-outline-variant">
+          <div className="flex flex-col items-center justify-center py-xl gap-sm text-on-surface-variant/70">
             <span className="material-symbols-outlined text-4xl">branding_watermark</span>
-            <span className="text-label-sm font-label-sm uppercase tracking-widest">No graphics yet</span>
-            <button onClick={() => setEditor({})} className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-primary hover:underline cursor-pointer">Create one</button>
+            <span className="text-label-sm font-label-sm">No graphics yet</span>
+            <button onClick={() => setEditor({})} className="text-label-sm font-label-sm text-primary hover:underline cursor-pointer">Create one</button>
           </div>
         )}
       </div>
@@ -479,28 +479,28 @@ function GraphicCard({ g, liveOn = [], dismissAt = null, paused = false, destLab
         <GraphicThumb g={g} />
         {live && (
           <span className="absolute top-1.5 left-1.5 flex flex-col items-start gap-[3px]">
-            <span className="flex items-center gap-xs px-sm py-[2px] rounded bg-secondary text-on-secondary text-[9px] font-label-sm uppercase tracking-[0.08em] font-bold">
+            <span className="flex items-center gap-xs px-sm py-[2px] rounded bg-secondary text-on-secondary text-[11px] font-label-sm font-bold">
               <span className="w-[5px] h-[5px] rounded-full bg-on-secondary dot-pulse" /> {liveLabel}
             </span>
             {dismissIn != null && (
-              <span className="flex items-center gap-xs px-sm py-[1px] rounded bg-background/75 text-on-surface-variant text-[9px] font-label-sm uppercase tracking-[0.06em] tabular-nums" title="Auto-dismisses">
-                <span className="material-symbols-outlined text-[11px]">timer</span>{dismissIn}s
+              <span className="flex items-center gap-xs px-sm py-[1px] rounded bg-background/75 text-on-surface-variant text-[11px] font-label-sm tabular-nums" title="Auto-dismisses">
+                <span className="material-symbols-outlined text-[12px]">timer</span>{dismissIn}s
               </span>
             )}
           </span>
         )}
-        <span className="absolute top-1.5 right-1.5 px-sm py-[2px] rounded bg-background/70 text-on-surface-variant text-[9px] font-label-sm uppercase tracking-[0.06em]">{destLabel}</span>
+        <span className="absolute top-1.5 right-1.5 px-sm py-[2px] rounded bg-background/70 text-on-surface-variant text-[11px] font-label-sm">{destLabel}</span>
         {/* Hover actions */}
         <div className="absolute bottom-1.5 right-1.5 flex items-center gap-xs opacity-30 group-hover:opacity-100 transition-opacity">
           {confirmingDelete ? (
             <>
               <button
                 onClick={() => { setConfirmingDelete(false); onDelete(); }}
-                className="px-sm py-[2px] rounded bg-error text-white text-[10px] font-mono uppercase tracking-[0.04em] cursor-pointer hover:bg-error/80 transition-colors"
+                className="px-sm py-[2px] rounded bg-error text-white text-[11px] font-mono cursor-pointer hover:bg-error/80 transition-colors"
               >Yes</button>
               <button
                 onClick={() => setConfirmingDelete(false)}
-                className="px-sm py-[2px] rounded bg-background/70 text-on-surface-variant text-[10px] font-mono uppercase tracking-[0.04em] cursor-pointer hover:text-on-surface transition-colors"
+                className="px-sm py-[2px] rounded bg-background/70 text-on-surface-variant text-[11px] font-mono cursor-pointer hover:text-on-surface transition-colors"
               >No</button>
             </>
           ) : (
@@ -526,16 +526,16 @@ function GraphicCard({ g, liveOn = [], dismissAt = null, paused = false, destLab
           <div className="flex items-center gap-xs shrink-0">
             {canPause && (
               <button onClick={onTogglePause} title={paused ? 'Resume timer' : 'Pause timer'}
-                className={`flex items-center gap-xs px-md py-1.5 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] border cursor-pointer transition-colors ${
+                className={`flex items-center gap-xs px-md py-1.5 rounded text-label-sm font-label-sm border cursor-pointer transition-colors ${
                   paused ? 'bg-tertiary/15 border-tertiary/50 text-tertiary hover:bg-tertiary/25' : 'bg-surface-container-high border-outline-variant/50 text-on-surface-variant hover:text-on-surface'
                 }`}>
                 <span className="material-symbols-outlined text-[14px]">{paused ? 'play_arrow' : 'pause'}</span>{paused ? 'Resume' : 'Pause'}
               </button>
             )}
-            <button onClick={onClear} className="px-md py-1.5 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] bg-surface-container-high border border-secondary/50 text-secondary hover:bg-surface-variant cursor-pointer">{clearLabel}</button>
+            <button onClick={onClear} className="px-md py-1.5 rounded text-label-sm font-label-sm bg-surface-container-high border border-secondary/50 text-secondary hover:bg-surface-variant cursor-pointer">{clearLabel}</button>
           </div>
         ) : (
-          <button onClick={onTake} className="px-md py-1.5 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] font-bold bg-primary text-on-primary hover:brightness-110 cursor-pointer shrink-0">{takeLabel}</button>
+          <button onClick={onTake} className="px-md py-1.5 rounded text-label-sm font-label-sm font-bold bg-primary text-on-primary hover:brightness-110 cursor-pointer shrink-0">{takeLabel}</button>
         )}
       </div>
     </div>

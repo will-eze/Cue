@@ -139,7 +139,7 @@ export default function ScriptureDetectionSettings() {
                 title={tip}
                 onClick={() => apply({ responsiveness: v })}
                 disabled={busy}
-                className={`px-sm h-8 rounded-lg text-label-sm font-mono uppercase tracking-[0.05em] border transition-colors cursor-pointer ${
+                className={`px-sm h-8 rounded-lg text-label-sm font-mono border transition-colors cursor-pointer ${
                   (cfg.responsiveness || 'balanced') === v
                     ? 'bg-primary/15 border-primary/50 text-primary'
                     : 'bg-surface-container-high border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
@@ -196,7 +196,7 @@ export default function ScriptureDetectionSettings() {
           ) : (
             <div className="flex items-center gap-sm">
               <StatusChip ok={vectors.built} okText="Built" pendingText="Build" onClick={buildVectors} disabled={busy} />
-              {!ready.embed?.model && <span className="text-[10px] font-mono text-on-surface-variant/50">+ model download</span>}
+              {!ready.embed?.model && <span className="text-[11px] font-mono text-on-surface-variant/60">+ model download</span>}
             </div>
           )}
         </Row>
@@ -213,7 +213,7 @@ function Row({ label, hint, children }) {
   return (
     <div className="px-md py-sm border-b border-outline-variant/20 last:border-b-0 flex items-center gap-lg">
       <div className="w-44 shrink-0">
-        <p className="text-label-sm font-label-sm text-on-surface uppercase tracking-[0.05em]">{label}</p>
+        <p className="text-label-sm font-label-sm text-on-surface">{label}</p>
         {hint && <p className="text-[11px] text-on-surface-variant mt-[2px]">{hint}</p>}
       </div>
       <div className="ml-auto">{children}</div>
@@ -267,7 +267,7 @@ function ModeRows({ title, desc, mode, disabled, onToggle, onAuto, bands, thresh
                 key={v}
                 onClick={() => onAuto(v)}
                 disabled={disabled}
-                className={`px-sm h-8 rounded-lg text-label-sm font-mono uppercase tracking-[0.05em] border transition-colors cursor-pointer ${
+                className={`px-sm h-8 rounded-lg text-label-sm font-mono border transition-colors cursor-pointer ${
                   mode.autoAction === v
                     ? v === 'live'
                       ? 'bg-secondary/15 border-secondary/50 text-secondary'
@@ -377,8 +377,8 @@ function ConfidenceBar({ floorPct, previewPct, livePct, autoLive, disabled, onCo
           >
             {w >= 11 && (
               <>
-                <span className="text-[10px] font-mono uppercase tracking-[0.06em] leading-none whitespace-nowrap">{s.label}</span>
-                <span className="text-[10px] font-mono opacity-70 leading-none">{s.from}–{s.to}%</span>
+                <span className="text-[11px] font-mono leading-none whitespace-nowrap">{s.label}</span>
+                <span className="text-[11px] font-mono opacity-70 leading-none">{s.from}–{s.to}%</span>
               </>
             )}
           </div>
@@ -474,7 +474,7 @@ function GpuEngineSettings({ cfg, apply, busy }) {
                 title={tip}
                 onClick={() => apply({ asrEngine: v })}
                 disabled={busy || (v !== 'cpu' && hw === null)}
-                className={`px-sm h-8 rounded-lg text-label-sm font-mono uppercase tracking-[0.05em] border transition-colors cursor-pointer disabled:opacity-40 ${
+                className={`px-sm h-8 rounded-lg text-label-sm font-mono border transition-colors cursor-pointer disabled:opacity-40 ${
                   engine === v
                     ? 'bg-primary/15 border-primary/50 text-primary'
                     : 'bg-surface-container-high border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
@@ -509,7 +509,7 @@ function GpuEngineSettings({ cfg, apply, busy }) {
                   }`}
                 >
                   <span className={`text-label-sm font-mono ${isActive ? 'text-primary' : 'text-on-surface'}`}>{m.label}</span>
-                  <span className="block text-[10px] text-on-surface-variant">{m.sub} · ~{m.approxMB} MB</span>
+                  <span className="block text-[11px] text-on-surface-variant">{m.sub} · ~{m.approxMB} MB</span>
                 </button>
                 {downloading ? (
                   <span className="text-label-sm font-mono text-primary w-20 text-right animate-pulse">{dl.pct}%</span>
@@ -522,7 +522,7 @@ function GpuEngineSettings({ cfg, apply, busy }) {
                   <button
                     onClick={() => onDownload(m.id)}
                     disabled={busy || !!dl}
-                    className="flex items-center gap-xs px-sm h-8 rounded-lg border border-outline-variant/40 bg-surface-container-high text-on-surface-variant text-label-sm font-mono uppercase tracking-[0.05em] hover:text-primary hover:border-primary/50 transition-colors cursor-pointer disabled:opacity-40"
+                    className="flex items-center gap-xs px-sm h-8 rounded-lg border border-outline-variant/40 bg-surface-container-high text-on-surface-variant text-label-sm font-mono hover:text-primary hover:border-primary/50 transition-colors cursor-pointer disabled:opacity-40"
                   >
                     <span className="material-symbols-outlined text-[15px]">download</span>Get
                   </button>
@@ -546,7 +546,7 @@ function GpuEngineSettings({ cfg, apply, busy }) {
 function StatusChip({ ok, okText, pendingText, onClick, disabled }) {
   if (ok) {
     return (
-      <span className="flex items-center gap-xs text-label-sm font-mono uppercase tracking-[0.05em] text-tertiary">
+      <span className="flex items-center gap-xs text-label-sm font-mono text-tertiary">
         <span className="material-symbols-outlined text-[15px]">check_circle</span>{okText}
       </span>
     );
@@ -555,7 +555,7 @@ function StatusChip({ ok, okText, pendingText, onClick, disabled }) {
     <button
       onClick={onClick}
       disabled={disabled}
-      className="flex items-center gap-xs px-sm h-8 rounded-lg border border-outline-variant/40 bg-surface-container-high text-on-surface-variant text-label-sm font-mono uppercase tracking-[0.05em] hover:text-primary hover:border-primary/50 transition-colors cursor-pointer disabled:opacity-40"
+      className="flex items-center gap-xs px-sm h-8 rounded-lg border border-outline-variant/40 bg-surface-container-high text-on-surface-variant text-label-sm font-mono hover:text-primary hover:border-primary/50 transition-colors cursor-pointer disabled:opacity-40"
     >
       <span className="material-symbols-outlined text-[15px]">download</span>{pendingText}
     </button>

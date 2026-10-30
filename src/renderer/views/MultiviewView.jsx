@@ -66,7 +66,7 @@ export default function MultiviewView() {
         <span className="material-symbols-outlined text-[18px] text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>
           grid_view
         </span>
-        <span className="text-label-sm font-label-sm uppercase tracking-[0.06em] text-on-surface font-semibold">
+        <span className="text-label-sm font-label-sm text-on-surface font-semibold">
           Multiview
         </span>
 
@@ -81,14 +81,14 @@ export default function MultiviewView() {
         <div className="flex-1" />
 
         {lastUpdated && (
-          <span className="text-[10px] font-label-sm text-on-surface-variant/40 uppercase tracking-[0.05em] tabular-nums">
+          <span className="text-[11px] font-label-sm text-on-surface-variant/60 tabular-nums">
             Updated {new Date(lastUpdated).toLocaleTimeString('en-US', { hour12: false })}
           </span>
         )}
 
         <div className="flex items-center gap-xs">
           <span className={`w-[6px] h-[6px] rounded-full shrink-0 ${isLive ? 'bg-secondary dot-pulse' : 'bg-outline-variant'}`} />
-          <span className={`text-label-sm font-label-sm uppercase tracking-[0.05em] ${isLive ? 'text-secondary' : 'text-on-surface-variant/40'}`}>
+          <span className={`text-label-sm font-label-sm ${isLive ? 'text-secondary' : 'text-on-surface-variant/60'}`}>
             {isLive ? 'Live' : 'Idle'}
           </span>
         </div>
@@ -126,17 +126,17 @@ function ChannelChip({ channel }) {
   return (
     <div className="flex items-center gap-xs min-w-0">
       <span className={`w-[6px] h-[6px] rounded-full shrink-0 ${isActive ? 'bg-tertiary' : 'bg-outline-variant'}`} />
-      <span className={`text-label-sm font-label-sm uppercase tracking-[0.06em] font-bold truncate ${isActive ? 'text-on-surface' : 'text-on-surface-variant/50'}`}>
+      <span className={`text-label-sm font-label-sm font-bold truncate ${isActive ? 'text-on-surface' : 'text-on-surface-variant/60'}`}>
         {channel.name}
       </span>
       {isNdi && (
-        <span className="text-[9px] font-label-sm uppercase tracking-[0.04em] border border-tertiary/50 rounded px-[3px] py-[1px] text-tertiary shrink-0">NDI</span>
+        <span className="text-[11px] font-label-sm border border-tertiary/50 rounded px-[3px] py-[1px] text-tertiary shrink-0">NDI</span>
       )}
-      <span className="text-[9px] font-label-sm uppercase tracking-[0.05em] border border-outline-variant/30 rounded px-[3px] py-[1px] text-on-surface-variant shrink-0">
+      <span className="text-[11px] font-label-sm border border-outline-variant/30 rounded px-[3px] py-[1px] text-on-surface-variant shrink-0">
         {templateLabel}
       </span>
       {!isActive && (
-        <span className="text-[9px] font-label-sm uppercase tracking-[0.05em] text-outline shrink-0">Off</span>
+        <span className="text-[11px] font-label-sm text-outline shrink-0">Off</span>
       )}
     </div>
   );
@@ -159,7 +159,7 @@ function NdiTile({ channel, isLive }) {
       {/* Channel chip header */}
       <div className="flex items-center justify-between gap-xs px-sm py-[5px] bg-surface-container-high border-b border-outline-variant/20">
         <ChannelChip channel={channel} />
-        <span className="text-[9px] font-label-sm text-on-surface-variant/50 shrink-0 tabular-nums">
+        <span className="text-[11px] font-label-sm text-on-surface-variant/60 shrink-0 tabular-nums">
           {channel.ndi_width || 1920}×{channel.ndi_height || 1080}·{channel.ndi_fps || 30}
         </span>
       </div>
@@ -183,7 +183,7 @@ function NdiTile({ channel, isLive }) {
         {/* LIVE badge */}
         {isLive && hasCapture && (
           <div className="absolute top-sm left-sm z-10">
-            <span className="inline-flex items-center gap-xs px-xs py-[2px] rounded bg-tertiary/20 border border-tertiary/40 text-tertiary text-[9px] font-label-sm font-bold uppercase tracking-[0.08em]">
+            <span className="inline-flex items-center gap-xs px-xs py-[2px] rounded bg-tertiary/20 border border-tertiary/40 text-tertiary text-[11px] font-label-sm font-bold">
               <span className="w-[5px] h-[5px] rounded-full bg-tertiary animate-pulse shrink-0" />
               NDI Live
             </span>
@@ -192,7 +192,7 @@ function NdiTile({ channel, isLive }) {
 
         {/* Template badge */}
         <div className="absolute top-sm right-sm z-10">
-          <span className="inline-flex items-center gap-xs px-xs py-[2px] rounded bg-surface-container/80 text-on-surface-variant text-[9px] font-label-sm uppercase tracking-[0.06em]">
+          <span className="inline-flex items-center gap-xs px-xs py-[2px] rounded bg-surface-container/80 text-on-surface-variant text-[11px] font-label-sm">
             {isLT ? 'Lower Third' : 'Fullscreen'}
           </span>
         </div>
@@ -207,11 +207,11 @@ function NdiTile({ channel, isLive }) {
         <span className="material-symbols-outlined text-[13px] shrink-0 text-tertiary" style={{ fontVariationSettings: "'FILL' 1" }}>
           wifi_tethering
         </span>
-        <span className="text-[10px] font-label-sm text-on-surface-variant truncate">
+        <span className="text-[11px] font-label-sm text-on-surface-variant truncate">
           {`Cue — ${channel.name}`}
         </span>
         {!hasCapture && (
-          <span className="text-[10px] font-label-sm text-on-surface-variant/40 ml-auto">
+          <span className="text-[11px] font-label-sm text-on-surface-variant/60 ml-auto">
             Waiting for output…
           </span>
         )}
@@ -229,7 +229,7 @@ function NdiNoSignal({ isLive }) {
       <span className="material-symbols-outlined text-[28px] text-outline-variant/40">
         {isLive ? 'hourglass_empty' : 'wifi_off'}
       </span>
-      <span className="text-[10px] font-label-sm uppercase tracking-[0.1em] text-outline-variant/40">
+      <span className="text-[11px] font-label-sm text-outline-variant/40">
         {isLive ? 'Buffering…' : 'NDI Idle'}
       </span>
     </div>
@@ -262,7 +262,7 @@ function ScreenMonitorTile({ channel, monitor, isLive }) {
         </div>
         {tallyLive && (
           <div className="absolute top-sm left-sm z-10">
-            <span className="inline-flex items-center gap-xs px-xs py-[2px] rounded bg-secondary-container text-secondary text-[9px] font-label-sm font-bold uppercase tracking-[0.08em]">
+            <span className="inline-flex items-center gap-xs px-xs py-[2px] rounded bg-secondary-container text-secondary text-[11px] font-label-sm font-bold">
               <span className="w-[5px] h-[5px] rounded-full bg-secondary animate-pulse shrink-0" />
               Live
             </span>
@@ -277,7 +277,7 @@ function ScreenMonitorTile({ channel, monitor, isLive }) {
         <span className={`material-symbols-outlined text-[13px] shrink-0 ${tallyLive ? 'text-secondary' : 'text-outline'}`} style={{ fontVariationSettings: "'FILL' 1" }}>
           {hasCapture ? 'monitor' : 'monitor_off'}
         </span>
-        <span className={`text-[10px] font-label-sm truncate ${tallyLive ? 'text-secondary/80' : 'text-on-surface-variant'}`}>
+        <span className={`text-[11px] font-label-sm truncate ${tallyLive ? 'text-secondary/80' : 'text-on-surface-variant'}`}>
           {label}
         </span>
       </div>
@@ -291,7 +291,7 @@ function NoSignal() {
   return (
     <div className="w-full h-full flex flex-col items-center justify-center gap-xs bg-black">
       <span className="material-symbols-outlined text-[28px] text-outline-variant/30">signal_disconnected</span>
-      <span className="text-[10px] font-label-sm uppercase tracking-[0.1em] text-outline-variant/40">No Signal</span>
+      <span className="text-[11px] font-label-sm text-outline-variant/40">No Signal</span>
     </div>
   );
 }
@@ -305,7 +305,7 @@ function EmptyChannelTile({ channel }) {
       <div className="relative w-full bg-black" style={{ paddingBottom: '56.25%' }}>
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-xs border border-dashed border-outline-variant/15">
           <span className="material-symbols-outlined text-[24px] text-outline-variant/40">add_to_queue</span>
-          <span className="text-[10px] font-label-sm text-outline-variant/50 uppercase tracking-[0.06em] text-center px-md">
+          <span className="text-[11px] font-label-sm text-outline-variant/50 text-center px-md">
             No screens assigned
           </span>
         </div>
@@ -322,7 +322,7 @@ function EmptyState() {
       </span>
       <div>
         <p className="text-body-md text-on-surface-variant">No output channels configured</p>
-        <p className="text-label-sm font-label-sm text-outline mt-xs uppercase tracking-[0.05em]">
+        <p className="text-label-sm font-label-sm text-outline mt-xs">
           Go to Settings to create channels and assign screens
         </p>
       </div>

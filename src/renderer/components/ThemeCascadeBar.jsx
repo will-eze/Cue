@@ -50,7 +50,7 @@ export default function ThemeCascadeBar({
   return (
     <div className="relative shrink-0">
       <button onClick={() => setOpen((v) => !v)} title="How themes resolve (priority order)"
-        className={`text-[10px] font-label-sm uppercase tracking-[0.05em] flex items-center gap-[3px] cursor-pointer transition-colors ${conflicts.length ? 'text-secondary/90 hover:text-secondary' : 'text-on-surface-variant/60 hover:text-on-surface-variant'}`}>
+        className={`text-[11px] font-label-sm flex items-center gap-[3px] cursor-pointer transition-colors ${conflicts.length ? 'text-secondary/90 hover:text-secondary' : 'text-on-surface-variant/60 hover:text-on-surface-variant'}`}>
         <span className="material-symbols-outlined text-[15px]">account_tree</span>
         Priority
         {conflicts.length > 0 && <span className="w-1.5 h-1.5 rounded-full bg-secondary" />}
@@ -63,11 +63,11 @@ export default function ThemeCascadeBar({
           <div className={`absolute z-30 mt-xs top-full ${align === 'right' ? 'right-0' : 'left-0'} w-[440px] max-w-[92vw] bg-surface-container-high border border-outline-variant/40 rounded-lg shadow-2xl ring-1 ring-white/5 overflow-hidden`}>
             {/* Priority legend */}
             <div className="px-md py-sm border-b border-outline-variant/20 bg-surface-container/40 flex items-center gap-[3px] flex-wrap">
-              <span className="text-[9px] font-mono text-on-surface uppercase tracking-[0.05em] mr-xs">Highest set wins</span>
+              <span className="text-[11px] font-mono text-on-surface mr-xs">Highest set wins</span>
               {['This item', 'Rundown', 'Songs / Scripture / Slides default', 'All default', 'Built-in'].map((t, i) => (
                 <React.Fragment key={t}>
-                  {i > 0 && <span className="material-symbols-outlined text-[13px] text-on-surface-variant/30">chevron_right</span>}
-                  <span className="text-[9px] font-mono uppercase tracking-[0.04em] text-on-surface-variant/60 border border-outline-variant/25 rounded px-xs py-[1px]">{t}</span>
+                  {i > 0 && <span className="material-symbols-outlined text-[13px] text-on-surface-variant/60">chevron_right</span>}
+                  <span className="text-[11px] font-mono text-on-surface-variant/60 border border-outline-variant/25 rounded px-xs py-[1px]">{t}</span>
                 </React.Fragment>
               ))}
             </div>
@@ -78,20 +78,20 @@ export default function ThemeCascadeBar({
                 const fromRundown = r.winner?.tier === 'Rundown';
                 return (
                   <div key={r.key} className="px-md py-[7px] flex items-center gap-sm flex-wrap">
-                    <span className="w-16 shrink-0 text-[10px] font-mono uppercase tracking-[0.04em] text-on-surface-variant">{r.label}</span>
+                    <span className="w-16 shrink-0 text-[11px] font-mono text-on-surface-variant">{r.label}</span>
                     {r.winner ? (
                       <span className="flex items-center gap-xs min-w-0">
                         <span className="material-symbols-outlined text-[13px] text-tertiary">arrow_forward</span>
                         <b className="text-body-sm text-on-surface truncate">{nameOf(r.winner.id)}</b>
-                        <span className={`text-[9px] font-mono uppercase tracking-[0.04em] rounded px-xs py-[1px] shrink-0 ${fromRundown ? 'bg-primary/15 text-primary border border-primary/30' : 'text-on-surface-variant/60 border border-outline-variant/25'}`}>
+                        <span className={`text-[11px] font-mono rounded px-xs py-[1px] shrink-0 ${fromRundown ? 'bg-primary/15 text-primary border border-primary/30' : 'text-on-surface-variant/60 border border-outline-variant/25'}`}>
                           from {r.winner.tier}
                         </span>
                       </span>
                     ) : (
-                      <span className="text-body-sm text-on-surface-variant/50 italic">Built-in fallback (black)</span>
+                      <span className="text-body-sm text-on-surface-variant/60 italic">Built-in fallback (black)</span>
                     )}
                     {r.overridden.map((o) => (
-                      <span key={o.tier} className="flex items-center gap-[3px] text-[10px] text-secondary/90 ml-auto shrink-0" title={`You set this ${o.tier}, but a higher-priority theme wins for ${r.label}`}>
+                      <span key={o.tier} className="flex items-center gap-[3px] text-[11px] text-secondary/90 ml-auto shrink-0" title={`You set this ${o.tier}, but a higher-priority theme wins for ${r.label}`}>
                         <span className="material-symbols-outlined text-[14px]">priority_high</span>
                         Your {o.tier} ({nameOf(o.id)}) is hidden
                       </span>
@@ -104,12 +104,12 @@ export default function ThemeCascadeBar({
             {/* One-click fix — the rundown theme is the usual reason a default doesn't show. */}
             {rundownThemeId && (
               <div className="px-md py-sm bg-surface-container/30 flex items-center gap-sm flex-wrap border-t border-outline-variant/10">
-                <span className="text-[10px] text-on-surface-variant/60 min-w-0">
+                <span className="text-[11px] text-on-surface-variant/60 min-w-0">
                   This rundown{rundownTitle ? ` (“${rundownTitle}”)` : ''} has its own theme set, so your defaults don’t apply here.
                 </span>
                 {onClearRundown && (
                   <button onClick={() => { onClearRundown(); setOpen(false); }}
-                    className="ml-auto shrink-0 text-[10px] font-mono uppercase tracking-[0.04em] text-primary hover:text-on-primary hover:bg-primary/80 border border-primary/40 rounded px-sm py-[3px] transition-colors cursor-pointer flex items-center gap-[3px]">
+                    className="ml-auto shrink-0 text-[11px] font-mono text-primary hover:text-on-primary hover:bg-primary/80 border border-primary/40 rounded px-sm py-[3px] transition-colors cursor-pointer flex items-center gap-[3px]">
                     <span className="material-symbols-outlined text-[13px]">close</span>Clear rundown theme
                   </button>
                 )}

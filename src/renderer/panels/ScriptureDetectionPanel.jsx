@@ -14,7 +14,7 @@ export default function ScriptureDetectionPanel({
       {/* Arm/disarm */}
       <button
         onClick={onToggleArm}
-        className={`flex items-center gap-xs px-sm h-8 rounded-lg text-label-sm font-mono font-bold uppercase tracking-[0.06em] transition-colors cursor-pointer shrink-0 ${
+        className={`flex items-center gap-xs px-sm h-8 rounded-lg text-label-sm font-mono font-bold transition-colors cursor-pointer shrink-0 ${
           armed
             ? 'bg-tertiary-container/60 border border-tertiary/50 text-tertiary'
             : 'bg-surface-container-high border border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
@@ -64,13 +64,13 @@ export default function ScriptureDetectionPanel({
             </span>
             <span className="flex flex-col leading-tight min-w-0">
               <span className="text-label-sm font-mono font-bold text-on-surface truncate">{s.ref}</span>
-              <span className="text-[9px] font-mono uppercase tracking-[0.05em] text-on-surface-variant/60">
+              <span className="text-[11px] font-mono text-on-surface-variant/60">
                 {s.interim ? 'hearing…' : `${s.mode} · ${Math.round((s.confidence || 0) * 100)}%`}
               </span>
             </span>
             <button
               onClick={() => onGoLive(s)}
-              className="flex items-center justify-center px-sm h-7 rounded-md bg-tertiary-container text-on-tertiary text-label-sm font-mono font-bold uppercase tracking-[0.05em] hover:brightness-110 active:scale-95 transition-all cursor-pointer"
+              className="flex items-center justify-center px-sm h-7 rounded-md bg-tertiary-container text-on-tertiary text-label-sm font-mono font-bold hover:brightness-110 active:scale-95 transition-all cursor-pointer"
               title="Send this verse live"
             >
               Go
@@ -85,7 +85,7 @@ export default function ScriptureDetectionPanel({
           </div>
         ))}
         {armed && suggestions.length === 0 && !captureError && (
-          <span className="text-[10px] font-mono uppercase tracking-[0.06em] text-on-surface-variant/40 px-sm">
+          <span className="text-[11px] font-mono text-on-surface-variant/60 px-sm">
             No verse detected yet
           </span>
         )}

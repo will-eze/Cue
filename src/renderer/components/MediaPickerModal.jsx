@@ -45,7 +45,7 @@ export default function MediaPickerModal({ onSelect, onClose, initialId = null }
         <div className="flex items-center px-lg py-md border-b border-outline-variant/30 bg-surface-container-high rounded-t-xl shrink-0">
           <div>
             <h2 className="text-headline-md font-bold text-on-surface">Select Background</h2>
-            <p className="text-label-sm font-mono text-on-surface-variant uppercase tracking-[0.05em]">Media Library</p>
+            <p className="text-label-sm font-mono text-on-surface-variant">Media Library</p>
           </div>
           <button
             onClick={onClose}
@@ -64,8 +64,8 @@ export default function MediaPickerModal({ onSelect, onClose, initialId = null }
               }`}
               onClick={() => setSelectedId(null)}
             >
-              <span className="material-symbols-outlined text-outline-variant text-2xl">block</span>
-              <span className="text-[9px] font-mono text-outline-variant uppercase tracking-wider">None</span>
+              <span className="material-symbols-outlined text-on-surface-variant/70 text-2xl">block</span>
+              <span className="text-[11px] font-mono text-on-surface-variant/70">None</span>
             </div>
 
             {assets.map((asset) => (
@@ -87,16 +87,16 @@ export default function MediaPickerModal({ onSelect, onClose, initialId = null }
                     </div>
                   )}
                 </div>
-                <p className="text-[9px] font-mono text-on-surface truncate px-xs py-[3px] bg-surface-container">
+                <p className="text-[11px] font-mono text-on-surface truncate px-xs py-[3px] bg-surface-container">
                   {asset.filename}
                 </p>
               </div>
             ))}
 
             {assets.length === 0 && (
-              <div className="col-span-full flex flex-col items-center justify-center py-xl gap-sm text-outline-variant">
+              <div className="col-span-full flex flex-col items-center justify-center py-xl gap-sm text-on-surface-variant/70">
                 <span className="material-symbols-outlined text-4xl">image</span>
-                <span className="text-label-sm font-mono uppercase tracking-widest">No media imported yet</span>
+                <span className="text-label-sm font-mono">No media imported yet</span>
               </div>
             )}
           </div>

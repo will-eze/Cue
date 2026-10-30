@@ -128,7 +128,7 @@ function VideoLoopCard() {
         className={`flex items-center gap-lg ${loopMode !== 'blend' ? 'opacity-40 pointer-events-none' : ''}`}
         title={loopMode !== 'blend' ? 'Select "Smooth blend" above to configure blend duration' : undefined}
       >
-        <span className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em] shrink-0">Blend duration</span>
+        <span className="text-label-sm font-label-sm text-on-surface-variant shrink-0">Blend duration</span>
         <input type="range" min={0.5} max={5} step={0.5} value={loopBlendSecs}
           onChange={(e) => changeBlend(Number(e.target.value))} className="flex-1 accent-primary cursor-pointer" />
         <span className="text-label-sm font-label-sm text-primary tabular-nums w-12 text-right">{loopBlendSecs.toFixed(1)} s</span>
@@ -157,7 +157,7 @@ function TriggerRow({ trigger, value, onChange }) {
             <button
               key={s.id}
               onClick={() => onChange({ type: s.id })}
-              className={`px-sm py-md rounded-lg border-2 text-label-sm font-label-sm font-bold uppercase tracking-[0.05em] transition-all active:scale-95 cursor-pointer ${
+              className={`px-sm py-md rounded-lg border-2 text-label-sm font-label-sm font-bold transition-all active:scale-95 cursor-pointer ${
                 active
                   ? 'border-primary bg-primary/8 text-primary'
                   : 'border-outline-variant/30 bg-surface-container-low text-on-surface hover:border-outline-variant/60'
@@ -174,7 +174,7 @@ function TriggerRow({ trigger, value, onChange }) {
         title={value.type === 'none' ? 'Choose a transition above to configure duration and easing' : undefined}>
         <div className="flex-1">
           <div className="flex items-center justify-between mb-xs">
-            <span className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em]">Duration</span>
+            <span className="text-label-sm font-label-sm text-on-surface-variant">Duration</span>
             <span className="text-label-sm font-label-sm text-primary tabular-nums">{value.durationMs} ms</span>
           </div>
           <input
@@ -188,7 +188,7 @@ function TriggerRow({ trigger, value, onChange }) {
           />
         </div>
         <div>
-          <span className="block text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em] mb-xs">Easing</span>
+          <span className="block text-label-sm font-label-sm text-on-surface-variant mb-xs">Easing</span>
           <div className="flex gap-xs">
             {EASINGS.map((e) => (
               <button

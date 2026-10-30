@@ -75,7 +75,7 @@ export default function OnlineBibleModal({ onClose, onImported }) {
           <span className="material-symbols-outlined text-primary text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>cloud_download</span>
           <div className="flex-1 min-w-0">
             <h2 className="text-headline-md font-bold text-primary leading-tight tracking-tight">Import from Online</h2>
-            <p className="text-[9px] font-mono text-on-surface-variant/50 uppercase tracking-[0.06em]">getbible.net catalog</p>
+            <p className="text-[11px] font-mono text-on-surface-variant/60">getbible.net catalog</p>
           </div>
           <button onClick={() => !progress && onClose()}
             className="w-7 h-7 flex items-center justify-center rounded-full text-on-surface-variant hover:text-on-surface hover:bg-surface-variant transition-colors cursor-pointer text-sm">
@@ -120,7 +120,7 @@ export default function OnlineBibleModal({ onClose, onImported }) {
         {/* List */}
         <div className="flex-1 overflow-y-auto custom-scrollbar">
           {loading ? (
-            <div className="flex items-center justify-center h-full text-label-sm font-label-sm text-on-surface-variant uppercase tracking-widest">Loading catalog…</div>
+            <div className="flex items-center justify-center h-full text-label-sm font-label-sm text-on-surface-variant">Loading catalog…</div>
           ) : error ? (
             <div className="flex flex-col items-center justify-center h-full gap-sm text-on-surface-variant px-lg text-center">
               <span className="material-symbols-outlined text-3xl text-error">cloud_off</span>
@@ -138,25 +138,25 @@ export default function OnlineBibleModal({ onClose, onImported }) {
                     v.installed ? 'opacity-50 cursor-default' : 'cursor-pointer hover:bg-surface-variant/40'
                   } ${isSel ? 'bg-primary/10' : ''}`}
                 >
-                  <span className={`material-symbols-outlined text-[18px] shrink-0 ${isSel ? 'text-primary' : 'text-outline-variant'}`}>
+                  <span className={`material-symbols-outlined text-[18px] shrink-0 ${isSel ? 'text-primary' : 'text-on-surface-variant/70'}`}>
                     {v.installed ? 'check_circle' : isSel ? 'check_box' : 'check_box_outline_blank'}
                   </span>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-sm">
                       <span className="text-body-md text-on-surface truncate">{v.name}</span>
-                      <span className="text-[9px] font-mono uppercase tracking-[0.05em] text-on-surface-variant/60 shrink-0">{v.abbrev}</span>
+                      <span className="text-[11px] font-mono text-on-surface-variant/60 shrink-0">{v.abbrev}</span>
                     </div>
                     <div className="flex items-center gap-xs mt-[1px]">
-                      <span className="text-[10px] text-on-surface-variant/60">{v.language}</span>
-                      <span className="text-on-surface-variant/30 text-[10px]">·</span>
-                      <span className={`text-[10px] ${v.restricted ? 'text-secondary' : 'text-tertiary/80'}`}>{v.license}</span>
+                      <span className="text-[11px] text-on-surface-variant/60">{v.language}</span>
+                      <span className="text-on-surface-variant/60 text-[11px]">·</span>
+                      <span className={`text-[11px] ${v.restricted ? 'text-secondary' : 'text-tertiary/80'}`}>{v.license}</span>
                     </div>
                   </div>
                   {v.installed && (
-                    <span className="text-[9px] font-mono uppercase tracking-[0.05em] text-tertiary shrink-0">Installed</span>
+                    <span className="text-[11px] font-mono text-tertiary shrink-0">Installed</span>
                   )}
                   {!v.installed && v.restricted && (
-                    <span className="text-[9px] font-mono uppercase tracking-[0.04em] text-secondary border border-secondary/40 rounded px-1.5 py-[1px] shrink-0">Licence req.</span>
+                    <span className="text-[11px] font-mono text-secondary border border-secondary/40 rounded px-1.5 py-[1px] shrink-0">Licence req.</span>
                   )}
                 </button>
               );
@@ -173,18 +173,18 @@ export default function OnlineBibleModal({ onClose, onImported }) {
 
         {/* Footer */}
         <div className="flex items-center justify-between px-lg py-sm border-t border-outline-variant/30 bg-surface-container-high flex-shrink-0">
-          <span className="text-[10px] font-mono text-on-surface-variant/60 uppercase tracking-[0.05em]">
+          <span className="text-[11px] font-mono text-on-surface-variant/60">
             {progress
               ? `Downloading ${progress.done}/${progress.total}${progress.current ? ` · ${progress.current}` : ''}…`
               : `${selectedCount} selected`}
           </span>
           <div className="flex items-center gap-sm">
             <button onClick={() => !progress && onClose()} disabled={!!progress}
-              className="px-lg h-8 text-label-sm font-mono text-on-surface-variant hover:text-on-surface rounded-lg hover:bg-surface-variant transition-colors cursor-pointer uppercase tracking-[0.05em] disabled:opacity-40">
+              className="px-lg h-8 text-label-sm font-mono text-on-surface-variant hover:text-on-surface rounded-lg hover:bg-surface-variant transition-colors cursor-pointer disabled:opacity-40">
               {failures.length ? 'Close' : 'Cancel'}
             </button>
             <button onClick={handleDownload} disabled={!selectedCount || !!progress}
-              className="px-lg h-8 text-label-sm font-mono bg-tertiary-container text-on-tertiary-container disabled:opacity-40 rounded-lg transition-colors cursor-pointer uppercase tracking-[0.05em] hover:opacity-90 flex items-center gap-xs">
+              className="px-lg h-8 text-label-sm font-mono bg-tertiary-container text-on-tertiary-container disabled:opacity-40 rounded-lg transition-colors cursor-pointer hover:opacity-90 flex items-center gap-xs">
               <span className="material-symbols-outlined text-[16px]">cloud_download</span>
               {progress ? 'Downloading…' : `Download${selectedCount ? ` (${selectedCount})` : ''}`}
             </button>

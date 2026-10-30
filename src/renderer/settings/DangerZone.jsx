@@ -15,16 +15,16 @@ function ConfirmButton({ label, confirmLabel = 'Yes, delete', disabled = false, 
   if (confirming) {
     return (
       <div className="flex items-center gap-sm flex-wrap">
-        <span className="text-label-sm font-label-sm text-error uppercase tracking-[0.05em] whitespace-nowrap">Are you sure?</span>
+        <span className="text-label-sm font-label-sm text-error whitespace-nowrap">Are you sure?</span>
         <button
           onClick={handleConfirm}
-          className="px-md py-xs text-label-sm font-label-sm font-bold bg-error-container text-error rounded-lg border border-error/40 hover:brightness-110 active:scale-95 transition-all cursor-pointer uppercase tracking-[0.05em] whitespace-nowrap"
+          className="px-md py-xs text-label-sm font-label-sm font-bold bg-error-container text-error rounded-lg border border-error/40 hover:brightness-110 active:scale-95 transition-all cursor-pointer whitespace-nowrap"
         >
           {confirmLabel}
         </button>
         <button
           onClick={() => setConfirming(false)}
-          className="px-md py-xs text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface bg-surface-container hover:bg-surface-variant border border-outline-variant/30 rounded-lg transition-colors cursor-pointer uppercase tracking-[0.05em]"
+          className="px-md py-xs text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface bg-surface-container hover:bg-surface-variant border border-outline-variant/30 rounded-lg transition-colors cursor-pointer"
         >
           Cancel
         </button>
@@ -36,7 +36,7 @@ function ConfirmButton({ label, confirmLabel = 'Yes, delete', disabled = false, 
     <button
       onClick={() => setConfirming(true)}
       disabled={disabled}
-      className="px-md py-xs text-label-sm font-label-sm font-bold bg-surface-container-high border border-error/40 text-error hover:bg-error-container/20 active:scale-95 transition-all cursor-pointer rounded-lg uppercase tracking-[0.05em] whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+      className="px-md py-xs text-label-sm font-label-sm font-bold bg-surface-container-high border border-error/40 text-error hover:bg-error-container/20 active:scale-95 transition-all cursor-pointer rounded-lg whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
     >
       {label}
     </button>

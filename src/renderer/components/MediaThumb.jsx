@@ -27,7 +27,7 @@ export default function MediaThumb({ path, alt = '', className = '' }) {
   if (failed || !path) {
     return (
       <div className={`flex items-center justify-center bg-surface-container-high ${className}`}>
-        <span className="material-symbols-outlined text-outline-variant text-2xl">broken_image</span>
+        <span className="material-symbols-outlined text-on-surface-variant/70 text-2xl">broken_image</span>
       </div>
     );
   }

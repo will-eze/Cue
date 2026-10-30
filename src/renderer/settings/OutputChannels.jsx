@@ -187,7 +187,7 @@ export default function OutputChannels() {
       {/* Connected displays strip */}
       {screens.length > 0 && (
         <div className="flex items-center gap-sm flex-wrap">
-          <span className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em] shrink-0">
+          <span className="text-label-sm font-label-sm text-on-surface-variant shrink-0">
             Connected:
           </span>
           {screens.map((d) => (
@@ -197,8 +197,8 @@ export default function OutputChannels() {
             >
               <span className="material-symbols-outlined text-[12px] text-outline">monitor</span>
               {d.label}
-              <span className="font-mono text-[9px] text-on-surface-variant/60 tabular-nums">{d.bounds.width}×{d.bounds.height}</span>
-              {d.primary && <span className="text-[9px] font-label-sm text-primary/80 uppercase tracking-[0.04em]">Primary</span>}
+              <span className="font-mono text-[11px] text-on-surface-variant/60 tabular-nums">{d.bounds.width}×{d.bounds.height}</span>
+              {d.primary && <span className="text-[11px] font-label-sm text-primary/80">Primary</span>}
             </span>
           ))}
         </div>
@@ -206,7 +206,7 @@ export default function OutputChannels() {
 
       {/* In-room program audio output device */}
       <div className="flex items-center gap-sm flex-wrap">
-        <span className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em] shrink-0 flex items-center gap-xs">
+        <span className="text-label-sm font-label-sm text-on-surface-variant shrink-0 flex items-center gap-xs">
           <span className="material-symbols-outlined text-[14px] text-outline">volume_up</span>
           Program audio output:
         </span>
@@ -224,13 +224,13 @@ export default function OutputChannels() {
             </option>
           ))}
         </select>
-        <span className="text-[10px] text-on-surface-variant/60">In-room audio only · online / NDI audio is separate</span>
+        <span className="text-[11px] text-on-surface-variant/60">In-room audio only · online / NDI audio is separate</span>
       </div>
 
       {/* New channel form */}
       {creatingChannel && (
         <div className="bg-surface-container-low border border-primary/20 rounded-xl p-md space-y-md ring-1 ring-primary/10">
-          <h3 className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em]">
+          <h3 className="text-label-sm font-label-sm text-on-surface-variant">
             New Channel
           </h3>
           <div className="grid grid-cols-4 gap-md">
@@ -298,7 +298,7 @@ export default function OutputChannels() {
                 </select>
               </Field>
               <div className="space-y-xs">
-                <div className="text-[10px] font-label-sm text-on-surface-variant uppercase tracking-[0.06em]">Audio</div>
+                <div className="text-[11px] font-label-sm text-on-surface-variant">Audio</div>
                 <label className="flex items-center gap-xs h-[34px] cursor-pointer">
                   <input
                     type="checkbox"
@@ -434,11 +434,11 @@ function ChannelCard({ channel, monitors, screens, assignedBounds, onUpdate, onD
           <div className="flex items-center gap-sm flex-1 min-w-0">
             <span className="text-body-md font-semibold text-on-surface truncate">{channel.name}</span>
             {isNdi && (
-              <span className="shrink-0 text-[10px] font-label-sm uppercase tracking-[0.04em] px-xs py-[1px] rounded border border-tertiary/50 text-tertiary bg-tertiary/10">
+              <span className="shrink-0 text-[11px] font-label-sm px-xs py-[1px] rounded border border-tertiary/50 text-tertiary bg-tertiary/10">
                 NDI
               </span>
             )}
-            <span className="shrink-0 text-[10px] font-label-sm uppercase tracking-[0.04em] px-xs py-[1px] rounded border border-outline-variant/40 text-on-surface-variant">
+            <span className="shrink-0 text-[11px] font-label-sm px-xs py-[1px] rounded border border-outline-variant/40 text-on-surface-variant">
               {templateLabel}
             </span>
             {/* Lower-third channels: content mode (lyrics + graphics / lyrics / graphics) */}
@@ -470,14 +470,14 @@ function ChannelCard({ channel, monitors, screens, assignedBounds, onUpdate, onD
             </button>
             {confirmingDelete ? (
               <>
-                <span className="text-[10px] font-mono text-error uppercase tracking-[0.04em] shrink-0">Delete?</span>
+                <span className="text-[11px] font-mono text-error shrink-0">Delete?</span>
                 <button
                   onClick={() => { setConfirmingDelete(false); onDelete(); }}
-                  className="text-[10px] font-mono text-error hover:text-error/70 cursor-pointer uppercase tracking-[0.04em] border border-error/40 px-sm py-[2px] rounded transition-colors"
+                  className="text-[11px] font-mono text-error hover:text-error/70 cursor-pointer border border-error/40 px-sm py-[2px] rounded transition-colors"
                 >Yes</button>
                 <button
                   onClick={() => setConfirmingDelete(false)}
-                  className="text-[10px] font-mono text-on-surface-variant hover:text-on-surface cursor-pointer uppercase tracking-[0.04em] transition-colors"
+                  className="text-[11px] font-mono text-on-surface-variant hover:text-on-surface cursor-pointer transition-colors"
                 >No</button>
               </>
             ) : (
@@ -518,7 +518,7 @@ function ChannelCard({ channel, monitors, screens, assignedBounds, onUpdate, onD
           </div>
           <button
             onClick={() => onUpdate({ ndi_audio_muted: channel.ndi_audio_muted ? 0 : 1 })}
-            className={`shrink-0 flex items-center gap-xs px-sm py-[3px] rounded border text-[10px] font-label-sm uppercase tracking-[0.04em] transition-all cursor-pointer ${
+            className={`shrink-0 flex items-center gap-xs px-sm py-[3px] rounded border text-[11px] font-label-sm transition-all cursor-pointer ${
               channel.ndi_audio_muted
                 ? 'border-outline-variant/40 text-on-surface-variant hover:border-primary/40 hover:text-on-surface'
                 : 'border-tertiary/50 text-tertiary bg-tertiary/10 hover:border-secondary/50 hover:text-secondary hover:bg-secondary/10'
@@ -539,10 +539,10 @@ function ChannelCard({ channel, monitors, screens, assignedBounds, onUpdate, onD
             onClick={() => setShowScreenPicker(true)}
             className="w-full flex flex-col items-center justify-center gap-sm py-lg border-2 border-dashed border-outline-variant/30 rounded-lg hover:border-primary/40 hover:bg-primary/5 transition-all cursor-pointer group"
           >
-            <span className="material-symbols-outlined text-2xl text-outline-variant group-hover:text-primary transition-colors">
+            <span className="material-symbols-outlined text-2xl text-on-surface-variant/70 group-hover:text-primary transition-colors">
               add_to_queue
             </span>
-            <span className="text-label-sm font-label-sm text-on-surface-variant group-hover:text-primary transition-colors uppercase tracking-[0.05em]">
+            <span className="text-label-sm font-label-sm text-on-surface-variant group-hover:text-primary transition-colors">
               Assign a Screen
             </span>
           </button>
@@ -564,8 +564,8 @@ function ChannelCard({ channel, monitors, screens, assignedBounds, onUpdate, onD
                 onClick={() => setShowScreenPicker(true)}
                 className="flex flex-col items-center justify-center gap-xs w-[100px] aspect-video border-2 border-dashed border-outline-variant/30 rounded-lg hover:border-primary/40 hover:bg-primary/5 transition-all cursor-pointer group"
               >
-                <span className="material-symbols-outlined text-xl text-outline-variant group-hover:text-primary transition-colors">add</span>
-                <span className="text-[10px] font-label-sm text-on-surface-variant group-hover:text-primary transition-colors uppercase tracking-[0.04em]">Add Screen</span>
+                <span className="material-symbols-outlined text-xl text-on-surface-variant/70 group-hover:text-primary transition-colors">add</span>
+                <span className="text-[11px] font-label-sm text-on-surface-variant group-hover:text-primary transition-colors">Add Screen</span>
               </button>
             )}
           </div>
@@ -615,7 +615,7 @@ function ContentSizeControl({ value, onCommit }) {
   return (
     <div className="px-md py-sm flex items-center gap-md border-t border-outline-variant/10">
       <span className="material-symbols-outlined text-[14px] text-on-surface-variant shrink-0">format_size</span>
-      <span className="text-label-sm font-label-sm text-on-surface-variant shrink-0 uppercase tracking-[0.04em]">Content Size</span>
+      <span className="text-label-sm font-label-sm text-on-surface-variant shrink-0">Content Size</span>
       <input
         type="range" min={50} max={200} step={1} list="content-size-ticks" value={local}
         onChange={(e) => change(Number(e.target.value), { snap: true })}
@@ -630,7 +630,7 @@ function ContentSizeControl({ value, onCommit }) {
           <button
             key={p}
             onClick={() => change(p)}
-            className={`px-sm h-6 rounded text-[10px] font-label-sm tabular-nums transition-colors cursor-pointer ${
+            className={`px-sm h-6 rounded text-[11px] font-label-sm tabular-nums transition-colors cursor-pointer ${
               local === p
                 ? 'bg-primary/10 text-primary border border-primary/40'
                 : 'text-on-surface-variant hover:text-on-surface border border-outline-variant/30'
@@ -677,11 +677,11 @@ function MonitorTile({ monitor, screens, onRemove }) {
         {isConnected ? 'monitor' : 'monitor_off'}
       </span>
       <div className="text-center w-full min-w-0">
-        <div className="text-[10px] font-label-sm text-on-surface-variant leading-tight truncate">{name}</div>
-        {showRes && <div className="font-mono text-[9px] text-on-surface-variant/60 leading-none mt-[1px] tabular-nums">{res}</div>}
+        <div className="text-[11px] font-label-sm text-on-surface-variant leading-tight truncate">{name}</div>
+        {showRes && <div className="font-mono text-[11px] text-on-surface-variant/60 leading-none mt-[1px] tabular-nums">{res}</div>}
       </div>
       {!isConnected && (
-        <span className="absolute top-1 left-1 text-[9px] font-label-sm text-error uppercase">
+        <span className="absolute top-1 left-1 text-[11px] font-label-sm text-error">
           Disconnected
         </span>
       )}
@@ -702,7 +702,7 @@ function ScreenPicker({ screens, assignedBounds, onPick, onClose }) {
   return (
     <div className="mt-sm border border-primary/20 rounded-xl bg-surface-container-lowest p-md space-y-sm ring-1 ring-primary/10">
       <div className="flex items-center justify-between">
-        <span className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em]">
+        <span className="text-label-sm font-label-sm text-on-surface-variant">
           Select a screen to assign
         </span>
         <button onClick={onClose} className="text-on-surface-variant hover:text-on-surface cursor-pointer">
@@ -735,10 +735,10 @@ function ScreenPicker({ screens, assignedBounds, onPick, onClose }) {
                 >
                   monitor
                 </span>
-                <span className="text-[10px] font-label-sm text-on-surface-variant text-center leading-tight truncate max-w-full">
+                <span className="text-[11px] font-label-sm text-on-surface-variant text-center leading-tight truncate max-w-full">
                   {d.label}
                 </span>
-                <span className="font-mono text-[9px] text-on-surface-variant/60 tabular-nums leading-none">
+                <span className="font-mono text-[11px] text-on-surface-variant/60 tabular-nums leading-none">
                   {d.bounds.width}×{d.bounds.height}
                 </span>
                 {isAssigned && (
@@ -750,7 +750,7 @@ function ScreenPicker({ screens, assignedBounds, onPick, onClose }) {
                   </span>
                 )}
                 {d.primary && (
-                  <span className="absolute bottom-[3px] left-[5px] text-[8px] font-label-sm text-primary/70 uppercase leading-none tracking-[0.03em]">
+                  <span className="absolute bottom-[3px] left-[5px] text-[11px] font-label-sm text-primary/70 leading-none">
                     Primary
                   </span>
                 )}
@@ -771,14 +771,14 @@ function EmptyState({ onAdd }) {
       onClick={onAdd}
       className="w-full flex flex-col items-center justify-center gap-md py-2xl border-2 border-dashed border-outline-variant/20 rounded-xl hover:border-primary/30 hover:bg-primary/5 transition-all cursor-pointer group"
     >
-      <span className="material-symbols-outlined text-4xl text-outline-variant group-hover:text-primary transition-colors">
+      <span className="material-symbols-outlined text-4xl text-on-surface-variant/70 group-hover:text-primary transition-colors">
         add_to_queue
       </span>
       <div className="text-center">
         <p className="text-body-md text-on-surface-variant group-hover:text-on-surface transition-colors">
           No output channels configured
         </p>
-        <p className="text-label-sm font-label-sm text-outline group-hover:text-primary transition-colors mt-xs uppercase tracking-[0.05em]">
+        <p className="text-label-sm font-label-sm text-outline group-hover:text-primary transition-colors mt-xs">
           Click to create your first channel
         </p>
       </div>
@@ -796,7 +796,7 @@ function ChannelModeSwitch({ mode, onChange }) {
           key={m.id}
           onClick={() => onChange(m.id)}
           title={m.label}
-          className={`flex items-center gap-xs px-xs py-[1px] rounded text-[10px] font-label-sm uppercase tracking-[0.04em] transition-colors cursor-pointer ${
+          className={`flex items-center gap-xs px-xs py-[1px] rounded text-[11px] font-label-sm transition-colors cursor-pointer ${
             mode === m.id ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'
           }`}
         >
@@ -813,7 +813,7 @@ function ChannelModeSwitch({ mode, onChange }) {
 function Field({ label, children, className = '' }) {
   return (
     <div className={`space-y-xs ${className}`}>
-      <label className="text-[10px] font-label-sm text-on-surface-variant uppercase tracking-[0.06em]">
+      <label className="text-[11px] font-label-sm text-on-surface-variant">
         {label}
       </label>
       {React.cloneElement(children, {

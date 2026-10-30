@@ -82,7 +82,7 @@ export default function PptxImportModal({ onClose, onDone }) {
         className="w-[480px] max-w-full bg-surface-container-low rounded-xl border border-outline-variant/30 shadow-2xl ring-1 ring-white/5 overflow-hidden">
         <div className="flex items-center gap-sm px-lg h-12 bg-surface-container-high border-b border-outline-variant/30">
           <span className="material-symbols-outlined text-primary">slideshow</span>
-          <span className="text-label-sm font-label-sm uppercase tracking-widest text-on-surface">Import PowerPoint</span>
+          <span className="text-label-sm font-label-sm text-on-surface">Import PowerPoint</span>
           {!busy && (
             <button onClick={onClose} className="ml-auto text-on-surface-variant hover:text-on-surface transition-colors">
               <span className="material-symbols-outlined text-[18px]">close</span>
@@ -199,7 +199,7 @@ function Centered({ icon, spin, children }) {
   return (
     <div className="flex flex-col items-center justify-center gap-sm py-lg text-on-surface-variant">
       <span className={`material-symbols-outlined text-[32px] text-primary ${spin ? 'animate-spin' : ''}`}>{icon}</span>
-      <p className="text-label-sm font-label-sm uppercase tracking-widest">{children}</p>
+      <p className="text-label-sm font-label-sm">{children}</p>
     </div>
   );
 }

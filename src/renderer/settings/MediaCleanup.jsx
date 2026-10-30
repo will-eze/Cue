@@ -74,9 +74,9 @@ export default function MediaCleanup() {
       </div>
 
       {scanned && unused.length === 0 && (
-        <div className="border-2 border-dashed border-outline-variant/20 rounded-xl py-xl flex flex-col items-center gap-sm text-outline-variant">
+        <div className="border-2 border-dashed border-outline-variant/20 rounded-xl py-xl flex flex-col items-center gap-sm text-on-surface-variant/70">
           <span className="material-symbols-outlined text-3xl text-tertiary">check_circle</span>
-          <span className="text-label-sm font-label-sm uppercase tracking-[0.05em]">No unused media — all clean</span>
+          <span className="text-label-sm font-label-sm">No unused media — all clean</span>
         </div>
       )}
 
@@ -109,7 +109,7 @@ export default function MediaCleanup() {
                   <div className="aspect-video w-full relative bg-surface-container-high">
                     {m.type === 'audio' ? (
                       <div className="w-full h-full flex items-center justify-center">
-                        <span className="material-symbols-outlined text-outline-variant text-3xl">music_note</span>
+                        <span className="material-symbols-outlined text-on-surface-variant/70 text-3xl">music_note</span>
                       </div>
                     ) : (
                       <MediaThumb path={m.path} className="w-full h-full object-cover" />
@@ -123,7 +123,7 @@ export default function MediaCleanup() {
                   </div>
                   <div className="px-sm py-xs">
                     <p className="text-label-sm font-label-sm text-on-surface truncate">{m.filename}</p>
-                    <p className="text-[10px] font-mono text-on-surface-variant">{m.type} · {formatBytes(m.size_bytes)}</p>
+                    <p className="text-[11px] font-mono text-on-surface-variant">{m.type} · {formatBytes(m.size_bytes)}</p>
                   </div>
                 </button>
               );

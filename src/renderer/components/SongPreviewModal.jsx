@@ -56,7 +56,7 @@ export default function SongPreviewModal({ song, onClose, onEdit, onAddToRundown
                 {song.title}
               </h2>
               {song.author && (
-                <p className="text-label-sm font-label-sm text-on-surface-variant mt-xs uppercase tracking-[0.05em]">
+                <p className="text-label-sm font-label-sm text-on-surface-variant mt-xs">
                   {song.author}
                 </p>
               )}
@@ -75,9 +75,9 @@ export default function SongPreviewModal({ song, onClose, onEdit, onAddToRundown
         {/* Sections */}
         <div className="flex-1 overflow-y-auto custom-scrollbar p-lg">
           {!fullSong ? (
-            <div className="text-label-sm font-label-sm text-on-surface-variant/40 uppercase tracking-[0.05em]">Loading…</div>
+            <div className="text-label-sm font-label-sm text-on-surface-variant/60">Loading…</div>
           ) : fullSong.sections?.length === 0 ? (
-            <div className="text-label-sm font-label-sm text-on-surface-variant/40 uppercase tracking-[0.05em]">No sections</div>
+            <div className="text-label-sm font-label-sm text-on-surface-variant/60">No sections</div>
           ) : (
             <div className="flex flex-col gap-lg">
               {fullSong.sections?.map((section, i) => {
@@ -92,7 +92,7 @@ export default function SongPreviewModal({ song, onClose, onEdit, onAddToRundown
                       .map((part, pi, arr) => (
                       <React.Fragment key={pi}>
                         {pi > 0 && (
-                          <div className="flex items-center gap-sm my-sm text-[8px] font-mono text-on-surface-variant/30 uppercase tracking-[0.1em]">
+                          <div className="flex items-center gap-sm my-sm text-[11px] font-mono text-on-surface-variant/60">
                             <span className="flex-1 h-px bg-outline-variant/20" />slide break<span className="flex-1 h-px bg-outline-variant/20" />
                           </div>
                         )}
@@ -112,20 +112,20 @@ export default function SongPreviewModal({ song, onClose, onEdit, onAddToRundown
         <div className="flex items-center gap-sm px-lg py-md border-t border-outline-variant/20 bg-surface-container-high rounded-b-xl flex-shrink-0">
           <button
             onClick={() => onEdit(fullSong || song)}
-            className="px-md h-8 text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface bg-surface-container hover:bg-surface-variant border border-outline-variant/30 rounded-lg transition-colors cursor-pointer uppercase tracking-[0.05em]"
+            className="px-md h-8 text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface bg-surface-container hover:bg-surface-variant border border-outline-variant/30 rounded-lg transition-colors cursor-pointer"
           >
             Edit
           </button>
           <div className="flex-1" />
           <button
             onClick={onClose}
-            className="px-md h-8 text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface rounded-lg hover:bg-surface-variant transition-colors cursor-pointer uppercase tracking-[0.05em]"
+            className="px-md h-8 text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface rounded-lg hover:bg-surface-variant transition-colors cursor-pointer"
           >
             Close
           </button>
           <button
             onClick={() => onAddToRundown(song.id)}
-            className="px-md h-8 text-label-sm font-label-sm bg-primary text-on-primary rounded-lg transition-colors cursor-pointer uppercase tracking-[0.05em] hover:opacity-90"
+            className="px-md h-8 text-label-sm font-label-sm bg-primary text-on-primary rounded-lg transition-colors cursor-pointer hover:opacity-90"
           >
             Add to Rundown
           </button>

@@ -35,8 +35,8 @@ function PickCard({ theme, bgThumb, onPick }) {
       <div className="px-md py-sm flex items-center gap-xs">
         <span className="text-label-sm font-mono font-bold text-on-surface truncate min-w-0">{theme.name}</span>
         {theme.builtin
-          ? isMedia && <span className="text-[8px] font-mono text-primary/70 border border-primary/30 rounded px-[3px] py-[1px] uppercase tracking-[0.05em] shrink-0">Media</span>
-          : <span className="text-[8px] font-mono text-tertiary/80 border border-tertiary/30 rounded px-[3px] py-[1px] uppercase tracking-[0.05em] shrink-0">Custom</span>}
+          ? isMedia && <span className="text-[11px] font-mono text-primary/70 border border-primary/30 rounded px-[3px] py-[1px] shrink-0">Media</span>
+          : <span className="text-[11px] font-mono text-tertiary/80 border border-tertiary/30 rounded px-[3px] py-[1px] shrink-0">Custom</span>}
       </div>
     </div>
   );
@@ -93,7 +93,7 @@ export default function ThemePickerModal({ onPick, onClose, category = 'song', c
       customStarted = true;
       nodes.push(
         <div key="sep-custom" style={{ gridColumn: '1 / -1' }} className="flex items-center gap-sm mt-sm">
-          <span className="text-label-sm font-label-sm uppercase tracking-[0.08em] text-on-surface-variant whitespace-nowrap">Your Themes</span>
+          <span className="text-label-sm font-label-sm text-on-surface-variant whitespace-nowrap">Your Themes</span>
           <span className="flex-1 h-px bg-outline-variant/30" />
         </div>
       );
@@ -108,7 +108,7 @@ export default function ThemePickerModal({ onPick, onClose, category = 'song', c
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-lg py-md border-b border-outline-variant/30 bg-surface-container-high flex-shrink-0 gap-md">
-          <h3 className="text-label-sm font-label-sm text-on-surface uppercase tracking-[0.05em] flex items-center gap-sm shrink-0">
+          <h3 className="text-label-sm font-label-sm text-on-surface flex items-center gap-sm shrink-0">
             <span className="material-symbols-outlined text-primary text-[20px]">style</span>
             Choose a theme
           </h3>
@@ -117,14 +117,14 @@ export default function ThemePickerModal({ onPick, onClose, category = 'song', c
             <input
               value={query} onChange={(e) => setQuery(e.target.value)} autoFocus
               placeholder="Search name or mood (serif, video, dark…)"
-              className="w-full pl-[34px] pr-sm py-xs text-body-sm bg-surface-container rounded-lg border border-outline-variant/30 text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:border-primary/50"
+              className="w-full pl-[34px] pr-sm py-xs text-body-sm bg-surface-container rounded-lg border border-outline-variant/30 text-on-surface placeholder:text-on-surface-variant/60 focus:outline-none focus:border-primary/50"
             />
           </div>
           {category !== 'presentation' && (
             <div className="flex items-center gap-[2px] bg-surface-container rounded-lg p-[2px] shrink-0">
               {[['all', 'All'], ['collections', 'Collections'], ['mine', `Yours${mineCount ? ` · ${mineCount}` : ''}`]].map(([id, label]) => (
                 <button key={id} onClick={() => setGroup(id)}
-                  className={`px-sm py-[3px] text-[10px] font-mono uppercase tracking-[0.04em] rounded transition-colors cursor-pointer ${group === id ? 'bg-primary text-on-primary' : 'text-on-surface-variant/70 hover:text-on-surface'}`}>
+                  className={`px-sm py-[3px] text-[11px] font-mono rounded transition-colors cursor-pointer ${group === id ? 'bg-primary text-on-primary' : 'text-on-surface-variant/70 hover:text-on-surface'}`}>
                   {label}
                 </button>
               ))}
@@ -132,7 +132,7 @@ export default function ThemePickerModal({ onPick, onClose, category = 'song', c
           )}
           {hasLegacy && category !== 'presentation' && (
             <button onClick={() => setShowLegacy((v) => !v)}
-              className="shrink-0 text-[10px] font-label-sm uppercase tracking-[0.05em] text-on-surface-variant/60 hover:text-on-surface-variant flex items-center gap-[3px] cursor-pointer">
+              className="shrink-0 text-[11px] font-label-sm text-on-surface-variant/60 hover:text-on-surface-variant flex items-center gap-[3px] cursor-pointer">
               <span className="material-symbols-outlined text-[15px]">{showLegacy ? 'visibility_off' : 'history'}</span>
               {showLegacy ? 'Hide legacy' : 'Show legacy'}
             </button>
@@ -143,9 +143,9 @@ export default function ThemePickerModal({ onPick, onClose, category = 'song', c
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto p-lg">
           {sorted.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center gap-sm text-outline-variant">
+            <div className="h-full flex flex-col items-center justify-center gap-sm text-on-surface-variant/70">
               <span className="material-symbols-outlined text-5xl">palette</span>
-              <span className="text-label-sm font-label-sm uppercase tracking-widest">No themes</span>
+              <span className="text-label-sm font-label-sm">No themes</span>
             </div>
           ) : (
             <div className="grid gap-md" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>

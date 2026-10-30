@@ -780,7 +780,7 @@ function ToolBtn({ active, title, onMouseDown, children, className = '' }) {
     <button
       title={title}
       onMouseDown={(e) => { e.preventDefault(); onMouseDown?.(); }}
-      className={`h-6 min-w-[24px] px-1 flex items-center justify-center rounded transition-colors flex-shrink-0 cursor-pointer text-[11px] font-mono
+      className={`h-6 min-w-[24px] px-1 flex items-center justify-center rounded transition-colors flex-shrink-0 cursor-pointer text-[12px] font-mono
         ${active ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-variant'} ${className}`}
     >{children}</button>
   );
@@ -804,7 +804,7 @@ function NumInput({ value, onChange, min, max, step = 0.1, width = 'w-12', place
       placeholder={placeholder}
       onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}
       onFocus={(e) => e.target.select()}
-      className={`${width} bg-surface-container-lowest border border-outline-variant/40 text-on-surface text-[10px] rounded px-1 h-6 outline-none focus:border-primary text-center`}
+      className={`${width} bg-surface-container-lowest border border-outline-variant/40 text-on-surface text-[11px] rounded px-1 h-6 outline-none focus:border-primary text-center`}
     />
   );
 }
@@ -854,7 +854,7 @@ function ToolMenu({ icon, label, title, active, width = 264, children }) {
         ref={btnRef}
         title={title || label}
         onMouseDown={(e) => { e.preventDefault(); setOpen((v) => !v); }}
-        className={`h-6 px-1.5 flex items-center gap-[3px] rounded transition-colors flex-shrink-0 cursor-pointer text-[10px] font-mono uppercase tracking-[0.04em]
+        className={`h-6 px-1.5 flex items-center gap-[3px] rounded transition-colors flex-shrink-0 cursor-pointer text-[11px] font-mono tracking-[0.04em]
           ${open || active ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-variant'}`}
       >
         {icon && <span className="material-symbols-outlined text-[13px]">{icon}</span>}
@@ -876,7 +876,7 @@ function ToolMenu({ icon, label, title, active, width = 264, children }) {
 function MenuRow({ label, children }) {
   return (
     <div className="flex items-center gap-sm min-h-6">
-      <span className="text-[9px] font-mono text-on-surface-variant/60 uppercase tracking-[0.05em] flex-1">{label}</span>
+      <span className="text-[11px] font-mono text-on-surface-variant/60 flex-1">{label}</span>
       {children}
     </div>
   );
@@ -885,7 +885,7 @@ function MenuRow({ label, children }) {
 function MenuSection({ children }) {
   return (
     <div className="flex items-center gap-sm pt-xs first:pt-0">
-      <span className="text-[9px] font-mono font-bold text-on-surface-variant uppercase tracking-[0.08em]">{children}</span>
+      <span className="text-[11px] font-mono font-bold text-on-surface-variant">{children}</span>
       <span className="flex-1 h-px bg-outline-variant/30" />
     </div>
   );
@@ -959,7 +959,7 @@ export function FormattingToolbar({ style, onChange, fonts, hasSelection, execCm
         <select
           value={style.fontFamily || ''}
           onChange={(e) => set('fontFamily', e.target.value || null)}
-          className="bg-surface-container-high text-on-surface text-[11px] rounded px-1.5 h-6 border border-outline-variant/50 w-32 outline-none focus:border-primary cursor-pointer flex-shrink-0"
+          className="bg-surface-container-high text-on-surface text-[12px] rounded px-1.5 h-6 border border-outline-variant/50 w-32 outline-none focus:border-primary cursor-pointer flex-shrink-0"
         >
           <option value="">Default Font</option>
           {(() => {
@@ -1000,7 +1000,7 @@ export function FormattingToolbar({ style, onChange, fonts, hasSelection, execCm
           onChange={(e) => set('fontSize', e.target.value === '' ? null : Number(e.target.value))}
           onBlur={(e) => { const v = e.target.value; if (v !== '') set('fontSize', Math.max(6, Math.min(500, Number(v) || 6))); }}
           onFocus={(e) => e.target.select()}
-          className="bg-surface-container-high text-on-surface text-[11px] rounded px-1 h-6 border border-outline-variant/50 w-[58px] outline-none focus:border-primary flex-shrink-0 text-center"
+          className="bg-surface-container-high text-on-surface text-[12px] rounded px-1 h-6 border border-outline-variant/50 w-[58px] outline-none focus:border-primary flex-shrink-0 text-center"
         />
         <datalist id="cue-font-sizes">{FONT_SIZES.map((s) => <option key={s} value={s} />)}</datalist>
 
@@ -1074,7 +1074,7 @@ export function FormattingToolbar({ style, onChange, fonts, hasSelection, execCm
           <>
             <Divider />
             <ToolBtn title="Reset all styles" onMouseDown={() => onChange({ ...DEFAULT_STYLE })}>
-              <span className="text-[9px] text-error/70 hover:text-error">Reset</span>
+              <span className="text-[11px] text-error/70 hover:text-error">Reset</span>
             </ToolBtn>
           </>
         )}
@@ -1257,7 +1257,7 @@ export function FormattingToolbar({ style, onChange, fonts, hasSelection, execCm
                 </div>
               </MenuRow>
             )}
-            <p className="text-[9px] font-mono text-on-surface-variant/50 leading-relaxed m-0">In Free mode, drag the reference anywhere in the preview.</p>
+            <p className="text-[11px] font-mono text-on-surface-variant/60 leading-relaxed m-0">In Free mode, drag the reference anywhere in the preview.</p>
           </ToolMenu>
         )}
 
@@ -1315,7 +1315,7 @@ function SortableArrangementRow({ rid, label, typeColor, onRemove }) {
       className="group flex items-center gap-1.5 px-sm py-[3px] border-b border-outline-variant/10"
     >
       <button
-        className="cursor-grab text-on-surface-variant/25 hover:text-on-surface-variant flex-shrink-0 transition-colors"
+        className="cursor-grab text-on-surface-variant/60 hover:text-on-surface-variant flex-shrink-0 transition-colors"
         {...attributes} {...listeners} tabIndex={-1}
       >
         <svg width="7" height="10" viewBox="0 0 7 10" fill="currentColor">
@@ -1331,7 +1331,7 @@ function SortableArrangementRow({ rid, label, typeColor, onRemove }) {
         onClick={onRemove}
         tabIndex={-1}
         title="Remove from arrangement"
-        className="opacity-0 group-hover:opacity-100 text-on-surface-variant/40 hover:text-error transition-all cursor-pointer flex items-center"
+        className="opacity-0 group-hover:opacity-100 text-on-surface-variant/60 hover:text-error transition-all cursor-pointer flex items-center"
       >
         <span className="material-symbols-outlined text-[12px]">close</span>
       </button>
@@ -1345,7 +1345,7 @@ function ArrangementPanel({ sections, arrangement, onChange }) {
   const byKey = new Map(sections.map((s, i) => [s._key, { label: labels[i], color: TYPE_COLORS[s.type] || TYPE_COLORS.default }]));
   const active = Array.isArray(arrangement) && arrangement.length > 0;
   const rows = active
-    ? arrangement.map((k, i) => ({ rid: `${i}:${k}`, key: k, ...(byKey.get(k) || { label: 'Removed', color: 'text-on-surface-variant/30' }) }))
+    ? arrangement.map((k, i) => ({ rid: `${i}:${k}`, key: k, ...(byKey.get(k) || { label: 'Removed', color: 'text-on-surface-variant/60' }) }))
     : [];
 
   function onDragEnd({ active: a, over }) {
@@ -1450,7 +1450,7 @@ function SectionCard({ section, label, isActive, onActivate, onDelete, onTypeCha
     >
       <div className="flex items-center gap-sm px-md pt-sm">
         <button
-          className="drag-handle cursor-grab text-on-surface-variant/40 hover:text-on-surface-variant flex-shrink-0 transition-colors"
+          className="drag-handle cursor-grab text-on-surface-variant/60 hover:text-on-surface-variant flex-shrink-0 transition-colors"
           {...attributes} {...listeners} tabIndex={-1} title="Drag to reorder"
         >
           <span className="material-symbols-outlined text-[18px]">drag_indicator</span>
@@ -1485,7 +1485,7 @@ function SectionCard({ section, label, isActive, onActivate, onDelete, onTypeCha
       {isActive ? editor : (
         <div
           onMouseDown={(e) => { e.preventDefault(); onActivate(section._key, { x: e.clientX, y: e.clientY }); }}
-          className={`${LYRIC_TEXT_CLS} cursor-text ${section.content?.trim() ? '' : 'text-on-surface-variant/50 italic'}`}
+          className={`${LYRIC_TEXT_CLS} cursor-text ${section.content?.trim() ? '' : 'text-on-surface-variant/60 italic'}`}
           dangerouslySetInnerHTML={{ __html: section.content?.trim() ? renderEditorHtml(section.content, section.runs || []) : 'Empty — click to type lyrics' }}
         />
       )}
@@ -1518,11 +1518,11 @@ function PasteView({ onParse, onCancel }) {
       <div className="flex gap-sm">
         <button onClick={() => { const p = parseLyrics(text, { detectTitle: true }); if (p.sections.length) onParse(p); }}
           disabled={!text.trim()}
-          className="px-lg h-8 text-label-sm font-mono bg-primary text-on-primary disabled:opacity-40 rounded-lg transition-colors cursor-pointer uppercase tracking-[0.05em]">
+          className="px-lg h-8 text-label-sm font-mono bg-primary text-on-primary disabled:opacity-40 rounded-lg transition-colors cursor-pointer">
           Import Sections
         </button>
         <button onClick={onCancel}
-          className="px-lg h-8 text-label-sm font-mono text-on-surface-variant hover:text-on-surface cursor-pointer rounded-lg hover:bg-surface-variant transition-colors uppercase tracking-[0.05em]">
+          className="px-lg h-8 text-label-sm font-mono text-on-surface-variant hover:text-on-surface cursor-pointer rounded-lg hover:bg-surface-variant transition-colors">
           Cancel
         </button>
       </div>
@@ -2165,7 +2165,7 @@ export default function SongEditor({ song, onClose, onSave }) {
                     <label className={`${labelCls} mb-0`}>Background</label>
                     {/* Source badge — where the shown background comes from. */}
                     <span
-                      className={`text-[8px] font-mono px-[5px] py-[1px] rounded-full border uppercase tracking-[0.05em] ${BG_SOURCE_STYLE[bgSource]}`}
+                      className={`text-[11px] font-mono px-[5px] py-[1px] rounded-full border ${BG_SOURCE_STYLE[bgSource]}`}
                       title={
                         bgSource === 'Locked' ? 'Locked: this background is pinned and ignores rundown overrides and the global default.'
                         : bgSource === 'Song' ? "This song's own background."
@@ -2185,7 +2185,7 @@ export default function SongEditor({ song, onClose, onSave }) {
                           : <img src={mediaUrl(effectiveBgPath)} className="w-full h-full object-cover" alt="" />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
-                          <span className="material-symbols-outlined text-outline-variant text-base">wallpaper</span>
+                          <span className="material-symbols-outlined text-on-surface-variant/70 text-base">wallpaper</span>
                         </div>
                       )}
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
@@ -2205,7 +2205,7 @@ export default function SongEditor({ song, onClose, onSave }) {
                       title={bgLocked
                         ? 'Background locked — pinned above rundown overrides and the global default. Click to unlock.'
                         : 'Lock this background so rundown overrides, the global default, and "apply to all" can\'t change it.'}
-                      className={`flex items-center gap-[3px] text-[9px] font-mono px-sm py-[3px] rounded border uppercase tracking-[0.05em] cursor-pointer transition-colors
+                      className={`flex items-center gap-[3px] text-[11px] font-mono px-sm py-[3px] rounded border cursor-pointer transition-colors
                         ${bgLocked
                           ? 'text-secondary border-secondary/50 bg-secondary/10 hover:bg-secondary/20'
                           : 'text-on-surface-variant border-outline-variant/40 hover:border-outline-variant hover:text-on-surface'}`}
@@ -2215,7 +2215,7 @@ export default function SongEditor({ song, onClose, onSave }) {
                     </button>
                     {songBackground && (
                       <button onClick={() => setSongBackground(null)}
-                        className="text-[9px] font-mono text-error/60 hover:text-error cursor-pointer uppercase tracking-[0.05em]">Clear</button>
+                        className="text-[11px] font-mono text-error/60 hover:text-error cursor-pointer">Clear</button>
                     )}
                   </div>
                 </div>
@@ -2227,7 +2227,7 @@ export default function SongEditor({ song, onClose, onSave }) {
               <span className={`${labelCls} mb-0`}>Tags:</span>
               {allTags.map((tag) => (
                 <button key={tag.id} onClick={() => toggleTag(tag.id)}
-                  className={`text-[9px] font-mono px-sm py-[2px] rounded-full border transition-colors cursor-pointer
+                  className={`text-[11px] font-mono px-sm py-[2px] rounded-full border transition-colors cursor-pointer
                     ${selectedTagIds.includes(tag.id) ? 'text-white border-transparent' : 'bg-surface-container border-outline-variant/30 text-on-surface-variant hover:border-outline-variant'}`}
                   style={selectedTagIds.includes(tag.id) ? { backgroundColor: tag.colour || '#4d8eff' } : {}}>
                   {tag.name}
@@ -2244,14 +2244,14 @@ export default function SongEditor({ song, onClose, onSave }) {
                     if (e.key === 'Escape') { setNewTagName(''); setAddingTag(false); }
                   }}
                   placeholder="tag name…"
-                  className="text-[9px] font-mono px-sm py-[2px] rounded-full bg-surface-container border border-primary/50 text-on-surface w-24 focus:outline-none"
+                  className="text-[11px] font-mono px-sm py-[2px] rounded-full bg-surface-container border border-primary/50 text-on-surface w-24 focus:outline-none"
                 />
               ) : (
                 <button
                   onClick={() => setAddingTag(true)}
-                  className="text-[9px] font-mono px-sm py-[2px] rounded-full border border-dashed border-outline-variant/40 text-on-surface-variant hover:border-primary hover:text-primary transition-colors cursor-pointer flex items-center gap-[2px]"
+                  className="text-[11px] font-mono px-sm py-[2px] rounded-full border border-dashed border-outline-variant/40 text-on-surface-variant hover:border-primary hover:text-primary transition-colors cursor-pointer flex items-center gap-[2px]"
                 >
-                  <span className="material-symbols-outlined text-[11px]">add</span>New
+                  <span className="material-symbols-outlined text-[12px]">add</span>New
                 </button>
               )}
             </div>
@@ -2368,7 +2368,7 @@ export default function SongEditor({ song, onClose, onSave }) {
                 </DndContext>
                 {sections.length === 0 && (
                   <div className="flex flex-col items-center justify-center py-xl gap-sm text-center">
-                    <span className="material-symbols-outlined text-on-surface-variant/40 text-4xl">lyrics</span>
+                    <span className="material-symbols-outlined text-on-surface-variant/60 text-4xl">lyrics</span>
                     <p className="text-body-md text-on-surface-variant">No lyrics yet — add a section, or use Paste Song to drop in the whole song.</p>
                   </div>
                 )}
@@ -2423,7 +2423,7 @@ export default function SongEditor({ song, onClose, onSave }) {
                 <div className="flex items-center justify-end px-md py-[5px] border-b border-outline-variant/30 bg-surface-container/50">
                   <button
                     onMouseDown={(e) => { e.preventDefault(); handleApplyStyleToSong(); }}
-                    className="flex items-center gap-xs text-[9px] font-mono text-on-surface-variant/50 hover:text-primary uppercase tracking-[0.05em] transition-colors"
+                    className="flex items-center gap-xs text-[11px] font-mono text-on-surface-variant/60 hover:text-primary transition-colors"
                     title="Apply current text styling to all sections of this song"
                   >
                     <span className="material-symbols-outlined text-[12px]">format_paint</span>
@@ -2436,11 +2436,11 @@ export default function SongEditor({ song, onClose, onSave }) {
                 <div className="flex-1 flex flex-col min-h-0 bg-surface-container-lowest p-md">
                   <div className="flex items-center justify-between mb-sm flex-shrink-0">
                     <div className="flex items-center gap-sm">
-                      <span className="text-[9px] font-mono text-on-surface-variant/40 uppercase tracking-[0.06em]">
-                        {activeSection ? `${activeSection.type} — ` : ''}{previewTemplate === 'lowerthird' ? 'Lower Third' : 'Fullscreen'}
+                      <span className="text-[11px] font-mono text-on-surface-variant/60">
+                        {activeSection ? `${activeSection.type.charAt(0).toUpperCase()}${activeSection.type.slice(1)} — ` : ''}{previewTemplate === 'lowerthird' ? 'Lower Third' : 'Fullscreen'}
                       </span>
                       {previewParts.length > 1 && (
-                        <span className="text-[9px] font-mono text-primary/70 tabular-nums uppercase tracking-[0.06em]">
+                        <span className="text-[11px] font-mono text-primary/70 tabular-nums">
                           {previewParts.length} slides
                         </span>
                       )}
@@ -2454,10 +2454,10 @@ export default function SongEditor({ song, onClose, onSave }) {
                         <button
                           key={id}
                           onMouseDown={(e) => { e.preventDefault(); setPreviewTemplate(id); }}
-                          className={`px-sm h-[18px] text-[9px] font-mono rounded transition-colors cursor-pointer uppercase tracking-[0.05em] ${
+                          className={`px-sm h-[18px] text-[11px] font-mono rounded transition-colors cursor-pointer ${
                             previewTemplate === id
                               ? 'bg-primary text-on-primary'
-                              : 'text-on-surface-variant/50 hover:text-on-surface-variant'
+                              : 'text-on-surface-variant/60 hover:text-on-surface-variant'
                           }`}
                         >{label}</button>
                       ))}
@@ -2487,7 +2487,7 @@ export default function SongEditor({ song, onClose, onSave }) {
                       {bgLoading && (
                         <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-xs bg-background/55 pointer-events-none">
                           <span className="material-symbols-outlined text-primary animate-spin text-[28px]">progress_activity</span>
-                          <span className="text-[10px] font-mono uppercase tracking-[0.08em] text-on-surface-variant">Loading background…</span>
+                          <span className="text-[11px] font-mono text-on-surface-variant">Loading background…</span>
                         </div>
                       )}
                     </div>
@@ -2511,7 +2511,7 @@ export default function SongEditor({ song, onClose, onSave }) {
                           ) : (
                             <SlidePreview text={part.text} runs={part.runs} style={style} backgroundPath={effectiveBgPath} />
                           )}
-                          <span className="absolute top-0.5 left-0.5 text-[8px] font-mono bg-black/60 text-white rounded px-1 tabular-nums leading-tight">
+                          <span className="absolute top-0.5 left-0.5 text-[11px] font-mono bg-black/60 text-white rounded px-1 tabular-nums leading-tight">
                             {i + 1}
                           </span>
                         </button>

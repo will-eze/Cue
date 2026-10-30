@@ -148,11 +148,11 @@ export default function StreamView() {
       <div className="flex-1 min-w-0 flex flex-col p-md gap-md">
         <div className="flex items-center gap-sm shrink-0">
           <span className="material-symbols-outlined text-[18px] text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>live_tv</span>
-          <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant">Stream Monitor</span>
+          <span className="text-label-sm font-label-sm text-on-surface-variant">Stream Monitor</span>
           <span className="inline-flex items-center gap-xs text-label-sm font-label-sm ml-auto">
             <span className={`w-2 h-2 rounded-full ${dot} ${status.state === 'live' ? 'animate-pulse' : ''}`} />
             {STATE_LABEL[status.state] || status.state}
-            {status.encoder && status.state === 'live' && <span className="text-on-surface-variant/50">· {status.encoder}</span>}
+            {status.encoder && status.state === 'live' && <span className="text-on-surface-variant/60">· {status.encoder}</span>}
           </span>
           {live && health && <StreamHealth health={health} />}
         </div>
@@ -160,16 +160,16 @@ export default function StreamView() {
         <div className="flex-1 min-h-0 rounded-xl border border-outline-variant/30 bg-black overflow-hidden flex items-center justify-center relative">
           {preview
             ? <img src={preview} alt="Stream preview" className="max-w-full max-h-full object-contain" style={{ aspectRatio: '16 / 9' }} />
-            : <span className="text-on-surface-variant/40 text-label-sm font-label-sm uppercase tracking-widest">Starting preview…</span>}
-          {live && <span className="absolute top-3 left-3 px-sm py-[2px] rounded text-label-sm font-label-sm font-bold uppercase bg-secondary text-on-secondary flex items-center gap-xs"><span className="w-[6px] h-[6px] rounded-full bg-on-secondary animate-pulse" />On Air</span>}
+            : <span className="text-on-surface-variant/60 text-label-sm font-label-sm">Starting preview…</span>}
+          {live && <span className="absolute top-3 left-3 px-sm py-[2px] rounded text-label-sm font-label-sm font-bold bg-secondary text-on-secondary flex items-center gap-xs"><span className="w-[6px] h-[6px] rounded-full bg-on-secondary animate-pulse" />On Air</span>}
         </div>
 
         {/* Layout presets + quick layouts */}
         <div className="shrink-0 bg-surface-container border border-outline-variant/30 rounded-xl p-md space-y-sm">
           <div className="flex items-center gap-sm">
-            <p className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-outline">Program Layout</p>
+            <p className="text-label-sm font-label-sm text-outline">Program Layout</p>
             <button onClick={() => setEditor({ initial: L })}
-              className="ml-auto flex items-center gap-xs h-7 px-sm rounded-lg text-label-sm font-label-sm font-bold uppercase tracking-[0.03em] bg-surface-container-high border border-outline-variant/30 text-on-surface-variant hover:text-on-surface hover:border-outline-variant/60 cursor-pointer transition-all active:scale-95">
+              className="ml-auto flex items-center gap-xs h-7 px-sm rounded-lg text-label-sm font-label-sm font-bold bg-surface-container-high border border-outline-variant/30 text-on-surface-variant hover:text-on-surface hover:border-outline-variant/60 cursor-pointer transition-all active:scale-95">
               <span className="material-symbols-outlined text-[15px]">tune</span>Customise
             </button>
           </div>
@@ -182,9 +182,9 @@ export default function StreamView() {
                 return (
                   <div key={p.id} className={`group flex items-center rounded-lg border overflow-hidden ${active ? 'border-primary/60 bg-primary/15' : 'border-outline-variant/30 bg-surface-container-high'}`}>
                     <button onClick={() => applyLayout(p.layout)}
-                      className={`pl-sm pr-xs h-8 text-label-sm font-label-sm font-bold uppercase tracking-[0.03em] cursor-pointer ${active ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>{p.name}</button>
+                      className={`pl-sm pr-xs h-8 text-label-sm font-label-sm font-bold cursor-pointer ${active ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>{p.name}</button>
                     <button onClick={() => setEditor({ presetId: p.id, presetName: p.name, initial: p.layout })} title="Edit layout"
-                      className="px-xs h-8 text-on-surface-variant/50 hover:text-on-surface cursor-pointer"><span className="material-symbols-outlined text-[14px]">edit</span></button>
+                      className="px-xs h-8 text-on-surface-variant/60 hover:text-on-surface cursor-pointer"><span className="material-symbols-outlined text-[14px]">edit</span></button>
                   </div>
                 );
               })}
@@ -197,7 +197,7 @@ export default function StreamView() {
               const active = layoutEq(t.make(L), L);
               return (
                 <button key={t.id} onClick={() => applyLayout(t.make(L))} title={t.name}
-                  className={`flex items-center gap-xs h-8 px-sm rounded-lg text-label-sm font-label-sm font-bold uppercase tracking-[0.03em] cursor-pointer transition-all active:scale-95 border ${active ? 'bg-primary/15 border-primary/60 text-primary' : 'bg-surface-container-high border-outline-variant/30 text-on-surface-variant hover:text-on-surface hover:border-outline-variant/60'}`}>
+                  className={`flex items-center gap-xs h-8 px-sm rounded-lg text-label-sm font-label-sm font-bold cursor-pointer transition-all active:scale-95 border ${active ? 'bg-primary/15 border-primary/60 text-primary' : 'bg-surface-container-high border-outline-variant/30 text-on-surface-variant hover:text-on-surface hover:border-outline-variant/60'}`}>
                   <span className="material-symbols-outlined text-[15px]">{t.icon}</span>{t.name}
                 </button>
               );
@@ -226,7 +226,7 @@ export default function StreamView() {
 
         {/* Inputs */}
         <section className="space-y-sm">
-          <p className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-outline">Inputs</p>
+          <p className="text-label-sm font-label-sm text-outline">Inputs</p>
           <label className="block">
             <span className="text-label-sm font-label-sm text-on-surface-variant">Video feed (capture device)</span>
             <select value={videoValue} onClick={unlockLabelsOnce}
@@ -250,7 +250,7 @@ export default function StreamView() {
             <div className="mt-xs flex bg-surface-container-lowest border border-outline-variant/40 rounded overflow-hidden">
               {[['external', 'Feed only'], ['mixed', 'Feed + Cue media']].map(([id, lbl]) => (
                 <button key={id} onClick={() => patchStudio({ audioMode: id })}
-                  className={`flex-1 h-7 text-label-sm font-label-sm uppercase tracking-[0.04em] cursor-pointer transition-colors ${studio.audioMode === id ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>{lbl}</button>
+                  className={`flex-1 h-7 text-label-sm font-label-sm cursor-pointer transition-colors ${studio.audioMode === id ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>{lbl}</button>
               ))}
             </div>
           </div>
@@ -268,7 +268,7 @@ export default function StreamView() {
 
         {/* Destination */}
         <section className="space-y-sm">
-          <p className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-outline">Destination</p>
+          <p className="text-label-sm font-label-sm text-outline">Destination</p>
           <label className="block">
             <span className="text-label-sm font-label-sm text-on-surface-variant">RTMP server URL</span>
             <input type="text" value={cfg.server || ''} disabled={live} placeholder="rtmp://a.rtmp.youtube.com/live2"
@@ -311,23 +311,23 @@ export default function StreamView() {
         <div className="pt-xs">
           {!live ? (
             <button onClick={goLive} disabled={busy || !cfg.server || !cfg.key}
-              className="w-full flex items-center justify-center gap-xs h-10 rounded-lg text-label-sm font-label-sm font-bold uppercase bg-secondary text-on-secondary hover:brightness-110 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
+              className="w-full flex items-center justify-center gap-xs h-10 rounded-lg text-label-sm font-label-sm font-bold bg-secondary text-on-secondary hover:brightness-110 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
               <span className="material-symbols-outlined text-[18px]">sensors</span>{busy ? 'Starting…' : 'Go Live'}
             </button>
           ) : status.state === 'error' ? (
             <div className="flex gap-sm">
               <button onClick={goLive} disabled={busy || !cfg.server || !cfg.key}
-                className="flex-1 flex items-center justify-center gap-xs h-10 rounded-lg text-label-sm font-label-sm font-bold uppercase bg-secondary text-on-secondary hover:brightness-110 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
+                className="flex-1 flex items-center justify-center gap-xs h-10 rounded-lg text-label-sm font-label-sm font-bold bg-secondary text-on-secondary hover:brightness-110 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
                 <span className="material-symbols-outlined text-[18px]">refresh</span>Reconnect
               </button>
               <button onClick={stop} disabled={busy}
-                className="flex items-center justify-center gap-xs px-md h-10 rounded-lg text-label-sm font-label-sm font-bold uppercase bg-surface-container-high border border-error/40 text-error hover:bg-error/10 active:scale-95 transition-all cursor-pointer disabled:opacity-40">
+                className="flex items-center justify-center gap-xs px-md h-10 rounded-lg text-label-sm font-label-sm font-bold bg-surface-container-high border border-error/40 text-error hover:bg-error/10 active:scale-95 transition-all cursor-pointer disabled:opacity-40">
                 <span className="material-symbols-outlined text-[18px]">stop_circle</span>Stop
               </button>
             </div>
           ) : (
             <button onClick={stop} disabled={busy}
-              className="w-full flex items-center justify-center gap-xs h-10 rounded-lg text-label-sm font-label-sm font-bold uppercase bg-error text-on-error hover:brightness-110 active:scale-95 transition-all cursor-pointer disabled:opacity-40">
+              className="w-full flex items-center justify-center gap-xs h-10 rounded-lg text-label-sm font-label-sm font-bold bg-error text-on-error hover:brightness-110 active:scale-95 transition-all cursor-pointer disabled:opacity-40">
               <span className="material-symbols-outlined text-[18px]">stop_circle</span>Stop Stream
             </button>
           )}
@@ -379,7 +379,7 @@ function LevelBar({ value = 0, label }) {
   const color = v >= 0.85 ? 'bg-error' : v >= 0.5 ? 'bg-tertiary' : 'bg-tertiary/70';
   return (
     <div className="flex items-center gap-xs">
-      <span className="text-[9px] font-label-sm text-on-surface-variant/50 w-2">{label}</span>
+      <span className="text-[11px] font-label-sm text-on-surface-variant/60 w-2">{label}</span>
       <div className="flex-1 h-[6px] rounded-full bg-surface-container-lowest border border-outline-variant/30 overflow-hidden">
         <div className={`h-full ${color} transition-[width] duration-75`} style={{ width: `${pct}%` }} />
       </div>

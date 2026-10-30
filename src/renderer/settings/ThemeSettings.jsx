@@ -24,7 +24,7 @@ import { useFonts } from '../utils/fonts';
 const SAMPLE_TEXT = 'Amazing Grace\nHow Sweet the Sound';
 const SCRIPTURE_SAMPLE = 'For God so loved the world,\nthat he gave his only Son.';
 
-const labelCls = 'block text-[9px] font-mono text-on-surface-variant/60 mb-0.5 uppercase tracking-[0.05em]';
+const labelCls = 'block text-[11px] font-mono text-on-surface-variant/60 mb-0.5';
 
 // Which content surfaces a custom theme can target. Song & scripture themes share
 // the song text-style shape (DEFAULT_STYLE + a media background) and differ only by
@@ -119,7 +119,7 @@ function PresBgEditor({ value, onChange }) {
       <div className="flex items-center gap-[2px] bg-surface-container rounded p-[2px] w-fit">
         {modes.map(([id, label]) => (
           <button key={id} onClick={() => push({ ...bg, mode: id })}
-            className={`px-sm py-[2px] text-[9px] font-mono rounded uppercase tracking-[0.05em] transition-colors cursor-pointer ${bg.mode === id ? 'bg-primary text-on-primary' : 'text-on-surface-variant/60 hover:text-on-surface-variant'}`}>{label}</button>
+            className={`px-sm py-[2px] text-[11px] font-mono rounded transition-colors cursor-pointer ${bg.mode === id ? 'bg-primary text-on-primary' : 'text-on-surface-variant/60 hover:text-on-surface-variant'}`}>{label}</button>
         ))}
       </div>
       {bg.mode === 'solid' && (
@@ -129,8 +129,8 @@ function PresBgEditor({ value, onChange }) {
         <div className="flex items-center gap-sm">
           <Swatch value={bg.c1} onChange={(v) => push({ ...bg, c1: v })} />
           <Swatch value={bg.c2} onChange={(v) => push({ ...bg, c2: v })} />
-          <label className="flex items-center gap-1 text-[10px] font-mono text-on-surface-variant/70">
-            <span className="uppercase tracking-[0.05em]">Angle</span>
+          <label className="flex items-center gap-1 text-[11px] font-mono text-on-surface-variant/70">
+            <span className="uppercase">Angle</span>
             <input type="number" value={bg.angle} onChange={(e) => push({ ...bg, angle: Number(e.target.value) })}
               className="w-14 bg-surface-container-lowest border border-outline-variant/40 rounded px-1 py-[2px] text-on-surface outline-none focus:border-primary" />
           </label>
@@ -165,7 +165,7 @@ function FontSelect({ label, value, onChange, fonts }) {
 function ColorRow({ label, value, onChange }) {
   return (
     <label className="flex items-center justify-between gap-sm">
-      <span className="text-[10px] font-mono text-on-surface-variant/70 uppercase tracking-[0.04em] truncate">{label}</span>
+      <span className="text-[11px] font-mono text-on-surface-variant/70 truncate">{label}</span>
       <Swatch value={value} onChange={onChange} />
     </label>
   );
@@ -176,7 +176,7 @@ function PresThemeEditor({ tokens, setTokens, fonts }) {
   const flag = (k, label) => (
     <label className="flex items-center gap-xs cursor-pointer">
       <input type="checkbox" checked={!!tokens[k]} onChange={(e) => setTok(k, e.target.checked)} className="accent-primary w-3 h-3" />
-      <span className="text-[10px] font-mono text-on-surface-variant/70 uppercase tracking-[0.04em]">{label}</span>
+      <span className="text-[11px] font-mono text-on-surface-variant/70">{label}</span>
     </label>
   );
   return (
@@ -222,12 +222,12 @@ function SurfaceSwitch({ value, onChange }) {
       <div className="flex items-center gap-[2px] bg-surface-container rounded-lg p-[3px]">
         {opts.map((o) => (
           <button key={o.id} onClick={() => onChange(o.id)}
-            className={`px-md py-1 rounded text-label-sm font-mono uppercase tracking-[0.05em] transition-colors cursor-pointer ${value === o.id ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>
+            className={`px-md py-1 rounded text-label-sm font-mono transition-colors cursor-pointer ${value === o.id ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>
             {o.label}
           </button>
         ))}
       </div>
-      <span className="text-[10px] text-on-surface-variant/50 ml-auto">
+      <span className="text-[11px] text-on-surface-variant/60 ml-auto">
         {value === 'lowerthird' ? 'Overlay style — can differ from fullscreen' : 'Main on-screen output'}
       </span>
     </div>
@@ -246,7 +246,7 @@ function ThemeToggle({ on, onChange }) {
 
 // "Same as fullscreen" ↔ "Custom" chooser for one lower-third field.
 function InheritSeg({ overridden, onInherit, onCustom }) {
-  const cls = (active) => `px-sm py-[3px] text-[10px] font-mono rounded uppercase tracking-[0.04em] transition-colors cursor-pointer ${active ? 'bg-primary text-on-primary' : 'text-on-surface-variant/70 hover:text-on-surface-variant'}`;
+  const cls = (active) => `px-sm py-[3px] text-[11px] font-mono rounded transition-colors cursor-pointer ${active ? 'bg-primary text-on-primary' : 'text-on-surface-variant/70 hover:text-on-surface-variant'}`;
   return (
     <div className="flex items-center gap-[2px] bg-surface-container rounded p-[2px] shrink-0">
       <button className={cls(!overridden)} onClick={onInherit}>Same as fullscreen</button>
@@ -261,7 +261,7 @@ function OverrideRow({ label, sub, overridden, onInherit, onCustom, children }) 
       <div className="flex items-center justify-between gap-md">
         <div className="min-w-0">
           <div className="text-[12px] text-on-surface">{label}</div>
-          {sub && <div className="text-[10px] text-on-surface-variant/60">{sub}</div>}
+          {sub && <div className="text-[11px] text-on-surface-variant/60">{sub}</div>}
         </div>
         <InheritSeg overridden={overridden} onInherit={onInherit} onCustom={onCustom} />
       </div>
@@ -277,10 +277,10 @@ function AccentControl({ accent, onChange }) {
   return (
     <div className="px-lg py-sm border-b border-outline-variant/20 bg-surface-container/40 flex items-center gap-md">
       <div className="min-w-0 flex-1">
-        <div className="text-[11px] font-mono text-on-surface uppercase tracking-[0.05em]">Accent</div>
-        <div className="text-[10px] text-on-surface-variant/60">A colour rule under the lower-third text. Turn it off if you don’t want an accent.</div>
+        <div className="text-[11px] font-mono text-on-surface">Accent</div>
+        <div className="text-[11px] text-on-surface-variant/60">A colour rule under the lower-third text. Turn it off if you don’t want an accent.</div>
       </div>
-      <span className="text-[10px] font-mono text-on-surface-variant/50 uppercase">{on ? 'On' : 'Off'}</span>
+      <span className="text-[11px] font-mono text-on-surface-variant/60">{on ? 'On' : 'Off'}</span>
       <ThemeToggle on={on} onChange={(v) => onChange({ enabled: v, color })} />
       <div className={on ? '' : 'opacity-30 pointer-events-none'}>
         <Swatch value={color} onChange={(v) => onChange({ enabled: on, color: v })} />
@@ -297,13 +297,13 @@ function BgSpeedControl({ speed, onChange }) {
   return (
     <div className="px-lg py-sm border-b border-outline-variant/20 bg-surface-container/40 flex items-center gap-md">
       <div className="min-w-0 flex-1">
-        <div className="text-[11px] font-mono text-on-surface uppercase tracking-[0.05em]">Background motion</div>
-        <div className="text-[10px] text-on-surface-variant/60">Slow a distracting loop. Only affects video backgrounds; default is normal speed.</div>
+        <div className="text-[11px] font-mono text-on-surface">Background motion</div>
+        <div className="text-[11px] text-on-surface-variant/60">Slow a distracting loop. Only affects video backgrounds; default is normal speed.</div>
       </div>
       <div className="flex items-center gap-[2px] bg-surface-container rounded-lg p-[3px] shrink-0">
         {BG_SPEEDS.map((s) => (
           <button key={s.v} onClick={() => onChange(s.v === 1 ? undefined : s.v)}
-            className={`px-sm py-1 rounded text-[10px] font-mono uppercase tracking-[0.04em] transition-colors cursor-pointer ${Math.abs(cur - s.v) < 0.01 ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>
+            className={`px-sm py-1 rounded text-[11px] font-mono transition-colors cursor-pointer ${Math.abs(cur - s.v) < 0.01 ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>
             {s.label}
           </button>
         ))}
@@ -323,11 +323,11 @@ const GRADE_BLENDS = ['soft-light', 'multiply', 'overlay', 'screen', 'color'];
 function TxSlider({ label, value, min = 0, max = 1, step = 0.01, onChange }) {
   return (
     <label className="flex items-center gap-sm">
-      <span className="text-[10px] text-on-surface-variant/70 w-20 shrink-0">{label}</span>
+      <span className="text-[11px] text-on-surface-variant/70 w-20 shrink-0">{label}</span>
       <input type="range" min={min} max={max} step={step} value={value}
         onChange={(e) => onChange(Number(e.target.value))}
         className="flex-1 accent-primary cursor-pointer" />
-      <span className="text-[10px] font-mono text-on-surface-variant/50 w-9 text-right tabular-nums">{Math.round(value * 100)}%</span>
+      <span className="text-[11px] font-mono text-on-surface-variant/60 w-9 text-right tabular-nums">{Math.round(value * 100)}%</span>
     </label>
   );
 }
@@ -337,7 +337,7 @@ function Segmented({ options, value, onChange }) {
     <div className="flex items-center gap-[2px] bg-surface-container rounded p-[2px] flex-wrap">
       {options.map(([id, label]) => (
         <button key={id} onClick={() => onChange(id)}
-          className={`px-sm py-[3px] text-[10px] font-mono rounded uppercase tracking-[0.04em] transition-colors cursor-pointer ${value === id ? 'bg-primary text-on-primary' : 'text-on-surface-variant/70 hover:text-on-surface-variant'}`}>{label}</button>
+          className={`px-sm py-[3px] text-[11px] font-mono rounded transition-colors cursor-pointer ${value === id ? 'bg-primary text-on-primary' : 'text-on-surface-variant/70 hover:text-on-surface-variant'}`}>{label}</button>
       ))}
     </div>
   );
@@ -364,8 +364,8 @@ function TreatmentControl({ treatment, onChange }) {
   return (
     <div className="px-lg py-md border-b border-outline-variant/20 bg-surface-container/40 flex flex-col gap-md">
       <div className="min-w-0">
-        <div className="text-[11px] font-mono text-on-surface uppercase tracking-[0.05em]">Treatment</div>
-        <div className="text-[10px] text-on-surface-variant/60">Designed legibility &amp; grade — the layer that makes a background look professional.</div>
+        <div className="text-[11px] font-mono text-on-surface">Treatment</div>
+        <div className="text-[11px] text-on-surface-variant/60">Designed legibility &amp; grade — the layer that makes a background look professional.</div>
       </div>
 
       {/* Scrim — directional darkening for legibility */}
@@ -390,7 +390,7 @@ function TreatmentControl({ treatment, onChange }) {
           <div className="flex items-center gap-sm">
             <Swatch value={t.tint?.color || '#3a6ea5'} onChange={(v) => setTint({ color: v })} />
             <select value={t.tint?.blend || 'soft-light'} onChange={(e) => setTint({ blend: e.target.value })}
-              className="bg-surface-container-lowest border border-outline-variant/40 rounded px-sm py-[3px] text-[10px] font-mono text-on-surface outline-none focus:border-primary cursor-pointer">
+              className="bg-surface-container-lowest border border-outline-variant/40 rounded px-sm py-[3px] text-[11px] font-mono text-on-surface outline-none focus:border-primary cursor-pointer">
               {GRADE_BLENDS.map((b) => <option key={b} value={b}>{b}</option>)}
             </select>
           </div>
@@ -403,12 +403,12 @@ function TreatmentControl({ treatment, onChange }) {
         <div className="flex items-center gap-sm">
           <span className="text-[11px] text-on-surface flex-1">Glass panel</span>
           <ThemeToggle on={!!glass.enabled} onChange={(v) => setGlass({ enabled: v })} />
-          <span className="text-[10px] font-mono text-on-surface-variant/50 uppercase">{glass.enabled ? 'On' : 'Off'}</span>
+          <span className="text-[11px] font-mono text-on-surface-variant/60">{glass.enabled ? 'On' : 'Off'}</span>
         </div>
         {glass.enabled && (
           <>
             <div className="flex items-center gap-sm">
-              <span className="text-[10px] text-on-surface-variant/70 w-20 shrink-0">Tint</span>
+              <span className="text-[11px] text-on-surface-variant/70 w-20 shrink-0">Tint</span>
               <Swatch value={glass.tint || '#0a0e1a'} onChange={(v) => setGlass({ tint: v })} />
             </div>
             <TxSlider label="Blur" value={(glass.blur ?? 22) / 40} onChange={(v) => setGlass({ blur: Math.round(v * 40) })} />
@@ -421,7 +421,7 @@ function TreatmentControl({ treatment, onChange }) {
       <div className="flex items-center justify-between gap-sm">
         <div className="min-w-0">
           <span className="text-[11px] text-on-surface">Motion</span>
-          <div className="text-[10px] text-on-surface-variant/50">Slow drift on still photo backgrounds.</div>
+          <div className="text-[11px] text-on-surface-variant/60">Slow drift on still photo backgrounds.</div>
         </div>
         <Segmented options={KB_MODES} value={t.kenBurns || 'none'}
           onChange={(id) => set({ kenBurns: id === 'none' ? undefined : id })} />
@@ -450,13 +450,13 @@ function LtBarEditor({ value, onChange }) {
     <div className="flex flex-col gap-sm">
       <div className="min-w-0">
         <div className="text-[12px] text-on-surface">Lower-third bar</div>
-        <div className="text-[10px] text-on-surface-variant/60">The band behind the words. A gradient fades it into the background.</div>
+        <div className="text-[11px] text-on-surface-variant/60">The band behind the words. A gradient fades it into the background.</div>
       </div>
       <div className="flex items-center gap-sm flex-wrap">
         <div className="flex items-center gap-[2px] bg-surface-container rounded p-[2px]">
           {modes.map(([id, label]) => (
             <button key={id} onClick={() => push({ ...b, mode: id })}
-              className={`px-sm py-[3px] text-[10px] font-mono rounded uppercase tracking-[0.04em] transition-colors cursor-pointer ${b.mode === id ? 'bg-primary text-on-primary' : 'text-on-surface-variant/70 hover:text-on-surface-variant'}`}>{label}</button>
+              className={`px-sm py-[3px] text-[11px] font-mono rounded transition-colors cursor-pointer ${b.mode === id ? 'bg-primary text-on-primary' : 'text-on-surface-variant/70 hover:text-on-surface-variant'}`}>{label}</button>
           ))}
         </div>
         {(b.mode === 'solid' || b.mode === 'gradient') && (
@@ -485,7 +485,7 @@ function LowerThirdThemeEditor({ style, onChange, fonts }) {
       {/* Live lower-third preview — reflects the overrides + bar + accent below. */}
       <div className="p-md bg-surface-container-lowest">
         <div className="flex items-center justify-between mb-sm">
-          <span className="text-[9px] font-mono text-on-surface-variant/40 uppercase tracking-[0.06em]">Lower Third Preview</span>
+          <span className="text-[11px] font-mono text-on-surface-variant/60">Lower Third Preview</span>
         </div>
         <div className="w-full">
           <LowerThirdPreview text={SAMPLE_TEXT} runs={[]} style={style} />
@@ -499,7 +499,7 @@ function LowerThirdThemeEditor({ style, onChange, fonts }) {
         <div className="flex items-center justify-between gap-md">
           <div className="min-w-0">
             <div className="text-[12px] text-on-surface">Form</div>
-            <div className="text-[10px] text-on-surface-variant/60">Band, a boxed panel, a pill, or text only.</div>
+            <div className="text-[11px] text-on-surface-variant/60">Band, a boxed panel, a pill, or text only.</div>
           </div>
           <Segmented
             options={[['band', 'Band'], ['box', 'Box'], ['pill', 'Pill'], ['none', 'None']]}
@@ -512,7 +512,7 @@ function LowerThirdThemeEditor({ style, onChange, fonts }) {
         <div className="flex items-center justify-between gap-md">
           <div className="min-w-0">
             <div className="text-[12px] text-on-surface">Anchor</div>
-            <div className="text-[10px] text-on-surface-variant/60">Where it sits on screen.</div>
+            <div className="text-[11px] text-on-surface-variant/60">Where it sits on screen.</div>
           </div>
           <Segmented
             options={[['bottom', 'Bottom'], ['center', 'Center'], ['top', 'Top']]}
@@ -525,7 +525,7 @@ function LowerThirdThemeEditor({ style, onChange, fonts }) {
         <div className="flex items-center justify-between gap-md">
           <div className="min-w-0">
             <div className="text-[12px] text-on-surface">Entrance</div>
-            <div className="text-[10px] text-on-surface-variant/60">How the text animates in on air.</div>
+            <div className="text-[11px] text-on-surface-variant/60">How the text animates in on air.</div>
           </div>
           <Segmented
             options={[['none', 'None'], ['fade', 'Fade'], ['slide-up', 'Up'], ['slide-down', 'Down'], ['slide-left', 'Slide']]}
@@ -541,7 +541,7 @@ function LowerThirdThemeEditor({ style, onChange, fonts }) {
           <div className="flex items-center justify-between gap-md">
             <div className="min-w-0">
               <div className="text-[12px] text-on-surface">Max lines</div>
-              <div className="text-[10px] text-on-surface-variant/60">Inherit the fullscreen Max&nbsp;Lines/Slide cap, or set a tighter one.</div>
+              <div className="text-[11px] text-on-surface-variant/60">Inherit the fullscreen Max&nbsp;Lines/Slide cap, or set a tighter one.</div>
             </div>
             <div className="flex items-center gap-sm shrink-0">
               <span className="text-[11px] text-on-surface-variant">Inherit</span>
@@ -550,7 +550,7 @@ function LowerThirdThemeEditor({ style, onChange, fonts }) {
           </div>
           {lt.maxLines != null && (
             <div className="flex items-center gap-sm justify-end">
-              <span className="text-[10px] font-mono text-on-surface-variant/70 uppercase">Lower-third max</span>
+              <span className="text-[11px] font-mono text-on-surface-variant/70">Lower-third max</span>
               <input type="number" min={1} max={12} value={lt.maxLines}
                 onChange={(e) => setLt((n) => { n.maxLines = Math.max(1, Math.min(12, Math.round(Number(e.target.value) || 1))); })}
                 className="w-16 bg-surface-container border border-outline-variant/30 rounded px-sm py-[3px] text-[13px] tabular-nums text-on-surface text-center outline-none focus:border-primary shrink-0" />
@@ -572,7 +572,7 @@ function LowerThirdThemeEditor({ style, onChange, fonts }) {
             <span className="text-[11px] text-on-surface-variant">Shadow</span>
             <ThemeToggle on={!!lt.textShadow?.enabled}
               onChange={(v) => setLt((n) => { n.textShadow = v ? { enabled: true, x: 0, y: 2, blur: 16, color: '#000000' } : { enabled: false }; })} />
-            <span className="text-[10px] font-mono text-on-surface-variant/50 uppercase">{lt.textShadow?.enabled ? 'On' : 'Off'}</span>
+            <span className="text-[11px] font-mono text-on-surface-variant/60">{lt.textShadow?.enabled ? 'On' : 'Off'}</span>
           </div>
         </OverrideRow>
 
@@ -602,7 +602,7 @@ function LowerThirdThemeEditor({ style, onChange, fonts }) {
         >
           <div className="flex items-center gap-sm">
             <ThemeToggle on={!!lt.uppercase} onChange={(v) => setLt((n) => { n.uppercase = v; })} />
-            <span className="text-[10px] font-mono text-on-surface-variant/50 uppercase">{lt.uppercase ? 'On' : 'Off'}</span>
+            <span className="text-[11px] font-mono text-on-surface-variant/60">{lt.uppercase ? 'On' : 'Off'}</span>
           </div>
         </OverrideRow>
       </div>
@@ -668,19 +668,19 @@ function ThemeEditorModal({ theme, initialCategory, onClose, onSaved }) {
   // fullscreen slide keeps the draggable text box; the rest are read-only.
   const previewPane = (
     <div className="flex-1 min-w-0 overflow-y-auto custom-scrollbar p-lg bg-surface-container-lowest flex flex-col gap-lg">
-      <div className="flex items-center gap-sm text-[9px] font-mono text-on-surface-variant/50 uppercase tracking-[0.06em]">
+      <div className="flex items-center gap-sm text-[11px] font-mono text-on-surface-variant/60">
         <span className="material-symbols-outlined text-[14px] text-primary/60">preview</span>
         Live preview · assign as a default or to a rundown from the Theme Library
       </div>
       <div>
         <div className="flex items-center justify-between mb-sm gap-sm">
-          <div className="text-[9px] font-mono text-on-surface-variant/40 uppercase tracking-[0.06em]">Fullscreen slide</div>
+          <div className="text-[11px] font-mono text-on-surface-variant/60">Fullscreen slide</div>
           {(() => {
             const c = themeContrast(style);
             if (!c) return null;
             const cls = c.aa ? 'text-tertiary border-tertiary/40' : 'text-secondary border-secondary/40';
             return (
-              <span className={`text-[9px] font-mono uppercase tracking-[0.04em] border rounded px-xs py-[1px] flex items-center gap-[3px] ${cls}`}
+              <span className={`text-[11px] font-mono border rounded px-xs py-[1px] flex items-center gap-[3px] ${cls}`}
                 title={`Text vs background ≈ ${c.ratio.toFixed(1)}:1 (WCAG AA needs 4.5:1${c.approx ? '; estimate for photo/glass backgrounds' : ''})`}>
                 <span className="material-symbols-outlined text-[12px]">{c.aa ? 'contrast' : 'warning'}</span>
                 {c.ratio.toFixed(1)}:1 {c.aa ? 'AA' : 'low'}{c.approx ? '~' : ''}
@@ -693,15 +693,15 @@ function ThemeEditorModal({ theme, initialCategory, onClose, onSaved }) {
       </div>
       <div className="grid grid-cols-3 gap-md">
         <div>
-          <div className="text-[8px] font-mono text-on-surface-variant/40 uppercase tracking-[0.05em] mb-xs">Scripture</div>
+          <div className="text-[11px] font-mono text-on-surface-variant/60 mb-xs">Scripture</div>
           <SlidePreview text={SCRIPTURE_SAMPLE} runs={[]} style={style} backgroundPath={background?.path ?? null} copyright="John 3:16" copyrightAlign="right" />
         </div>
         <div>
-          <div className="text-[8px] font-mono text-on-surface-variant/40 uppercase tracking-[0.05em] mb-xs">Section</div>
+          <div className="text-[11px] font-mono text-on-surface-variant/60 mb-xs">Section</div>
           <SlidePreview text={'Chorus'} runs={[]} style={style} backgroundPath={background?.path ?? null} />
         </div>
         <div>
-          <div className="text-[8px] font-mono text-on-surface-variant/40 uppercase tracking-[0.05em] mb-xs">Lower third</div>
+          <div className="text-[11px] font-mono text-on-surface-variant/60 mb-xs">Lower third</div>
           <LowerThirdPreview text={SAMPLE_TEXT} runs={[]} style={style} />
         </div>
       </div>
@@ -718,10 +718,10 @@ function ThemeEditorModal({ theme, initialCategory, onClose, onSaved }) {
             <h2 className="text-headline-md font-bold text-primary leading-tight">
               {theme?.id ? 'Edit Theme' : 'New Theme'}
             </h2>
-            <p className="text-[9px] font-mono text-on-surface-variant/50 uppercase tracking-[0.06em]">Theme Studio</p>
+            <p className="text-[11px] font-mono text-on-surface-variant/60">Theme Studio</p>
           </div>
           <div className="flex-1" />
-          <span className="text-[10px] font-mono text-on-surface-variant/50 uppercase tracking-[0.05em] mr-sm">One theme · any content</span>
+          <span className="text-[11px] font-mono text-on-surface-variant/60 mr-sm">One theme · any content</span>
           <button onClick={onClose}
             className="w-7 h-7 flex items-center justify-center rounded-full text-on-surface-variant hover:text-on-surface hover:bg-surface-variant transition-colors cursor-pointer text-sm">
             ✕
@@ -756,7 +756,7 @@ function ThemeEditorModal({ theme, initialCategory, onClose, onSaved }) {
                     : <img src={mediaUrl(background.path)} className="w-full h-full object-cover" alt="" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center">
-                    <span className="material-symbols-outlined text-outline-variant text-base">wallpaper</span>
+                    <span className="material-symbols-outlined text-on-surface-variant/70 text-base">wallpaper</span>
                   </div>
                 )}
                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
@@ -765,7 +765,7 @@ function ThemeEditorModal({ theme, initialCategory, onClose, onSaved }) {
               </div>
               {background && (
                 <button onClick={() => setBackground(null)}
-                  className="text-[9px] font-mono text-error/60 hover:text-error cursor-pointer uppercase tracking-[0.05em]">
+                  className="text-[11px] font-mono text-error/60 hover:text-error cursor-pointer">
                   Clear
                 </button>
               )}
@@ -810,8 +810,8 @@ function ThemeEditorModal({ theme, initialCategory, onClose, onSaved }) {
                     style_json and merged into each section on apply. */}
                 <div className="px-md py-sm border-b border-outline-variant/20 bg-surface-container-lowest flex items-center gap-md">
                   <div className="min-w-0">
-                    <div className="text-[11px] font-mono text-on-surface uppercase tracking-[0.05em]">Max Lines / Slide</div>
-                    <div className="text-[10px] text-on-surface-variant/60">Longer sections split across slides. 0 = unlimited.</div>
+                    <div className="text-[11px] font-mono text-on-surface">Max Lines / Slide</div>
+                    <div className="text-[11px] text-on-surface-variant/60">Longer sections split across slides. 0 = unlimited.</div>
                   </div>
                   <input
                     type="number"
@@ -839,11 +839,11 @@ function ThemeEditorModal({ theme, initialCategory, onClose, onSaved }) {
         {/* Footer */}
         <div className="flex items-center justify-end gap-sm px-lg py-sm border-t border-outline-variant/30 bg-surface-container-high flex-shrink-0">
           <button onClick={onClose}
-            className="px-lg h-8 text-label-sm font-mono text-on-surface-variant hover:text-on-surface rounded-lg hover:bg-surface-variant transition-colors cursor-pointer uppercase tracking-[0.05em]">
+            className="px-lg h-8 text-label-sm font-mono text-on-surface-variant hover:text-on-surface rounded-lg hover:bg-surface-variant transition-colors cursor-pointer">
             Cancel
           </button>
           <button onClick={handleSave} disabled={!name.trim() || saving}
-            className="px-lg h-8 text-label-sm font-mono bg-tertiary-container text-on-tertiary-container disabled:opacity-40 rounded-lg transition-colors cursor-pointer uppercase tracking-[0.05em] hover:opacity-90">
+            className="px-lg h-8 text-label-sm font-mono bg-tertiary-container text-on-tertiary-container disabled:opacity-40 rounded-lg transition-colors cursor-pointer hover:opacity-90">
             {saving ? 'Saving…' : theme?.id ? 'Update Theme' : 'Save Theme'}
           </button>
         </div>
@@ -865,7 +865,7 @@ function ThemeEditorModal({ theme, initialCategory, onClose, onSaved }) {
 function MenuAction({ icon, label, onClick, danger }) {
   return (
     <button onClick={onClick}
-      className={`w-full flex items-center gap-sm px-md py-[6px] text-[11px] font-mono uppercase tracking-[0.04em] cursor-pointer transition-colors ${danger ? 'text-secondary hover:bg-secondary/10' : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/40'}`}>
+      className={`w-full flex items-center gap-sm px-md py-[6px] text-[11px] font-mono cursor-pointer transition-colors ${danger ? 'text-secondary hover:bg-secondary/10' : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/40'}`}>
       <span className="material-symbols-outlined text-[14px]">{icon}</span>{label}
     </button>
   );
@@ -975,21 +975,21 @@ function ThemeCard({ theme, services, activeServiceId, onEdit, onCustomize, onDu
         <span className="text-label-sm font-mono font-bold text-on-surface truncate min-w-0 mr-sm flex items-center gap-xs">
           {theme.name}
           {isBuiltin && (
-            <span className="text-[8px] font-mono text-primary/70 border border-primary/30 rounded px-[3px] py-[1px] uppercase tracking-[0.05em] shrink-0">Built-in</span>
+            <span className="text-[11px] font-mono text-primary/70 border border-primary/30 rounded px-[3px] py-[1px] shrink-0">Built-in</span>
           )}
           {isDefault && (
-            <span className="text-[8px] font-mono text-tertiary border border-tertiary/40 rounded px-[3px] py-[1px] uppercase tracking-[0.05em] shrink-0 flex items-center gap-[2px]">
-              <span className="material-symbols-outlined text-[10px]">check_circle</span>Default
+            <span className="text-[11px] font-mono text-tertiary border border-tertiary/40 rounded px-[3px] py-[1px] shrink-0 flex items-center gap-[2px]">
+              <span className="material-symbols-outlined text-[11px]">check_circle</span>Default
             </span>
           )}
         </span>
         <div className="flex items-center gap-xs flex-shrink-0">
           <button onClick={() => onToggleFav?.(theme)} title={isFav ? 'Unpin' : 'Pin to Favorites'}
-            className={`cursor-pointer transition-colors flex items-center ${isFav ? 'text-primary' : 'text-on-surface-variant/40 hover:text-on-surface-variant'}`}>
+            className={`cursor-pointer transition-colors flex items-center ${isFav ? 'text-primary' : 'text-on-surface-variant/60 hover:text-on-surface-variant'}`}>
             <span className="material-symbols-outlined text-[14px]" style={isFav ? { fontVariationSettings: "'FILL' 1" } : undefined}>star</span>
           </button>
           <button ref={menuBtnRef} onClick={() => setMenuOpen((o) => !o)} title="More actions"
-            className="text-on-surface-variant/50 hover:text-on-surface cursor-pointer transition-colors flex items-center">
+            className="text-on-surface-variant/60 hover:text-on-surface cursor-pointer transition-colors flex items-center">
             <span className="material-symbols-outlined text-[16px]">more_vert</span>
           </button>
           <AnchoredMenu open={menuOpen} anchorRef={menuBtnRef} onClose={() => { setMenuOpen(false); setConfirmDelete(false); }}
@@ -1014,11 +1014,11 @@ function ThemeCard({ theme, services, activeServiceId, onEdit, onCustomize, onDu
               Songs/Scripture/Slides set a per-kind default that overrides "All" for that
               content type. Every song/verse without its own theme inherits this LIVE. */}
           <div>
-            <div className="text-[9px] font-mono text-on-surface-variant/40 uppercase tracking-[0.06em] mb-[3px]">Set as default for</div>
+            <div className="text-[11px] font-mono text-on-surface-variant/60 mb-[3px]">Set as default for</div>
             <div className="flex items-stretch gap-[3px]">
               {[['all', 'All', isDefault, 'stars'], ['song', 'Songs', isSongDefault], ['scripture', 'Scripture', isScriptureDefault], ['slide', 'Slides', isSlideDefault]].map(([scope, label, active, icon]) => (
                 <button key={scope} onClick={() => onSetDefault(scope)} title={`Default for ${label.toLowerCase() === 'all' ? 'all content' : label.toLowerCase()}`}
-                  className={`flex-1 min-w-0 flex items-center justify-center gap-[2px] px-[4px] py-[5px] text-[10px] font-mono uppercase tracking-[0.03em] rounded border transition-colors cursor-pointer ${
+                  className={`flex-1 min-w-0 flex items-center justify-center gap-[2px] px-[4px] py-[5px] text-[11px] font-mono rounded border transition-colors cursor-pointer ${
                     active ? 'bg-tertiary/15 border-tertiary/40 text-tertiary' : 'border-outline-variant/25 text-on-surface-variant/70 hover:text-tertiary hover:border-tertiary/40'}`}>
                   {icon && <span className="material-symbols-outlined text-[12px] shrink-0">{icon}</span>}
                   <span className="truncate">{label}</span>
@@ -1029,7 +1029,7 @@ function ThemeCard({ theme, services, activeServiceId, onEdit, onCustomize, onDu
 
           {/* Rundown — assign to the active rundown (overrides the app default there). */}
           <button onClick={handleUseForService} disabled={!activeServiceId}
-            className={`w-full text-[10px] font-mono uppercase tracking-[0.05em] rounded px-sm py-[5px] transition-colors cursor-pointer flex items-center justify-center gap-xs border disabled:opacity-40 ${
+            className={`w-full text-[11px] font-mono rounded px-sm py-[5px] transition-colors cursor-pointer flex items-center justify-center gap-xs border disabled:opacity-40 ${
               isServiceLook ? 'bg-primary/15 border-primary/40 text-primary'
                 : 'bg-primary/5 border-primary/20 text-on-surface-variant hover:text-primary hover:border-primary/40'}`}>
             <span className="material-symbols-outlined text-[13px]">{isServiceLook ? 'check_circle' : 'playlist_add_check'}</span>
@@ -1039,7 +1039,7 @@ function ThemeCard({ theme, services, activeServiceId, onEdit, onCustomize, onDu
           {/* Advanced — the older "bake into every song" path, kept for one-off
               hard-coding but tucked away so the live cascade is the obvious choice. */}
           <button onClick={() => setAdvanced((v) => !v)}
-            className="w-full text-[9px] font-mono uppercase tracking-[0.05em] text-on-surface-variant/50 hover:text-on-surface-variant flex items-center justify-center gap-[2px] pt-[2px] cursor-pointer">
+            className="w-full text-[11px] font-mono text-on-surface-variant/60 hover:text-on-surface-variant flex items-center justify-center gap-[2px] pt-[2px] cursor-pointer">
             <span className="material-symbols-outlined text-[12px]">{advanced ? 'expand_less' : 'expand_more'}</span>
             Advanced — bake into songs
           </button>
@@ -1048,29 +1048,29 @@ function ThemeCard({ theme, services, activeServiceId, onEdit, onCustomize, onDu
               {hasBackground && (
                 <label className="flex items-center gap-xs cursor-pointer">
                   <input type="checkbox" checked={applyBg} onChange={(e) => setApplyBg(e.target.checked)} className="accent-primary w-3 h-3" />
-                  <span className="text-[10px] font-mono text-on-surface-variant/70">Include background</span>
+                  <span className="text-[11px] font-mono text-on-surface-variant/70">Include background</span>
                 </label>
               )}
               <div className="flex items-center gap-xs">
                 <select value={selectedServiceId ?? ''} onChange={(e) => setSelectedServiceId(Number(e.target.value))}
-                  className="flex-1 min-w-0 bg-surface-container-lowest border border-outline-variant/30 rounded px-sm py-[3px] text-[10px] font-mono text-on-surface outline-none focus:border-primary cursor-pointer">
+                  className="flex-1 min-w-0 bg-surface-container-lowest border border-outline-variant/30 rounded px-sm py-[3px] text-[11px] font-mono text-on-surface outline-none focus:border-primary cursor-pointer">
                   {services.length === 0 ? <option value="">No rundowns</option>
                     : services.map((s) => <option key={s.id} value={s.id}>{s.title}</option>)}
                 </select>
                 <button onClick={handleApplyToRundown} disabled={!selectedServiceId || services.length === 0}
-                  className="shrink-0 px-sm py-[3px] text-[9px] font-mono bg-surface-container border border-outline-variant/40 text-on-surface-variant rounded hover:text-on-surface active:scale-95 transition-all cursor-pointer disabled:opacity-40 uppercase tracking-[0.05em]">
+                  className="shrink-0 px-sm py-[3px] text-[11px] font-mono bg-surface-container border border-outline-variant/40 text-on-surface-variant rounded hover:text-on-surface active:scale-95 transition-all cursor-pointer disabled:opacity-40">
                   Bake
                 </button>
               </div>
               {confirmApplyAll ? (
                 <div className="flex items-center gap-sm">
-                  <span className="text-[9px] font-mono text-error uppercase tracking-[0.04em] flex-1 truncate">Bake into all songs?</span>
-                  <button onClick={() => { setConfirmApplyAll(false); handleApplyToAllSongs(); }} className="text-[9px] font-mono text-error hover:text-error/70 cursor-pointer uppercase tracking-[0.04em] border border-error/40 px-sm py-[2px] rounded transition-colors shrink-0">Yes</button>
-                  <button onClick={() => setConfirmApplyAll(false)} className="text-[9px] font-mono text-on-surface-variant hover:text-on-surface cursor-pointer uppercase tracking-[0.04em] transition-colors shrink-0">No</button>
+                  <span className="text-[11px] font-mono text-error flex-1 truncate">Bake into all songs?</span>
+                  <button onClick={() => { setConfirmApplyAll(false); handleApplyToAllSongs(); }} className="text-[11px] font-mono text-error hover:text-error/70 cursor-pointer border border-error/40 px-sm py-[2px] rounded transition-colors shrink-0">Yes</button>
+                  <button onClick={() => setConfirmApplyAll(false)} className="text-[11px] font-mono text-on-surface-variant hover:text-on-surface cursor-pointer transition-colors shrink-0">No</button>
                 </div>
               ) : (
                 <button onClick={() => setConfirmApplyAll(true)}
-                  className="w-full text-[9px] font-mono text-on-surface-variant/60 hover:text-on-surface border border-outline-variant/20 hover:border-outline-variant rounded px-sm py-[3px] transition-colors cursor-pointer uppercase tracking-[0.05em]">
+                  className="w-full text-[11px] font-mono text-on-surface-variant/60 hover:text-on-surface border border-outline-variant/20 hover:border-outline-variant rounded px-sm py-[3px] transition-colors cursor-pointer">
                   Bake into all songs
                 </button>
               )}
@@ -1078,7 +1078,7 @@ function ThemeCard({ theme, services, activeServiceId, onEdit, onCustomize, onDu
           )}
         </>
 
-        {feedback && <p className="text-[9px] font-mono text-tertiary pt-[2px]">{feedback}</p>}
+        {feedback && <p className="text-[11px] font-mono text-tertiary pt-[2px]">{feedback}</p>}
       </div>
     </div>
   );
@@ -1358,7 +1358,7 @@ export default function ThemeSettings({ activeServiceId, onBackgroundDefaultChan
         customStarted = true;
         nodes.push(
           <div key="sep-custom" style={{ gridColumn: '1 / -1' }} className="flex items-center gap-sm mt-sm">
-            <span className="text-label-sm font-label-sm uppercase tracking-[0.08em] text-on-surface-variant whitespace-nowrap">Your Themes</span>
+            <span className="text-label-sm font-label-sm text-on-surface-variant whitespace-nowrap">Your Themes</span>
             <span className="flex-1 h-px bg-outline-variant/30" />
           </div>
         );
@@ -1387,7 +1387,7 @@ export default function ThemeSettings({ activeServiceId, onBackgroundDefaultChan
       <div className="bg-surface-container-high p-lg rounded-xl border border-outline-variant/30">
         <div className="flex items-center justify-between gap-md">
           <div className="min-w-0">
-            <h3 className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em]">Max Lines / Slide</h3>
+            <h3 className="text-label-sm font-label-sm text-on-surface-variant">Max Lines / Slide</h3>
             <p className="text-body-sm text-on-surface-variant/70 mt-xs">
               Auto-split every song so no slide shows more than this many lines. Applies to the whole
               rundown; a song can override it in the Song Editor. 0 = unlimited.
@@ -1419,7 +1419,7 @@ export default function ThemeSettings({ activeServiceId, onBackgroundDefaultChan
       <div className="bg-surface-container-high p-lg rounded-xl border border-outline-variant/30">
         <div className="flex items-start justify-between mb-md gap-md">
           <div>
-            <h3 className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em]">Collections</h3>
+            <h3 className="text-label-sm font-label-sm text-on-surface-variant">Collections</h3>
             <p className="text-body-sm text-on-surface-variant/70 mt-xs">
               Cue’s curated themes plus your own. Song &amp; scripture themes are interchangeable — use any theme on either.
               Start from a curated background, or design one from scratch.
@@ -1467,10 +1467,10 @@ export default function ThemeSettings({ activeServiceId, onBackgroundDefaultChan
         </div>
 
         {sortedThemes.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-xl gap-sm text-outline-variant">
+          <div className="flex flex-col items-center justify-center py-xl gap-sm text-on-surface-variant/70">
             <span className="material-symbols-outlined text-5xl">palette</span>
-            <span className="text-label-sm font-label-sm uppercase tracking-widest">No themes yet</span>
-            <p className="text-body-sm text-on-surface-variant/50 text-center max-w-xs mt-xs">
+            <span className="text-label-sm font-label-sm">No themes yet</span>
+            <p className="text-body-sm text-on-surface-variant/60 text-center max-w-xs mt-xs">
               Start from a curated background above, or design one from scratch.
             </p>
           </div>
@@ -1482,7 +1482,7 @@ export default function ThemeSettings({ activeServiceId, onBackgroundDefaultChan
             {sortedThemes.length > 4 && (
               <button
                 onClick={() => setShowAll(true)}
-                className="mt-md w-full text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant hover:text-on-surface border border-outline-variant/30 hover:border-outline-variant rounded-lg py-sm transition-colors cursor-pointer flex items-center justify-center gap-xs"
+                className="mt-md w-full text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface border border-outline-variant/30 hover:border-outline-variant rounded-lg py-sm transition-colors cursor-pointer flex items-center justify-center gap-xs"
               >
                 <span className="material-symbols-outlined text-[18px]">grid_view</span>
                 View all {sortedThemes.length} themes
@@ -1491,7 +1491,7 @@ export default function ThemeSettings({ activeServiceId, onBackgroundDefaultChan
             {hasLegacy && (
               <button
                 onClick={() => setShowLegacy((v) => !v)}
-                className="mt-xs w-full text-[10px] font-label-sm uppercase tracking-[0.05em] text-on-surface-variant/50 hover:text-on-surface-variant flex items-center justify-center gap-[3px] cursor-pointer"
+                className="mt-xs w-full text-[11px] font-label-sm text-on-surface-variant/60 hover:text-on-surface-variant flex items-center justify-center gap-[3px] cursor-pointer"
               >
                 <span className="material-symbols-outlined text-[14px]">{showLegacy ? 'visibility_off' : 'history'}</span>
                 {showLegacy ? 'Hide legacy themes' : 'Show legacy themes'}
@@ -1499,14 +1499,14 @@ export default function ThemeSettings({ activeServiceId, onBackgroundDefaultChan
             )}
             {dupeCount > 0 && (
               confirmDedupe ? (
-                <div className="mt-xs flex items-center justify-center gap-sm text-[10px] font-mono uppercase tracking-[0.04em]">
+                <div className="mt-xs flex items-center justify-center gap-sm text-[11px] font-mono">
                   <span className="text-secondary">Remove {dupeCount} duplicate cop{dupeCount === 1 ? 'y' : 'ies'}?</span>
                   <button onClick={handleDedupe} className="text-secondary hover:text-secondary/70 border border-secondary/40 rounded px-sm py-[2px] cursor-pointer">Yes, remove</button>
                   <button onClick={() => setConfirmDedupe(false)} className="text-on-surface-variant hover:text-on-surface cursor-pointer">Cancel</button>
                 </div>
               ) : (
                 <button onClick={() => setConfirmDedupe(true)}
-                  className="mt-xs w-full text-[10px] font-label-sm uppercase tracking-[0.05em] text-on-surface-variant/50 hover:text-secondary flex items-center justify-center gap-[3px] cursor-pointer">
+                  className="mt-xs w-full text-[11px] font-label-sm text-on-surface-variant/60 hover:text-secondary flex items-center justify-center gap-[3px] cursor-pointer">
                   <span className="material-symbols-outlined text-[14px]">cleaning_services</span>
                   Remove {dupeCount} duplicate cop{dupeCount === 1 ? 'y' : 'ies'}
                 </button>
@@ -1524,13 +1524,13 @@ export default function ThemeSettings({ activeServiceId, onBackgroundDefaultChan
           </p>
           {confirmResetAll ? (
             <div className="flex items-center gap-sm shrink-0">
-              <span className="text-[10px] font-mono text-error uppercase tracking-[0.04em]">Reset every song?</span>
+              <span className="text-[11px] font-mono text-error">Reset every song?</span>
               <button onClick={handleResetAllSongs} disabled={resettingAll}
-                className="text-[10px] font-mono text-error hover:text-error/70 cursor-pointer uppercase tracking-[0.04em] border border-error/40 px-sm py-[3px] rounded transition-colors disabled:opacity-40">
+                className="text-[11px] font-mono text-error hover:text-error/70 cursor-pointer border border-error/40 px-sm py-[3px] rounded transition-colors disabled:opacity-40">
                 {resettingAll ? 'Resetting…' : 'Yes, reset all'}
               </button>
               <button onClick={() => setConfirmResetAll(false)} disabled={resettingAll}
-                className="text-[10px] font-mono text-on-surface-variant hover:text-on-surface cursor-pointer uppercase tracking-[0.04em] transition-colors">Cancel</button>
+                className="text-[11px] font-mono text-on-surface-variant hover:text-on-surface cursor-pointer transition-colors">Cancel</button>
             </div>
           ) : (
             <button onClick={() => setConfirmResetAll(true)}
@@ -1557,7 +1557,7 @@ export default function ThemeSettings({ activeServiceId, onBackgroundDefaultChan
             onMouseDown={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-lg py-md border-b border-outline-variant/30 bg-surface-container-high flex-shrink-0 gap-md flex-wrap">
-              <h3 className="text-label-sm font-label-sm text-on-surface uppercase tracking-[0.05em] flex items-center gap-sm shrink-0">
+              <h3 className="text-label-sm font-label-sm text-on-surface flex items-center gap-sm shrink-0">
                 <span className="material-symbols-outlined text-primary text-[20px]">style</span>
                 All Themes · {sortedThemes.length}
               </h3>
@@ -1575,7 +1575,7 @@ export default function ThemeSettings({ activeServiceId, onBackgroundDefaultChan
                   <div className="flex items-center gap-[2px] bg-surface-container rounded-lg p-[3px] ml-auto mr-sm">
                     {chips.map(([id, label]) => (
                       <button key={id} onClick={() => setAllFilter(id)}
-                        className={`px-md py-[4px] text-[10px] font-mono uppercase tracking-[0.04em] rounded transition-colors cursor-pointer ${allFilter === id ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>
+                        className={`px-md py-[4px] text-[11px] font-mono rounded transition-colors cursor-pointer ${allFilter === id ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>
                         {label}
                       </button>
                     ))}
@@ -1596,13 +1596,13 @@ export default function ThemeSettings({ activeServiceId, onBackgroundDefaultChan
                   : sortedThemes;
                 if (!shown.length) {
                   return (
-                    <div className="h-full flex flex-col items-center justify-center gap-sm text-outline-variant py-xl">
+                    <div className="h-full flex flex-col items-center justify-center gap-sm text-on-surface-variant/70 py-xl">
                       <span className="material-symbols-outlined text-5xl">palette</span>
-                      <span className="text-label-sm font-label-sm uppercase tracking-widest">
+                      <span className="text-label-sm font-label-sm">
                         {allFilter === 'mine' ? 'No themes of your own yet' : allFilter === 'selected' ? 'No themes enabled yet' : 'No themes'}
                       </span>
                       {allFilter === 'mine' && (
-                        <p className="text-body-sm text-on-surface-variant/50 text-center max-w-xs mt-xs">
+                        <p className="text-body-sm text-on-surface-variant/60 text-center max-w-xs mt-xs">
                           “Customize” any Collection, or “+ New Theme”, to make one that’s yours.
                         </p>
                       )}

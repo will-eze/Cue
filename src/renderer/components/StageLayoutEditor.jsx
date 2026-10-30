@@ -183,7 +183,7 @@ export default function StageLayoutEditor({ value, onChange }) {
         <div className="flex items-center gap-sm shrink-0 flex-wrap">
           <div className="relative" ref={addRef}>
             <button onClick={() => setAddOpen((v) => !v)}
-              className="flex items-center gap-xs h-9 px-md rounded-lg text-label-sm font-label-sm font-bold uppercase tracking-[0.03em] bg-primary text-on-primary hover:brightness-110 active:scale-95 transition-all cursor-pointer">
+              className="flex items-center gap-xs h-9 px-md rounded-lg text-label-sm font-label-sm font-bold bg-primary text-on-primary hover:brightness-110 active:scale-95 transition-all cursor-pointer">
               <span className="material-symbols-outlined text-[16px]">add</span>Add Element
             </button>
             <AnchoredMenu
@@ -205,7 +205,7 @@ export default function StageLayoutEditor({ value, onChange }) {
           {/* Ready-made starting layouts */}
           {TEMPLATES.map((t) => (
             <button key={t.id} onClick={() => applyTemplate(t)} title={`Apply “${t.name}” layout`}
-              className="flex items-center gap-xs h-8 px-sm rounded-lg text-label-sm font-label-sm font-bold uppercase tracking-[0.03em] bg-surface-container-high border border-outline-variant/30 text-on-surface-variant hover:text-on-surface hover:border-outline-variant/60 cursor-pointer transition-all active:scale-95">
+              className="flex items-center gap-xs h-8 px-sm rounded-lg text-label-sm font-label-sm font-bold bg-surface-container-high border border-outline-variant/30 text-on-surface-variant hover:text-on-surface hover:border-outline-variant/60 cursor-pointer transition-all active:scale-95">
               <span className="material-symbols-outlined text-[15px]">{t.icon}</span>{t.name}
             </button>
           ))}
@@ -226,7 +226,7 @@ export default function StageLayoutEditor({ value, onChange }) {
             {/* Alignment guides (only while dragging) */}
             <SnapGuides guides={guides} />
             {elements.length === 0 && (
-              <div className="absolute inset-0 flex items-center justify-center text-on-surface-variant/40 text-label-sm uppercase tracking-widest">No elements — add one or pick a layout</div>
+              <div className="absolute inset-0 flex items-center justify-center text-on-surface-variant/60 text-label-sm">No elements — add one or pick a layout</div>
             )}
           </div>
         </div>
@@ -275,7 +275,7 @@ const justify = (a) => (a === 'left' ? 'flex-start' : a === 'right' ? 'flex-end'
 function ElementContent({ el, clock }) {
   const bar = (label, value, valColor) => (
     <div className="w-full h-full flex flex-col justify-center gap-[2px] bg-[#1a1c20] overflow-hidden px-1" style={{ alignItems: justify(el.align) }}>
-      {label && <div className="text-[8px] font-medium uppercase tracking-[0.2em] text-[#424754] truncate max-w-full">{label}</div>}
+      {label && <div className="text-[11px] font-medium text-[#424754] truncate max-w-full">{label}</div>}
       <div className="font-bold tabular-nums leading-none" style={{ color: valColor, fontSize: (el.fit ?? 'auto') !== 'auto' ? `${el.fontPx}px` : 'clamp(10px,4cqw,40px)' }}>{value}</div>
     </div>
   );
@@ -283,7 +283,7 @@ function ElementContent({ el, clock }) {
     case 'clock':          return bar(el.label, el.hour12 === false ? '13:45' + (el.showSeconds === false ? '' : ':00') : '01:45' + (el.showSeconds === false ? '' : ':00') + ' PM', '#adc6ff');
     case 'timer':          return (
       <div className="w-full h-full flex flex-col justify-center gap-[2px] bg-[#1a1c20] px-1" style={{ alignItems: justify(el.align) }}>
-        {el.label && <div className="text-[8px] font-medium uppercase tracking-[0.2em] text-[#424754] truncate">{el.label}</div>}
+        {el.label && <div className="text-[11px] font-medium text-[#424754] truncate">{el.label}</div>}
         <div className="font-bold tabular-nums leading-none text-[#c2c6d6]" style={{ fontSize: (el.fit ?? 'auto') !== 'auto' ? `${el.fontPx}px` : 'clamp(10px,4cqw,40px)' }}>05:00</div>
         {el.showBar !== false && <div className="w-[65%] h-[3px] rounded-full bg-white/10 overflow-hidden"><div className="h-full w-[60%] bg-[#a40217]" /></div>}
       </div>
@@ -292,18 +292,18 @@ function ElementContent({ el, clock }) {
     case 'videoCountdown': return bar(el.label, '--:--', '#4ae176');
     case 'message':        return (
       <div className="w-full h-full flex items-center bg-[#1a1c20] px-2" style={{ justifyContent: justify(el.align) }}>
-        <span className="text-[8px] font-medium uppercase tracking-[0.14em] text-white/25">No Messages</span>
+        <span className="text-[11px] font-medium text-white/25">No Messages</span>
       </div>
     );
     case 'currentText':    return (
       <div className="w-full h-full relative flex items-center justify-center bg-[#0c0e12] overflow-hidden px-2">
-        {el.showRef !== false && <div className="absolute top-1 left-0 right-0 text-center text-[9px] font-semibold text-[#adc6ff] truncate px-2">John 3:16 (NIV)</div>}
+        {el.showRef !== false && <div className="absolute top-1 left-0 right-0 text-center text-[11px] font-semibold text-[#adc6ff] truncate px-2">John 3:16 (NIV)</div>}
         <div className="w-full font-bold leading-tight" style={{ color: el.color || '#fff', textAlign: el.align || 'center', fontSize: 'clamp(12px, 9cqw, 90px)' }}>Current slide text</div>
       </div>
     );
     case 'nextText':       return (
       <div className="w-full h-full flex items-baseline gap-2 bg-[#0c0e12] px-2 overflow-hidden">
-        {el.label && <span className="text-[8px] font-medium uppercase tracking-[0.18em] text-[#4d8eff] whitespace-nowrap shrink-0">{el.label}</span>}
+        {el.label && <span className="text-[11px] font-medium text-[#4d8eff] whitespace-nowrap shrink-0">{el.label}</span>}
         <span className="flex-1 min-w-0" style={{ color: el.color || 'rgba(255,255,255,0.4)', textAlign: el.align || 'left', fontSize: (el.fit ?? 'auto') !== 'auto' ? `${el.fontPx}px` : 'clamp(9px,2.5cqw,26px)' }}>Next slide preview…</span>
       </div>
     );
@@ -321,7 +321,7 @@ function Inspector({ el, patch, onRemove }) {
   const meta = ELEMENT_CATALOG[el.type] || { label: el.type, icon: 'widgets' };
   const numField = (k) => (
     <label key={k} className="flex flex-col items-center">
-      <span className="text-[9px] uppercase text-on-surface-variant/50">{k}</span>
+      <span className="text-[11px] uppercase text-on-surface-variant/70">{k}</span>
       <input type="number" value={Math.round(el[k])} min={0} max={100}
         onChange={(e) => { const v = clamp(Number(e.target.value) || 0, 0, 100); const lim = (k === 'w') ? Math.min(v, 100 - el.x) : (k === 'h') ? Math.min(v, 100 - el.y) : (k === 'x') ? Math.min(v, 100 - el.w) : Math.min(v, 100 - el.h); patch({ [k]: lim }); }}
         className="w-full bg-surface-container-lowest border border-outline-variant/30 rounded px-[2px] py-[2px] text-[11px] text-center tabular-nums text-on-surface outline-none focus:border-primary" />
@@ -331,14 +331,14 @@ function Inspector({ el, patch, onRemove }) {
     <div className="space-y-md pt-sm">
       <div className="flex items-center gap-xs">
         <span className="material-symbols-outlined text-[18px] text-primary">{meta.icon}</span>
-        <span className="text-label-md font-label-md font-bold uppercase tracking-[0.04em] flex-1">{meta.label}</span>
+        <span className="text-label-md font-label-md font-bold flex-1">{meta.label}</span>
         <button onClick={onRemove} title="Remove element" className="text-error/80 hover:text-error cursor-pointer">
           <span className="material-symbols-outlined text-[18px]">delete</span>
         </button>
       </div>
 
       <div>
-        <p className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-outline mb-xs">Position &amp; size (%)</p>
+        <p className="text-label-sm font-label-sm text-outline mb-xs">Position &amp; size (%)</p>
         <div className="grid grid-cols-4 gap-[4px]">{['x', 'y', 'w', 'h'].map(numField)}</div>
       </div>
 

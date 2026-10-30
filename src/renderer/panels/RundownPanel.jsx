@@ -183,13 +183,13 @@ function SortableItem({ item, index, bgPath, isPreview, isLive, isSelected, live
           {label}
         </p>
         <div className="flex items-center gap-xs min-w-0 mt-0.5">
-          <p className="text-[10px] text-on-surface-variant truncate shrink-0">{sublabel}</p>
+          <p className="text-[11px] text-on-surface-variant truncate shrink-0">{sublabel}</p>
           {(item.song?.tags || []).length > 0 && (
             <div className="flex items-center gap-xs min-w-0 overflow-hidden">
               {item.song.tags.slice(0, 3).map((tag) => (
                 <span
                   key={tag.id}
-                  className="text-[8px] font-mono font-bold leading-none px-xs py-[2px] rounded-full text-white/95 whitespace-nowrap"
+                  className="text-[11px] font-mono font-bold leading-none px-xs py-[2px] rounded-full text-white/95 whitespace-nowrap"
                   style={{ background: tag.colour || '#4d8eff' }}
                   title={tag.name}
                 >
@@ -204,43 +204,43 @@ function SortableItem({ item, index, bgPath, isPreview, isLive, isSelected, live
       {/* State badges */}
       <div className="flex items-center gap-xs shrink-0 pr-xs">
         {isLive && (
-          <span className="font-label-sm text-[9px] font-bold tracking-widest bg-secondary-container text-on-secondary-container px-sm py-[2px] rounded uppercase">
+          <span className="font-label-sm text-[11px] font-bold bg-secondary-container text-on-secondary-container px-sm py-[2px] rounded">
             LIVE
           </span>
         )}
         {isPreview && !isLive && (
-          <span className="font-label-sm text-[9px] font-bold tracking-widest bg-primary-container/20 text-primary border border-primary/30 px-sm py-[2px] rounded uppercase">
+          <span className="font-label-sm text-[11px] font-bold bg-primary-container/20 text-primary border border-primary/30 px-sm py-[2px] rounded">
             PRVW
           </span>
         )}
         {ytBadge && (
           <span
             title={yt.status === 'error' ? (yt.error || 'Download failed') : undefined}
-            className={`font-label-sm text-[9px] font-bold tracking-wider px-xs py-[2px] rounded uppercase ${ytBadge.cls}`}
+            className={`font-label-sm text-[11px] font-bold px-xs py-[2px] rounded ${ytBadge.cls}`}
           >
             {ytBadge.text}
           </span>
         )}
         {(item.item_type === 'media' || item.item_type === 'youtube') && !!item.media_loop && (
-          <span className="font-label-sm text-[9px] tracking-wider bg-primary-container/20 text-primary border border-primary/30 px-xs py-[2px] rounded uppercase">
+          <span className="font-label-sm text-[11px] bg-primary-container/20 text-primary border border-primary/30 px-xs py-[2px] rounded">
             LOOP
           </span>
         )}
         {isLive && liveSlideCount > 1 && (
-          <span className="font-label-sm text-[9px] tracking-wider text-secondary/80 tabular-nums">
+          <span className="font-label-sm text-[11px] text-secondary/80 tabular-nums">
             {liveSlideIdx + 1}/{liveSlideCount}
           </span>
         )}
         {item.advance_seconds > 0 && (
           <span
-            className={`flex items-center gap-[2px] font-label-sm text-[9px] tracking-wider px-xs py-[2px] rounded uppercase tabular-nums ${
+            className={`flex items-center gap-[2px] font-label-sm text-[11px] px-xs py-[2px] rounded tabular-nums ${
               advanceRemaining != null
                 ? 'bg-tertiary/15 text-tertiary border border-tertiary/30'
                 : 'bg-surface-variant text-on-surface-variant'
             }`}
             title={item.advance_loop === 'item' ? 'Auto-advance · loops this item' : 'Auto-advance · continues rundown'}
           >
-            <span className="material-symbols-outlined text-[11px] leading-none">
+            <span className="material-symbols-outlined text-[12px] leading-none">
               {item.advance_loop === 'item' ? 'repeat_one' : 'timer'}
             </span>
             {advanceRemaining != null ? `${advanceRemaining}s` : `${item.advance_seconds}s`}
@@ -248,8 +248,8 @@ function SortableItem({ item, index, bgPath, isPreview, isLive, isSelected, live
         )}
         {/* This item overrides the service/app look (item tier of the cascade). */}
         {item.theme_override_id ? (
-          <span title="Custom theme for this item" className="flex items-center font-label-sm text-[9px] tracking-wider px-xs py-[2px] rounded uppercase bg-primary/10 text-primary border border-primary/25">
-            <span className="material-symbols-outlined text-[11px] leading-none">palette</span>
+          <span title="Custom theme for this item" className="flex items-center font-label-sm text-[11px] px-xs py-[2px] rounded bg-primary/10 text-primary border border-primary/25">
+            <span className="material-symbols-outlined text-[12px] leading-none">palette</span>
           </span>
         ) : null}
       </div>
@@ -284,8 +284,8 @@ function AutoAdvanceModal({ item, onApply, onClose }) {
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="w-[340px] bg-surface-container-high border border-outline-variant/40 rounded-xl shadow-2xl ring-1 ring-white/5 p-lg">
-        <h3 className="text-label-sm font-label-sm uppercase tracking-widest text-on-surface-variant mb-1">Auto-Advance</h3>
-        <p className="text-[11px] text-on-surface-variant/70 mb-md leading-snug">
+        <h3 className="text-label-sm font-label-sm text-on-surface-variant mb-1">Auto-Advance</h3>
+        <p className="text-[12px] text-on-surface-variant/70 mb-md leading-snug">
           When this item is live, move forward automatically after the set interval.
         </p>
 
@@ -294,7 +294,7 @@ function AutoAdvanceModal({ item, onApply, onClose }) {
             <button
               key={p}
               onClick={() => setSecs(String(p))}
-              className={`py-xs text-[11px] font-mono rounded border cursor-pointer transition-colors ${
+              className={`py-xs text-[12px] font-mono rounded border cursor-pointer transition-colors ${
                 Number(secs) === p
                   ? 'border-primary/60 bg-primary-container/20 text-primary'
                   : 'border-outline-variant/30 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
@@ -305,14 +305,14 @@ function AutoAdvanceModal({ item, onApply, onClose }) {
           ))}
           <button
             onClick={() => apply(null)}
-            className="py-xs text-[11px] font-mono rounded border border-outline-variant/30 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface cursor-pointer transition-colors uppercase"
+            className="py-xs text-[12px] font-mono rounded border border-outline-variant/30 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface cursor-pointer transition-colors"
           >
             Off
           </button>
         </div>
 
         {/* Loop mode — what happens when the timer reaches the item's last slide. */}
-        <p className="text-[10px] font-label-sm uppercase tracking-widest text-on-surface-variant/60 mb-xs">At end of item</p>
+        <p className="text-[11px] font-label-sm text-on-surface-variant/60 mb-xs">At end of item</p>
         <div className="flex flex-col gap-xs mb-md">
           {LOOP_MODES.map((m) => (
             <button
@@ -324,8 +324,8 @@ function AutoAdvanceModal({ item, onApply, onClose }) {
                   : 'border-outline-variant/30 hover:bg-surface-variant'
               }`}
             >
-              <span className={`block text-[11px] font-bold ${loop === m.id ? 'text-primary' : 'text-on-surface'}`}>{m.label}</span>
-              <span className="block text-[10px] text-on-surface-variant/70 leading-snug">{m.hint}</span>
+              <span className={`block text-[12px] font-bold ${loop === m.id ? 'text-primary' : 'text-on-surface'}`}>{m.label}</span>
+              <span className="block text-[11px] text-on-surface-variant/70 leading-snug">{m.hint}</span>
             </button>
           ))}
         </div>
@@ -342,8 +342,8 @@ function AutoAdvanceModal({ item, onApply, onClose }) {
               <span className={`absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white transition-all ${wrap ? 'left-[16px]' : 'left-[2px]'}`} />
             </span>
             <span className="min-w-0">
-              <span className="block text-[11px] font-bold text-on-surface">Wrap at the end</span>
-              <span className="block text-[10px] text-on-surface-variant/70 leading-snug">
+              <span className="block text-[12px] font-bold text-on-surface">Wrap at the end</span>
+              <span className="block text-[11px] text-on-surface-variant/70 leading-snug">
                 {wrap ? 'Loop back to the first item.' : 'Stop after the last slide (one pass).'}
               </span>
             </span>
@@ -406,16 +406,16 @@ function ServiceLookChip({ serviceData, onChanged }) {
 
   return (
     <div className="flex items-center gap-xs px-sm py-[5px] border-b border-outline-variant/20 bg-surface-container/40 shrink-0">
-      <span className="material-symbols-outlined text-[14px] text-on-surface-variant/50">palette</span>
+      <span className="material-symbols-outlined text-[14px] text-on-surface-variant/60">palette</span>
       <button onClick={() => setPicking(true)} title="Choose this rundown’s theme"
-        className="flex items-center gap-xs min-w-0 text-[11px] text-on-surface-variant hover:text-on-surface cursor-pointer">
+        className="flex items-center gap-xs min-w-0 text-[12px] text-on-surface-variant hover:text-on-surface cursor-pointer">
         <span className="w-2.5 h-2.5 rounded-sm shrink-0 border border-white/10" style={{ background: eff?.accent || '#4d8eff' }} />
         <span className="truncate">Theme: <b className="text-on-surface font-semibold">{eff?.name || 'Default'}</b></span>
-        {source && <span className="text-on-surface-variant/50 shrink-0 whitespace-nowrap">· from {source}</span>}
-        <span className="material-symbols-outlined text-[15px] text-on-surface-variant/50 shrink-0">expand_more</span>
+        {source && <span className="text-on-surface-variant/60 shrink-0 whitespace-nowrap">· from {source}</span>}
+        <span className="material-symbols-outlined text-[15px] text-on-surface-variant/60 shrink-0">expand_more</span>
       </button>
       {svcId && (
-        <button onClick={reset} title="Reset to app default" className="shrink-0 w-4 h-4 flex items-center justify-center text-on-surface-variant/40 hover:text-on-surface cursor-pointer">
+        <button onClick={reset} title="Reset to app default" className="shrink-0 w-4 h-4 flex items-center justify-center text-on-surface-variant/60 hover:text-on-surface cursor-pointer">
           <span className="material-symbols-outlined text-[13px]">close</span>
         </button>
       )}
@@ -609,7 +609,7 @@ export default function RundownPanel({
     <div ref={panelRef} className="flex flex-col h-full bg-surface-container-low rounded-lg border border-outline-variant/30 overflow-hidden">
       {/* Panel header */}
       <div className="px-md py-sm bg-surface-container-high border-b border-outline-variant/30 shrink-0">
-        <h2 className="text-label-sm font-label-sm uppercase tracking-widest text-on-surface-variant mb-1">Rundown</h2>
+        <h2 className="text-label-sm font-label-sm text-on-surface-variant mb-1">Rundown</h2>
 
         {renamingService ? (
           /* Inline rename input */
@@ -622,7 +622,7 @@ export default function RundownPanel({
                 if (e.key === 'Enter') confirmRename();
                 if (e.key === 'Escape') setRenamingService(false);
               }}
-              className="flex-1 min-w-0 bg-surface-container-lowest border border-primary/40 rounded px-sm py-xs text-[11px] font-label-sm text-on-surface outline-none focus:border-primary"
+              className="flex-1 min-w-0 bg-surface-container-lowest border border-primary/40 rounded px-sm py-xs text-[12px] font-label-sm text-on-surface outline-none focus:border-primary"
             />
             <button
               onClick={confirmRename}
@@ -642,14 +642,14 @@ export default function RundownPanel({
         ) : confirmDelete ? (
           /* Inline delete confirmation */
           <div className="flex items-center gap-sm">
-            <span className="text-[10px] font-mono text-error uppercase tracking-[0.04em] shrink-0">Delete rundown?</span>
+            <span className="text-[11px] font-mono text-error shrink-0">Delete rundown?</span>
             <button
               onClick={confirmDeleteService}
-              className="text-[10px] font-mono text-error hover:text-error/70 cursor-pointer uppercase tracking-[0.04em] border border-error/40 px-sm py-[2px] rounded transition-colors"
+              className="text-[11px] font-mono text-error hover:text-error/70 cursor-pointer border border-error/40 px-sm py-[2px] rounded transition-colors"
             >Yes</button>
             <button
               onClick={() => setConfirmDelete(false)}
-              className="text-[10px] font-mono text-on-surface-variant hover:text-on-surface cursor-pointer uppercase tracking-[0.04em] transition-colors"
+              className="text-[11px] font-mono text-on-surface-variant hover:text-on-surface cursor-pointer transition-colors"
             >No</button>
           </div>
         ) : (
@@ -658,7 +658,7 @@ export default function RundownPanel({
             <select
               value={activeServiceId || ''}
               onChange={(e) => onSelectService(Number(e.target.value))}
-              className="flex-1 min-w-0 bg-surface-container-lowest border border-outline-variant/30 rounded px-sm py-xs text-[11px] font-label-sm text-on-surface outline-none cursor-pointer"
+              className="flex-1 min-w-0 bg-surface-container-lowest border border-outline-variant/30 rounded px-sm py-xs text-[12px] font-label-sm text-on-surface outline-none cursor-pointer"
             >
               {services.length === 0 && <option value="">No rundowns</option>}
               {services.map((s) => (
@@ -671,21 +671,21 @@ export default function RundownPanel({
                   onClick={handleExportPdf}
                   disabled={exporting}
                   title="Export lyrics as PDF"
-                  className="shrink-0 w-5 h-5 flex items-center justify-center text-on-surface-variant/40 hover:text-on-surface-variant cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-default"
+                  className="shrink-0 w-5 h-5 flex items-center justify-center text-on-surface-variant/60 hover:text-on-surface-variant cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-default"
                 >
                   <span className="material-symbols-outlined text-[13px]">{exporting ? 'hourglass_empty' : 'picture_as_pdf'}</span>
                 </button>
                 <button
                   onClick={startRename}
                   title="Rename rundown"
-                  className="shrink-0 w-5 h-5 flex items-center justify-center text-on-surface-variant/40 hover:text-on-surface-variant cursor-pointer transition-colors"
+                  className="shrink-0 w-5 h-5 flex items-center justify-center text-on-surface-variant/60 hover:text-on-surface-variant cursor-pointer transition-colors"
                 >
                   <span className="material-symbols-outlined text-[13px]">edit</span>
                 </button>
                 <button
                   onClick={() => setConfirmDelete(true)}
                   title="Delete rundown"
-                  className="shrink-0 w-5 h-5 flex items-center justify-center text-on-surface-variant/40 hover:text-error cursor-pointer transition-colors"
+                  className="shrink-0 w-5 h-5 flex items-center justify-center text-on-surface-variant/60 hover:text-error cursor-pointer transition-colors"
                 >
                   <span className="material-symbols-outlined text-[13px]">delete</span>
                 </button>
@@ -711,7 +711,7 @@ export default function RundownPanel({
         <div className="flex gap-sm px-sm py-xs bg-surface-container border-b border-outline-variant/20 shrink-0">
           <input
             autoFocus
-            className="flex-1 bg-surface-container-lowest border border-outline-variant/30 rounded px-sm py-xs text-[11px] font-label-sm text-on-surface outline-none"
+            className="flex-1 bg-surface-container-lowest border border-outline-variant/30 rounded px-sm py-xs text-[12px] font-label-sm text-on-surface outline-none"
             placeholder="Rundown title…"
             value={newServiceTitle}
             onChange={(e) => setNewServiceTitle(e.target.value)}
@@ -738,20 +738,20 @@ export default function RundownPanel({
       {/* Bulk-action bar — appears when 2+ items are selected (Ctrl/Shift-click or marquee) */}
       {selectedIds.size >= 2 && (
         <div className="flex items-center gap-sm px-sm py-xs bg-primary-container/10 border-b border-primary/30 shrink-0">
-          <span className="text-[10px] font-label-sm uppercase tracking-[0.05em] text-primary shrink-0">
+          <span className="text-[11px] font-label-sm text-primary shrink-0">
             {selectedIds.size} selected
           </span>
           <div className="flex-1" />
           {confirmBulkDelete ? (
             <>
-              <span className="text-[10px] font-mono text-error uppercase tracking-[0.04em] shrink-0">Delete {selectedIds.size}?</span>
+              <span className="text-[11px] font-mono text-error shrink-0">Delete {selectedIds.size}?</span>
               <button
                 onClick={() => { setConfirmBulkDelete(false); onBulkDelete?.(); }}
-                className="text-[10px] font-mono text-error hover:text-error/70 cursor-pointer uppercase tracking-[0.04em] border border-error/40 px-sm py-[2px] rounded transition-colors"
+                className="text-[11px] font-mono text-error hover:text-error/70 cursor-pointer border border-error/40 px-sm py-[2px] rounded transition-colors"
               >Yes</button>
               <button
                 onClick={() => setConfirmBulkDelete(false)}
-                className="text-[10px] font-mono text-on-surface-variant hover:text-on-surface cursor-pointer uppercase tracking-[0.04em] transition-colors"
+                className="text-[11px] font-mono text-on-surface-variant hover:text-on-surface cursor-pointer transition-colors"
               >No</button>
             </>
           ) : (
@@ -759,14 +759,14 @@ export default function RundownPanel({
               <button
                 onClick={() => setBulkBgPicker(true)}
                 title="Set the same background on all selected songs/scripture"
-                className="flex items-center gap-xs text-[10px] font-label-sm uppercase tracking-[0.05em] text-on-surface-variant hover:text-on-surface border border-outline-variant/40 hover:border-outline-variant rounded px-sm py-[2px] cursor-pointer transition-colors"
+                className="flex items-center gap-xs text-[11px] font-label-sm text-on-surface-variant hover:text-on-surface border border-outline-variant/40 hover:border-outline-variant rounded px-sm py-[2px] cursor-pointer transition-colors"
               >
                 <span className="material-symbols-outlined text-[13px]">wallpaper</span>
                 Background
               </button>
               <button
                 onClick={() => setConfirmBulkDelete(true)}
-                className="flex items-center gap-xs text-[10px] font-label-sm uppercase tracking-[0.05em] text-error/80 hover:text-error border border-error/40 hover:border-error rounded px-sm py-[2px] cursor-pointer transition-colors"
+                className="flex items-center gap-xs text-[11px] font-label-sm text-error/80 hover:text-error border border-error/40 hover:border-error rounded px-sm py-[2px] cursor-pointer transition-colors"
               >
                 <span className="material-symbols-outlined text-[13px]">delete</span>
                 Delete
@@ -786,22 +786,22 @@ export default function RundownPanel({
       {/* Items list */}
       <div ref={listRef} onMouseDown={handleListMouseDown} className="flex-1 overflow-y-auto relative">
         {!serviceData ? (
-          <div className="flex flex-col items-center justify-center h-full gap-xs text-outline-variant px-lg text-center">
+          <div className="flex flex-col items-center justify-center h-full gap-xs text-on-surface-variant/70 px-lg text-center">
             <span className="material-symbols-outlined text-4xl">calendar_today</span>
-            <span className="text-label-sm font-label-sm uppercase tracking-widest">
+            <span className="text-label-sm font-label-sm">
               {services.length === 0 ? 'No Service Yet' : 'Select a Service'}
             </span>
-            <span className="text-[11px] text-on-surface-variant/60 max-w-[220px] leading-snug">
+            <span className="text-[12px] text-on-surface-variant/60 max-w-[220px] leading-snug">
               {services.length === 0
                 ? 'Create a service with the + above, then add songs, scripture and media to build your rundown.'
                 : 'Pick a service from the dropdown above to load its rundown.'}
             </span>
           </div>
         ) : items.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full gap-xs text-outline-variant px-lg text-center">
+          <div className="flex flex-col items-center justify-center h-full gap-xs text-on-surface-variant/70 px-lg text-center">
             <span className="material-symbols-outlined text-4xl">playlist_add</span>
-            <span className="text-label-sm font-label-sm uppercase tracking-widest">Empty Rundown</span>
-            <span className="text-[11px] text-on-surface-variant/60 max-w-[240px] leading-snug">
+            <span className="text-label-sm font-label-sm">Empty Rundown</span>
+            <span className="text-[12px] text-on-surface-variant/60 max-w-[240px] leading-snug">
               Search and add songs from the Library below, or press <span className="font-mono text-on-surface-variant">⌘K</span> (Ctrl+K) to find songs, scripture, scenes &amp; media.
             </span>
           </div>
@@ -834,7 +834,7 @@ export default function RundownPanel({
       {/* Footer */}
       {serviceData && (
         <div className="px-md py-xs border-t border-outline-variant/20 shrink-0">
-          <span className="text-[10px] font-label-sm text-outline-variant uppercase tracking-wider">
+          <span className="text-[11px] font-label-sm text-on-surface-variant/70">
             {items.length} {items.length !== 1 ? 'items' : 'item'}
           </span>
         </div>

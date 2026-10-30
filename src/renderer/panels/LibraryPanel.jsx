@@ -82,7 +82,7 @@ function SongRow({ index, style, data }) {
       onMouseEnter={(e) => { if (!isSelected && !isHighlighted) e.currentTarget.style.background = 'rgba(51,53,57,0.5)'; }}
       onMouseLeave={(e) => { if (!isSelected && !isHighlighted) e.currentTarget.style.background = ''; }}
     >
-      <span className="material-symbols-outlined text-[16px] text-outline-variant shrink-0">music_note</span>
+      <span className="material-symbols-outlined text-[16px] text-on-surface-variant/70 shrink-0">music_note</span>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{
           fontSize: 13,
@@ -134,9 +134,9 @@ function MediaGrid({ assets, onDelete, onSetBackground, onAddToRundown, onApplyB
   return (
     <div className="flex-1 overflow-y-auto p-md">
       {assets.length === 0 ? (
-        <div className="flex flex-col items-center justify-center h-full gap-sm text-outline-variant">
+        <div className="flex flex-col items-center justify-center h-full gap-sm text-on-surface-variant/70">
           <span className="material-symbols-outlined text-4xl">image</span>
-          <span className="text-label-sm font-label-sm uppercase tracking-widest">No Media — Import Above</span>
+          <span className="text-label-sm font-label-sm">No Media — Import Above</span>
         </div>
       ) : (
         <div className="grid gap-md" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))' }}>
@@ -157,14 +157,14 @@ function MediaGrid({ assets, onDelete, onSetBackground, onAddToRundown, onApplyB
               <div className={`aspect-video rounded bg-black overflow-hidden mb-xs relative border ${selectedId === asset.id ? 'border-primary' : 'border-outline-variant'}`}>
                 {asset.type === 'audio' ? (
                   <div className="w-full h-full bg-surface-container-high flex items-center justify-center">
-                    <span className="text-label-sm font-label-sm text-outline-variant">AUD</span>
+                    <span className="text-label-sm font-label-sm text-on-surface-variant/70">AUD</span>
                   </div>
                 ) : (
                   <>
                     <MediaThumb path={asset.path} alt={asset.filename}
                       className="w-full h-full object-cover group-hover:scale-110 transition-transform" />
                     {asset.type === 'video' && (
-                      <div className="absolute bottom-1 right-1 bg-black/50 px-1 rounded text-[8px] text-white font-label-sm">VID</div>
+                      <div className="absolute bottom-1 right-1 bg-black/50 px-1 rounded text-[11px] text-white font-label-sm">VID</div>
                     )}
                   </>
                 )}
@@ -172,19 +172,19 @@ function MediaGrid({ assets, onDelete, onSetBackground, onAddToRundown, onApplyB
                 {(asset.duration_ms != null || asset.size_bytes != null) && (
                   <div className="absolute inset-x-0 bottom-0 bg-black/70 px-1 py-[2px] flex items-center justify-between gap-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                     {asset.duration_ms != null && (
-                      <span className="text-[8px] text-white/80 tabular-nums font-label-sm">
+                      <span className="text-[11px] text-white/80 tabular-nums font-label-sm">
                         {formatDuration(asset.duration_ms)}
                       </span>
                     )}
                     {asset.size_bytes != null && (
-                      <span className="text-[8px] text-white/60 tabular-nums font-label-sm ml-auto">
+                      <span className="text-[11px] text-white/60 tabular-nums font-label-sm ml-auto">
                         {formatBytes(asset.size_bytes)}
                       </span>
                     )}
                   </div>
                 )}
               </div>
-              <p className="text-[10px] text-on-surface truncate">{asset.filename}</p>
+              <p className="text-[11px] text-on-surface truncate">{asset.filename}</p>
             </div>
           ))}
         </div>
@@ -267,14 +267,14 @@ function SongPreviewModal({ song, onClose, onEdit, onAddToRundown }) {
         <div ref={contentRef} className="flex flex-col flex-1 min-h-0 select-text">
           <div className="px-lg py-md pr-[190px] border-b border-outline-variant/20 shrink-0 min-w-0">
             <h2 className="text-body-lg text-on-surface font-medium truncate">{song.title}</h2>
-            {author && <div className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.04em] truncate mt-[2px]">{author}</div>}
-            {fullSong?.copyright && <div className="text-[10px] text-on-surface-variant/60 truncate mt-[2px]">{fullSong.copyright}</div>}
+            {author && <div className="text-label-sm font-label-sm text-on-surface-variant truncate mt-[2px]">{author}</div>}
+            {fullSong?.copyright && <div className="text-[11px] text-on-surface-variant/60 truncate mt-[2px]">{fullSong.copyright}</div>}
           </div>
           <div className="overflow-y-auto custom-scrollbar px-lg py-md flex-1 min-h-0">
             {!fullSong ? (
-              <div className="text-label-sm font-label-sm text-on-surface-variant/50 uppercase tracking-[0.05em]">Loading…</div>
+              <div className="text-label-sm font-label-sm text-on-surface-variant/60">Loading…</div>
             ) : !fullSong.sections?.length ? (
-              <div className="text-label-sm font-label-sm text-on-surface-variant/50 uppercase tracking-[0.05em]">No lyrics</div>
+              <div className="text-label-sm font-label-sm text-on-surface-variant/60">No lyrics</div>
             ) : (
               <div className="space-y-md">
                 {fullSong.sections.map((s, i) => {
@@ -282,7 +282,7 @@ function SongPreviewModal({ song, onClose, onEdit, onAddToRundown }) {
                   if (!text) return null;
                   return (
                     <div key={i}>
-                      <div className="text-[10px] text-on-surface-variant/60 uppercase tracking-[0.06em] font-label-sm mb-xs">
+                      <div className="text-[11px] text-on-surface-variant/60 font-label-sm mb-xs">
                         {SECTION_TYPE_LABELS[s.type] || s.type}
                       </div>
                       <div className="text-body-md text-on-surface leading-relaxed whitespace-pre-wrap">{text}</div>
@@ -294,8 +294,8 @@ function SongPreviewModal({ song, onClose, onEdit, onAddToRundown }) {
           </div>
         </div>
         <div className="absolute top-md right-lg flex gap-xs">
-          <button onClick={() => { onAddToRundown(song.id); onClose(); }} className="px-md py-[5px] rounded text-[10px] font-label-sm font-bold uppercase tracking-[0.04em] bg-primary text-on-primary hover:brightness-110 cursor-pointer">Add</button>
-          <button onClick={() => onEdit(fullSong || song)} className="px-md py-[5px] rounded text-[10px] font-label-sm uppercase tracking-[0.04em] bg-surface-container border border-outline-variant/40 text-on-surface-variant hover:bg-surface-variant cursor-pointer">Edit</button>
+          <button onClick={() => { onAddToRundown(song.id); onClose(); }} className="px-md py-[5px] rounded text-[11px] font-label-sm font-bold bg-primary text-on-primary hover:brightness-110 cursor-pointer">Add</button>
+          <button onClick={() => onEdit(fullSong || song)} className="px-md py-[5px] rounded text-[11px] font-label-sm bg-surface-container border border-outline-variant/40 text-on-surface-variant hover:bg-surface-variant cursor-pointer">Edit</button>
           <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded text-on-surface-variant/60 hover:text-on-surface hover:bg-surface-variant cursor-pointer">
             <span className="material-symbols-outlined text-[16px]">close</span>
           </button>
@@ -370,7 +370,7 @@ function LiveInputsTab({ onAddLiveInput }) {
       </button>
       <span className="text-label-sm font-label-sm text-on-surface">Live video inputs {enabled ? 'enabled' : 'disabled'}</span>
       {!enabled && (
-        <span className="text-[11px] text-on-surface-variant/60">
+        <span className="text-[12px] text-on-surface-variant/60">
           — NDI receive is fully off: no discovery, no previews, live-video cues won't GO.
         </span>
       )}
@@ -386,10 +386,10 @@ function LiveInputsTab({ onAddLiveInput }) {
 
   if (!available) {
     return (
-      <div className="flex flex-col items-center justify-center flex-1 gap-xs text-outline-variant px-lg text-center">
+      <div className="flex flex-col items-center justify-center flex-1 gap-xs text-on-surface-variant/70 px-lg text-center">
         <span className="material-symbols-outlined text-4xl">videocam_off</span>
-        <span className="text-label-sm font-label-sm uppercase tracking-widest">NDI Unavailable</span>
-        <span className="text-[11px] text-on-surface-variant/60 max-w-[280px] leading-snug">
+        <span className="text-label-sm font-label-sm">NDI Unavailable</span>
+        <span className="text-[12px] text-on-surface-variant/60 max-w-[280px] leading-snug">
           NDI could not be initialised on this machine, so network video inputs are disabled.
         </span>
       </div>
@@ -400,10 +400,10 @@ function LiveInputsTab({ onAddLiveInput }) {
     return (
       <div className="flex flex-col flex-1 min-h-0">
         {enableBar}
-        <div className="flex flex-col items-center justify-center flex-1 gap-xs text-outline-variant px-lg text-center">
+        <div className="flex flex-col items-center justify-center flex-1 gap-xs text-on-surface-variant/70 px-lg text-center">
           <span className="material-symbols-outlined text-4xl">videocam_off</span>
-          <span className="text-label-sm font-label-sm uppercase tracking-widest">Live Inputs Disabled</span>
-          <span className="text-[11px] text-on-surface-variant/60 max-w-[300px] leading-snug">
+          <span className="text-label-sm font-label-sm">Live Inputs Disabled</span>
+          <span className="text-[12px] text-on-surface-variant/60 max-w-[300px] leading-snug">
             NDI receive is switched off. Nothing is pulled from the network and live-video
             cues are blocked from going live. Flip the switch above to re-enable.
           </span>
@@ -418,11 +418,11 @@ function LiveInputsTab({ onAddLiveInput }) {
     <div className="flex flex-1 min-h-0">
       {/* Source list */}
       <div className="w-72 border-r border-outline-variant/30 overflow-y-auto shrink-0 p-sm">
-        <div className="px-sm pb-xs text-[10px] uppercase tracking-[0.14em] text-on-surface-variant/60 font-label-sm">
+        <div className="px-sm pb-xs text-[11px] text-on-surface-variant/60 font-label-sm">
           NDI Sources on Network
         </div>
         {sources.length === 0 ? (
-          <div className="px-sm py-md text-[11px] text-on-surface-variant/60 leading-snug">
+          <div className="px-sm py-md text-[12px] text-on-surface-variant/60 leading-snug">
             {scanning ? 'Scanning the network…' : 'No NDI sources found. Cameras, ATEM/OBS/vMix outputs and other machines running NDI tools will appear here automatically.'}
           </div>
         ) : (
@@ -453,11 +453,11 @@ function LiveInputsTab({ onAddLiveInput }) {
               {frame
                 ? <img src={frame} className="w-full h-full object-cover" alt="" />
                 : (
-                  <div className="absolute inset-0 flex items-center justify-center text-on-surface-variant/40 text-label-sm font-label-sm uppercase tracking-widest">
+                  <div className="absolute inset-0 flex items-center justify-center text-on-surface-variant/60 text-label-sm font-label-sm">
                     Connecting…
                   </div>
                 )}
-              <div className="absolute top-sm left-sm px-sm py-[3px] rounded bg-black/60 text-[10px] uppercase tracking-[0.12em] font-label-sm text-on-surface flex items-center gap-xs">
+              <div className="absolute top-sm left-sm px-sm py-[3px] rounded bg-black/60 text-[11px] font-label-sm text-on-surface flex items-center gap-xs">
                 <span className={`w-[7px] h-[7px] rounded-full ${frame ? 'bg-tertiary' : 'bg-on-surface-variant'}`} />
                 Preview
               </div>
@@ -477,16 +477,16 @@ function LiveInputsTab({ onAddLiveInput }) {
                 Add to Service
               </button>
             </div>
-            <div className="text-[11px] text-on-surface-variant/60 max-w-[560px] leading-snug">
+            <div className="text-[12px] text-on-surface-variant/60 max-w-[560px] leading-snug">
               Adds a live video cue to the rundown. GO puts the feed full-frame on every output
               (in-room, NDI and stream); Clear or the next slide releases it.
             </div>
           </>
         ) : (
-          <div className="flex flex-col items-center justify-center flex-1 gap-xs text-outline-variant text-center">
+          <div className="flex flex-col items-center justify-center flex-1 gap-xs text-on-surface-variant/70 text-center">
             <span className="material-symbols-outlined text-4xl">videocam</span>
-            <span className="text-label-sm font-label-sm uppercase tracking-widest">Live Video Inputs</span>
-            <span className="text-[11px] text-on-surface-variant/60 max-w-[300px] leading-snug">
+            <span className="text-label-sm font-label-sm">Live Video Inputs</span>
+            <span className="text-[12px] text-on-surface-variant/60 max-w-[300px] leading-snug">
               Select an NDI source to preview it, then add it to the service as a live cue.
               Double-click a source to add it straight away.
             </span>
@@ -1069,7 +1069,7 @@ export default function LibraryPanel({ activeServiceId, onThemesChanged, onApply
                   >
                     <span className="w-[8px] h-[8px] rounded-full shrink-0" style={{ background: tag.colour || '#8c909f' }} />
                     <span className="truncate flex-1">{tag.name}</span>
-                    {tag.song_count != null && <span className="text-[10px] text-on-surface-variant/50 shrink-0 ml-auto">{tag.song_count}</span>}
+                    {tag.song_count != null && <span className="text-[11px] text-on-surface-variant/60 shrink-0 ml-auto">{tag.song_count}</span>}
                   </li>
                 );
               })}
@@ -1080,12 +1080,12 @@ export default function LibraryPanel({ activeServiceId, onThemesChanged, onApply
           <div className="flex-1 flex flex-col min-h-0 min-w-0">
           <div ref={containerRef} className="flex-1 min-h-0 overflow-hidden">
             {displaySongs.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full gap-xs text-outline-variant px-lg text-center">
+              <div className="flex flex-col items-center justify-center h-full gap-xs text-on-surface-variant/70 px-lg text-center">
                 <span className="material-symbols-outlined text-4xl">{searchQuery || ghsQuery ? 'search_off' : 'library_music'}</span>
-                <span className="text-label-sm font-label-sm uppercase tracking-widest">
+                <span className="text-label-sm font-label-sm">
                   {searchQuery || ghsQuery ? 'No Songs Found' : 'No Songs Yet'}
                 </span>
-                <span className="text-[11px] text-on-surface-variant/60 max-w-[240px] leading-snug">
+                <span className="text-[12px] text-on-surface-variant/60 max-w-[240px] leading-snug">
                   {searchQuery || ghsQuery
                     ? 'Try a different search, or clear it to see your whole library.'
                     : 'Use Import above to bring in EasyWorship / OpenLyrics / ChordPro files or the bundled GHS hymnal, or + to write a new song.'}
@@ -1200,9 +1200,9 @@ export default function LibraryPanel({ activeServiceId, onThemesChanged, onApply
         <div className="flex flex-col flex-1 min-h-0">
           <div className="flex-1 min-h-0 overflow-y-auto p-md">
             {presentations.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full gap-sm text-outline-variant">
+              <div className="flex flex-col items-center justify-center h-full gap-sm text-on-surface-variant/70">
                 <span className="material-symbols-outlined text-4xl">slideshow</span>
-                <span className="text-label-sm font-label-sm uppercase tracking-widest">No Presentations Yet</span>
+                <span className="text-label-sm font-label-sm">No Presentations Yet</span>
               </div>
             ) : (
               <div className="grid gap-md" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
@@ -1343,12 +1343,12 @@ function PresentationCard({ pres, onEdit, onAddToRundown, onContextMenu }) {
         <StaticSlide elements={pres.first_slide_elements} backgroundPath={pres.first_slide_bg_path} />
       ) : (
         <div className="relative bg-black flex items-center justify-center" style={{ aspectRatio: '16 / 9' }}>
-          <span className="material-symbols-outlined text-outline-variant text-4xl group-hover:text-primary transition-colors">slideshow</span>
+          <span className="material-symbols-outlined text-on-surface-variant/70 text-4xl group-hover:text-primary transition-colors">slideshow</span>
         </div>
       )}
       <div className="px-sm py-xs">
         <p className="text-body-md text-on-surface truncate">{pres.title}</p>
-        <p className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wide">{pres.slide_count} slide{pres.slide_count === 1 ? '' : 's'}</p>
+        <p className="text-label-sm font-label-sm text-on-surface-variant">{pres.slide_count} slide{pres.slide_count === 1 ? '' : 's'}</p>
       </div>
     </div>
   );

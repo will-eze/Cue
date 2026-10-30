@@ -35,7 +35,7 @@ export default function LowerthirdSettings() {
 
       <div className="bg-surface-container-high p-lg rounded-xl border border-outline-variant/30 space-y-md">
         <div>
-          <h4 className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em]">
+          <h4 className="text-label-sm font-label-sm text-on-surface-variant">
             Font Size
           </h4>
           <p className="text-body-sm text-on-surface-variant/70 mt-xs">
@@ -66,7 +66,7 @@ export default function LowerthirdSettings() {
           onChange={(e) => apply(Number(e.target.value))}
           className="w-full accent-primary cursor-pointer disabled:opacity-50"
         />
-        <div className="flex justify-between text-[10px] font-label-sm uppercase tracking-[0.08em] text-outline">
+        <div className="flex justify-between text-[11px] font-label-sm text-outline">
           <span>1%</span>
           <span>75%</span>
           <span>150%</span>

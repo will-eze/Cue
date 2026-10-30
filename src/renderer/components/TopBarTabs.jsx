@@ -31,7 +31,7 @@ function SortableTab({ id, active, onNavigate, onRemove }) {
       {...listeners}
       onClick={() => onNavigate(id)}
       title={`${labelFor(id)} — drag to reorder`}
-      className={`titlebar-nodrag group relative h-full flex items-center gap-xs pl-sm pr-md text-label-sm font-label-sm tracking-[0.05em] uppercase cursor-pointer transition-colors border-b-2 ${
+      className={`titlebar-nodrag group relative h-full flex items-center gap-xs pl-sm pr-md text-label-sm font-label-sm cursor-pointer transition-colors border-b-2 ${
         active
           ? 'text-primary border-primary'
           : 'text-on-surface-variant hover:text-on-surface border-transparent'
@@ -99,13 +99,13 @@ export default function TopBarTabs({ extraTabs, activeTabId, onNavigate, onReord
           className="titlebar-nodrag w-52 bg-surface-container-high border border-outline-variant/40 rounded-xl shadow-2xl ring-1 ring-white/5 overflow-hidden"
         >
             <div className="px-md py-xs border-b border-outline-variant/20">
-              <span className="text-[9px] font-label-sm uppercase tracking-[0.08em] text-on-surface-variant/60">Pin a Settings tab</span>
+              <span className="text-[11px] font-label-sm text-on-surface-variant/60">Pin a Settings tab</span>
             </div>
             <div className="max-h-[50vh] overflow-y-auto custom-scrollbar py-xs">
               {atCap ? (
-                <p className="px-md py-sm text-[11px] text-on-surface-variant/50">Tab limit reached — unpin one first.</p>
+                <p className="px-md py-sm text-[12px] text-on-surface-variant/60">Tab limit reached — unpin one first.</p>
               ) : available.length === 0 ? (
-                <p className="px-md py-sm text-[11px] text-on-surface-variant/50">All sections pinned.</p>
+                <p className="px-md py-sm text-[12px] text-on-surface-variant/60">All sections pinned.</p>
               ) : available.map((d) => (
                 <button
                   key={d.id}

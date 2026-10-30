@@ -67,7 +67,7 @@ export default function UpdateAvailableModal({ info, onClose }) {
 
         {downloading ? (
           <div className="flex items-center gap-sm">
-            <span className="text-label-sm font-label-sm text-primary uppercase tracking-wide whitespace-nowrap">Downloading… {pct}%</span>
+            <span className="text-label-sm font-label-sm text-primary whitespace-nowrap">Downloading… {pct}%</span>
             <div className="flex-1 h-1 bg-surface-container-lowest rounded-full overflow-hidden">
               <div className="h-full bg-primary transition-[width] duration-200" style={{ width: `${pct}%` }} />
             </div>

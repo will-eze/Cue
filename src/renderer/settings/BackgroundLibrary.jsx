@@ -30,12 +30,12 @@ function Tile({ item, busy, onApply, onAdd, onPick }) {
       {/* badges */}
       <div className="absolute top-xs left-xs flex gap-xs">
         {item.kind === 'video' && (
-          <span className="px-xs py-[1px] rounded bg-background/85 text-[10px] font-label-sm uppercase tracking-wide text-on-surface flex items-center gap-[2px]">
+          <span className="px-xs py-[1px] rounded bg-background/85 text-[11px] font-label-sm text-on-surface flex items-center gap-[2px]">
             <span className="material-symbols-outlined text-[12px]">play_arrow</span>video
           </span>
         )}
         {item.mediaId != null && (
-          <span className="px-xs py-[1px] rounded bg-tertiary/80 text-[10px] font-label-sm uppercase tracking-wide text-on-tertiary flex items-center gap-[2px]">
+          <span className="px-xs py-[1px] rounded bg-tertiary/80 text-[11px] font-label-sm text-on-tertiary flex items-center gap-[2px]">
             <span className="material-symbols-outlined text-[12px]">check</span>library
           </span>
         )}
@@ -54,7 +54,7 @@ function Tile({ item, busy, onApply, onAdd, onPick }) {
           </button>
         ) : (
           <>
-            <span className="text-[10px] font-label-sm uppercase tracking-[0.08em] text-on-surface-variant">Set as default for</span>
+            <span className="text-[11px] font-label-sm text-on-surface-variant">Set as default for</span>
             <div className="flex flex-wrap gap-xs justify-center">
               {SURFACES.map((s) => (
                 <button key={s.key} onClick={() => onApply(item, s.key)}
@@ -65,7 +65,7 @@ function Tile({ item, busy, onApply, onAdd, onPick }) {
             </div>
             {item.mediaId == null && (
               <button onClick={() => onAdd(item)}
-                className="mt-[2px] text-[10px] font-label-sm uppercase tracking-[0.06em] text-on-surface-variant hover:text-on-surface cursor-pointer flex items-center gap-[2px]">
+                className="mt-[2px] text-[11px] font-label-sm text-on-surface-variant hover:text-on-surface cursor-pointer flex items-center gap-[2px]">
                 <span className="material-symbols-outlined text-[14px]">download</span>add to library
               </button>
             )}
@@ -157,7 +157,7 @@ function BrowserModal({ items, tagCounts, onClose, onChange, onPick, title = 'Ba
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-lg py-md border-b border-outline-variant/30 bg-surface-container-high flex-shrink-0 gap-md">
-          <h3 className="text-label-sm font-label-sm text-on-surface uppercase tracking-[0.05em] flex items-center gap-sm shrink-0">
+          <h3 className="text-label-sm font-label-sm text-on-surface flex items-center gap-sm shrink-0">
             <span className="material-symbols-outlined text-primary text-[20px]">wallpaper</span>
             {title} · {filtered.length}
           </h3>
@@ -166,13 +166,13 @@ function BrowserModal({ items, tagCounts, onClose, onChange, onPick, title = 'Ba
             <input
               value={query} onChange={(e) => setQuery(e.target.value)}
               placeholder="Search tags — ocean, candle, snow…"
-              className="w-full pl-[34px] pr-sm py-xs text-body-sm bg-surface-container rounded-lg border border-outline-variant/30 text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:border-primary/50"
+              className="w-full pl-[34px] pr-sm py-xs text-body-sm bg-surface-container rounded-lg border border-outline-variant/30 text-on-surface placeholder:text-on-surface-variant/60 focus:outline-none focus:border-primary/50"
             />
           </div>
           <div className="flex items-center gap-xs shrink-0">
             {['all', 'video', 'photo'].map((k) => (
               <button key={k} onClick={() => setKind(k)}
-                className={`px-sm py-[3px] text-[11px] font-label-sm uppercase tracking-wide rounded-md border transition-colors cursor-pointer ${kind === k ? 'bg-primary/15 border-primary/40 text-primary' : 'border-outline-variant/30 text-on-surface-variant hover:text-on-surface'}`}>
+                className={`px-sm py-[3px] text-[11px] font-label-sm rounded-md border transition-colors cursor-pointer ${kind === k ? 'bg-primary/15 border-primary/40 text-primary' : 'border-outline-variant/30 text-on-surface-variant hover:text-on-surface'}`}>
                 {k}
               </button>
             ))}
@@ -198,9 +198,9 @@ function BrowserModal({ items, tagCounts, onClose, onChange, onPick, title = 'Ba
 
         <div className="flex-1 min-h-0 overflow-y-auto p-lg">
           {filtered.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center gap-sm text-outline-variant">
+            <div className="h-full flex flex-col items-center justify-center gap-sm text-on-surface-variant/70">
               <span className="material-symbols-outlined text-5xl">image_search</span>
-              <span className="text-label-sm font-label-sm uppercase tracking-widest">No matches</span>
+              <span className="text-label-sm font-label-sm">No matches</span>
             </div>
           ) : (
             <>
@@ -212,7 +212,7 @@ function BrowserModal({ items, tagCounts, onClose, onChange, onPick, title = 'Ba
               {visible < filtered.length && (
                 <div ref={sentinelRef} className="flex justify-center pt-lg">
                   <button onClick={() => setVisible((v) => Math.min(v + BATCH, filtered.length))}
-                    className="px-lg py-sm text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant hover:text-on-surface border border-outline-variant/30 hover:border-outline-variant rounded-lg transition-colors cursor-pointer flex items-center gap-xs">
+                    className="px-lg py-sm text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface border border-outline-variant/30 hover:border-outline-variant rounded-lg transition-colors cursor-pointer flex items-center gap-xs">
                     <span className="material-symbols-outlined text-[18px]">expand_more</span>
                     Load more · {shown.length} of {filtered.length}
                   </button>
@@ -280,7 +280,7 @@ export default function BackgroundLibrary() {
     <div className="bg-surface-container-high p-lg rounded-xl border border-outline-variant/30">
       <div className="flex items-start justify-between mb-md gap-md">
         <div>
-          <h3 className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em]">Background Library</h3>
+          <h3 className="text-label-sm font-label-sm text-on-surface-variant">Background Library</h3>
           <p className="text-body-sm text-on-surface-variant/70 mt-xs">
             Curated 16:9 worship backgrounds (video &amp; photo). Pick one to download it into your
             media library and set it as a default background.
@@ -297,9 +297,9 @@ export default function BackgroundLibrary() {
       </div>
 
       {total === 0 ? (
-        <div className="flex flex-col items-center justify-center py-xl gap-sm text-outline-variant">
+        <div className="flex flex-col items-center justify-center py-xl gap-sm text-on-surface-variant/70">
           <span className="material-symbols-outlined text-5xl">wallpaper</span>
-          <span className="text-label-sm font-label-sm uppercase tracking-widest">Library unavailable</span>
+          <span className="text-label-sm font-label-sm">Library unavailable</span>
         </div>
       ) : (
         <button onClick={() => setOpen(true)}

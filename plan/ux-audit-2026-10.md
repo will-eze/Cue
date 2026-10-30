@@ -60,13 +60,12 @@ separate "songs".
 
 ### 1c. Parsing — next steps
 
-- [?] **Learn from corrections (strongest next win).** When the operator overrides a match
+- [x] **Learn from corrections (strongest next win).** When the operator overrides a match
   ("Imela" → *Imela (Thank You)*), store `alias → song_id`; next week it's an exact hit.
-  Needs a `song_aliases` table = a migration (schema v35 → MAJOR bump). Recommend yes.
+  Shipped as `song_aliases` (schema v35); corrections and ticked check-this guesses are remembered and matched first; the Song Editor lists them as "Also called" with a forget button.
 - [ ] Show *which* lines were folded into a row (expandable), not just "6 lines".
-- [ ] **Data bug in the bundled hymnal:** GHS 7 "Turn Your Eyes Upon Jesus" contains the
-  lyrics of GHS 9 "Great Is Thy Faithfulness" (byte-identical). Needs the real GHS 7
-  text in `resources/ghs/ghs-hymnal.json` plus a backfill like `patchGhsPunctuation`.
+- [x] **Data bug in the bundled hymnal:** GHS 7 "Turn Your Eyes Upon Jesus" contains the
+  lyrics of GHS 9 "Great Is Thy Faithfulness" (byte-identical). Fixed in the JSON + `patchGhs7Lyrics` backfill (only rewrites an install still holding the wrong text).
 
 ---
 
@@ -92,7 +91,7 @@ separate "songs".
 | # | Finding | Proposal |
 |---|---|---|
 | O1 | Two stacked chrome rows (tabs + status) use ~78px; the most important state — *is anything reaching the audience?* — is the faintest text on screen (`IDLE · NO OUTPUTS`, 11px grey uppercase). | One top bar. Output state becomes a prominent pill: green "2 outputs live", amber "Outputs off — audience sees nothing", grey "No outputs configured →". |
-| O2 | The red `• LIVE` button is an outputs on/off toggle that looks like a status badge; next to GO / CLEAR / LOGO it reads as "go live". | Rename to an explicit toggle ("Outputs On/Off") with a switch affordance, separated from the GO/CLEAR/LOGO transport group. |
+| O2 | The red `• LIVE` button is an outputs on/off toggle that looks like a status badge; next to GO / CLEAR / LOGO it reads as "go live". It also showed red LIVE while zero windows were open. | **[x] Kept as a button** with three unmistakable states: solid red "Outputs on · N", grey outline "Outputs off" (crossed screen), amber "No screens" (enabled but nothing open). |
 | O3 | Duplicate empty states: "NOTHING IN PREVIEW" in the monitor and again in the slide strip; "NOTHING LIVE" twice. The live column's lower half is empty space until something airs. | One empty state per column; when nothing is live, show the next item's first slide ("Up next") in the live strip area. |
 | O4 | GO at rest is dark-green text on green (low contrast); CLEAR/LOGO are outlined grey-red / grey-blue. | GO: white text on green, larger; CLEAR/LOGO neutral secondary buttons with their colour only on hover/active. |
 | O5 | When no background resolves for an item, its rundown thumbnail is a black square with a note icon — 48px of nothing per row. | Collapse to a slim type icon when there's no background. |
@@ -120,6 +119,8 @@ Measured across `src/renderer`:
 
 Proposed system (one PR, then screen by screen):
 
+**Status: first global pass shipped** — all 8–10px sizes → 11px (operator screen 11px → 12px), forced uppercase + letter-spacing removed from ~560 class strings (PREVIEW / LIVE / GO / ON AIR are literal caps and stay), `label-sm` tracking removed, faint text raised to /60. Next: replace hand-rolled buttons with two shared styles.
+
 1. **Floor of 12px** for any text; 11px only for tabular badges.
 2. **Sentence case by default.** Uppercase only for 3 things: on-air status
    (PREVIEW / LIVE), the transport buttons (GO / CLEAR), and table column headers.
@@ -136,7 +137,12 @@ across the operator screen and settings.
 
 ---
 
-## 5. Decisions needed from you
+## 5. Decisions (answered)
+
+1. Song aliases — yes (shipped). 2. Outputs — keep a button, clearer state (shipped).
+3. Type system — go ahead (first pass shipped). 4. GHS 7 — lyrics supplied (shipped).
+
+## 5b. Original questions
 
 1. **Song aliases (§1c)** — OK to add the `song_aliases` table (schema v35, MAJOR bump)?
 2. **Operator top bar (O1/O2)** — happy with merging the two rows and renaming LIVE to an

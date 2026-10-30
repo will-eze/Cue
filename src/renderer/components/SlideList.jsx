@@ -40,7 +40,7 @@ export default function SlideList({ slides, activeIdx, onSelect, onDoubleClick, 
                 : 'bg-surface-container border-outline-variant/30 opacity-60 hover:opacity-100'
             }`}
           >
-            <p className={`text-[8px] font-label-sm uppercase mb-xs tracking-widest flex items-center gap-1 ${
+            <p className={`text-[11px] font-label-sm mb-xs flex items-center gap-1 ${
               isActive ? (isPreview ? 'text-primary' : 'text-secondary') : 'text-on-surface-variant'
             }`}>
               <span>{label}</span>
@@ -50,7 +50,7 @@ export default function SlideList({ slides, activeIdx, onSelect, onDoubleClick, 
                 </span>
               )}
               {jumpKey && (
-                <span className={`ml-auto inline-flex items-center justify-center min-w-[14px] h-[14px] px-[3px] rounded-sm text-[8px] font-mono font-bold leading-none border ${
+                <span className={`ml-auto inline-flex items-center justify-center min-w-[14px] h-[14px] px-[3px] rounded-sm text-[11px] font-mono font-bold leading-none border ${
                   isActive
                     ? (isPreview
                         ? 'border-primary/50 text-primary bg-primary-container/20'

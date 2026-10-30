@@ -20,7 +20,7 @@ function Row({ keys, desc }) {
       <div className="flex items-center gap-xs w-40 shrink-0">
         {keys.map((k, i) => (
           <React.Fragment key={i}>
-            {i > 0 && <span className="text-on-surface-variant/50 text-[11px]">/</span>}
+            {i > 0 && <span className="text-on-surface-variant/60 text-[11px]">/</span>}
             <Key>{k}</Key>
           </React.Fragment>
         ))}
@@ -33,7 +33,7 @@ function Row({ keys, desc }) {
 function Group({ title, children }) {
   return (
     <div>
-      <p className="text-label-sm font-label-sm text-on-surface-variant/70 uppercase tracking-[0.08em] mb-xs">{title}</p>
+      <p className="text-label-sm font-label-sm text-on-surface-variant/70 mb-xs">{title}</p>
       <div className="divide-y divide-outline-variant/10">{children}</div>
     </div>
   );
@@ -112,7 +112,7 @@ export default function ShortcutsOverlay({ onClose }) {
               ['layout_h_pct', 'layout_v_pct'].forEach((k) => localStorage.removeItem(k));
               window.location.reload();
             }}
-            className="shrink-0 text-[11px] text-on-surface-variant/50 hover:text-on-surface-variant cursor-pointer underline underline-offset-2 transition-colors"
+            className="shrink-0 text-[11px] text-on-surface-variant/60 hover:text-on-surface-variant cursor-pointer underline underline-offset-2 transition-colors"
           >
             Reset panel layout
           </button>

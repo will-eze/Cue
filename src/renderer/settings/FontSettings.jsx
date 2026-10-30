@@ -132,7 +132,7 @@ export default function FontSettings() {
         <button
           onClick={handleImport}
           disabled={busy}
-          className="px-md py-xs text-label-sm font-label-sm font-bold bg-surface-container-high border border-outline-variant/40 text-on-surface-variant hover:text-on-surface hover:border-outline-variant active:scale-95 transition-all cursor-pointer rounded-lg uppercase tracking-[0.05em] whitespace-nowrap disabled:opacity-40 flex items-center gap-xs"
+          className="px-md py-xs text-label-sm font-label-sm font-bold bg-surface-container-high border border-outline-variant/40 text-on-surface-variant hover:text-on-surface hover:border-outline-variant active:scale-95 transition-all cursor-pointer rounded-lg whitespace-nowrap disabled:opacity-40 flex items-center gap-xs"
         >
           <span className="material-symbols-outlined text-[16px]">upload_file</span>
           {busy ? 'Installing…' : 'Install your own'}
@@ -142,14 +142,14 @@ export default function FontSettings() {
       {/* ── Font library (browse + download) ─────────────────────────────── */}
       <div className="bg-surface-container rounded-xl border border-outline-variant/20 overflow-hidden">
         <div className="px-lg py-sm border-b border-outline-variant/20 bg-surface-container-high flex items-center gap-md flex-wrap">
-          <span className="text-label-sm font-label-sm uppercase tracking-[0.06em] text-on-surface-variant shrink-0">
+          <span className="text-label-sm font-label-sm text-on-surface-variant shrink-0">
             Font library · {installedCount} installed
           </span>
           <div className="flex-1 min-w-[160px] relative">
-            <span className="material-symbols-outlined absolute left-sm top-1/2 -translate-y-1/2 text-on-surface-variant/50 text-[16px]">search</span>
+            <span className="material-symbols-outlined absolute left-sm top-1/2 -translate-y-1/2 text-on-surface-variant/60 text-[16px]">search</span>
             <input
               value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search fonts…"
-              className="w-full pl-[30px] pr-sm py-[5px] text-body-sm bg-surface-container-lowest rounded-lg border border-outline-variant/30 text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:border-primary/50"
+              className="w-full pl-[30px] pr-sm py-[5px] text-body-sm bg-surface-container-lowest rounded-lg border border-outline-variant/30 text-on-surface placeholder:text-on-surface-variant/60 focus:outline-none focus:border-primary/50"
             />
           </div>
         </div>
@@ -158,7 +158,7 @@ export default function FontSettings() {
         <div className="px-lg py-sm border-b border-outline-variant/10 flex items-center gap-xs flex-wrap">
           {['all', ...categories].map((c) => (
             <button key={c} onClick={() => setCat(c)}
-              className={`px-md py-[3px] text-label-sm font-label-sm uppercase tracking-[0.05em] rounded-lg border transition-colors cursor-pointer ${cat === c ? 'bg-primary/15 border-primary/40 text-primary' : 'border-outline-variant/30 text-on-surface-variant hover:text-on-surface'}`}>
+              className={`px-md py-[3px] text-label-sm font-label-sm rounded-lg border transition-colors cursor-pointer ${cat === c ? 'bg-primary/15 border-primary/40 text-primary' : 'border-outline-variant/30 text-on-surface-variant hover:text-on-surface'}`}>
               {c === 'all' ? 'All' : (CAT_LABEL[c] || c)}
             </button>
           ))}
@@ -181,28 +181,28 @@ export default function FontSettings() {
                     {f.family}
                   </div>
                   <div className="flex items-center gap-sm mt-[1px]">
-                    <span className="text-[9px] font-label-sm uppercase tracking-[0.06em] border border-outline-variant/30 rounded px-xs text-on-surface-variant/70">{CAT_LABEL[f.category] || f.category}</span>
-                    {f.weights > 1 && <span className="text-[9px] font-label-sm uppercase tracking-[0.06em] border border-outline-variant/30 rounded px-xs text-on-surface-variant/70">{f.weights} weights</span>}
-                    {!installed && <span className="text-[10px] text-on-surface-variant/40">{SAMPLE}</span>}
+                    <span className="text-[11px] font-label-sm border border-outline-variant/30 rounded px-xs text-on-surface-variant/70">{CAT_LABEL[f.category] || f.category}</span>
+                    {f.weights > 1 && <span className="text-[11px] font-label-sm border border-outline-variant/30 rounded px-xs text-on-surface-variant/70">{f.weights} weights</span>}
+                    {!installed && <span className="text-[11px] text-on-surface-variant/60">{SAMPLE}</span>}
                   </div>
                 </div>
 
                 {/* Favourite — pin to top (per-viewer, localStorage) */}
                 <button onClick={() => toggleFav(f.family)} title={favs.has(f.family) ? 'Unpin' : 'Pin to top'}
-                  className={`shrink-0 w-7 h-7 flex items-center justify-center rounded-lg transition-colors cursor-pointer ${favs.has(f.family) ? 'text-primary' : 'text-on-surface-variant/30 hover:text-on-surface-variant'}`}>
+                  className={`shrink-0 w-7 h-7 flex items-center justify-center rounded-lg transition-colors cursor-pointer ${favs.has(f.family) ? 'text-primary' : 'text-on-surface-variant/60 hover:text-on-surface-variant'}`}>
                   <span className="material-symbols-outlined text-[16px]" style={favs.has(f.family) ? { fontVariationSettings: "'FILL' 1" } : undefined}>star</span>
                 </button>
 
                 {/* Right affordance */}
                 {f.state === 'builtin' ? (
-                  <span className="shrink-0 text-[9px] font-label-sm uppercase tracking-[0.06em] text-on-surface-variant/50 border border-outline-variant/25 rounded px-sm py-[3px]">Built-in</span>
+                  <span className="shrink-0 text-[11px] font-label-sm text-on-surface-variant/60 border border-outline-variant/25 rounded px-sm py-[3px]">Built-in</span>
                 ) : f.state === 'downloaded' ? (
                   <div className="shrink-0 flex items-center gap-sm">
-                    <span className="text-[10px] font-label-sm uppercase tracking-[0.05em] text-tertiary flex items-center gap-[3px]">
+                    <span className="text-[11px] font-label-sm text-tertiary flex items-center gap-[3px]">
                       <span className="material-symbols-outlined text-[15px]">check_circle</span>Installed
                     </span>
                     <button onClick={() => handleRemoveLibrary(f.family)} title="Remove"
-                      className="w-7 h-7 flex items-center justify-center rounded-lg text-on-surface-variant/40 hover:text-error hover:bg-error-container/20 transition-colors cursor-pointer">
+                      className="w-7 h-7 flex items-center justify-center rounded-lg text-on-surface-variant/60 hover:text-error hover:bg-error-container/20 transition-colors cursor-pointer">
                       <span className="material-symbols-outlined text-[16px]">delete</span>
                     </button>
                   </div>
@@ -224,7 +224,7 @@ export default function FontSettings() {
       {userFonts.length > 0 && (
         <div className="bg-surface-container rounded-xl border border-outline-variant/20 overflow-hidden">
           <div className="px-lg py-sm border-b border-outline-variant/20 bg-surface-container-high">
-            <span className="text-label-sm font-label-sm uppercase tracking-[0.06em] text-on-surface-variant">My fonts · {userFonts.length}</span>
+            <span className="text-label-sm font-label-sm text-on-surface-variant">My fonts · {userFonts.length}</span>
           </div>
           {userFonts.map((f) => (
             <div key={f.id} className="flex items-center gap-md px-lg py-sm border-b border-outline-variant/10 last:border-b-0">
@@ -232,19 +232,19 @@ export default function FontSettings() {
                 <div className="text-[24px] leading-tight text-on-surface truncate" style={{ fontFamily: f.family }}>{SAMPLE}</div>
                 <div className="flex items-center gap-sm mt-[1px]">
                   <span className="text-body-sm font-semibold text-on-surface">{f.family}</span>
-                  <span className="text-[10px] font-label-sm uppercase tracking-[0.05em] border border-outline-variant/30 rounded px-xs text-on-surface-variant">.{f.ext}</span>
+                  <span className="text-[11px] font-label-sm border border-outline-variant/30 rounded px-xs text-on-surface-variant">.{f.ext}</span>
                 </div>
               </div>
               {confirmId === f.id ? (
                 <div className="flex items-center gap-sm shrink-0">
                   <button onClick={() => handleDeleteUser(f.id)}
-                    className="px-md py-xs text-label-sm font-label-sm font-bold bg-error-container text-error rounded-lg border border-error/40 hover:brightness-110 cursor-pointer uppercase tracking-[0.05em]">Remove</button>
+                    className="px-md py-xs text-label-sm font-label-sm font-bold bg-error-container text-error rounded-lg border border-error/40 hover:brightness-110 cursor-pointer">Remove</button>
                   <button onClick={() => setConfirmId(null)}
-                    className="px-md py-xs text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface bg-surface-container-high border border-outline-variant/30 rounded-lg cursor-pointer uppercase tracking-[0.05em]">Cancel</button>
+                    className="px-md py-xs text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface bg-surface-container-high border border-outline-variant/30 rounded-lg cursor-pointer">Cancel</button>
                 </div>
               ) : (
                 <button onClick={() => setConfirmId(f.id)} title="Remove font"
-                  className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg text-on-surface-variant/50 hover:text-error hover:bg-error-container/20 transition-colors cursor-pointer">
+                  className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg text-on-surface-variant/60 hover:text-error hover:bg-error-container/20 transition-colors cursor-pointer">
                   <span className="material-symbols-outlined text-[18px]">delete</span>
                 </button>
               )}

@@ -543,7 +543,7 @@ function PresetTile({ preset, onPick }) {
       </div>
       <div className="px-md py-sm flex items-center justify-between gap-xs">
         <span className="text-label-sm font-mono font-bold text-on-surface truncate min-w-0">{preset.name}</span>
-        <span className="text-[8px] font-mono uppercase tracking-[0.05em] text-on-surface-variant/50 border border-outline-variant/40 rounded px-[3px] py-[1px] shrink-0">{meta.label}</span>
+        <span className="text-[11px] font-mono text-on-surface-variant/60 border border-outline-variant/40 rounded px-[3px] py-[1px] shrink-0">{meta.label}</span>
       </div>
     </div>
   );
@@ -595,7 +595,7 @@ export function GraphicsPresetModal({ onPick, onClose, lockKind = null }) {
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-lg py-md border-b border-outline-variant/30 bg-surface-container-high flex-shrink-0 gap-md">
-          <h3 className="text-label-sm font-label-sm text-on-surface uppercase tracking-[0.05em] flex items-center gap-sm shrink-0">
+          <h3 className="text-label-sm font-label-sm text-on-surface flex items-center gap-sm shrink-0">
             <span className="material-symbols-outlined text-primary text-[20px]">grid_view</span>
             {lockedMeta ? `${lockedMeta.label.replace(/s$/, '')} designs` : 'Design gallery'}
           </h3>
@@ -604,7 +604,7 @@ export function GraphicsPresetModal({ onPick, onClose, lockKind = null }) {
             <input
               value={query} onChange={(e) => setQuery(e.target.value)} autoFocus
               placeholder="Search designs…"
-              className="w-full pl-[34px] pr-sm py-xs text-body-sm bg-surface-container rounded-lg border border-outline-variant/30 text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:border-primary/50"
+              className="w-full pl-[34px] pr-sm py-xs text-body-sm bg-surface-container rounded-lg border border-outline-variant/30 text-on-surface placeholder:text-on-surface-variant/60 focus:outline-none focus:border-primary/50"
             />
           </div>
           <button onClick={onClose} className="text-on-surface-variant hover:text-on-surface cursor-pointer flex items-center shrink-0">
@@ -617,7 +617,7 @@ export function GraphicsPresetModal({ onPick, onClose, lockKind = null }) {
           <div className="flex items-center gap-xs px-lg py-sm border-b border-outline-variant/20 bg-surface-container/40 shrink-0">
             {[{ id: 'all', label: 'All', icon: 'apps' }, ...presentKinds.map((k) => ({ id: k, ...KIND_META[k] }))].map((t) => (
               <button key={t.id} onClick={() => setTab(t.id)}
-                className={`flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] transition-colors cursor-pointer ${
+                className={`flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm transition-colors cursor-pointer ${
                   tab === t.id ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'
                 }`}>
                 <span className="material-symbols-outlined text-[14px]">{t.icon}</span>{t.label}
@@ -628,9 +628,9 @@ export function GraphicsPresetModal({ onPick, onClose, lockKind = null }) {
 
         <div className="flex-1 min-h-0 overflow-y-auto p-lg custom-scrollbar">
           {filtered.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center gap-sm text-outline-variant">
+            <div className="h-full flex flex-col items-center justify-center gap-sm text-on-surface-variant/70">
               <span className="material-symbols-outlined text-5xl">grid_view</span>
-              <span className="text-label-sm font-label-sm uppercase tracking-widest">{presets.length ? 'No matches' : 'No designs'}</span>
+              <span className="text-label-sm font-label-sm">{presets.length ? 'No matches' : 'No designs'}</span>
             </div>
           ) : (
             <div className="grid gap-md" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
@@ -846,7 +846,7 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
                 key={k.id}
                 disabled={isEdit && draft.kind !== k.id}
                 onClick={() => set({ kind: k.id })}
-                className={`flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
+                className={`flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
                   draft.kind === k.id ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'
                 }`}
               >
@@ -867,7 +867,7 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
           <>
             {(isLT || isCD) && (
               <div className="flex items-center gap-sm px-lg py-xs border-b border-outline-variant/20 bg-surface-container/40 shrink-0">
-                <span className="text-[9px] font-mono text-on-surface-variant/50 uppercase tracking-[0.06em]">Editing</span>
+                <span className="text-[11px] font-mono text-on-surface-variant/60">Editing</span>
                 <div className="flex items-center gap-[2px] bg-surface-container rounded p-[2px]">
                   {(isLT ? [{ id: 'name', label: 'Name' }, { id: 'title', label: 'Title' }]
                          : [{ id: 'time', label: 'Time' }, { id: 'message', label: 'Label' }]).map(({ id, label }) => {
@@ -876,14 +876,14 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
                     return (
                     <button key={id}
                       onMouseDown={(e) => { e.preventDefault(); setTarget(id); }}
-                      className={`px-md h-6 text-[10px] font-mono rounded transition-colors cursor-pointer uppercase tracking-[0.05em] ${
+                      className={`px-md h-6 text-[11px] font-mono rounded transition-colors cursor-pointer ${
                         active ? 'bg-primary text-on-primary' : 'text-on-surface-variant/60 hover:text-on-surface-variant'
                       }`}
                     >{label}</button>
                     );
                   })}
                 </div>
-                <span className="text-[9px] font-mono text-on-surface-variant/40">
+                <span className="text-[11px] font-mono text-on-surface-variant/60">
                   {isLT
                     ? (target === 'name' ? 'Drag/resize the box in the preview · controls the bar + position' : 'Styling the title line')
                     : (target === 'message' ? 'Styling the label line' : 'Drag/resize the box in the preview · controls the bar + position')}
@@ -917,7 +917,7 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
 
             {/* Start from / restyle with a built-in design (locked to this kind). */}
             <button onClick={() => setShowGallery(true)}
-              className="flex items-center justify-center gap-xs px-md py-sm rounded-lg text-label-sm font-label-sm uppercase tracking-[0.05em] font-bold bg-primary/15 border border-primary/40 text-primary hover:bg-primary/25 cursor-pointer transition-colors">
+              className="flex items-center justify-center gap-xs px-md py-sm rounded-lg text-label-sm font-label-sm font-bold bg-primary/15 border border-primary/40 text-primary hover:bg-primary/25 cursor-pointer transition-colors">
               <span className="material-symbols-outlined text-[16px]">grid_view</span>
               {isCustom ? 'Browse designs' : 'Apply a design'}
             </button>
@@ -928,16 +928,16 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
                   {[['accent', 'Accent', draft.accentSource, (v) => set({ accentSource: v })],
                     ['font', 'Font', draft.fontSource, (v) => set({ fontSource: v })]].map(([id, label, val, onCh]) => (
                     <div key={id} className="flex items-center gap-sm">
-                      <span className="text-[10px] font-mono text-on-surface-variant/70 w-12 shrink-0 uppercase">{label}</span>
+                      <span className="text-[11px] font-mono text-on-surface-variant/70 w-12 shrink-0">{label}</span>
                       <div className="flex items-center gap-[2px] bg-surface-container rounded p-[2px]">
                         {[['theme', 'Theme'], ['custom', 'Custom']].map(([v, l]) => (
                           <button key={v} onClick={() => onCh(v)}
-                            className={`px-sm py-[3px] text-[10px] font-mono uppercase tracking-[0.04em] rounded transition-colors cursor-pointer ${val === v ? 'bg-primary text-on-primary' : 'text-on-surface-variant/70 hover:text-on-surface'}`}>{l}</button>
+                            className={`px-sm py-[3px] text-[11px] font-mono rounded transition-colors cursor-pointer ${val === v ? 'bg-primary text-on-primary' : 'text-on-surface-variant/70 hover:text-on-surface'}`}>{l}</button>
                         ))}
                       </div>
                     </div>
                   ))}
-                  <p className="text-[10px] text-on-surface-variant/50 leading-snug">“Theme” pulls the active rundown theme’s accent/font at air time — set once, stays cohesive. Applied on the next fire (never restyles live).</p>
+                  <p className="text-[11px] text-on-surface-variant/60 leading-snug">“Theme” pulls the active rundown theme’s accent/font at air time — set once, stays cohesive. Applied on the next fire (never restyles live).</p>
                 </div>
               </Field>
             )}
@@ -972,7 +972,7 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
                   <div className="flex items-center gap-xs">
                     {SPEED_PRESETS.map((p) => (
                       <button key={p.value} onClick={() => set({ speed: p.value })}
-                        className={`px-md py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] border transition-colors cursor-pointer ${
+                        className={`px-md py-1 rounded text-label-sm font-label-sm border transition-colors cursor-pointer ${
                           draft.speed === p.value ? 'bg-primary/15 border-primary/50 text-primary' : 'bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
                         }`}>{p.label}</button>
                     ))}
@@ -982,7 +982,7 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
                   <div className="flex items-center gap-xs">
                     {[{ id: 'bottom', label: 'Bottom' }, { id: 'top', label: 'Top' }].map((p) => (
                       <button key={p.id} onClick={() => set({ tickerStyle: { ...draft.tickerStyle, position: p.id } })}
-                        className={`px-md py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] border transition-colors cursor-pointer ${
+                        className={`px-md py-1 rounded text-label-sm font-label-sm border transition-colors cursor-pointer ${
                           (draft.tickerStyle.position || 'bottom') === p.id ? 'bg-primary/15 border-primary/50 text-primary' : 'bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
                         }`}>{p.label}</button>
                     ))}
@@ -1001,7 +1001,7 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
                   <div className="flex items-center gap-xs">
                     {CD_MODES.map((m) => (
                       <button key={m.id} onClick={() => setCd({ mode: m.id })}
-                        className={`flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] border transition-colors cursor-pointer ${
+                        className={`flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm border transition-colors cursor-pointer ${
                           draft.cd.mode === m.id ? 'bg-primary/15 border-primary/50 text-primary' : 'bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
                         }`}>
                         <span className="material-symbols-outlined text-[14px]">{m.icon}</span>{m.label}
@@ -1016,7 +1016,7 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
                       <div className="flex items-center gap-xs">
                         {[{ id: 'duration', label: 'For a duration' }, { id: 'target', label: 'To a time' }].map((o) => (
                           <button key={o.id} onClick={() => setCd({ source: o.id })}
-                            className={`px-md py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] border transition-colors cursor-pointer ${
+                            className={`px-md py-1 rounded text-label-sm font-label-sm border transition-colors cursor-pointer ${
                               draft.cd.source === o.id ? 'bg-primary/15 border-primary/50 text-primary' : 'bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
                             }`}>{o.label}</button>
                         ))}
@@ -1043,7 +1043,7 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
                         ].map((o) => (
                           <button key={o.id} onClick={() => setCd({ onEnd: o.id })}
                             title={o.desc}
-                            className={`flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] border transition-colors cursor-pointer ${
+                            className={`flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm border transition-colors cursor-pointer ${
                               draft.cd.onEnd === o.id ? 'bg-primary/15 border-primary/50 text-primary' : 'bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
                             }`}>
                             <span className="material-symbols-outlined text-[14px]">{o.icon}</span>{o.label}
@@ -1066,18 +1066,18 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
                             </div>
                           ) : (
                             <div className="w-24 aspect-video rounded border border-outline-variant/30 flex items-center justify-center bg-surface-container shrink-0">
-                              <span className="material-symbols-outlined text-outline-variant text-2xl">play_circle</span>
+                              <span className="material-symbols-outlined text-on-surface-variant/70 text-2xl">play_circle</span>
                             </div>
                           )}
                           <div className="flex flex-col gap-xs">
                             <button onClick={() => setShowEndMediaPicker(true)}
-                              className="flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] border bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface cursor-pointer transition-colors">
+                              className="flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm border bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface cursor-pointer transition-colors">
                               <span className="material-symbols-outlined text-[14px]">video_library</span>
                               {draft.cd.onEndMediaPath ? 'Change' : 'Pick media'}
                             </button>
                             {draft.cd.onEndMediaPath && (
                               <button onClick={() => setCd({ onEndMediaId: null, onEndMediaPath: null })}
-                                className="flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] border bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-error cursor-pointer transition-colors">
+                                className="flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm border bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-error cursor-pointer transition-colors">
                                 <span className="material-symbols-outlined text-[14px]">close</span>
                                 Clear
                               </button>
@@ -1095,7 +1095,7 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
                       <div className="flex items-center gap-xs">
                         {[{ id: '24h', label: '24-Hour' }, { id: '12h', label: '12-Hour' }].map((o) => (
                           <button key={o.id} onClick={() => setCd({ format: o.id })}
-                            className={`px-md py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] border transition-colors cursor-pointer ${
+                            className={`px-md py-1 rounded text-label-sm font-label-sm border transition-colors cursor-pointer ${
                               draft.cd.format === o.id ? 'bg-primary/15 border-primary/50 text-primary' : 'bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
                             }`}>{o.label}</button>
                         ))}
@@ -1103,7 +1103,7 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
                     </Field>
                     <Field label="Seconds">
                       <button onClick={() => setCd({ showSeconds: !draft.cd.showSeconds })}
-                        className={`px-md py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] border transition-colors cursor-pointer ${
+                        className={`px-md py-1 rounded text-label-sm font-label-sm border transition-colors cursor-pointer ${
                           draft.cd.showSeconds ? 'bg-primary/15 border-primary/50 text-primary' : 'bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
                         }`}>{draft.cd.showSeconds ? 'Showing seconds' : 'Hidden'}</button>
                     </Field>
@@ -1127,7 +1127,7 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
                 <Field label="Audio track (plays while live)">
                   <div className="flex items-center gap-sm flex-wrap">
                     <button onClick={() => setShowAudioPicker(true)}
-                      className="flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] border bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface cursor-pointer transition-colors">
+                      className="flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm border bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface cursor-pointer transition-colors">
                       <span className="material-symbols-outlined text-[14px]">music_note</span>
                       {draft.cd.audioMediaId ? 'Change' : 'Pick audio'}
                     </button>
@@ -1136,13 +1136,13 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
                         <span className="text-body-md text-on-surface truncate max-w-[160px]" title={draft.cd.audioName}>{draft.cd.audioName || 'Audio'}</span>
                         <button onClick={() => setCd({ audioLoop: !draft.cd.audioLoop })}
                           title="Loop the track until the timer stops"
-                          className={`flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] border transition-colors cursor-pointer ${
+                          className={`flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm border transition-colors cursor-pointer ${
                             draft.cd.audioLoop ? 'bg-primary/15 border-primary/50 text-primary' : 'bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
                           }`}>
                           <span className="material-symbols-outlined text-[14px]">loop</span>{draft.cd.audioLoop ? 'Loop on' : 'Loop off'}
                         </button>
                         <button onClick={() => setCd({ audioMediaId: null, audioName: '' })}
-                          className="flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] border bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-error cursor-pointer transition-colors">
+                          className="flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm border bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-error cursor-pointer transition-colors">
                           <span className="material-symbols-outlined text-[14px]">close</span>Clear
                         </button>
                       </>
@@ -1159,15 +1159,15 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
                     className="w-full bg-surface-container-lowest border border-outline-variant/40 rounded-lg px-sm py-1.5 text-body-md text-on-surface focus:outline-none focus:border-primary" />
                 </Field>
                 <div className="flex items-center justify-between">
-                  <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant">HTML + inline CSS</span>
+                  <span className="text-label-sm font-label-sm text-on-surface-variant">HTML + inline CSS</span>
                   <div className="flex items-center gap-xs">
                     {['{{name}}', '{{title}}', '{{text}}'].map((t) => (
                       <button key={t} onClick={() => insertPlaceholder(t)}
-                        className="px-xs py-[2px] rounded text-[10px] font-mono bg-surface-container border border-outline-variant/40 text-primary hover:bg-surface-container-high cursor-pointer">{t}</button>
+                        className="px-xs py-[2px] rounded text-[11px] font-mono bg-surface-container border border-outline-variant/40 text-primary hover:bg-surface-container-high cursor-pointer">{t}</button>
                     ))}
                     {!draft.html.trim() && (
                       <button onClick={() => set({ html: STARTER_HTML })}
-                        className="px-xs py-[2px] rounded text-[10px] font-mono bg-surface-container border border-outline-variant/40 text-on-surface-variant hover:text-on-surface cursor-pointer">Starter</button>
+                        className="px-xs py-[2px] rounded text-[11px] font-mono bg-surface-container border border-outline-variant/40 text-on-surface-variant hover:text-on-surface cursor-pointer">Starter</button>
                     )}
                   </div>
                 </div>
@@ -1191,7 +1191,7 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
               <div className="flex items-center gap-xs">
                 {DEST_OPTS.map((d) => (
                   <button key={d.id} onClick={() => set({ target: d.id })}
-                    className={`flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] border transition-colors cursor-pointer ${
+                    className={`flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm border transition-colors cursor-pointer ${
                       draft.target === d.id ? 'bg-primary/15 border-primary/50 text-primary' : 'bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
                     }`}>
                     <span className="material-symbols-outlined text-[14px]">{d.icon}</span>{d.label}
@@ -1199,7 +1199,7 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
                 ))}
               </div>
             </Field>
-            <p className="text-[10px] text-on-surface-variant/60 leading-snug -mt-xs">
+            <p className="text-[11px] text-on-surface-variant/60 leading-snug -mt-xs">
               In-Room = screen/monitor channels · Online = NDI channels. Can be overridden per-fire from the panel.
             </p>
 
@@ -1208,7 +1208,7 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
               <Field label="Auto-dismiss">
                 <div className="flex items-center gap-sm">
                   <button onClick={() => set({ autoDismissSec: draft.autoDismissSec > 0 ? 0 : 8 })}
-                    className={`flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] border transition-colors cursor-pointer ${
+                    className={`flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm border transition-colors cursor-pointer ${
                       draft.autoDismissSec > 0 ? 'bg-primary/15 border-primary/50 text-primary' : 'bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
                     }`}>
                     <span className="material-symbols-outlined text-[14px]">timer</span>
@@ -1235,18 +1235,18 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
                   </div>
                 ) : (
                   <div className="w-24 aspect-video rounded border border-outline-variant/30 flex items-center justify-center bg-surface-container shrink-0">
-                    <span className="material-symbols-outlined text-outline-variant text-2xl">wallpaper</span>
+                    <span className="material-symbols-outlined text-on-surface-variant/70 text-2xl">wallpaper</span>
                   </div>
                 )}
                 <div className="flex flex-col gap-xs">
                   <button onClick={() => setShowBgPicker(true)}
-                    className="flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] border bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface cursor-pointer transition-colors">
+                    className="flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm border bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface cursor-pointer transition-colors">
                     <span className="material-symbols-outlined text-[14px]">video_library</span>
                     {draft.bgMediaPath ? 'Change' : 'Set media'}
                   </button>
                   {draft.bgMediaPath && (
                     <button onClick={() => set({ bgMediaId: null, bgMediaPath: null })}
-                      className="flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] border bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-error cursor-pointer transition-colors">
+                      className="flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm border bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-error cursor-pointer transition-colors">
                       <span className="material-symbols-outlined text-[14px]">close</span>
                       Clear
                     </button>
@@ -1255,10 +1255,10 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
               </div>
               {draft.bgMediaPath && (
                 <div className="flex items-center gap-xs mt-xs">
-                  <span className="text-[9px] font-mono text-on-surface-variant/50 uppercase tracking-[0.06em]">Fit</span>
+                  <span className="text-[11px] font-mono text-on-surface-variant/60">Fit</span>
                   {[{ id: 'cover', label: 'Cover' }, { id: 'contain', label: 'Contain' }].map((o) => (
                     <button key={o.id} onClick={() => set({ bgFit: o.id })}
-                      className={`px-md py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] border transition-colors cursor-pointer ${
+                      className={`px-md py-1 rounded text-label-sm font-label-sm border transition-colors cursor-pointer ${
                         draft.bgFit === o.id ? 'bg-primary/15 border-primary/50 text-primary' : 'bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
                       }`}>{o.label}</button>
                   ))}
@@ -1270,10 +1270,10 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
           {/* Preview */}
           <div className="flex-1 flex flex-col min-h-0 bg-surface-container-lowest">
             <div className="flex items-center justify-between px-md h-9 border-b border-outline-variant/20 shrink-0">
-              <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-outline">Preview</span>
+              <span className="text-label-sm font-label-sm text-outline">Preview</span>
               {isCustom && (
                 <button onClick={() => setReplayKey((k) => k + 1)} title="Replay animation"
-                  className="flex items-center gap-xs text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant hover:text-primary cursor-pointer">
+                  className="flex items-center gap-xs text-label-sm font-label-sm text-on-surface-variant hover:text-primary cursor-pointer">
                   <span className="material-symbols-outlined text-[14px]">replay</span> Replay
                 </button>
               )}
@@ -1302,9 +1302,9 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
 
         {/* Footer */}
         <div className="px-lg py-md border-t border-outline-variant/20 bg-surface-container-high rounded-b-xl flex items-center justify-end gap-sm shrink-0">
-          <button onClick={onClose} className="px-lg py-sm rounded-lg text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant hover:bg-surface-variant cursor-pointer">Cancel</button>
+          <button onClick={onClose} className="px-lg py-sm rounded-lg text-label-sm font-label-sm text-on-surface-variant hover:bg-surface-variant cursor-pointer">Cancel</button>
           <button onClick={save} disabled={!canSave}
-            className="px-lg py-sm rounded-lg text-label-sm font-label-sm uppercase tracking-[0.05em] font-bold bg-tertiary-container text-on-tertiary hover:brightness-110 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
+            className="px-lg py-sm rounded-lg text-label-sm font-label-sm font-bold bg-tertiary-container text-on-tertiary hover:brightness-110 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
             {isEdit ? 'Save' : 'Create'}
           </button>
         </div>
@@ -1393,7 +1393,7 @@ function AudioTrackPickerModal({ selectedId, onSelect, onClose }) {
           )}
         </div>
         <div className="px-lg py-sm border-t border-outline-variant/20 flex justify-end shrink-0">
-          <button onClick={onClose} className="px-md py-1.5 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] bg-surface-container-high border border-outline-variant/40 text-on-surface-variant hover:text-on-surface cursor-pointer">Cancel</button>
+          <button onClick={onClose} className="px-md py-1.5 rounded text-label-sm font-label-sm bg-surface-container-high border border-outline-variant/40 text-on-surface-variant hover:text-on-surface cursor-pointer">Cancel</button>
         </div>
       </div>
     </div>,
@@ -1420,7 +1420,7 @@ function DurationInput({ seconds, onChange }) {
 function Field({ label, children }) {
   return (
     <label className="flex flex-col gap-xs">
-      <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant">{label}</span>
+      <span className="text-label-sm font-label-sm text-on-surface-variant">{label}</span>
       {children}
     </label>
   );
@@ -1432,7 +1432,7 @@ function BarControl({ bar, onChange, solidOnly = false }) {
   return (
     <div className="flex items-center gap-xs flex-wrap">
       <button onClick={() => onChange(enabled ? null : { color: '#0c0e12', opacity: 0.9, solid: solidOnly ? true : false })}
-        className={`px-md py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] border transition-colors cursor-pointer ${
+        className={`px-md py-1 rounded text-label-sm font-label-sm border transition-colors cursor-pointer ${
           enabled ? 'bg-primary/15 border-primary/50 text-primary' : 'bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
         }`}>{enabled ? 'On' : 'Off'}</button>
       {enabled && (
@@ -1441,13 +1441,13 @@ function BarControl({ bar, onChange, solidOnly = false }) {
             <input type="color" value={bar.color} onChange={(e) => onChange({ ...bar, color: e.target.value })}
               className="opacity-0 absolute inset-0 w-full h-full cursor-pointer" />
           </div>
-          <span className="text-[9px] font-mono text-on-surface-variant/50 uppercase">Opacity</span>
+          <span className="text-[11px] font-mono text-on-surface-variant/60">Opacity</span>
           <input type="number" min={0} max={1} step={0.05} value={bar.opacity}
             onChange={(e) => onChange({ ...bar, opacity: Number(e.target.value) })}
             className="w-14 bg-surface-container-lowest border border-outline-variant/40 text-on-surface text-[11px] rounded px-1 h-7 outline-none focus:border-primary text-center" />
           {!solidOnly && (
             <button onClick={() => onChange({ ...bar, solid: !bar.solid })}
-              className={`px-sm py-1 rounded text-[10px] font-mono uppercase tracking-[0.05em] border transition-colors cursor-pointer ${
+              className={`px-sm py-1 rounded text-[11px] font-mono border transition-colors cursor-pointer ${
                 bar.solid ? 'bg-primary/15 border-primary/50 text-primary' : 'bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
               }`}>Solid</button>
           )}

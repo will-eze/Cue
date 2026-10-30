@@ -41,12 +41,12 @@ export default function PackagesSettings() {
           <span className="text-display-sm font-bold text-on-surface tabular-nums">
             {pkgs ? `${installed.length}/${pkgs.length}` : '—'}
           </span>
-          <span className="text-[11px] font-label-sm text-on-surface-variant uppercase tracking-[0.05em]">Installed</span>
+          <span className="text-[11px] font-label-sm text-on-surface-variant">Installed</span>
         </div>
         <div className="h-10 w-[1px] bg-outline-variant/30" />
         <div className="flex flex-col">
           <span className="text-display-sm font-bold text-on-surface tabular-nums">{fmtBytes(totalSize)}</span>
-          <span className="text-[11px] font-label-sm text-on-surface-variant uppercase tracking-[0.05em]">On disk</span>
+          <span className="text-[11px] font-label-sm text-on-surface-variant">On disk</span>
         </div>
         <button
           onClick={() => setOpen(true)}

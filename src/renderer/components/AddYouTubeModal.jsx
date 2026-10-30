@@ -152,7 +152,7 @@ export default function AddYouTubeModal({ onClose, onConfirm, initialUrl = '' })
               className="accent-primary w-4 h-4 cursor-pointer"
             />
             <span className="text-label-sm font-label-sm text-on-surface normal-case tracking-normal">
-              Use my browser’s YouTube login <span className="text-outline-variant">— for videos YouTube blocks</span>
+              Use my browser’s YouTube login <span className="text-on-surface-variant/70">— for videos YouTube blocks</span>
             </span>
           </label>
           {cookieBrowser && (
@@ -168,7 +168,7 @@ export default function AddYouTubeModal({ onClose, onConfirm, initialUrl = '' })
                 <option value="brave">Brave</option>
                 <option value="safari">Safari</option>
               </select>
-              <span className="text-[11px] text-outline-variant normal-case tracking-normal leading-snug">
+              <span className="text-[11px] text-on-surface-variant/70 normal-case tracking-normal leading-snug">
                 Sign in to YouTube in that browser first. macOS may ask for Keychain access.
               </span>
             </div>
@@ -177,28 +177,28 @@ export default function AddYouTubeModal({ onClose, onConfirm, initialUrl = '' })
 
         {/* Live status line */}
         <div className="h-6 flex items-center gap-sm text-label-sm font-label-sm">
-          {!url.trim() && <span className="text-outline-variant normal-case tracking-normal">Waiting for a link…</span>}
+          {!url.trim() && <span className="text-on-surface-variant/70 normal-case tracking-normal">Waiting for a link…</span>}
           {url.trim() && !valid && <span className="text-on-surface-variant normal-case tracking-normal">That doesn’t look like a YouTube link.</span>}
           {valid && st === 'setup' && (
             <>
-              <span className="text-primary uppercase tracking-wide whitespace-nowrap">Setting up YouTube{status?.setupName ? ` · ${status.setupName}` : ''}</span>
+              <span className="text-primary whitespace-nowrap">Setting up YouTube{status?.setupName ? ` · ${status.setupName}` : ''}</span>
               <div className="flex-1 h-1 bg-surface-container-lowest rounded-full overflow-hidden">
                 <div className="h-full bg-primary transition-[width] duration-200" style={{ width: `${Math.round(status?.percent || 0)}%` }} />
               </div>
             </>
           )}
-          {valid && st === 'resolving' && <span className="text-on-surface-variant uppercase tracking-wide">Resolving…</span>}
+          {valid && st === 'resolving' && <span className="text-on-surface-variant">Resolving…</span>}
           {valid && (st === 'downloading') && (
             <>
-              <span className="text-primary uppercase tracking-wide">Downloading {Math.round(status?.percent || 0)}%</span>
+              <span className="text-primary">Downloading {Math.round(status?.percent || 0)}%</span>
               <div className="flex-1 h-1 bg-surface-container-lowest rounded-full overflow-hidden">
                 <div className="h-full bg-primary transition-[width] duration-200" style={{ width: `${Math.round(status?.percent || 0)}%` }} />
               </div>
             </>
           )}
-          {valid && st === 'processing' && <span className="text-primary uppercase tracking-wide">Processing…</span>}
+          {valid && st === 'processing' && <span className="text-primary">Processing…</span>}
           {valid && st === 'ready' && (
-            <span className="text-tertiary uppercase tracking-wide flex items-center gap-xs">
+            <span className="text-tertiary flex items-center gap-xs">
               <span className="material-symbols-outlined text-[16px]">check_circle</span>
               Ready{status?.title ? ` · ${status.title}` : ''}
             </span>
@@ -206,7 +206,7 @@ export default function AddYouTubeModal({ onClose, onConfirm, initialUrl = '' })
           {valid && st === 'error' && (
             <span className="flex items-center gap-sm min-w-0">
               <span className="text-error normal-case tracking-normal truncate">{status?.error || 'Could not download this video.'}</span>
-              <button onClick={retry} className="shrink-0 text-primary uppercase tracking-wide hover:brightness-110 cursor-pointer">Retry</button>
+              <button onClick={retry} className="shrink-0 text-primary hover:brightness-110 cursor-pointer">Retry</button>
             </span>
           )}
         </div>

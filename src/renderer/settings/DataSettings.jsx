@@ -76,7 +76,7 @@ export default function DataSettings() {
           <button
             onClick={handleExport}
             disabled={busy != null}
-            className="px-md py-xs text-label-sm font-label-sm font-bold bg-surface-container-high border border-primary/40 text-primary hover:bg-primary/10 active:scale-95 transition-all cursor-pointer rounded-lg uppercase tracking-[0.05em] whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-md py-xs text-label-sm font-label-sm font-bold bg-surface-container-high border border-primary/40 text-primary hover:bg-primary/10 active:scale-95 transition-all cursor-pointer rounded-lg whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {busy === 'export' ? 'Exporting…' : 'Export'}
           </button>
@@ -93,16 +93,16 @@ export default function DataSettings() {
           </div>
           {confirming ? (
             <div className="flex items-center gap-sm flex-wrap">
-              <span className="text-label-sm font-label-sm text-error uppercase tracking-[0.05em] whitespace-nowrap">Overwrite all?</span>
+              <span className="text-label-sm font-label-sm text-error whitespace-nowrap">Overwrite all?</span>
               <button
                 onClick={handleRestore}
-                className="px-md py-xs text-label-sm font-label-sm font-bold bg-error-container text-error rounded-lg border border-error/40 hover:brightness-110 active:scale-95 transition-all cursor-pointer uppercase tracking-[0.05em] whitespace-nowrap"
+                className="px-md py-xs text-label-sm font-label-sm font-bold bg-error-container text-error rounded-lg border border-error/40 hover:brightness-110 active:scale-95 transition-all cursor-pointer whitespace-nowrap"
               >
                 Choose file
               </button>
               <button
                 onClick={() => setConfirming(false)}
-                className="px-md py-xs text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface bg-surface-container hover:bg-surface-variant border border-outline-variant/30 rounded-lg transition-colors cursor-pointer uppercase tracking-[0.05em]"
+                className="px-md py-xs text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface bg-surface-container hover:bg-surface-variant border border-outline-variant/30 rounded-lg transition-colors cursor-pointer"
               >
                 Cancel
               </button>
@@ -111,7 +111,7 @@ export default function DataSettings() {
             <button
               onClick={() => setConfirming(true)}
               disabled={busy != null}
-              className="px-md py-xs text-label-sm font-label-sm font-bold bg-surface-container-high border border-error/40 text-error hover:bg-error-container/20 active:scale-95 transition-all cursor-pointer rounded-lg uppercase tracking-[0.05em] whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+              className="px-md py-xs text-label-sm font-label-sm font-bold bg-surface-container-high border border-error/40 text-error hover:bg-error-container/20 active:scale-95 transition-all cursor-pointer rounded-lg whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {busy === 'restore' ? 'Restoring…' : 'Restore'}
             </button>

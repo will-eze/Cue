@@ -85,9 +85,9 @@ export default function BibleSettings() {
       )}
 
       {versions.length === 0 ? (
-        <div className="border-2 border-dashed border-outline-variant/20 rounded-xl py-xl flex flex-col items-center gap-sm text-outline-variant">
+        <div className="border-2 border-dashed border-outline-variant/20 rounded-xl py-xl flex flex-col items-center gap-sm text-on-surface-variant/70">
           <span className="material-symbols-outlined text-3xl">menu_book</span>
-          <span className="text-label-sm font-label-sm uppercase tracking-[0.05em]">No translations installed</span>
+          <span className="text-label-sm font-label-sm">No translations installed</span>
         </div>
       ) : (
         <div className="space-y-sm">
@@ -105,14 +105,14 @@ export default function BibleSettings() {
               </div>
               {confirmDelete === v.id ? (
                 <div className="flex items-center gap-sm shrink-0">
-                  <span className="text-[10px] font-mono text-error uppercase tracking-[0.04em]">Delete?</span>
+                  <span className="text-[11px] font-mono text-error">Delete?</span>
                   <button
                     onClick={() => handleDelete(v.id)}
-                    className="text-[10px] font-mono text-error hover:text-error/70 cursor-pointer uppercase tracking-[0.04em] border border-error/40 px-sm py-[2px] rounded transition-colors"
+                    className="text-[11px] font-mono text-error hover:text-error/70 cursor-pointer border border-error/40 px-sm py-[2px] rounded transition-colors"
                   >Yes</button>
                   <button
                     onClick={() => setConfirmDelete(null)}
-                    className="text-[10px] font-mono text-on-surface-variant hover:text-on-surface cursor-pointer uppercase tracking-[0.04em]"
+                    className="text-[11px] font-mono text-on-surface-variant hover:text-on-surface cursor-pointer"
                   >No</button>
                 </div>
               ) : (

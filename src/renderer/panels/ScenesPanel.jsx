@@ -67,8 +67,8 @@ export default function ScenesPanel() {
       {/* Toolbar */}
       <div className="flex items-center gap-sm px-md h-11 border-b border-outline-variant/30 shrink-0">
         <span className="material-symbols-outlined text-[18px] text-primary shrink-0">bolt</span>
-        <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant shrink-0">Scenes</span>
-        <span className="text-[10px] font-mono text-on-surface-variant/50 normal-case tracking-normal ml-xs min-w-0 truncate">one-press output state recall</span>
+        <span className="text-label-sm font-label-sm text-on-surface-variant shrink-0">Scenes</span>
+        <span className="text-[11px] font-mono text-on-surface-variant/60 normal-case tracking-normal ml-xs min-w-0 truncate">one-press output state recall</span>
         <button onClick={() => setEditor({})}
           className="ml-auto shrink-0 flex items-center gap-xs px-md py-xs rounded text-label-sm font-label-sm bg-primary text-on-primary font-bold hover:brightness-110 cursor-pointer">
           <span className="material-symbols-outlined text-[14px]">add</span> New Scene
@@ -77,14 +77,14 @@ export default function ScenesPanel() {
 
       <div className="flex-1 overflow-y-auto custom-scrollbar p-md min-h-0">
         {scenes.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-xl gap-sm text-outline-variant">
+          <div className="flex flex-col items-center justify-center py-xl gap-sm text-on-surface-variant/70">
             <span className="material-symbols-outlined text-4xl">bolt</span>
-            <span className="text-label-sm font-label-sm uppercase tracking-widest">No scenes yet</span>
+            <span className="text-label-sm font-label-sm">No scenes yet</span>
             <span className="text-body-md text-on-surface-variant/60 max-w-[420px] text-center">
               Set the live output the way you want (lower-third, ticker, logo, mute), then capture it
               into a scene and bind a number key for instant recall.
             </span>
-            <button onClick={() => setEditor({})} className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-primary hover:underline cursor-pointer">Create one</button>
+            <button onClick={() => setEditor({})} className="text-label-sm font-label-sm text-primary hover:underline cursor-pointer">Create one</button>
           </div>
         ) : (
           <div className="grid gap-md" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
@@ -119,14 +119,14 @@ function SceneCard({ scene, onTake, onEdit, onDelete }) {
         <div className="flex items-center gap-xs opacity-0 group-hover:opacity-100 transition-opacity">
           {confirmingDelete ? (
             <>
-              <span className="text-[10px] font-mono text-error uppercase tracking-[0.04em] shrink-0">Delete?</span>
+              <span className="text-[11px] font-mono text-error shrink-0">Delete?</span>
               <button
                 onClick={() => { setConfirmingDelete(false); onDelete(); }}
-                className="text-[10px] font-mono text-error hover:text-error/70 cursor-pointer uppercase tracking-[0.04em] border border-error/40 px-sm py-[2px] rounded transition-colors"
+                className="text-[11px] font-mono text-error hover:text-error/70 cursor-pointer border border-error/40 px-sm py-[2px] rounded transition-colors"
               >Yes</button>
               <button
                 onClick={() => setConfirmingDelete(false)}
-                className="text-[10px] font-mono text-on-surface-variant hover:text-on-surface cursor-pointer uppercase tracking-[0.04em] transition-colors"
+                className="text-[11px] font-mono text-on-surface-variant hover:text-on-surface cursor-pointer transition-colors"
               >No</button>
             </>
           ) : (
@@ -145,32 +145,32 @@ function SceneCard({ scene, onTake, onEdit, onDelete }) {
       {/* What the scene sets */}
       <div className="px-md py-sm flex flex-wrap gap-xs min-h-[2.2rem]">
         {program.id !== 'none' && (
-          <span className="flex items-center gap-xs px-sm py-[2px] rounded bg-surface-container-high text-on-surface-variant text-[10px] font-label-sm uppercase tracking-[0.04em]">
+          <span className="flex items-center gap-xs px-sm py-[2px] rounded bg-surface-container-high text-on-surface-variant text-[11px] font-label-sm">
             <span className="material-symbols-outlined text-[12px]">{program.icon}</span>{program.label}
           </span>
         )}
         {audio !== 'leave' && (
-          <span className="flex items-center gap-xs px-sm py-[2px] rounded bg-surface-container-high text-on-surface-variant text-[10px] font-label-sm uppercase tracking-[0.04em]">
+          <span className="flex items-center gap-xs px-sm py-[2px] rounded bg-surface-container-high text-on-surface-variant text-[11px] font-label-sm">
             <span className="material-symbols-outlined text-[12px]">{audio === 'mute' ? 'volume_off' : 'volume_up'}</span>{audio}
           </span>
         )}
         {chips && chips.length === 0 && (
-          <span className="px-sm py-[2px] rounded bg-surface-container-high text-on-surface-variant/70 text-[10px] font-label-sm uppercase tracking-[0.04em]">Hide all graphics</span>
+          <span className="px-sm py-[2px] rounded bg-surface-container-high text-on-surface-variant/70 text-[11px] font-label-sm">Hide all graphics</span>
         )}
         {chips && chips.map((c) => (
-          <span key={c.key} className="flex items-center gap-xs px-sm py-[2px] rounded bg-tertiary/10 border border-tertiary/30 text-tertiary text-[10px] font-label-sm uppercase tracking-[0.04em] max-w-full">
+          <span key={c.key} className="flex items-center gap-xs px-sm py-[2px] rounded bg-tertiary/10 border border-tertiary/30 text-tertiary text-[11px] font-label-sm max-w-full">
             <span className="truncate">{KIND_LABEL[c.kind]}</span>
             <span className="opacity-60">· {TARGET_LABEL[c.dest]}</span>
           </span>
         ))}
         {!chips && program.id === 'none' && audio === 'leave' && (
-          <span className="px-sm py-[2px] rounded text-on-surface-variant/40 text-[10px] font-label-sm uppercase tracking-[0.04em]">Empty scene</span>
+          <span className="px-sm py-[2px] rounded text-on-surface-variant/60 text-[11px] font-label-sm">Empty scene</span>
         )}
       </div>
 
       <div className="px-md pb-md">
         <button onClick={onTake}
-          className="w-full px-md py-1.5 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] font-bold bg-tertiary-container text-on-tertiary hover:brightness-110 cursor-pointer">
+          className="w-full px-md py-1.5 rounded text-label-sm font-label-sm font-bold bg-tertiary-container text-on-tertiary hover:brightness-110 cursor-pointer">
           Take
         </button>
       </div>
@@ -227,7 +227,7 @@ function SceneEditor({ scene, onClose, onSaved }) {
       <div className="w-full max-w-[520px] bg-surface-container-high rounded-xl border border-outline-variant/40 flex flex-col max-h-full overflow-hidden" onMouseDown={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-sm px-lg h-12 border-b border-outline-variant/30 shrink-0">
           <span className="material-symbols-outlined text-[18px] text-primary">bolt</span>
-          <span className="text-label-md font-label-sm uppercase tracking-[0.05em] text-on-surface">{scene ? 'Edit Scene' : 'New Scene'}</span>
+          <span className="text-label-md font-label-sm text-on-surface">{scene ? 'Edit Scene' : 'New Scene'}</span>
           <button onClick={onClose} className="ml-auto text-on-surface-variant/60 hover:text-on-surface cursor-pointer">
             <span className="material-symbols-outlined text-[18px]">close</span>
           </button>
@@ -239,9 +239,9 @@ function SceneEditor({ scene, onClose, onSaved }) {
             <button onClick={captureNow}
               className="flex items-center justify-center gap-sm px-md py-sm rounded-lg border border-primary/50 bg-primary/10 text-primary hover:bg-primary/15 cursor-pointer">
               <span className="material-symbols-outlined text-[18px]">photo_camera</span>
-              <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] font-bold">Capture current output</span>
+              <span className="text-label-sm font-label-sm font-bold">Capture current output</span>
             </button>
-            <div className="text-[11px] font-mono text-on-surface-variant/50">
+            <div className="text-[12px] font-mono text-on-surface-variant/60">
               {captured ? <span className="text-tertiary">Snapshotted the live output state.</span> : 'Replaces this scene with a snapshot of the current live overlay, program layer, and audio state.'}
             </div>
           </div>
@@ -249,12 +249,12 @@ function SceneEditor({ scene, onClose, onSaved }) {
           {/* Name + hotkey */}
           <div className="flex gap-md">
             <label className="flex-1 flex flex-col gap-xs">
-              <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant">Name</span>
+              <span className="text-label-sm font-label-sm text-on-surface-variant">Name</span>
               <input value={name} onChange={(e) => setName(e.target.value)} autoFocus placeholder="To Break"
                 className="bg-surface-container-lowest border border-outline-variant/40 rounded-lg px-sm py-1.5 text-body-md text-on-surface focus:outline-none focus:border-primary" />
             </label>
             <label className="flex flex-col gap-xs w-28">
-              <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant">Hotkey</span>
+              <span className="text-label-sm font-label-sm text-on-surface-variant">Hotkey</span>
               {capturingKey ? (
                 <button
                   autoFocus
@@ -267,7 +267,7 @@ function SceneEditor({ scene, onClose, onSaved }) {
                     if (/^[1-9]$/.test(e.key)) { setHotkey(e.key); setCapturingKey(false); }
                   }}
                   onBlur={() => setCapturingKey(false)}
-                  className="h-9 rounded-lg border-2 border-primary bg-primary/10 text-primary text-label-sm font-label-sm font-bold uppercase tracking-[0.05em] cursor-pointer text-center animate-pulse"
+                  className="h-9 rounded-lg border-2 border-primary bg-primary/10 text-primary text-label-sm font-label-sm font-bold cursor-pointer text-center animate-pulse"
                 >
                   Press 1–9…
                 </button>
@@ -280,7 +280,7 @@ function SceneEditor({ scene, onClose, onSaved }) {
                   {hotkey && (
                     <span
                       onClick={(e) => { e.stopPropagation(); setHotkey(''); }}
-                      className="ml-xs text-[11px] text-on-surface-variant/60 hover:text-error cursor-pointer"
+                      className="ml-xs text-[12px] text-on-surface-variant/60 hover:text-error cursor-pointer"
                       title="Clear hotkey"
                     >✕</span>
                   )}
@@ -291,14 +291,14 @@ function SceneEditor({ scene, onClose, onSaved }) {
 
           {/* Program action */}
           <div className="flex flex-col gap-xs">
-            <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant">Program layer</span>
+            <span className="text-label-sm font-label-sm text-on-surface-variant">Program layer</span>
             <Segmented opts={PROGRAM_OPTS} value={program} onChange={setProgram} />
-            <span className="text-[11px] font-mono text-on-surface-variant/50">{PROGRAM_OPTS.find((p) => p.id === program)?.hint}</span>
+            <span className="text-[12px] font-mono text-on-surface-variant/60">{PROGRAM_OPTS.find((p) => p.id === program)?.hint}</span>
           </div>
 
           {/* Audio */}
           <div className="flex flex-col gap-xs">
-            <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant">Program audio</span>
+            <span className="text-label-sm font-label-sm text-on-surface-variant">Program audio</span>
             <Segmented opts={AUDIO_OPTS} value={audio} onChange={setAudio} />
           </div>
 
@@ -307,16 +307,16 @@ function SceneEditor({ scene, onClose, onSaved }) {
             <label className="flex items-center gap-sm cursor-pointer">
               <input type="checkbox" checked={manageOverlay} onChange={(e) => setManageOverlay(e.target.checked)}
                 className="accent-primary w-4 h-4 cursor-pointer" />
-              <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant">Recall graphics overlay</span>
+              <span className="text-label-sm font-label-sm text-on-surface-variant">Recall graphics overlay</span>
             </label>
             {manageOverlay && (
               <div className="rounded-lg border border-outline-variant/30 bg-surface-container p-md flex flex-wrap gap-xs min-h-[2.6rem] items-center">
                 {!chips ? (
-                  <span className="text-[11px] font-mono text-on-surface-variant/50">Capture the live output to snapshot graphics, or save now to recall an empty overlay (hide all).</span>
+                  <span className="text-[12px] font-mono text-on-surface-variant/60">Capture the live output to snapshot graphics, or save now to recall an empty overlay (hide all).</span>
                 ) : chips.length === 0 ? (
-                  <span className="px-sm py-[2px] rounded bg-surface-container-high text-on-surface-variant/70 text-[10px] font-label-sm uppercase tracking-[0.04em]">Hide all graphics</span>
+                  <span className="px-sm py-[2px] rounded bg-surface-container-high text-on-surface-variant/70 text-[11px] font-label-sm">Hide all graphics</span>
                 ) : chips.map((c) => (
-                  <span key={c.key} className="flex items-center gap-xs px-sm py-[2px] rounded bg-tertiary/10 border border-tertiary/30 text-tertiary text-[10px] font-label-sm uppercase tracking-[0.04em] max-w-full">
+                  <span key={c.key} className="flex items-center gap-xs px-sm py-[2px] rounded bg-tertiary/10 border border-tertiary/30 text-tertiary text-[11px] font-label-sm max-w-full">
                     <span className="truncate">{KIND_LABEL[c.kind]}</span><span className="opacity-60">· {TARGET_LABEL[c.dest]}</span>
                     {c.detail && <span className="opacity-50 normal-case tracking-normal truncate max-w-[110px]">{c.detail}</span>}
                   </span>
@@ -329,14 +329,14 @@ function SceneEditor({ scene, onClose, onSaved }) {
         <div className="flex items-center gap-sm px-lg h-14 border-t border-outline-variant/30 shrink-0">
           <div className="flex flex-col gap-0">
             <button onClick={testNow}
-              className="flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] bg-surface-container border border-outline-variant/40 text-on-surface-variant hover:text-on-surface cursor-pointer">
+              className="flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm bg-surface-container border border-outline-variant/40 text-on-surface-variant hover:text-on-surface cursor-pointer">
               <span className="material-symbols-outlined text-[14px]">play_arrow</span> Test
             </button>
-            <span className="text-[9px] font-mono text-on-surface-variant/40 px-xs">Updates live output</span>
+            <span className="text-[11px] font-mono text-on-surface-variant/60 px-xs">Updates live output</span>
           </div>
-          <button onClick={onClose} className="ml-auto px-md py-1.5 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant hover:text-on-surface cursor-pointer">Cancel</button>
+          <button onClick={onClose} className="ml-auto px-md py-1.5 rounded text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface cursor-pointer">Cancel</button>
           <button onClick={save} disabled={!name.trim()}
-            className="px-lg py-1.5 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] font-bold bg-primary text-on-primary hover:brightness-110 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">Save</button>
+            className="px-lg py-1.5 rounded text-label-sm font-label-sm font-bold bg-primary text-on-primary hover:brightness-110 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">Save</button>
         </div>
       </div>
     </div>
@@ -350,7 +350,7 @@ function Segmented({ opts, value, onChange }) {
         const active = value === o.id;
         return (
           <button key={o.id} onClick={() => onChange(o.id)}
-            className={`flex-1 flex items-center justify-center gap-xs px-sm py-1.5 rounded text-label-sm font-label-sm uppercase tracking-[0.04em] transition-colors cursor-pointer ${
+            className={`flex-1 flex items-center justify-center gap-xs px-sm py-1.5 rounded text-label-sm font-label-sm transition-colors cursor-pointer ${
               active ? 'bg-primary text-on-primary font-bold' : 'text-on-surface-variant hover:text-on-surface'
             }`}>
             <span className="material-symbols-outlined text-[14px]">{o.icon}</span>{o.label}

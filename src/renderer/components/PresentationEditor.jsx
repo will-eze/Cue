@@ -260,7 +260,7 @@ function SlideThumb({ slide, idx, active, onClick, onContext }) {
       onClick={onClick} onContextMenu={onContext}
       className={`shrink-0 rounded border cursor-pointer overflow-hidden transition-all ${active ? 'border-primary ring-1 ring-primary/40' : 'border-outline-variant/30 hover:border-outline-variant/60'}`}>
       <div className="flex items-stretch">
-        <div className="w-6 flex items-center justify-center text-[10px] font-label-sm text-on-surface-variant bg-surface-container-high">{idx + 1}</div>
+        <div className="w-6 flex items-center justify-center text-[11px] font-label-sm text-on-surface-variant bg-surface-container-high">{idx + 1}</div>
         <div className="relative bg-black" style={{ width: 132, height: 132 * (NATIVE_H / NATIVE_W) }}>
           {bg && <img src={mediaUrl(bg)} className="absolute inset-0 w-full h-full object-cover" alt="" />}
           <div className="absolute inset-0" style={{ transform: `scale(${132 / NATIVE_W})`, transformOrigin: 'top left', width: NATIVE_W, height: NATIVE_H }}>
@@ -624,11 +624,11 @@ export default function PresentationEditor({ presentationId, onClose, onSave }) 
               onAlign={alignSelected} onReplaceImage={() => setPicker('element')} />
           ) : (
             <div className="p-md flex flex-col gap-md">
-              <div className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-widest">
+              <div className="text-label-sm font-label-sm text-on-surface-variant">
                 {slide?.elements.length || 0} element{slide?.elements.length === 1 ? '' : 's'} · click to select
               </div>
               <label className="flex flex-col gap-xs">
-                <span className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em]">Slide label</span>
+                <span className="text-label-sm font-label-sm text-on-surface-variant">Slide label</span>
                 <input
                   type="text"
                   value={slide?.label || ''}
@@ -739,7 +739,7 @@ function SaveTemplateModal({ elements, backgroundId, onClose }) {
   return createPortal(
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60" onMouseDown={onClose}>
       <div className="w-80 bg-surface-container-low border border-outline-variant/30 rounded-xl shadow-2xl p-md flex flex-col gap-sm" onMouseDown={(e) => e.stopPropagation()}>
-        <h3 className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface flex items-center gap-xs">
+        <h3 className="text-label-sm font-label-sm text-on-surface flex items-center gap-xs">
           <span className="material-symbols-outlined text-primary text-[18px]">bookmark_add</span>Save as Template
         </h3>
         {saved ? (
@@ -806,13 +806,13 @@ function NewSlideModal({ currentElements, onAdd, onAddTemplate, onClose }) {
       <div className="flex-1 min-h-0 flex flex-col m-lg bg-surface-container-low rounded-xl border border-outline-variant/30 shadow-2xl ring-1 ring-white/5 overflow-hidden"
         onMouseDown={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-lg py-md border-b border-outline-variant/30 bg-surface-container-high flex-shrink-0 gap-md">
-          <h3 className="text-label-sm font-label-sm text-on-surface uppercase tracking-[0.05em] flex items-center gap-sm shrink-0">
+          <h3 className="text-label-sm font-label-sm text-on-surface flex items-center gap-sm shrink-0">
             <span className="material-symbols-outlined text-primary text-[20px]">grid_view</span>New slide
           </h3>
           <div className="flex-1 max-w-sm relative">
             <span className="material-symbols-outlined absolute left-sm top-1/2 -translate-y-1/2 text-on-surface-variant/60 text-[18px]">search</span>
             <input value={query} onChange={(e) => setQuery(e.target.value)} autoFocus placeholder="Search themes…"
-              className="w-full pl-[34px] pr-sm py-xs text-body-sm bg-surface-container rounded-lg border border-outline-variant/30 text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:border-primary/50" />
+              className="w-full pl-[34px] pr-sm py-xs text-body-sm bg-surface-container rounded-lg border border-outline-variant/30 text-on-surface placeholder:text-on-surface-variant/60 focus:outline-none focus:border-primary/50" />
           </div>
           <button onClick={onClose} className="text-on-surface-variant hover:text-on-surface cursor-pointer flex items-center shrink-0">
             <span className="material-symbols-outlined">close</span>
@@ -823,7 +823,7 @@ function NewSlideModal({ currentElements, onAdd, onAddTemplate, onClose }) {
           <div className="w-60 shrink-0 border-r border-outline-variant/30 overflow-y-auto custom-scrollbar p-sm flex flex-col gap-xs">
             {templates.length > 0 && (
               <>
-                <p className="text-[9px] font-label-sm uppercase tracking-widest text-on-surface-variant/50 px-xs pt-xs pb-[2px]">My Templates</p>
+                <p className="text-[11px] font-label-sm text-on-surface-variant/60 px-xs pt-xs pb-[2px]">My Templates</p>
                 {templates.map((tpl) => {
                   const tid = `__tpl_${tpl.id}`;
                   const els = Array.isArray(tpl.elements) ? tpl.elements : (() => { try { return JSON.parse(tpl.elements_json || '[]'); } catch { return []; } })();
@@ -838,7 +838,7 @@ function NewSlideModal({ currentElements, onAdd, onAddTemplate, onClose }) {
                   );
                 })}
                 <div className="h-px bg-outline-variant/20 my-xs" />
-                <p className="text-[9px] font-label-sm uppercase tracking-widest text-on-surface-variant/50 px-xs pb-[2px]">Themes</p>
+                <p className="text-[11px] font-label-sm text-on-surface-variant/60 px-xs pb-[2px]">Themes</p>
               </>
             )}
             {list.map((t) => (
@@ -857,7 +857,7 @@ function NewSlideModal({ currentElements, onAdd, onAddTemplate, onClose }) {
             const els = Array.isArray(tpl.elements) ? tpl.elements : (() => { try { return JSON.parse(tpl.elements_json || '[]'); } catch { return []; } })();
             return (
               <div className="flex-1 min-w-0 overflow-y-auto custom-scrollbar p-lg flex flex-col items-center justify-center gap-lg">
-                <p className="text-[10px] font-label-sm uppercase tracking-widest text-on-surface-variant/60">{tpl.name} · template</p>
+                <p className="text-[11px] font-label-sm text-on-surface-variant/60">{tpl.name} · template</p>
                 <div className="w-full max-w-md">
                   <StaticSlide elements={els} />
                 </div>
@@ -870,7 +870,7 @@ function NewSlideModal({ currentElements, onAdd, onAddTemplate, onClose }) {
             );
           })() : (
             <div className="flex-1 min-w-0 overflow-y-auto custom-scrollbar p-lg">
-              <p className="text-[10px] font-label-sm uppercase tracking-widest text-on-surface-variant/60 mb-sm">{sel?.name} · pick a layout</p>
+              <p className="text-[11px] font-label-sm text-on-surface-variant/60 mb-sm">{sel?.name} · pick a layout</p>
               <div className="grid gap-md" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
                 {PRES_LAYOUTS.map((l) => (
                   <div key={l.id} role="button" tabIndex={0}
@@ -904,13 +904,13 @@ function ApplyThemeModal({ hasSlide, onApply, onClose }) {
       <div className="flex-1 min-h-0 flex flex-col m-lg bg-surface-container-low rounded-xl border border-outline-variant/30 shadow-2xl ring-1 ring-white/5 overflow-hidden"
         onMouseDown={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-lg py-md border-b border-outline-variant/30 bg-surface-container-high flex-shrink-0 gap-md">
-          <h3 className="text-label-sm font-label-sm text-on-surface uppercase tracking-[0.05em] flex items-center gap-sm shrink-0">
+          <h3 className="text-label-sm font-label-sm text-on-surface flex items-center gap-sm shrink-0">
             <span className="material-symbols-outlined text-primary text-[20px]">palette</span>Apply a theme
           </h3>
           <div className="flex items-center gap-[2px] bg-surface-container rounded-lg p-[3px]">
             {[{ id: 'slide', label: 'This slide' }, { id: 'all', label: 'All slides' }].map((s) => (
               <button key={s.id} onClick={() => setScope(s.id)} disabled={s.id === 'slide' && !hasSlide}
-                className={`px-md py-1 rounded text-label-sm font-label-sm uppercase tracking-[0.05em] transition-colors cursor-pointer disabled:opacity-30 ${scope === s.id ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>
+                className={`px-md py-1 rounded text-label-sm font-label-sm transition-colors cursor-pointer disabled:opacity-30 ${scope === s.id ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>
                 {s.label}
               </button>
             ))}
@@ -920,7 +920,7 @@ function ApplyThemeModal({ hasSlide, onApply, onClose }) {
           </button>
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto p-lg custom-scrollbar">
-          <p className="text-[10px] font-label-sm uppercase tracking-widest text-on-surface-variant/60 mb-sm">
+          <p className="text-[11px] font-label-sm text-on-surface-variant/60 mb-sm">
             Re-skins {scope === 'all' ? 'every slide' : 'the current slide'} — keeps your text & positions.
           </p>
           <div className="grid gap-md" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
@@ -951,7 +951,7 @@ function Inspector({ el, fonts, onChange, onDelete, onFront, onBack, onDuplicate
     <div className="flex flex-col">
       <div className="px-md py-sm border-b border-outline-variant/30 flex items-center gap-sm">
         <span className="material-symbols-outlined text-[16px] text-primary">{el.type === 'text' ? 'title' : el.type === 'image' ? 'image' : 'shapes'}</span>
-        <span className="text-label-sm font-label-sm uppercase tracking-widest text-on-surface">{el.type}</span>
+        <span className="text-label-sm font-label-sm text-on-surface capitalize">{el.type}</span>
         <button onClick={onDuplicate} title="Duplicate element (⌘/Ctrl+D)" className="ml-auto text-on-surface-variant hover:text-on-surface hover:bg-surface-variant rounded p-1 transition-colors">
           <span className="material-symbols-outlined text-[16px]">content_copy</span>
         </button>
@@ -1054,12 +1054,12 @@ function VAlign({ style, onChange }) {
   );
 }
 function Row({ label, children }) {
-  return <div className="flex items-center justify-between gap-sm"><span className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wide">{label}</span>{children}</div>;
+  return <div className="flex items-center justify-between gap-sm"><span className="text-label-sm font-label-sm text-on-surface-variant">{label}</span>{children}</div>;
 }
 function Field({ label, value, onChange, step = 1 }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-[10px] font-label-sm text-on-surface-variant uppercase tracking-wide">{label}</span>
+      <span className="text-[11px] font-label-sm text-on-surface-variant">{label}</span>
       <input type="number" step={step} value={value} onChange={(e) => onChange(e.target.value)}
         className="bg-surface-container-lowest border border-outline-variant/50 rounded px-1 py-1 text-on-surface text-label-sm w-full focus:outline-none focus:border-primary" />
     </label>

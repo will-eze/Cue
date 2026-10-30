@@ -83,7 +83,7 @@ export default function SermonImportModal({ onClose, onDone }) {
         className="w-[520px] max-w-full bg-surface-container-low rounded-xl border border-outline-variant/30 shadow-2xl ring-1 ring-white/5 overflow-hidden">
         <div className="flex items-center gap-sm px-lg h-12 bg-surface-container-high border-b border-outline-variant/30">
           <span className="material-symbols-outlined text-primary">menu_book</span>
-          <span className="text-label-sm font-label-sm uppercase tracking-widest text-on-surface">Sermon to Slides</span>
+          <span className="text-label-sm font-label-sm text-on-surface">Sermon to Slides</span>
           {!busy && (
             <button onClick={onClose} className="ml-auto text-on-surface-variant hover:text-on-surface transition-colors">
               <span className="material-symbols-outlined text-[18px]">close</span>
@@ -106,14 +106,14 @@ export default function SermonImportModal({ onClose, onDone }) {
 
               {/* Title */}
               <label className="flex flex-col gap-[2px]">
-                <span className="text-label-sm font-label-sm uppercase tracking-wide text-on-surface-variant">Presentation title</span>
+                <span className="text-label-sm font-label-sm text-on-surface-variant">Presentation title</span>
                 <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Sermon title"
                   className="bg-surface-container-lowest border border-outline-variant/30 rounded px-sm py-1 text-body-md text-on-surface focus:outline-none focus:border-primary" />
               </label>
 
               {/* Theme */}
               <label className="flex flex-col gap-[2px]">
-                <span className="text-label-sm font-label-sm uppercase tracking-wide text-on-surface-variant">Theme</span>
+                <span className="text-label-sm font-label-sm text-on-surface-variant">Theme</span>
                 <select value={themeId} onChange={(e) => setThemeId(e.target.value)}
                   className="bg-surface-container-lowest border border-outline-variant/30 rounded px-sm py-1 text-body-md text-on-surface focus:outline-none focus:border-primary cursor-pointer">
                   <option value="">Global default background</option>
@@ -152,7 +152,7 @@ function Centered({ icon, spin, children }) {
   return (
     <div className="flex flex-col items-center justify-center gap-sm py-lg text-on-surface-variant">
       <span className={`material-symbols-outlined text-[32px] text-primary ${spin ? 'animate-spin' : ''}`}>{icon}</span>
-      <p className="text-label-sm font-label-sm uppercase tracking-widest">{children}</p>
+      <p className="text-label-sm font-label-sm">{children}</p>
     </div>
   );
 }

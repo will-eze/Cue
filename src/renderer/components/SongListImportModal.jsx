@@ -50,7 +50,7 @@ function SongOption({ song, current, onPick, onPreview, isPreviewing }) {
         <span className="material-symbols-outlined text-[16px] text-on-surface-variant shrink-0">music_note</span>
         <span className="text-body-md text-on-surface truncate">{song.title}</span>
         {song.author && <span className="text-label-sm font-label-sm text-on-surface-variant truncate">— {song.author}</span>}
-        {current && <span className="ml-auto text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em] shrink-0">current</span>}
+        {current && <span className="ml-auto text-label-sm font-label-sm text-on-surface-variant shrink-0">current</span>}
       </button>
       <button
         onClick={() => onPreview(song)}
@@ -158,7 +158,7 @@ function ResultRow({ row, index, dupOf, onChange, onPreview, onCreate, onSplit, 
       </div>
 
       {/* Arrow */}
-      <span className="material-symbols-outlined text-outline-variant text-[16px] shrink-0">arrow_forward</span>
+      <span className="material-symbols-outlined text-on-surface-variant/70 text-[16px] shrink-0">arrow_forward</span>
 
       {/* Matched song — click to preview */}
       <div className="flex-1 min-w-0 basis-0">
@@ -191,7 +191,7 @@ function ResultRow({ row, index, dupOf, onChange, onPreview, onCreate, onSplit, 
       </div>
 
       {/* Confidence badge */}
-      <span title={overridden ? 'Chosen by you' : (VIA_LABEL[row.via] || (row.confidence === 'none' ? 'No library song matched' : ''))} className={`shrink-0 text-label-sm font-label-sm uppercase tracking-[0.05em] px-sm py-[2px] rounded-full border ${
+      <span title={overridden ? 'Chosen by you' : (VIA_LABEL[row.via] || (row.confidence === 'none' ? 'No library song matched' : ''))} className={`shrink-0 text-label-sm font-label-sm px-sm py-[2px] rounded-full border ${
         overridden || row.confidence === 'exact' ? 'text-tertiary border-tertiary/40 bg-tertiary/10'
         : row.confidence === 'high' ? 'text-primary border-primary/40 bg-primary/10'
         : row.confidence === 'low'  ? 'text-yellow-400 border-yellow-400/40 bg-yellow-400/10'
@@ -227,7 +227,7 @@ function ResultRow({ row, index, dupOf, onChange, onPreview, onCreate, onSplit, 
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
                   placeholder="Search the library…"
-                  className="flex-1 bg-transparent py-sm text-body-md text-on-surface focus:outline-none placeholder:text-on-surface-variant/40"
+                  className="flex-1 bg-transparent py-sm text-body-md text-on-surface focus:outline-none placeholder:text-on-surface-variant/60"
                 />
                 {q && (
                   <button onClick={() => setQ('')} className="text-on-surface-variant hover:text-on-surface cursor-pointer">
@@ -241,10 +241,10 @@ function ResultRow({ row, index, dupOf, onChange, onPreview, onCreate, onSplit, 
               {q.trim() ? (
                 <>
                   {searching && (
-                    <div className="px-md py-sm text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant">Searching…</div>
+                    <div className="px-md py-sm text-label-sm font-label-sm text-on-surface-variant">Searching…</div>
                   )}
                   {!searching && results.length === 0 && (
-                    <div className="px-md py-sm text-label-sm font-label-sm uppercase tracking-[0.05em] text-outline-variant">No songs found</div>
+                    <div className="px-md py-sm text-label-sm font-label-sm text-on-surface-variant/70">No songs found</div>
                   )}
                   {results.map((s) => (
                     <SongOption key={s.id} song={s} onPick={pick} onPreview={onPreview} isPreviewing={previewId === s.id} />
@@ -256,7 +256,7 @@ function ResultRow({ row, index, dupOf, onChange, onPreview, onCreate, onSplit, 
                     <SongOption song={effective} current onPick={clearOverride} onPreview={onPreview} isPreviewing={previewId === effective.id} />
                   )}
                   {row.alternates.length > 0 && (
-                    <div className="px-md pt-sm pb-xs text-label-sm font-label-sm uppercase tracking-[0.08em] text-outline-variant">Other matches</div>
+                    <div className="px-md pt-sm pb-xs text-label-sm font-label-sm text-on-surface-variant/70">Other matches</div>
                   )}
                   {row.alternates
                     .filter((alt) => !effective || alt.id !== effective.id)
@@ -264,7 +264,7 @@ function ResultRow({ row, index, dupOf, onChange, onPreview, onCreate, onSplit, 
                       <SongOption key={alt.id} song={alt} onPick={pick} onPreview={onPreview} isPreviewing={previewId === alt.id} />
                     ))}
                   {!effective && row.alternates.length === 0 && (
-                    <div className="px-md py-sm text-label-sm font-label-sm uppercase tracking-[0.05em] text-outline-variant">Type to search the library</div>
+                    <div className="px-md py-sm text-label-sm font-label-sm text-on-surface-variant/70">Type to search the library</div>
                   )}
                 </>
               )}
@@ -343,8 +343,8 @@ function PreviewPane({ song, loading }) {
     <div className="w-96 shrink-0 border-l border-outline-variant/20 bg-surface-container-lowest flex flex-col min-h-0">
       {!song ? (
         <div className="flex-1 flex flex-col items-center justify-center gap-sm p-lg text-center">
-          <span className="material-symbols-outlined text-outline-variant text-4xl">lyrics</span>
-          <p className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-outline-variant">
+          <span className="material-symbols-outlined text-on-surface-variant/70 text-4xl">lyrics</span>
+          <p className="text-label-sm font-label-sm text-on-surface-variant/70">
             Click a match to preview its lyrics
           </p>
         </div>
@@ -360,12 +360,12 @@ function PreviewPane({ song, loading }) {
                 <span className="material-symbols-outlined text-primary text-3xl animate-spin" style={{ animationDuration: '1s' }}>progress_activity</span>
               </div>
             ) : !song.sections || song.sections.length === 0 ? (
-              <p className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-outline-variant">No lyrics stored</p>
+              <p className="text-label-sm font-label-sm text-on-surface-variant/70">No lyrics stored</p>
             ) : (
               song.sections.map((sec, i) => (
                 <div key={i}>
                   {sec.type && (
-                    <p className="text-label-sm font-label-sm uppercase tracking-[0.08em] text-primary/80 mb-xs">{sec.type}</p>
+                    <p className="text-label-sm font-label-sm text-primary/80 mb-xs capitalize">{sec.type}</p>
                   )}
                   <p className="text-body-md text-on-surface-variant whitespace-pre-wrap leading-relaxed">{sec.content}</p>
                 </div>
@@ -551,7 +551,7 @@ export default function SongListImportModal({ onCancel, onAddManyToRundown }) {
             <span className="material-symbols-outlined text-primary">format_list_bulleted_add</span>
             <div className="min-w-0">
               <h2 className="text-headline-md font-bold text-on-surface tracking-tight">Paste Song List</h2>
-              <p className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em]">
+              <p className="text-label-sm font-label-sm text-on-surface-variant">
                 {step === 'input'
                   ? 'Paste a set list — titles or lyrics, however messy — to match against your library'
                   : step === 'matching'
@@ -588,7 +588,7 @@ export default function SongListImportModal({ onCancel, onAddManyToRundown }) {
                   onChange={(e) => setText(e.target.value)}
                   disabled={step === 'matching'}
                   placeholder={"Praise\n1. Way Maker – Mary (Key: E)\n2. Goodness of God\n\nWorship\nAs the deer panteth for the water\nGHS 47"}
-                  className="flex-1 min-h-[240px] bg-surface-container-lowest border border-outline-variant/30 rounded-lg p-md text-body-md text-on-surface leading-relaxed resize-none focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/20 disabled:opacity-50 placeholder:text-on-surface-variant/40"
+                  className="flex-1 min-h-[240px] bg-surface-container-lowest border border-outline-variant/30 rounded-lg p-md text-body-md text-on-surface leading-relaxed resize-none focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/20 disabled:opacity-50 placeholder:text-on-surface-variant/60"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleMatch();
                   }}
@@ -661,7 +661,7 @@ export default function SongListImportModal({ onCancel, onAddManyToRundown }) {
             {step === 'results' && (
               <button
                 onClick={() => { setStep('input'); setRows([]); setPreview(null); }}
-                className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer flex items-center gap-xs"
+                className="text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer flex items-center gap-xs"
               >
                 <span className="material-symbols-outlined text-[14px]">arrow_back</span>
                 Edit
@@ -672,7 +672,7 @@ export default function SongListImportModal({ onCancel, onAddManyToRundown }) {
             <button
               onClick={onCancel}
               disabled={step === 'matching' || step === 'adding'}
-              className="px-lg py-sm rounded-lg text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant hover:bg-surface-variant transition-colors cursor-pointer disabled:opacity-40"
+              className="px-lg py-sm rounded-lg text-label-sm font-label-sm text-on-surface-variant hover:bg-surface-variant transition-colors cursor-pointer disabled:opacity-40"
             >
               Cancel
             </button>
@@ -680,7 +680,7 @@ export default function SongListImportModal({ onCancel, onAddManyToRundown }) {
               <button
                 onClick={handleMatch}
                 disabled={!text.trim() || step === 'matching'}
-                className="px-lg py-sm rounded-lg text-label-sm font-label-sm uppercase tracking-[0.05em] font-bold bg-primary text-on-primary hover:brightness-110 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100 flex items-center gap-xs"
+                className="px-lg py-sm rounded-lg text-label-sm font-label-sm font-bold bg-primary text-on-primary hover:brightness-110 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100 flex items-center gap-xs"
               >
                 {step === 'matching' && <span className="material-symbols-outlined text-[14px] animate-spin" style={{ animationDuration: '1s' }}>progress_activity</span>}
                 {step === 'matching' ? 'Matching…' : 'Match Songs'}
@@ -690,7 +690,7 @@ export default function SongListImportModal({ onCancel, onAddManyToRundown }) {
               <button
                 onClick={handleAdd}
                 disabled={selectedCount === 0}
-                className="px-lg py-sm rounded-lg text-label-sm font-label-sm uppercase tracking-[0.05em] font-bold bg-tertiary-container text-on-tertiary hover:brightness-110 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
+                className="px-lg py-sm rounded-lg text-label-sm font-label-sm font-bold bg-tertiary-container text-on-tertiary hover:brightness-110 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
               >
                 Add {selectedCount || ''} Song{selectedCount === 1 ? '' : 's'} to Rundown
               </button>

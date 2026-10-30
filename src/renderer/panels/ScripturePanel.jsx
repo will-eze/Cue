@@ -398,7 +398,7 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, onPrevie
     <div className="flex flex-1 min-h-0">
       {/* ── Translations rail ─────────────────────────────────────────────── */}
       <div className="w-52 border-r border-outline-variant/30 flex flex-col shrink-0 min-h-0">
-        <div className="px-md py-sm text-[10px] font-label-sm text-on-surface-variant uppercase tracking-[0.08em] shrink-0">
+        <div className="px-md py-sm text-[11px] font-label-sm text-on-surface-variant shrink-0">
           Translations
         </div>
         <div className="flex-1 overflow-y-auto px-xs custom-scrollbar">
@@ -418,8 +418,8 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, onPrevie
                   <span className="material-symbols-outlined text-[16px] shrink-0"
                     style={active ? { fontVariationSettings: "'FILL' 1" } : undefined}>menu_book</span>
                   <span className="flex-1 min-w-0">
-                    <span className="block text-label-sm font-label-sm font-bold uppercase tracking-[0.04em] truncate">{v.abbrev}</span>
-                    <span className="block text-[10px] text-on-surface-variant/70 truncate">{v.name}</span>
+                    <span className="block text-label-sm font-label-sm font-bold truncate">{v.abbrev}</span>
+                    <span className="block text-[11px] text-on-surface-variant/70 truncate">{v.name}</span>
                   </span>
                 </button>
                 {confirmDeleteId === v.id ? (
@@ -511,7 +511,7 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, onPrevie
             </AnchoredMenu>
           </div>
 
-          <span className="text-on-surface-variant/50 text-body-md">·</span>
+          <span className="text-on-surface-variant/60 text-body-md">·</span>
 
           {/* Chapter */}
           <input
@@ -528,7 +528,7 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, onPrevie
             className={`${REF_INPUT} w-16 text-center`}
             autoComplete="off"
           />
-          <span className="text-on-surface-variant/50 text-body-md">:</span>
+          <span className="text-on-surface-variant/60 text-body-md">:</span>
 
           {/* Verse */}
           <input
@@ -571,7 +571,7 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, onPrevie
             <button
               onClick={toggleSplit}
               title="Split view — show every live verse in two translations at once (full screen + lower third)"
-              className={`flex items-center gap-xs px-sm h-9 rounded-lg text-label-sm font-label-sm font-bold uppercase tracking-[0.05em] border transition-colors cursor-pointer ${
+              className={`flex items-center gap-xs px-sm h-9 rounded-lg text-label-sm font-label-sm font-bold border transition-colors cursor-pointer ${
                 splitEnabled
                   ? 'bg-primary/15 border-primary/50 text-primary'
                   : 'bg-surface-container border-outline-variant/40 text-on-surface-variant hover:border-primary/50 hover:text-primary'
@@ -593,7 +593,7 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, onPrevie
                   ))}
                 </select>
               ) : (
-                <span className="text-[10px] text-on-surface-variant/60 max-w-[7rem] leading-tight">Import a 2nd translation</span>
+                <span className="text-[11px] text-on-surface-variant/60 max-w-[7rem] leading-tight">Import a 2nd translation</span>
               )
             )}
           </div>
@@ -605,7 +605,7 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, onPrevie
             <button
               onClick={onToggleDetect}
               title="Auto-detect spoken scripture references and quotes from the live audio"
-              className={`flex items-center gap-xs px-sm h-9 rounded-lg text-label-sm font-label-sm font-bold uppercase tracking-[0.05em] border transition-colors cursor-pointer ${
+              className={`flex items-center gap-xs px-sm h-9 rounded-lg text-label-sm font-label-sm font-bold border transition-colors cursor-pointer ${
                 detectArmed
                   ? 'bg-tertiary-container/60 border-tertiary/50 text-tertiary'
                   : 'bg-surface-container border-outline-variant/40 text-on-surface-variant hover:border-primary/50 hover:text-primary'
@@ -626,7 +626,7 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, onPrevie
               onClick={() => { if (selectedIdx >= 0) emitPreview(chapterData, selectedIdx); }}
               disabled={selectedIdx < 0}
               title="Stage selected verse to the preview monitor without going live (P)"
-              className="flex items-center gap-xs px-md h-9 rounded-lg bg-primary/10 border border-primary/40 text-primary text-label-sm font-label-sm font-bold uppercase tracking-[0.05em] hover:bg-primary/20 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex items-center gap-xs px-md h-9 rounded-lg bg-primary/10 border border-primary/40 text-primary text-label-sm font-label-sm font-bold hover:bg-primary/20 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <span className="material-symbols-outlined text-[16px]">visibility</span>
               Preview
@@ -637,7 +637,7 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, onPrevie
             onClick={() => { if (selectedIdx >= 0) emitLive(chapterData, selectedIdx); }}
             disabled={selectedIdx < 0}
             title="Send selected verse to live output (Enter)"
-            className="flex items-center gap-xs px-md h-9 rounded-lg bg-tertiary-container text-on-tertiary text-label-sm font-label-sm font-bold uppercase tracking-[0.05em] hover:brightness-110 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex items-center gap-xs px-md h-9 rounded-lg bg-tertiary-container text-on-tertiary text-label-sm font-label-sm font-bold hover:brightness-110 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <span className="material-symbols-outlined text-[16px]">slideshow</span>
             Go Live
@@ -683,16 +683,16 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, onPrevie
                 >
                   <span className={`w-28 shrink-0 text-label-sm font-label-sm pt-[1px] ${isLive ? 'text-secondary' : 'text-primary'}`}>
                     {chapterData.bookName} {v.chapter}:{v.verse}
-                    {isLive && <span className="ml-xs text-[9px] align-top">● LIVE</span>}
+                    {isLive && <span className="ml-xs text-[11px] align-top">● LIVE</span>}
                   </span>
                   <span className="flex-1 min-w-0 text-body-md text-on-surface leading-snug">{v.text}</span>
                 </div>
               );
             })
           ) : (
-            <div className="flex flex-1 h-full flex-col items-center justify-center gap-sm text-outline-variant">
+            <div className="flex flex-1 h-full flex-col items-center justify-center gap-sm text-on-surface-variant/70">
               <span className="material-symbols-outlined text-4xl">menu_book</span>
-              <span className="text-label-sm font-label-sm uppercase tracking-widest">Type a Reference Above</span>
+              <span className="text-label-sm font-label-sm">Type a Reference Above</span>
               <p className="text-body-sm text-on-surface-variant max-w-sm text-center px-md">
                 e.g. type <span className="text-on-surface">Ge</span> → Genesis, Tab → chapter, Tab → verse, Enter to go live.
                 Then use ↑ / ↓ to advance verses live.

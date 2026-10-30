@@ -191,7 +191,7 @@ export default function App() {
         {/* Live indicator */}
         <div className="flex items-center gap-sm">
           <span className={`w-[6px] h-[6px] rounded-full shrink-0 ${headerState.isLive ? 'bg-secondary dot-pulse' : 'bg-outline-variant'}`} />
-          <span className={`text-label-sm font-label-sm uppercase tracking-[0.05em] ${headerState.isLive ? 'text-secondary' : 'text-on-surface-variant/50'}`}>
+          <span className={`text-label-sm font-label-sm ${headerState.isLive ? 'text-secondary' : 'text-on-surface-variant/60'}`}>
             {headerState.isLive ? 'Live' : 'Idle'}
           </span>
         </div>
@@ -203,12 +203,12 @@ export default function App() {
           className={`flex items-center gap-xs ${outputWindows === 0 ? 'cursor-pointer hover:opacity-80 transition-opacity' : 'cursor-default'}`}
         >
           <span
-            className={`material-symbols-outlined text-[14px] ${outputWindows > 0 ? 'text-tertiary' : 'text-outline-variant'}`}
+            className={`material-symbols-outlined text-[14px] ${outputWindows > 0 ? 'text-tertiary' : 'text-on-surface-variant/70'}`}
             style={{ fontVariationSettings: "'FILL' 1" }}
           >
             monitor
           </span>
-          <span className={`text-label-sm font-label-sm uppercase tracking-[0.05em] ${outputWindows > 0 ? 'text-tertiary' : 'text-on-surface-variant/50'}`}>
+          <span className={`text-label-sm font-label-sm ${outputWindows > 0 ? 'text-tertiary' : 'text-on-surface-variant/60'}`}>
             {outputWindows > 0 ? `${outputWindows} output${outputWindows !== 1 ? 's' : ''}` : 'No outputs'}
           </span>
         </button>
@@ -247,7 +247,7 @@ export default function App() {
               ? 'No output windows open — enable outputs with the Live button'
               : 'GO — send preview to live (G)'
           }
-          className="shrink-0 h-7 px-lg text-headline-md font-display-lg font-extrabold uppercase tracking-widest bg-tertiary text-on-tertiary rounded transition-all active:scale-95 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed hover:opacity-90"
+          className="shrink-0 h-7 px-lg text-headline-md font-display-lg font-extrabold bg-tertiary text-on-tertiary rounded transition-all active:scale-95 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed hover:opacity-90"
         >
           GO
         </button>
@@ -256,7 +256,7 @@ export default function App() {
         <button
           onClick={() => transportRef.current.clear()}
           title="Clear output (Esc)"
-          className={`shrink-0 h-7 px-md text-label-sm font-label-sm font-bold uppercase rounded transition-all active:scale-95 cursor-pointer flex items-center gap-xs ${
+          className={`shrink-0 h-7 px-md text-label-sm font-label-sm font-bold rounded transition-all active:scale-95 cursor-pointer flex items-center gap-xs ${
             displayMode === 'cleared'
               ? 'bg-error-container text-error border border-error/70 shadow-[0_0_8px_rgba(255,180,171,0.2)]'
               : 'bg-surface-container-high border border-error/40 text-error/80 hover:border-error hover:text-error hover:bg-error/5'
@@ -272,7 +272,7 @@ export default function App() {
         <button
           onClick={() => transportRef.current.logo()}
           title="Show logo (L)"
-          className={`shrink-0 h-7 px-md text-label-sm font-label-sm font-bold uppercase rounded transition-all active:scale-95 cursor-pointer flex items-center gap-xs ${
+          className={`shrink-0 h-7 px-md text-label-sm font-label-sm font-bold rounded transition-all active:scale-95 cursor-pointer flex items-center gap-xs ${
             displayMode === 'logo'
               ? 'bg-primary-container/40 text-primary border border-primary/70 shadow-[0_0_8px_rgba(173,198,255,0.2)]'
               : 'bg-surface-container-high border border-primary/40 text-primary/80 hover:border-primary hover:text-primary hover:bg-primary/5'
@@ -286,26 +286,47 @@ export default function App() {
 
         <span className="w-px h-3 bg-outline-variant/40 shrink-0" />
 
-        {/* LIVE — toggles output BrowserWindows on/off */}
-        <button
-          onClick={() => window.cue.output.setLive(!outputsEnabled)}
-          title={outputsEnabled ? 'Outputs running — click to close all output windows' : 'Outputs offline — click to open output windows'}
-          className={`shrink-0 h-7 px-md text-label-sm font-label-sm font-bold uppercase rounded transition-all active:scale-95 cursor-pointer flex items-center gap-xs ${
-            outputsEnabled
-              ? 'bg-secondary-container/60 border border-secondary/50 text-secondary hover:bg-secondary-container/80'
-              : 'bg-surface-container-high border border-outline-variant/30 text-on-surface-variant/50 hover:border-outline-variant/60'
-          }`}
-        >
-          <span className={`w-[5px] h-[5px] rounded-full shrink-0 transition-colors ${outputsEnabled ? 'bg-secondary animate-pulse' : 'bg-outline-variant'}`} />
-          Live
-        </button>
+        {/* OUTPUTS — opens / closes the output windows. A button (not a switch) whose
+            three states must be readable at a glance from across a dark booth:
+            ON = solid red + count, OFF = grey outline + crossed screen, and
+            ON-but-nothing-open = amber (enabled, yet the audience sees nothing). */}
+        {(() => {
+          const noScreens = outputsEnabled && outputWindows === 0;
+          const tone = !outputsEnabled
+            ? 'bg-transparent border border-outline-variant/60 text-on-surface-variant hover:border-on-surface-variant hover:text-on-surface'
+            : noScreens
+              ? 'bg-yellow-400/15 border border-yellow-400/70 text-yellow-300 hover:bg-yellow-400/25'
+              : 'bg-secondary-container border border-secondary/80 text-white hover:brightness-110';
+          return (
+            <button
+              onClick={() => window.cue.output.setLive(!outputsEnabled)}
+              aria-pressed={outputsEnabled}
+              title={!outputsEnabled
+                ? 'Outputs are OFF — the audience sees nothing. Click to open the output windows.'
+                : noScreens
+                  ? 'Outputs are on, but no output window is open — check Settings › Output Channels (is the display connected?). Click to turn outputs off.'
+                  : `Outputs are ON — ${outputWindows} window${outputWindows !== 1 ? 's' : ''} showing. Click to close all output windows.`}
+              className={`shrink-0 h-7 pl-sm pr-md text-body-md font-semibold rounded transition-all active:scale-95 cursor-pointer flex items-center gap-xs ${tone}`}
+            >
+              <span className="material-symbols-outlined text-[17px]" style={{ fontVariationSettings: "'FILL' 1" }}>
+                {!outputsEnabled ? 'desktop_access_disabled' : noScreens ? 'warning' : 'cast_connected'}
+              </span>
+              {!outputsEnabled ? 'Outputs off' : noScreens ? 'No screens' : 'Outputs on'}
+              {outputsEnabled && !noScreens && (
+                <span className="ml-[2px] min-w-[18px] h-[18px] px-[5px] rounded-full bg-black/25 text-label-sm font-semibold tabular-nums flex items-center justify-center">
+                  {outputWindows}
+                </span>
+              )}
+            </button>
+          );
+        })()}
 
         {/* STAGE — opens confidence monitor controls */}
         <div className="relative shrink-0" ref={stagePanelRef}>
           <button
             onClick={() => setStageOpen((v) => !v)}
             title="Stage display controls"
-            className={`h-7 px-md text-label-sm font-label-sm font-bold uppercase rounded transition-all active:scale-95 cursor-pointer flex items-center gap-xs ${
+            className={`h-7 px-md text-label-sm font-label-sm font-bold rounded transition-all active:scale-95 cursor-pointer flex items-center gap-xs ${
               stageOpen
                 ? 'bg-surface-container-highest border border-outline-variant/60 text-on-surface'
                 : 'bg-surface-container-high border border-outline-variant/30 text-on-surface-variant/70 hover:border-outline-variant/60 hover:text-on-surface'
@@ -374,7 +395,7 @@ function NavTab({ label, active, onClick }) {
   return (
     <button
       onClick={onClick}
-      className={`titlebar-nodrag h-full flex items-center px-sm text-label-sm font-label-sm tracking-[0.05em] uppercase cursor-pointer transition-colors ${
+      className={`titlebar-nodrag h-full flex items-center px-sm text-label-sm font-label-sm cursor-pointer transition-colors ${
         active
           ? 'text-primary border-b-2 border-primary'
           : 'text-on-surface-variant hover:text-on-surface border-b-2 border-transparent'
@@ -664,7 +685,7 @@ function StagePanel() {
 
         {/* ── Timer ── */}
         <div>
-          <p className="text-[10px] font-mono uppercase tracking-[0.1em] text-outline mb-sm">Time Remaining</p>
+          <p className="text-[11px] font-mono text-outline mb-sm">Time Remaining</p>
 
           {/* Live countdown display */}
           <div className={`text-center font-mono font-bold tabular-nums mb-sm transition-colors ${dispColor}`} style={{ fontSize: 36 }}>
@@ -689,7 +710,7 @@ function StagePanel() {
             />
             <button onClick={handleToggle}
               title={running ? 'Pause the timer' : 'Start (commits the duration shown)'}
-              className={`flex-1 h-7 text-[10px] font-mono uppercase tracking-[0.05em] rounded border transition-colors cursor-pointer ${
+              className={`flex-1 h-7 text-[11px] font-mono rounded border transition-colors cursor-pointer ${
                 running
                   ? 'bg-secondary-container/70 border-secondary/50 text-secondary hover:bg-secondary-container'
                   : 'bg-tertiary-container/80 border-tertiary/50 text-tertiary hover:bg-tertiary-container'
@@ -697,7 +718,7 @@ function StagePanel() {
               {running ? '⏸ Pause' : (totalSec > 0 && remaining !== totalSec ? '▶ Resume' : '▶ Start')}
             </button>
             <button onClick={handleReset} title="Reset to the set duration"
-              className="h-7 px-sm text-[10px] font-mono uppercase tracking-[0.05em] bg-surface-container-high border border-outline-variant/40 text-on-surface-variant hover:border-outline-variant hover:text-on-surface rounded transition-colors cursor-pointer">
+              className="h-7 px-sm text-[11px] font-mono bg-surface-container-high border border-outline-variant/40 text-on-surface-variant hover:border-outline-variant hover:text-on-surface rounded transition-colors cursor-pointer">
               ↺
             </button>
           </div>
@@ -706,7 +727,7 @@ function StagePanel() {
           <div className="flex gap-[4px] mb-xs">
             {[5, 10, 15, 20, 30].map((m) => (
               <button key={m} onClick={() => applyQuick(m * 60)}
-                className={`flex-1 h-6 text-[10px] font-mono tabular-nums rounded border transition-colors cursor-pointer ${
+                className={`flex-1 h-6 text-[11px] font-mono tabular-nums rounded border transition-colors cursor-pointer ${
                   totalSec === m * 60
                     ? 'bg-primary/15 border-primary/50 text-primary'
                     : 'bg-surface-container-high border-outline-variant/30 text-on-surface-variant hover:text-on-surface hover:border-outline-variant'
@@ -716,7 +737,7 @@ function StagePanel() {
             ))}
           </div>
 
-          <p className="text-[9px] text-outline leading-tight">
+          <p className="text-[11px] text-outline leading-tight">
             {remaining < 0
               ? 'Over time — Pause to stop the overrun, ↺ to reset.'
               : 'Type minutes (10) or MM:SS (10:30) · Enter to set'}
@@ -727,7 +748,7 @@ function StagePanel() {
 
         {/* ── Message ── */}
         <div>
-          <p className="text-[10px] font-mono uppercase tracking-[0.1em] text-outline mb-sm">Stage Message</p>
+          <p className="text-[11px] font-mono text-outline mb-sm">Stage Message</p>
           {/* Presets */}
           {msgPresets.length > 0 && (
             <div className="flex flex-wrap gap-[4px] mb-sm">
@@ -735,7 +756,7 @@ function StagePanel() {
                 <div key={preset} className="group flex items-center gap-[2px] bg-surface-container-high border border-outline-variant/40 rounded px-[6px] py-[2px]">
                   <button
                     onClick={() => { window.cue.output.stage.message(preset); }}
-                    className="text-[10px] font-mono text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer max-w-[140px] truncate"
+                    className="text-[11px] font-mono text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer max-w-[140px] truncate"
                     title={preset}
                   >
                     {preset}
@@ -744,7 +765,7 @@ function StagePanel() {
                     onClick={() => deletePreset(preset)}
                     className="opacity-0 group-hover:opacity-70 hover:!opacity-100 text-on-surface-variant hover:text-error cursor-pointer transition-all ml-[2px]"
                   >
-                    <span className="material-symbols-outlined text-[10px]">close</span>
+                    <span className="material-symbols-outlined text-[11px]">close</span>
                   </button>
                 </div>
               ))}
@@ -760,19 +781,19 @@ function StagePanel() {
           />
           <div className="flex gap-xs mt-xs">
             <button onClick={sendMsg} disabled={!stageMsg.trim()}
-              className="flex-1 h-7 text-[10px] font-mono uppercase tracking-[0.05em] bg-primary-container/70 border border-primary/40 text-primary hover:bg-primary-container rounded transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed">
+              className="flex-1 h-7 text-[11px] font-mono bg-primary-container/70 border border-primary/40 text-primary hover:bg-primary-container rounded transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed">
               Send
             </button>
             <button
               onClick={() => savePreset(stageMsg.trim())}
               disabled={!stageMsg.trim() || msgPresets.includes(stageMsg.trim())}
               title="Save as preset"
-              className="h-7 px-sm text-[10px] font-mono uppercase tracking-[0.05em] bg-surface-container-high border border-outline-variant/40 text-on-surface-variant hover:border-outline-variant hover:text-on-surface rounded transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+              className="h-7 px-sm text-[11px] font-mono bg-surface-container-high border border-outline-variant/40 text-on-surface-variant hover:border-outline-variant hover:text-on-surface rounded transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
             >
               + Preset
             </button>
             <button onClick={clearMsg}
-              className="h-7 px-sm text-[10px] font-mono uppercase tracking-[0.05em] bg-surface-container-high border border-outline-variant/40 text-on-surface-variant hover:border-outline-variant hover:text-on-surface rounded transition-colors cursor-pointer">
+              className="h-7 px-sm text-[11px] font-mono bg-surface-container-high border border-outline-variant/40 text-on-surface-variant hover:border-outline-variant hover:text-on-surface rounded transition-colors cursor-pointer">
               Clear
             </button>
           </div>
@@ -780,11 +801,11 @@ function StagePanel() {
           {/* ── Schedule ── */}
           <div className="mt-md pt-md border-t border-outline-variant/20">
             <div className="flex items-center justify-between mb-sm">
-              <p className="text-[10px] font-mono uppercase tracking-[0.1em] text-outline">Schedule</p>
+              <p className="text-[11px] font-mono text-outline">Schedule</p>
               <div className="flex bg-surface-container-lowest border border-outline-variant/40 rounded overflow-hidden">
                 {[['in','In'],['at','At']].map(([m, lbl]) => (
                   <button key={m} onClick={() => setSchedMode(m)}
-                    className={`px-sm h-5 text-[9px] font-mono uppercase tracking-[0.08em] transition-colors cursor-pointer ${
+                    className={`px-sm h-5 text-[11px] font-mono transition-colors cursor-pointer ${
                       schedMode === m ? 'bg-primary-container/70 text-primary' : 'text-on-surface-variant hover:text-on-surface'
                     }`}>
                     {lbl}
@@ -799,16 +820,16 @@ function StagePanel() {
                   <input type="number" min={0} max={99} value={schedMins}
                     onChange={(e) => setSchedMins(Math.max(0, Math.min(99, Math.floor(+e.target.value) || 0)))}
                     className="w-14 h-7 px-xs bg-surface-container-lowest border border-outline-variant/50 rounded text-[12px] text-on-surface text-center tabular-nums focus:border-primary outline-none" />
-                  <span className="text-[9px] font-mono uppercase tracking-[0.05em] text-outline mt-[2px]">min</span>
+                  <span className="text-[11px] font-mono text-outline mt-[2px]">min</span>
                 </div>
-                <span className="text-[16px] font-bold text-outline-variant pb-4">:</span>
+                <span className="text-[16px] font-bold text-on-surface-variant/70 pb-4">:</span>
                 <div className="flex flex-col items-center">
                   <input type="number" min={0} max={59} value={schedSecs}
                     onChange={(e) => setSchedSecs(Math.max(0, Math.min(59, Math.floor(+e.target.value) || 0)))}
                     className="w-14 h-7 px-xs bg-surface-container-lowest border border-outline-variant/50 rounded text-[12px] text-on-surface text-center tabular-nums focus:border-primary outline-none" />
-                  <span className="text-[9px] font-mono uppercase tracking-[0.05em] text-outline mt-[2px]">sec</span>
+                  <span className="text-[11px] font-mono text-outline mt-[2px]">sec</span>
                 </div>
-                <span className="text-[9px] font-mono uppercase tracking-[0.05em] text-outline ml-xs self-start mt-2">from now</span>
+                <span className="text-[11px] font-mono text-outline ml-xs self-start mt-2">from now</span>
               </div>
             ) : (
               <input type="time" value={schedTime}
@@ -817,21 +838,21 @@ function StagePanel() {
             )}
 
             <div className="flex items-center gap-xs mb-sm">
-              <span className="text-[9px] font-mono uppercase tracking-[0.05em] text-outline">Auto-clear after</span>
+              <span className="text-[11px] font-mono text-outline">Auto-clear after</span>
               <input type="number" min={0} max={999} value={clearMins}
                 onChange={(e) => setClearMins(Math.max(0, Math.min(999, +e.target.value || 0)))}
-                className="w-12 h-6 px-xs bg-surface-container-lowest border border-outline-variant/50 rounded text-[11px] text-on-surface text-center tabular-nums focus:border-primary outline-none" />
-              <span className="text-[9px] font-mono uppercase text-outline">min{clearMins === 0 ? ' (never)' : ''}</span>
+                className="w-12 h-6 px-xs bg-surface-container-lowest border border-outline-variant/50 rounded text-[12px] text-on-surface text-center tabular-nums focus:border-primary outline-none" />
+              <span className="text-[11px] font-mono text-outline">min{clearMins === 0 ? ' (never)' : ''}</span>
             </div>
 
             <button onClick={scheduleMsg} disabled={!canSchedule}
-              className="w-full h-7 text-[10px] font-mono uppercase tracking-[0.05em] bg-surface-container-high border border-outline-variant/40 text-on-surface-variant hover:border-outline-variant hover:text-on-surface rounded transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed">
+              className="w-full h-7 text-[11px] font-mono bg-surface-container-high border border-outline-variant/40 text-on-surface-variant hover:border-outline-variant hover:text-on-surface rounded transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed">
               + Schedule Message
             </button>
 
             {/* Live preview of what the current inputs will schedule */}
             {preview && (
-              <p className="mt-xs text-[10px] font-mono text-on-surface-variant leading-snug">
+              <p className="mt-xs text-[11px] font-mono text-on-surface-variant leading-snug">
                 Appears <span className="text-primary">{fmtClockShort(preview.showAt)}</span>
                 <span className="text-outline"> · in {fmtCountdown(preview.showAt - nowTick)}</span>
                 {preview.clearAt && <span className="text-outline"> · clears {fmtClockShort(preview.clearAt)}</span>}
@@ -842,11 +863,11 @@ function StagePanel() {
             {/* Pending list */}
             {schedule.length > 0 && (
               <div className="mt-md">
-                <p className="text-[10px] font-mono uppercase tracking-[0.1em] text-outline mb-xs">
+                <p className="text-[11px] font-mono text-outline mb-xs">
                   Queued · {schedule.length}
                 </p>
                 {overlaps.size > 0 && (
-                  <p className="text-[9px] font-mono text-on-surface-variant mb-xs leading-snug">
+                  <p className="text-[11px] font-mono text-on-surface-variant mb-xs leading-snug">
                     ⚠ Overlapping messages share the bar — the later-starting one shows while they coincide.
                   </p>
                 )}
@@ -860,24 +881,24 @@ function StagePanel() {
                         }`}>
                         <span className="flex flex-col items-center gap-[2px] shrink-0 pt-[1px]">
                           {live ? (
-                            <span className="px-[5px] py-[1px] rounded-full text-[8px] font-mono font-bold uppercase tracking-[0.08em] bg-secondary-container text-secondary leading-none flex items-center gap-[3px]">
+                            <span className="px-[5px] py-[1px] rounded-full text-[11px] font-mono font-bold bg-secondary-container text-secondary leading-none flex items-center gap-[3px]">
                               <span className="w-[5px] h-[5px] rounded-full bg-secondary animate-pulse" />ON
                             </span>
                           ) : (
-                            <span className="px-[5px] py-[1px] rounded-full text-[8px] font-mono uppercase tracking-[0.08em] bg-primary-container/40 text-primary leading-none">
+                            <span className="px-[5px] py-[1px] rounded-full text-[11px] font-mono bg-primary-container/40 text-primary leading-none">
                               in {fmtCountdown(m.showAt - nowTick)}
                             </span>
                           )}
                           {overlaps.has(m.id) && (
                             <span title="Overlaps another scheduled message — only the later-starting one shows while they coincide"
-                              className="px-[4px] py-[1px] rounded-full text-[7px] font-mono uppercase tracking-[0.06em] border border-outline-variant/50 text-on-surface-variant leading-none">
+                              className="px-[4px] py-[1px] rounded-full text-[7px] font-mono border border-outline-variant/50 text-on-surface-variant leading-none">
                               overlap
                             </span>
                           )}
                         </span>
                         <div className="flex-1 min-w-0">
-                          <p className="text-[11px] text-on-surface truncate" title={m.text}>{m.text}</p>
-                          <p className="text-[9px] font-mono tabular-nums text-outline mt-[1px]">
+                          <p className="text-[12px] text-on-surface truncate" title={m.text}>{m.text}</p>
+                          <p className="text-[11px] font-mono tabular-nums text-outline mt-[1px]">
                             {fmtClockShort(m.showAt)}
                             {m.clearAt && <> → {fmtClockShort(m.clearAt)}</>}
                             {live && m.clearAt && <span className="text-secondary"> · {fmtCountdown(m.clearAt - nowTick)} left</span>}

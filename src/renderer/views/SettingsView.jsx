@@ -100,7 +100,7 @@ function UpdateChecker() {
         </button>
       )}
       {status === 'error' && info?.error && (
-        <span className="text-[10px] font-label-sm text-error truncate max-w-48">{info.error}</span>
+        <span className="text-[11px] font-label-sm text-error truncate max-w-48">{info.error}</span>
       )}
     </div>
   );
@@ -134,7 +134,7 @@ function SettingsFooter() {
             <div className="h-8 w-[1px] bg-outline-variant/30" />
             <div className="flex flex-col">
               <span className="text-label-sm font-label-sm text-on-surface">Data Path</span>
-              <span className="text-[10px] font-label-sm text-outline truncate max-w-48">{dataPath}</span>
+              <span className="text-[11px] font-label-sm text-outline truncate max-w-48">{dataPath}</span>
             </div>
           </>
         )}

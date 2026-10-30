@@ -145,7 +145,7 @@ export default function SheetMusicImportModal({ onClose, onDone }) {
         className="w-[560px] max-w-full bg-surface-container-low rounded-xl border border-outline-variant/30 shadow-2xl ring-1 ring-white/5 overflow-hidden">
         <div className="flex items-center gap-sm px-lg h-12 bg-surface-container-high border-b border-outline-variant/30">
           <span className="material-symbols-outlined text-primary">music_note</span>
-          <span className="text-label-sm font-label-sm uppercase tracking-widest text-on-surface">Sheet Music to Song</span>
+          <span className="text-label-sm font-label-sm text-on-surface">Sheet Music to Song</span>
           {!busy && (
             <button onClick={onClose} className="ml-auto text-on-surface-variant hover:text-on-surface transition-colors">
               <span className="material-symbols-outlined text-[18px]">close</span>
@@ -172,7 +172,7 @@ export default function SheetMusicImportModal({ onClose, onDone }) {
           {status === 'downloading' && (
             <div className="flex flex-col items-center gap-sm py-md text-on-surface-variant">
               <span className="material-symbols-outlined text-[32px] text-primary animate-spin">progress_activity</span>
-              <p className="text-label-sm font-label-sm uppercase tracking-widest">Downloading model · {dlPct}%</p>
+              <p className="text-label-sm font-label-sm">Downloading model · {dlPct}%</p>
               <div className="w-full h-1.5 rounded-full bg-surface-container-highest overflow-hidden">
                 <div className="h-full bg-primary transition-[width] duration-200" style={{ width: `${dlPct}%` }} />
               </div>
@@ -220,7 +220,7 @@ export default function SheetMusicImportModal({ onClose, onDone }) {
           {status === 'done' && result && (
             <div className="flex flex-col gap-md">
               <div className="flex flex-col gap-[2px]">
-                <span className="text-label-sm font-label-sm uppercase tracking-wide text-on-surface-variant">Detected</span>
+                <span className="text-label-sm font-label-sm text-on-surface-variant">Detected</span>
                 <span className="text-body-lg text-on-surface font-medium truncate">{result.title || '(no title found)'}</span>
                 {result.author && <span className="text-label-sm font-label-sm text-on-surface-variant tracking-normal normal-case truncate">{result.author.replace(/\n/g, ' · ')}</span>}
               </div>
@@ -237,7 +237,7 @@ export default function SheetMusicImportModal({ onClose, onDone }) {
               <div className="max-h-40 overflow-y-auto rounded-lg border border-outline-variant/30 bg-surface-container-lowest p-sm flex flex-col gap-sm">
                 {result.sections.map((s, i) => (
                   <div key={i}>
-                    <div className="text-label-sm font-label-sm uppercase tracking-wide text-primary capitalize mb-[2px]">{s.type}</div>
+                    <div className="text-label-sm font-label-sm text-primary capitalize mb-[2px]">{s.type}</div>
                     <div className="text-body-md text-on-surface whitespace-pre-wrap leading-snug">{s.content}</div>
                   </div>
                 ))}
@@ -274,7 +274,7 @@ function Centered({ icon, spin, children }) {
   return (
     <div className="flex flex-col items-center justify-center gap-sm py-lg text-on-surface-variant">
       <span className={`material-symbols-outlined text-[32px] text-primary ${spin ? 'animate-spin' : ''}`}>{icon}</span>
-      <p className="text-label-sm font-label-sm uppercase tracking-widest">{children}</p>
+      <p className="text-label-sm font-label-sm">{children}</p>
     </div>
   );
 }

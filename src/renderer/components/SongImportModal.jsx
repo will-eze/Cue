@@ -82,7 +82,7 @@ export default function SongImportModal({ preview, onCancel, onImported }) {
             <span className="material-symbols-outlined text-primary">library_add</span>
             <div className="min-w-0">
               <h2 className="text-headline-md font-bold text-on-surface tracking-tight">Import Songs</h2>
-              <p className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em]">
+              <p className="text-label-sm font-label-sm text-on-surface-variant">
                 {okRows.length} parsed{failedCount ? ` · ${failedCount} failed` : ''}
               </p>
             </div>
@@ -97,7 +97,7 @@ export default function SongImportModal({ preview, onCancel, onImported }) {
           <div className="px-lg py-xs border-b border-outline-variant/20 flex items-center gap-sm flex-shrink-0">
             <label className="flex items-center gap-sm cursor-pointer select-none">
               <input type="checkbox" checked={allSelected} onChange={toggleAll} className="accent-primary w-4 h-4 cursor-pointer" />
-              <span className="text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant">
+              <span className="text-label-sm font-label-sm text-on-surface-variant">
                 Select all · {selCount}/{okRows.length}
               </span>
             </label>
@@ -107,7 +107,7 @@ export default function SongImportModal({ preview, onCancel, onImported }) {
         {/* Rows */}
         <div className="flex-1 overflow-y-auto custom-scrollbar px-lg py-sm space-y-xs min-h-0">
           {rows.length === 0 && (
-            <div className="py-xl text-center text-label-sm font-label-sm uppercase tracking-widest text-outline-variant">
+            <div className="py-xl text-center text-label-sm font-label-sm text-on-surface-variant/70">
               No files selected
             </div>
           )}
@@ -139,7 +139,7 @@ export default function SongImportModal({ preview, onCancel, onImported }) {
                 ) : (
                   <span className="text-body-md text-on-surface font-medium truncate block">{r.title}</span>
                 )}
-                <div className="flex items-center gap-sm mt-[2px] text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em]">
+                <div className="flex items-center gap-sm mt-[2px] text-label-sm font-label-sm text-on-surface-variant">
                   <span className="truncate max-w-[160px] text-outline">{r.file}</span>
                   {r.ok ? (
                     <>
@@ -155,7 +155,7 @@ export default function SongImportModal({ preview, onCancel, onImported }) {
               </div>
 
               {r.ok && (
-                <span className={`text-label-sm font-label-sm uppercase tracking-[0.05em] px-sm py-[2px] rounded-full border flex-shrink-0 ${FORMAT_BADGE[r.format] || FORMAT_BADGE.Text}`}>
+                <span className={`text-label-sm font-label-sm px-sm py-[2px] rounded-full border flex-shrink-0 ${FORMAT_BADGE[r.format] || FORMAT_BADGE.Text}`}>
                   {r.format}
                 </span>
               )}
@@ -168,14 +168,14 @@ export default function SongImportModal({ preview, onCancel, onImported }) {
           <button
             onClick={onCancel}
             disabled={committing}
-            className="px-lg py-sm rounded-lg text-label-sm font-label-sm uppercase tracking-[0.05em] text-on-surface-variant hover:bg-surface-variant transition-colors cursor-pointer disabled:opacity-40"
+            className="px-lg py-sm rounded-lg text-label-sm font-label-sm text-on-surface-variant hover:bg-surface-variant transition-colors cursor-pointer disabled:opacity-40"
           >
             Cancel
           </button>
           <button
             onClick={handleImport}
             disabled={committing || selCount === 0}
-            className="px-lg py-sm rounded-lg text-label-sm font-label-sm uppercase tracking-[0.05em] font-bold bg-tertiary-container text-on-tertiary hover:brightness-110 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
+            className="px-lg py-sm rounded-lg text-label-sm font-label-sm font-bold bg-tertiary-container text-on-tertiary hover:brightness-110 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
           >
             {committing ? 'Importing…' : `Import ${selCount || ''} Song${selCount === 1 ? '' : 's'}`.trim()}
           </button>

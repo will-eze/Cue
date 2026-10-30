@@ -55,7 +55,7 @@ module.exports = {
         'display-lg':  ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
       },
       fontSize: {
-        'label-sm':    ['12px', { lineHeight: '16px', letterSpacing: '0.05em', fontWeight: '500' }],
+        'label-sm':    ['12px', { lineHeight: '16px', letterSpacing: '0', fontWeight: '500' }],
         'body-md':     ['14px', { lineHeight: '20px', fontWeight: '400' }],
         'headline-md': ['20px', { lineHeight: '28px', fontWeight: '600' }],
         'display-lg':  ['32px', { lineHeight: '40px', letterSpacing: '-0.02em', fontWeight: '700' }],

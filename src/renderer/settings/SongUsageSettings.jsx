@@ -121,14 +121,14 @@ function CcliReportModal({ onClose }) {
           </div>
 
           <div className="border border-outline-variant/30 rounded-lg overflow-hidden flex flex-col min-h-0">
-            <div className="grid grid-cols-[1fr_180px_220px_80px_110px] gap-md px-md py-sm bg-surface-container-high text-[10px] uppercase tracking-[0.1em] font-label-sm text-on-surface-variant/70 shrink-0">
+            <div className="grid grid-cols-[1fr_180px_220px_80px_110px] gap-md px-md py-sm bg-surface-container-high text-[11px] font-label-sm text-on-surface-variant/70 shrink-0">
               <span>Title</span><span>Author</span><span>Copyright</span><span className="text-right">Used</span><span className="text-right">Last Used</span>
             </div>
             <div className="overflow-y-auto custom-scrollbar" style={{ maxHeight: '48vh' }}>
               {loading ? (
-                <div className="px-md py-lg text-label-sm font-label-sm text-on-surface-variant/50">Loading…</div>
+                <div className="px-md py-lg text-label-sm font-label-sm text-on-surface-variant/60">Loading…</div>
               ) : report.rows.length === 0 ? (
-                <div className="px-md py-lg text-label-sm font-label-sm text-on-surface-variant/50">
+                <div className="px-md py-lg text-label-sm font-label-sm text-on-surface-variant/60">
                   No songs were aired in this period. Usage is logged automatically the moment a song goes live.
                 </div>
               ) : report.rows.map((r, i) => (

@@ -94,7 +94,7 @@ export default function SongScrapeModal({ onClose, onSaved }) {
         {/* Header */}
         <div className="flex items-center gap-sm px-lg h-12 bg-surface-container-high border-b border-outline-variant/30 shrink-0">
           <span className="material-symbols-outlined text-primary">travel_explore</span>
-          <span className="text-label-sm font-label-sm uppercase tracking-widest text-on-surface">Find Song Online</span>
+          <span className="text-label-sm font-label-sm text-on-surface">Find Song Online</span>
           <button onClick={onClose} className="ml-auto text-on-surface-variant hover:text-on-surface transition-colors">
             <span className="material-symbols-outlined text-[18px]">close</span>
           </button>
@@ -105,14 +105,14 @@ export default function SongScrapeModal({ onClose, onSaved }) {
           {!urlMode ? (
             <div className="flex items-end gap-sm">
               <label className="flex flex-col gap-[2px] flex-1">
-                <span className="text-label-sm font-label-sm uppercase tracking-wide text-on-surface-variant">Song title</span>
+                <span className="text-label-sm font-label-sm text-on-surface-variant">Song title</span>
                 <input ref={titleRef} value={title} onChange={(e) => setTitle(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') runSearch(); }}
                   placeholder="e.g. Oceans"
                   className="bg-surface-container-lowest border border-outline-variant/30 rounded px-sm py-1 text-body-md text-on-surface focus:outline-none focus:border-primary" />
               </label>
               <label className="flex flex-col gap-[2px] w-56">
-                <span className="text-label-sm font-label-sm uppercase tracking-wide text-on-surface-variant">Artist (optional)</span>
+                <span className="text-label-sm font-label-sm text-on-surface-variant">Artist (optional)</span>
                 <input value={artist} onChange={(e) => setArtist(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') runSearch(); }}
                   placeholder="e.g. Hillsong United"
@@ -127,7 +127,7 @@ export default function SongScrapeModal({ onClose, onSaved }) {
           ) : (
             <div className="flex items-end gap-sm">
               <label className="flex flex-col gap-[2px] flex-1">
-                <span className="text-label-sm font-label-sm uppercase tracking-wide text-on-surface-variant">Lyrics page URL</span>
+                <span className="text-label-sm font-label-sm text-on-surface-variant">Lyrics page URL</span>
                 <input value={pageUrl} onChange={(e) => setPageUrl(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') loadFromUrl(); }}
                   placeholder="https://…  (Genius, AZLyrics, hymn sites, any lyrics page)"
@@ -163,7 +163,7 @@ export default function SongScrapeModal({ onClose, onSaved }) {
                         className={`w-full flex items-center gap-sm px-sm py-sm text-left border-b border-outline-variant/20 hover:bg-surface-variant transition-colors cursor-pointer ${loaded && draftTitle && r.title === draftTitle ? 'bg-primary/10' : ''}`}>
                         {r.thumb
                           ? <img src={r.thumb} alt="" className="w-9 h-9 rounded object-cover shrink-0 bg-black" />
-                          : <span className="w-9 h-9 rounded bg-surface-container-high flex items-center justify-center shrink-0"><span className="material-symbols-outlined text-[16px] text-outline-variant">music_note</span></span>}
+                          : <span className="w-9 h-9 rounded bg-surface-container-high flex items-center justify-center shrink-0"><span className="material-symbols-outlined text-[16px] text-on-surface-variant/70">music_note</span></span>}
                         <span className="flex flex-col min-w-0">
                           <span className="text-body-md text-on-surface truncate">{r.title}</span>
                           <span className="text-label-sm font-label-sm text-on-surface-variant truncate">{r.artist || '—'}</span>
@@ -186,18 +186,18 @@ export default function SongScrapeModal({ onClose, onSaved }) {
               <div className="flex flex-col flex-1 min-h-0 p-md gap-sm">
                 <div className="flex gap-sm">
                   <label className="flex flex-col gap-[2px] flex-1">
-                    <span className="text-label-sm font-label-sm uppercase tracking-wide text-on-surface-variant">Title</span>
+                    <span className="text-label-sm font-label-sm text-on-surface-variant">Title</span>
                     <input value={draftTitle} onChange={(e) => setDraftTitle(e.target.value)}
                       className="bg-surface-container-lowest border border-outline-variant/30 rounded px-sm py-1 text-body-md text-on-surface focus:outline-none focus:border-primary" />
                   </label>
                   <label className="flex flex-col gap-[2px] flex-1">
-                    <span className="text-label-sm font-label-sm uppercase tracking-wide text-on-surface-variant">Author</span>
+                    <span className="text-label-sm font-label-sm text-on-surface-variant">Author</span>
                     <input value={draftAuthor} onChange={(e) => setDraftAuthor(e.target.value)}
                       className="bg-surface-container-lowest border border-outline-variant/30 rounded px-sm py-1 text-body-md text-on-surface focus:outline-none focus:border-primary" />
                   </label>
                 </div>
                 <label className="flex flex-col gap-[2px] flex-1 min-h-0">
-                  <span className="text-label-sm font-label-sm uppercase tracking-wide text-on-surface-variant">
+                  <span className="text-label-sm font-label-sm text-on-surface-variant">
                     Lyrics — edit freely; <span className="normal-case tracking-normal">section headers like “Chorus” / “[Verse 1]” split the slides</span>
                   </span>
                   <textarea value={draftLyrics} onChange={(e) => setDraftLyrics(e.target.value)}
@@ -237,9 +237,9 @@ export default function SongScrapeModal({ onClose, onSaved }) {
 
 function Hint({ icon, text, spin }) {
   return (
-    <div className="flex flex-col items-center justify-center flex-1 h-full gap-sm text-outline-variant px-lg text-center">
+    <div className="flex flex-col items-center justify-center flex-1 h-full gap-sm text-on-surface-variant/70 px-lg text-center">
       <span className={`material-symbols-outlined text-4xl ${spin ? 'animate-spin' : ''}`}>{icon}</span>
-      <span className="text-label-sm font-label-sm uppercase tracking-widest">{text}</span>
+      <span className="text-label-sm font-label-sm">{text}</span>
     </div>
   );
 }

@@ -34,39 +34,39 @@ function ThemeQuickCard({ theme, bgThumb, isDefault, isSongDefault, isScriptureD
       </div>
       <div className="px-md pt-sm pb-xs flex items-center gap-xs min-w-0">
         <span className="text-label-sm font-mono font-bold text-on-surface truncate min-w-0">{theme.name}</span>
-        {isDefault && <span className="text-[8px] font-mono text-tertiary border border-tertiary/40 rounded px-[3px] uppercase tracking-[0.05em] shrink-0">Default</span>}
+        {isDefault && <span className="text-[11px] font-mono text-tertiary border border-tertiary/40 rounded px-[3px] shrink-0">Default</span>}
         <button onClick={() => onToggleFav?.(theme)} title={isFav ? 'Unpin' : 'Pin to Favorites'}
-          className={`ml-auto shrink-0 flex items-center transition-colors cursor-pointer ${isFav ? 'text-primary' : 'text-on-surface-variant/30 hover:text-on-surface-variant'}`}>
+          className={`ml-auto shrink-0 flex items-center transition-colors cursor-pointer ${isFav ? 'text-primary' : 'text-on-surface-variant/60 hover:text-on-surface-variant'}`}>
           <span className="material-symbols-outlined text-[15px]" style={isFav ? { fontVariationSettings: "'FILL' 1" } : undefined}>star</span>
         </button>
       </div>
       <div className="px-md pb-md space-y-xs">
         <button onClick={() => onRundown(theme)}
-          className={`w-full text-[10px] font-mono uppercase tracking-[0.05em] rounded px-sm py-[5px] cursor-pointer flex items-center justify-center gap-xs border transition-colors ${
+          className={`w-full text-[11px] font-mono rounded px-sm py-[5px] cursor-pointer flex items-center justify-center gap-xs border transition-colors ${
             isRundown ? 'bg-primary/15 border-primary/40 text-primary'
               : 'bg-primary/5 border-primary/20 text-on-surface-variant hover:text-primary hover:border-primary/40'}`}>
           <span className="material-symbols-outlined text-[13px]">{isRundown ? 'check_circle' : 'playlist_add_check'}</span>
           {isRundown ? 'This rundown’s theme' : 'Use for this rundown'}
         </button>
         <div className="flex items-center gap-xs flex-wrap">
-          <span className="text-[9px] font-mono text-on-surface-variant/40 uppercase tracking-[0.05em] shrink-0">Default</span>
+          <span className="text-[11px] font-mono text-on-surface-variant/60 shrink-0">Default</span>
           <button onClick={() => onDefault(theme, 'all')} title="App-wide default (all content)"
-            className={`flex items-center justify-center gap-[2px] px-sm py-[4px] text-[10px] font-mono uppercase tracking-[0.04em] rounded cursor-pointer border transition-colors shrink-0 ${
+            className={`flex items-center justify-center gap-[2px] px-sm py-[4px] text-[11px] font-mono rounded cursor-pointer border transition-colors shrink-0 ${
               isDefault ? 'bg-tertiary/15 border-tertiary/40 text-tertiary' : 'bg-tertiary-container/10 border-tertiary-container/30 text-on-surface-variant hover:text-tertiary hover:border-tertiary/40'}`}>
             <span className="material-symbols-outlined text-[12px]">stars</span>All
           </button>
           <button onClick={() => onDefault(theme, 'song')} title="Songs only"
-            className={`flex-1 min-w-[66px] text-[10px] font-mono uppercase tracking-[0.04em] rounded px-xs py-[4px] cursor-pointer border transition-colors ${
+            className={`flex-1 min-w-[66px] text-[11px] font-mono rounded px-xs py-[4px] cursor-pointer border transition-colors ${
               isSongDefault ? 'bg-tertiary/15 border-tertiary/40 text-tertiary' : 'border-outline-variant/25 text-on-surface-variant/70 hover:text-tertiary hover:border-tertiary/40'}`}>
             Songs
           </button>
           <button onClick={() => onDefault(theme, 'scripture')} title="Scripture only"
-            className={`flex-1 min-w-[66px] text-[10px] font-mono uppercase tracking-[0.04em] rounded px-xs py-[4px] cursor-pointer border transition-colors ${
+            className={`flex-1 min-w-[66px] text-[11px] font-mono rounded px-xs py-[4px] cursor-pointer border transition-colors ${
               isScriptureDefault ? 'bg-tertiary/15 border-tertiary/40 text-tertiary' : 'border-outline-variant/25 text-on-surface-variant/70 hover:text-tertiary hover:border-tertiary/40'}`}>
             Scripture
           </button>
           <button onClick={() => onDefault(theme, 'slide')} title="Slides only"
-            className={`flex-1 min-w-[66px] text-[10px] font-mono uppercase tracking-[0.04em] rounded px-xs py-[4px] cursor-pointer border transition-colors ${
+            className={`flex-1 min-w-[66px] text-[11px] font-mono rounded px-xs py-[4px] cursor-pointer border transition-colors ${
               isSlideDefault ? 'bg-tertiary/15 border-tertiary/40 text-tertiary' : 'border-outline-variant/25 text-on-surface-variant/70 hover:text-tertiary hover:border-tertiary/40'}`}>
             Slides
           </button>
@@ -159,16 +159,16 @@ export default function LibraryThemesTab({ activeServiceId, onThemesChanged, onA
     <div className="h-full flex flex-col min-h-0">
       <div className="px-md py-sm border-b border-outline-variant/20 flex items-center gap-md flex-wrap shrink-0">
         <div className="flex-1 min-w-[160px] relative">
-          <span className="material-symbols-outlined absolute left-sm top-1/2 -translate-y-1/2 text-on-surface-variant/50 text-[16px]">search</span>
+          <span className="material-symbols-outlined absolute left-sm top-1/2 -translate-y-1/2 text-on-surface-variant/60 text-[16px]">search</span>
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search name or mood (serif, video, dark…)"
-            className="w-full pl-[30px] pr-sm py-[5px] text-body-sm bg-surface-container-lowest rounded-lg border border-outline-variant/30 text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:border-primary/50" />
+            className="w-full pl-[30px] pr-sm py-[5px] text-body-sm bg-surface-container-lowest rounded-lg border border-outline-variant/30 text-on-surface placeholder:text-on-surface-variant/60 focus:outline-none focus:border-primary/50" />
         </div>
         <div className="flex items-center gap-[2px] bg-surface-container rounded-lg p-[2px] shrink-0">
           {[['all', 'All'], ['collections', 'Collections'], ['mine', `Your Themes${mineCount ? ` · ${mineCount}` : ''}`],
             ...(favs.size ? [['favorites', `★ ${favs.size}`]] : []),
             ...(activeIds.size ? [['selected', `Selected · ${activeIds.size}`]] : [])].map(([id, label]) => (
             <button key={id} onClick={() => setGroup(id)}
-              className={`px-sm py-[3px] text-[10px] font-mono uppercase tracking-[0.04em] rounded transition-colors cursor-pointer ${group === id ? 'bg-primary text-on-primary' : 'text-on-surface-variant/70 hover:text-on-surface'}`}>
+              className={`px-sm py-[3px] text-[11px] font-mono rounded transition-colors cursor-pointer ${group === id ? 'bg-primary text-on-primary' : 'text-on-surface-variant/70 hover:text-on-surface'}`}>
               {label}
             </button>
           ))}
@@ -192,7 +192,7 @@ export default function LibraryThemesTab({ activeServiceId, onThemesChanged, onA
         )}
         {hasLegacy && (
           <button onClick={() => setShowLegacy((v) => !v)}
-            className="shrink-0 text-[10px] font-label-sm uppercase tracking-[0.05em] text-on-surface-variant/60 hover:text-on-surface-variant flex items-center gap-[3px] cursor-pointer">
+            className="shrink-0 text-[11px] font-label-sm text-on-surface-variant/60 hover:text-on-surface-variant flex items-center gap-[3px] cursor-pointer">
             <span className="material-symbols-outlined text-[15px]">{showLegacy ? 'visibility_off' : 'history'}</span>
             {showLegacy ? 'Hide legacy' : 'Show legacy'}
           </button>
@@ -200,13 +200,13 @@ export default function LibraryThemesTab({ activeServiceId, onThemesChanged, onA
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto p-md custom-scrollbar">
         {sorted.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center gap-sm text-outline-variant px-lg text-center">
+          <div className="h-full flex flex-col items-center justify-center gap-sm text-on-surface-variant/70 px-lg text-center">
             <span className="material-symbols-outlined text-5xl">palette</span>
-            <span className="text-label-sm font-label-sm uppercase tracking-widest">
+            <span className="text-label-sm font-label-sm">
               {group === 'mine' ? 'No themes of your own yet' : group === 'selected' ? 'No themes enabled yet' : group === 'favorites' ? 'No favorites yet — tap ★ on a theme' : 'No themes'}
             </span>
             {group === 'mine' && (
-              <p className="text-body-sm text-on-surface-variant/50 max-w-xs mt-xs">
+              <p className="text-body-sm text-on-surface-variant/60 max-w-xs mt-xs">
                 Make one in Settings → Theme Library: “Customize” any Collection, or “+ New Theme”.
               </p>
             )}
