@@ -239,6 +239,7 @@ export function seedGhsHymnal() {
   }
   tagGhsSongs();
   patchGhsPunctuation();
+  patchGhs7Lyrics();
 }
 
 // One-time content fix for OCR punctuation artefacts in five bundled GHS hymns
@@ -268,6 +269,36 @@ const GHS_PUNCT_FIXES = [
   // GHS 174 – Jesus Is Coming Again
   ['again!..', 'again!'],
 ];
+
+// One-time content fix: the bundled GHS 7 "Turn Your Eyes Upon Jesus" shipped with
+// the lyrics of GHS 9 "Great Is Thy Faithfulness". The JSON is corrected, but the
+// seed never re-imports an existing title, so rewrite the sections of an installed
+// GHS 7 — only while it still holds the wrong text (a user who already fixed it by
+// hand is left alone). Flag-gated + idempotent; never resurrects a deleted hymn.
+export function patchGhs7Lyrics() {
+  if (getSetting('ghs7_lyrics_fix_v1')) return;
+  const db = getDb();
+  try {
+    const song = db.prepare("SELECT id FROM songs WHERE title GLOB 'GHS 7 - *'").get();
+    if (song) {
+      const text = db.prepare('SELECT group_concat(content, char(10)) AS t FROM song_sections WHERE song_id = ?').get(song.id)?.t || '';
+      if (/great is thy faithfulness/i.test(text) && !/turn your eyes upon jesus/i.test(text)) {
+        const item = JSON.parse(fs.readFileSync(ghsHymnalPath(), 'utf8')).items.find((it) => it.number === 7);
+        const [row] = parseGhsItems(item ? [item] : []);
+        if (row?.ok && /turn your eyes upon jesus/i.test(row.sections.map((x) => x.content).join('\n'))) {
+          db.transaction(() => {
+            db.prepare('DELETE FROM song_sections WHERE song_id = ?').run(song.id);
+            const ins = db.prepare('INSERT INTO song_sections (song_id, type, order_index, content) VALUES (?, ?, ?, ?)');
+            row.sections.forEach((x, i) => ins.run(song.id, x.type, i, x.content));
+            db.prepare("UPDATE songs SET arrangement_json = ?, updated_at = datetime('now') WHERE id = ?")
+              .run(serializeArrangement(row.arrangement, row.sections.length), song.id);
+          })();
+        }
+      }
+    }
+    setSetting('ghs7_lyrics_fix_v1', true);
+  } catch { /* non-fatal: a failed backfill just retries next launch */ }
+}
 
 export function patchGhsPunctuation() {
   if (getSetting('ghs_punct_fix_v1')) return;
