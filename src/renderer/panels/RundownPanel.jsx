@@ -294,11 +294,7 @@ function AutoAdvanceModal({ item, onApply, onClose }) {
             <button
               key={p}
               onClick={() => setSecs(String(p))}
-              className={`py-xs text-[12px] font-mono rounded border cursor-pointer transition-colors ${
-                Number(secs) === p
-                  ? 'border-primary/60 bg-primary-container/20 text-primary'
-                  : 'border-outline-variant/30 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
-              }`}
+              className={`btn btn-sm btn-toggle btn-toggle-outline ${Number(secs) === p ? 'is-on' : ''}`}
             >
               {p}s
             </button>
@@ -633,7 +629,7 @@ export default function RundownPanel({
             </button>
             <button
               onClick={() => setRenamingService(false)}
-              className="shrink-0 w-6 h-6 flex items-center justify-center text-on-surface-variant hover:text-on-surface cursor-pointer transition-colors"
+              className="btn-icon btn-icon-sm"
               title="Cancel"
             >
               <span className="material-symbols-outlined text-[15px]">close</span>
@@ -645,7 +641,7 @@ export default function RundownPanel({
             <span className="text-[11px] font-mono text-error shrink-0">Delete rundown?</span>
             <button
               onClick={confirmDeleteService}
-              className="text-[11px] font-mono text-error hover:text-error/70 cursor-pointer border border-error/40 px-sm py-[2px] rounded transition-colors"
+              className="btn btn-xs btn-danger"
             >Yes</button>
             <button
               onClick={() => setConfirmDelete(false)}
@@ -671,21 +667,21 @@ export default function RundownPanel({
                   onClick={handleExportPdf}
                   disabled={exporting}
                   title="Export lyrics as PDF"
-                  className="shrink-0 w-5 h-5 flex items-center justify-center text-on-surface-variant/60 hover:text-on-surface-variant cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-default"
+                  className="btn-icon btn-icon-sm"
                 >
                   <span className="material-symbols-outlined text-[13px]">{exporting ? 'hourglass_empty' : 'picture_as_pdf'}</span>
                 </button>
                 <button
                   onClick={startRename}
                   title="Rename rundown"
-                  className="shrink-0 w-5 h-5 flex items-center justify-center text-on-surface-variant/60 hover:text-on-surface-variant cursor-pointer transition-colors"
+                  className="btn-icon btn-icon-sm"
                 >
                   <span className="material-symbols-outlined text-[13px]">edit</span>
                 </button>
                 <button
                   onClick={() => setConfirmDelete(true)}
                   title="Delete rundown"
-                  className="shrink-0 w-5 h-5 flex items-center justify-center text-on-surface-variant/60 hover:text-error cursor-pointer transition-colors"
+                  className="btn-icon btn-icon-sm btn-icon-danger"
                 >
                   <span className="material-symbols-outlined text-[13px]">delete</span>
                 </button>
@@ -747,7 +743,7 @@ export default function RundownPanel({
               <span className="text-[11px] font-mono text-error shrink-0">Delete {selectedIds.size}?</span>
               <button
                 onClick={() => { setConfirmBulkDelete(false); onBulkDelete?.(); }}
-                className="text-[11px] font-mono text-error hover:text-error/70 cursor-pointer border border-error/40 px-sm py-[2px] rounded transition-colors"
+                className="btn btn-xs btn-danger"
               >Yes</button>
               <button
                 onClick={() => setConfirmBulkDelete(false)}
@@ -766,7 +762,7 @@ export default function RundownPanel({
               </button>
               <button
                 onClick={() => setConfirmBulkDelete(true)}
-                className="flex items-center gap-xs text-[11px] font-label-sm text-error/80 hover:text-error border border-error/40 hover:border-error rounded px-sm py-[2px] cursor-pointer transition-colors"
+                className="btn btn-xs btn-danger"
               >
                 <span className="material-symbols-outlined text-[13px]">delete</span>
                 Delete
@@ -774,7 +770,7 @@ export default function RundownPanel({
               <button
                 onClick={() => onClearSelection?.()}
                 title="Clear selection"
-                className="w-5 h-5 flex items-center justify-center text-on-surface-variant/60 hover:text-on-surface cursor-pointer"
+                className="btn-icon btn-icon-sm"
               >
                 <span className="material-symbols-outlined text-[14px]">close</span>
               </button>

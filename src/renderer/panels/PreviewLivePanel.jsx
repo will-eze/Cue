@@ -1091,36 +1091,28 @@ export default function PreviewLivePanel({
                 <button
                   onClick={handleMute}
                   title={isMuted ? 'Unmute program audio' : 'Mute program audio'}
-                  className={`flex items-center justify-center w-7 h-6 rounded border transition-colors cursor-pointer shrink-0 ${
-                    isMuted
-                      ? 'border-secondary/50 bg-surface-container text-secondary'
-                      : 'border-outline-variant/30 bg-surface-container text-on-surface-variant hover:border-primary/50 hover:text-primary'
-                  }`}
+                  className={`btn-icon btn-icon-sm btn-icon-outline w-7 ${isMuted ? '!border-secondary/50 !text-secondary' : ''}`}
                 >
                   <span className="material-symbols-outlined text-[14px]">{isMuted ? 'volume_off' : 'volume_up'}</span>
                 </button>
                 <button
                   onClick={() => onToggleLoop?.()}
-                  title={loopOn ? 'Looping — click to stop at end' : 'Loop this clip'}
-                  className={`flex items-center justify-center w-7 h-6 rounded border transition-colors cursor-pointer shrink-0 ${
-                    loopOn
-                      ? 'border-primary/50 bg-surface-container text-primary'
-                      : 'border-outline-variant/30 bg-surface-container text-on-surface-variant hover:border-primary/50 hover:text-primary'
-                  }`}
+                  title={loopOn ? 'Looping. Click to stop at the end.' : 'Loop this clip'}
+                  className={`btn-icon btn-icon-sm btn-icon-outline w-7 ${loopOn ? 'is-on' : ''}`}
                 >
                   <span className="material-symbols-outlined text-[14px]">repeat</span>
                 </button>
                 <button
                   onClick={handleTogglePlayPause}
                   title={isPaused ? 'Play' : 'Pause'}
-                  className="flex items-center justify-center w-7 h-6 rounded border border-outline-variant/30 bg-surface-container text-on-surface-variant hover:border-primary/50 hover:text-primary transition-colors cursor-pointer shrink-0"
+                  className="btn-icon btn-icon-sm btn-icon-outline w-7"
                 >
                   <span className="material-symbols-outlined text-[14px]">{isPaused ? 'play_arrow' : 'pause'}</span>
                 </button>
                 <button
                   onClick={handleRestart}
                   title="Restart"
-                  className="flex items-center justify-center w-7 h-6 rounded border border-outline-variant/30 bg-surface-container text-on-surface-variant hover:border-primary/50 hover:text-primary transition-colors cursor-pointer shrink-0"
+                  className="btn-icon btn-icon-sm btn-icon-outline w-7"
                 >
                   <span className="material-symbols-outlined text-[14px]">restart_alt</span>
                 </button>
@@ -1158,11 +1150,7 @@ export default function PreviewLivePanel({
                         key={ch.id}
                         onClick={() => onSetLiveChannelIdx?.(idx)}
                         title={`View ${ch.name}`}
-                        className={`flex items-center gap-xs px-sm h-6 rounded border text-[11px] font-mono transition-colors cursor-pointer flex-shrink-0 ${
-                          isSelected
-                            ? 'bg-primary/15 border-primary/50 text-primary'
-                            : 'bg-surface-container border-outline-variant/30 text-on-surface-variant hover:border-outline-variant hover:text-on-surface'
-                        }`}
+                        className={`btn btn-xs btn-toggle btn-toggle-outline flex-shrink-0 ${isSelected ? 'is-on' : ''}`}
                       >
                         {isNdi && (
                           <span className={`w-[5px] h-[5px] rounded-full flex-shrink-0 ${isSelected ? 'bg-tertiary' : 'bg-outline-variant'}`} />
@@ -1188,11 +1176,7 @@ export default function PreviewLivePanel({
                     title={bareArmed
                       ? 'Single-key shortcuts for GO, Clear and Outputs are on. Click to turn them off.'
                       : 'Single-key shortcuts are off, so a stray keystroke can\'t air anything. ⌘/Ctrl shortcuts still work. Click to turn them on.'}
-                    className={`flex items-center gap-xs text-[12px] h-6 px-sm rounded-md border transition-colors cursor-pointer ${
-                      bareArmed
-                        ? 'bg-tertiary/10 border-tertiary/40 text-tertiary'
-                        : 'bg-surface-container border-outline-variant/30 text-on-surface-variant/60 hover:text-on-surface-variant'
-                    }`}
+                    className={`btn btn-xs btn-toggle btn-toggle-outline ${bareArmed ? 'is-on-go' : ''}`}
                   >
                     <span className="material-symbols-outlined text-[14px]">bolt</span>
                     Hotkeys {bareArmed ? 'on' : 'off'}
@@ -1204,11 +1188,7 @@ export default function PreviewLivePanel({
                     title={liveSlides.length > 1
                       ? 'Q, W, E… jump straight to a slide of the live item. Click to turn on or off.'
                       : 'Q, W, E… jump straight to a slide of the live item. Works once a song with several slides is live. Click to turn on or off.'}
-                    className={`flex items-center gap-xs text-[12px] h-6 px-sm rounded-md border transition-colors cursor-pointer ${
-                      jumpArmed
-                        ? 'bg-tertiary/10 border-tertiary/40 text-tertiary'
-                        : 'bg-surface-container border-outline-variant/30 text-on-surface-variant/60 hover:text-on-surface-variant'
-                    }`}
+                    className={`btn btn-xs btn-toggle btn-toggle-outline ${jumpArmed ? 'is-on-go' : ''}`}
                   >
                     <span className="material-symbols-outlined text-[14px]">keyboard</span>
                     Jump {jumpArmed ? 'on' : 'off'}
@@ -1219,7 +1199,7 @@ export default function PreviewLivePanel({
                     onClick={onShowShortcuts}
                     title="All keyboard shortcuts (?)"
                     aria-label="Keyboard shortcuts"
-                    className="w-6 h-6 flex items-center justify-center rounded text-on-surface-variant/70 hover:text-on-surface hover:bg-surface-variant transition-colors cursor-pointer"
+                    className="btn-icon btn-icon-sm"
                   >
                     <span className="material-symbols-outlined text-[16px]">help</span>
                   </button>

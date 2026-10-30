@@ -83,9 +83,7 @@ export default function TopBarTabs({ extraTabs, activeTabId, onNavigate, onReord
           ref={pickerBtnRef}
           onClick={() => setPickerOpen((v) => !v)}
           title="Pin a Settings section as a tab"
-          className={`h-6 w-6 flex items-center justify-center rounded-lg transition-colors cursor-pointer ${
-            pickerOpen ? 'bg-surface-variant text-primary' : 'text-on-surface-variant/60 hover:text-on-surface hover:bg-surface-variant'
-          }`}
+          className={`btn-icon btn-icon-sm ${pickerOpen ? 'is-on' : ''}`}
         >
           <span className="material-symbols-outlined text-[16px]">add</span>
         </button>

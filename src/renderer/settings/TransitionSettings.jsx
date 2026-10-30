@@ -157,11 +157,7 @@ function TriggerRow({ trigger, value, onChange }) {
             <button
               key={s.id}
               onClick={() => onChange({ type: s.id })}
-              className={`px-sm py-md rounded-lg border-2 text-label-sm font-label-sm font-bold transition-all active:scale-95 cursor-pointer ${
-                active
-                  ? 'border-primary bg-primary/8 text-primary'
-                  : 'border-outline-variant/30 bg-surface-container-low text-on-surface hover:border-outline-variant/60'
-              }`}
+              className={`btn btn-toggle btn-toggle-outline ${active ? 'is-on' : ''}`}
             >
               {s.label}
             </button>
@@ -194,11 +190,7 @@ function TriggerRow({ trigger, value, onChange }) {
               <button
                 key={e.id}
                 onClick={() => onChange({ easing: e.id })}
-                className={`px-sm py-xs rounded text-label-sm font-label-sm transition-all cursor-pointer ${
-                  value.easing === e.id
-                    ? 'bg-primary-container text-on-primary-container font-bold'
-                    : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-variant'
-                }`}
+                className={`btn btn-sm btn-toggle ${value.easing === e.id ? 'is-on' : ''}`}
               >
                 {e.label}
               </button>

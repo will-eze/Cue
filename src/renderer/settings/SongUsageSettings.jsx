@@ -79,7 +79,7 @@ function CcliReportModal({ onClose }) {
               Pick a reporting period, review the songs aired, and export the CSV for your CCLI licence report.
             </p>
           </div>
-          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded text-on-surface-variant/60 hover:text-on-surface hover:bg-surface-variant cursor-pointer shrink-0">
+          <button onClick={onClose} className="btn-icon">
             <span className="material-symbols-outlined text-[16px]">close</span>
           </button>
         </div>
@@ -105,14 +105,14 @@ function CcliReportModal({ onClose }) {
               </button>
               {confirmClear ? (
                 <div className="flex items-center gap-xs">
-                  <button onClick={clearLog} className="bg-error text-on-error px-md py-sm rounded text-label-sm font-label-sm cursor-pointer">Really clear?</button>
-                  <button onClick={() => setConfirmClear(false)} className="bg-surface-container text-on-surface px-md py-sm rounded text-label-sm font-label-sm cursor-pointer">Cancel</button>
+                  <button onClick={clearLog} className="btn btn-danger-solid">Really clear?</button>
+                  <button onClick={() => setConfirmClear(false)} className="btn btn-secondary">Cancel</button>
                 </div>
               ) : (
                 <button
                   onClick={() => setConfirmClear(true)}
                   title="Delete the entire usage log"
-                  className="bg-surface-container text-on-surface-variant px-md py-sm rounded text-label-sm font-label-sm hover:text-error transition-all cursor-pointer"
+                  className="btn btn-secondary"
                 >
                   Clear Log
                 </button>

@@ -617,9 +617,7 @@ export function GraphicsPresetModal({ onPick, onClose, lockKind = null }) {
           <div className="flex items-center gap-xs px-lg py-sm border-b border-outline-variant/20 bg-surface-container/40 shrink-0">
             {[{ id: 'all', label: 'All', icon: 'apps' }, ...presentKinds.map((k) => ({ id: k, ...KIND_META[k] }))].map((t) => (
               <button key={t.id} onClick={() => setTab(t.id)}
-                className={`flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm transition-colors cursor-pointer ${
-                  tab === t.id ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'
-                }`}>
+                className={`btn btn-sm btn-toggle ${tab === t.id ? 'is-on' : ''}`}>
                 <span className="material-symbols-outlined text-[14px]">{t.icon}</span>{t.label}
               </button>
             ))}
@@ -846,9 +844,7 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
                 key={k.id}
                 disabled={isEdit && draft.kind !== k.id}
                 onClick={() => set({ kind: k.id })}
-                className={`flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
-                  draft.kind === k.id ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'
-                }`}
+                className={`btn btn-sm btn-toggle ${draft.kind === k.id ? 'is-on' : ''}`}
               >
                 <span className="material-symbols-outlined text-[14px]">{k.icon}</span>{k.label}
               </button>
@@ -876,9 +872,7 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
                     return (
                     <button key={id}
                       onMouseDown={(e) => { e.preventDefault(); setTarget(id); }}
-                      className={`px-md h-6 text-[11px] font-mono rounded transition-colors cursor-pointer ${
-                        active ? 'bg-primary text-on-primary' : 'text-on-surface-variant/60 hover:text-on-surface-variant'
-                      }`}
+                      className={`btn btn-xs btn-toggle ${active ? 'is-on' : ''}`}
                     >{label}</button>
                     );
                   })}
@@ -917,7 +911,7 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
 
             {/* Start from / restyle with a built-in design (locked to this kind). */}
             <button onClick={() => setShowGallery(true)}
-              className="flex items-center justify-center gap-xs px-md py-sm rounded-lg text-label-sm font-label-sm font-bold bg-primary/15 border border-primary/40 text-primary hover:bg-primary/25 cursor-pointer transition-colors">
+              className="btn btn-secondary">
               <span className="material-symbols-outlined text-[16px]">grid_view</span>
               {isCustom ? 'Browse designs' : 'Apply a design'}
             </button>
@@ -932,7 +926,7 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
                       <div className="flex items-center gap-[2px] bg-surface-container rounded p-[2px]">
                         {[['theme', 'Theme'], ['custom', 'Custom']].map(([v, l]) => (
                           <button key={v} onClick={() => onCh(v)}
-                            className={`px-sm py-[3px] text-[11px] font-mono rounded transition-colors cursor-pointer ${val === v ? 'bg-primary text-on-primary' : 'text-on-surface-variant/70 hover:text-on-surface'}`}>{l}</button>
+                            className={`btn btn-xs btn-toggle ${val === v ? 'is-on' : ''}`}>{l}</button>
                         ))}
                       </div>
                     </div>
@@ -972,9 +966,7 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
                   <div className="flex items-center gap-xs">
                     {SPEED_PRESETS.map((p) => (
                       <button key={p.value} onClick={() => set({ speed: p.value })}
-                        className={`px-md py-1 rounded text-label-sm font-label-sm border transition-colors cursor-pointer ${
-                          draft.speed === p.value ? 'bg-primary/15 border-primary/50 text-primary' : 'bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
-                        }`}>{p.label}</button>
+                        className={`btn btn-sm btn-toggle btn-toggle-outline ${draft.speed === p.value ? 'is-on' : ''}`}>{p.label}</button>
                     ))}
                   </div>
                 </Field>
@@ -982,9 +974,7 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
                   <div className="flex items-center gap-xs">
                     {[{ id: 'bottom', label: 'Bottom' }, { id: 'top', label: 'Top' }].map((p) => (
                       <button key={p.id} onClick={() => set({ tickerStyle: { ...draft.tickerStyle, position: p.id } })}
-                        className={`px-md py-1 rounded text-label-sm font-label-sm border transition-colors cursor-pointer ${
-                          (draft.tickerStyle.position || 'bottom') === p.id ? 'bg-primary/15 border-primary/50 text-primary' : 'bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
-                        }`}>{p.label}</button>
+                        className={`btn btn-sm btn-toggle btn-toggle-outline ${(draft.tickerStyle.position || 'bottom') === p.id ? 'is-on' : ''}`}>{p.label}</button>
                     ))}
                   </div>
                 </Field>
@@ -1001,9 +991,7 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
                   <div className="flex items-center gap-xs">
                     {CD_MODES.map((m) => (
                       <button key={m.id} onClick={() => setCd({ mode: m.id })}
-                        className={`flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm border transition-colors cursor-pointer ${
-                          draft.cd.mode === m.id ? 'bg-primary/15 border-primary/50 text-primary' : 'bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
-                        }`}>
+                        className={`btn btn-sm btn-toggle btn-toggle-outline ${draft.cd.mode === m.id ? 'is-on' : ''}`}>
                         <span className="material-symbols-outlined text-[14px]">{m.icon}</span>{m.label}
                       </button>
                     ))}
@@ -1016,9 +1004,7 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
                       <div className="flex items-center gap-xs">
                         {[{ id: 'duration', label: 'For a duration' }, { id: 'target', label: 'To a time' }].map((o) => (
                           <button key={o.id} onClick={() => setCd({ source: o.id })}
-                            className={`px-md py-1 rounded text-label-sm font-label-sm border transition-colors cursor-pointer ${
-                              draft.cd.source === o.id ? 'bg-primary/15 border-primary/50 text-primary' : 'bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
-                            }`}>{o.label}</button>
+                            className={`btn btn-sm btn-toggle btn-toggle-outline ${draft.cd.source === o.id ? 'is-on' : ''}`}>{o.label}</button>
                         ))}
                       </div>
                     </Field>
@@ -1043,9 +1029,7 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
                         ].map((o) => (
                           <button key={o.id} onClick={() => setCd({ onEnd: o.id })}
                             title={o.desc}
-                            className={`flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm border transition-colors cursor-pointer ${
-                              draft.cd.onEnd === o.id ? 'bg-primary/15 border-primary/50 text-primary' : 'bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
-                            }`}>
+                            className={`btn btn-sm btn-toggle btn-toggle-outline ${draft.cd.onEnd === o.id ? 'is-on' : ''}`}>
                             <span className="material-symbols-outlined text-[14px]">{o.icon}</span>{o.label}
                           </button>
                         ))}
@@ -1071,13 +1055,13 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
                           )}
                           <div className="flex flex-col gap-xs">
                             <button onClick={() => setShowEndMediaPicker(true)}
-                              className="flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm border bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface cursor-pointer transition-colors">
+                              className="btn btn-sm btn-secondary">
                               <span className="material-symbols-outlined text-[14px]">video_library</span>
                               {draft.cd.onEndMediaPath ? 'Change' : 'Pick media'}
                             </button>
                             {draft.cd.onEndMediaPath && (
                               <button onClick={() => setCd({ onEndMediaId: null, onEndMediaPath: null })}
-                                className="flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm border bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-error cursor-pointer transition-colors">
+                                className="btn btn-sm btn-secondary">
                                 <span className="material-symbols-outlined text-[14px]">close</span>
                                 Clear
                               </button>
@@ -1095,17 +1079,13 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
                       <div className="flex items-center gap-xs">
                         {[{ id: '24h', label: '24-Hour' }, { id: '12h', label: '12-Hour' }].map((o) => (
                           <button key={o.id} onClick={() => setCd({ format: o.id })}
-                            className={`px-md py-1 rounded text-label-sm font-label-sm border transition-colors cursor-pointer ${
-                              draft.cd.format === o.id ? 'bg-primary/15 border-primary/50 text-primary' : 'bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
-                            }`}>{o.label}</button>
+                            className={`btn btn-sm btn-toggle btn-toggle-outline ${draft.cd.format === o.id ? 'is-on' : ''}`}>{o.label}</button>
                         ))}
                       </div>
                     </Field>
                     <Field label="Seconds">
                       <button onClick={() => setCd({ showSeconds: !draft.cd.showSeconds })}
-                        className={`px-md py-1 rounded text-label-sm font-label-sm border transition-colors cursor-pointer ${
-                          draft.cd.showSeconds ? 'bg-primary/15 border-primary/50 text-primary' : 'bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
-                        }`}>{draft.cd.showSeconds ? 'Showing seconds' : 'Hidden'}</button>
+                        className={`btn btn-sm btn-toggle btn-toggle-outline ${draft.cd.showSeconds ? 'is-on' : ''}`}>{draft.cd.showSeconds ? 'Showing seconds' : 'Hidden'}</button>
                     </Field>
                   </>
                 )}
@@ -1127,7 +1107,7 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
                 <Field label="Audio track (plays while live)">
                   <div className="flex items-center gap-sm flex-wrap">
                     <button onClick={() => setShowAudioPicker(true)}
-                      className="flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm border bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface cursor-pointer transition-colors">
+                      className="btn btn-sm btn-secondary">
                       <span className="material-symbols-outlined text-[14px]">music_note</span>
                       {draft.cd.audioMediaId ? 'Change' : 'Pick audio'}
                     </button>
@@ -1136,13 +1116,11 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
                         <span className="text-body-md text-on-surface truncate max-w-[160px]" title={draft.cd.audioName}>{draft.cd.audioName || 'Audio'}</span>
                         <button onClick={() => setCd({ audioLoop: !draft.cd.audioLoop })}
                           title="Loop the track until the timer stops"
-                          className={`flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm border transition-colors cursor-pointer ${
-                            draft.cd.audioLoop ? 'bg-primary/15 border-primary/50 text-primary' : 'bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
-                          }`}>
+                          className={`btn btn-sm btn-toggle btn-toggle-outline ${draft.cd.audioLoop ? 'is-on' : ''}`}>
                           <span className="material-symbols-outlined text-[14px]">loop</span>{draft.cd.audioLoop ? 'Loop on' : 'Loop off'}
                         </button>
                         <button onClick={() => setCd({ audioMediaId: null, audioName: '' })}
-                          className="flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm border bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-error cursor-pointer transition-colors">
+                          className="btn btn-sm btn-secondary">
                           <span className="material-symbols-outlined text-[14px]">close</span>Clear
                         </button>
                       </>
@@ -1191,9 +1169,7 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
               <div className="flex items-center gap-xs">
                 {DEST_OPTS.map((d) => (
                   <button key={d.id} onClick={() => set({ target: d.id })}
-                    className={`flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm border transition-colors cursor-pointer ${
-                      draft.target === d.id ? 'bg-primary/15 border-primary/50 text-primary' : 'bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
-                    }`}>
+                    className={`btn btn-sm btn-toggle btn-toggle-outline ${draft.target === d.id ? 'is-on' : ''}`}>
                     <span className="material-symbols-outlined text-[14px]">{d.icon}</span>{d.label}
                   </button>
                 ))}
@@ -1208,9 +1184,7 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
               <Field label="Auto-dismiss">
                 <div className="flex items-center gap-sm">
                   <button onClick={() => set({ autoDismissSec: draft.autoDismissSec > 0 ? 0 : 8 })}
-                    className={`flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm border transition-colors cursor-pointer ${
-                      draft.autoDismissSec > 0 ? 'bg-primary/15 border-primary/50 text-primary' : 'bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
-                    }`}>
+                    className={`btn btn-sm btn-toggle btn-toggle-outline ${draft.autoDismissSec > 0 ? 'is-on' : ''}`}>
                     <span className="material-symbols-outlined text-[14px]">timer</span>
                     {draft.autoDismissSec > 0 ? 'On' : 'Off'}
                   </button>
@@ -1240,13 +1214,13 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
                 )}
                 <div className="flex flex-col gap-xs">
                   <button onClick={() => setShowBgPicker(true)}
-                    className="flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm border bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface cursor-pointer transition-colors">
+                    className="btn btn-sm btn-secondary">
                     <span className="material-symbols-outlined text-[14px]">video_library</span>
                     {draft.bgMediaPath ? 'Change' : 'Set media'}
                   </button>
                   {draft.bgMediaPath && (
                     <button onClick={() => set({ bgMediaId: null, bgMediaPath: null })}
-                      className="flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm border bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-error cursor-pointer transition-colors">
+                      className="btn btn-sm btn-secondary">
                       <span className="material-symbols-outlined text-[14px]">close</span>
                       Clear
                     </button>
@@ -1258,9 +1232,7 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
                   <span className="text-[11px] font-mono text-on-surface-variant/60">Fit</span>
                   {[{ id: 'cover', label: 'Cover' }, { id: 'contain', label: 'Contain' }].map((o) => (
                     <button key={o.id} onClick={() => set({ bgFit: o.id })}
-                      className={`px-md py-1 rounded text-label-sm font-label-sm border transition-colors cursor-pointer ${
-                        draft.bgFit === o.id ? 'bg-primary/15 border-primary/50 text-primary' : 'bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
-                      }`}>{o.label}</button>
+                      className={`btn btn-sm btn-toggle btn-toggle-outline ${draft.bgFit === o.id ? 'is-on' : ''}`}>{o.label}</button>
                   ))}
                 </div>
               )}
@@ -1432,9 +1404,7 @@ function BarControl({ bar, onChange, solidOnly = false }) {
   return (
     <div className="flex items-center gap-xs flex-wrap">
       <button onClick={() => onChange(enabled ? null : { color: '#0c0e12', opacity: 0.9, solid: solidOnly ? true : false })}
-        className={`px-md py-1 rounded text-label-sm font-label-sm border transition-colors cursor-pointer ${
-          enabled ? 'bg-primary/15 border-primary/50 text-primary' : 'bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
-        }`}>{enabled ? 'On' : 'Off'}</button>
+        className={`btn btn-sm btn-toggle btn-toggle-outline ${enabled ? 'is-on' : ''}`}>{enabled ? 'On' : 'Off'}</button>
       {enabled && (
         <>
           <div className="relative w-7 h-7 rounded border border-outline-variant/50 overflow-hidden" style={{ background: bar.color }}>
@@ -1447,9 +1417,7 @@ function BarControl({ bar, onChange, solidOnly = false }) {
             className="w-14 bg-surface-container-lowest border border-outline-variant/40 text-on-surface text-[11px] rounded px-1 h-7 outline-none focus:border-primary text-center" />
           {!solidOnly && (
             <button onClick={() => onChange({ ...bar, solid: !bar.solid })}
-              className={`px-sm py-1 rounded text-[11px] font-mono border transition-colors cursor-pointer ${
-                bar.solid ? 'bg-primary/15 border-primary/50 text-primary' : 'bg-surface-container-lowest border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
-              }`}>Solid</button>
+              className={`btn btn-sm btn-toggle btn-toggle-outline ${bar.solid ? 'is-on' : ''}`}>Solid</button>
           )}
         </>
       )}

@@ -70,7 +70,7 @@ export default function ShortcutSettings() {
         </div>
         <button
           onClick={() => setShowAll(true)}
-          className="shrink-0 mt-xs px-md py-xs text-label-sm font-label-sm font-bold text-primary border border-primary/40 rounded-lg hover:bg-primary-container/20 active:scale-95 transition-all cursor-pointer flex items-center gap-xs"
+          className="btn btn-sm btn-secondary shrink-0 mt-xs"
         >
           <span className="material-symbols-outlined text-[16px]">visibility</span>
           View All

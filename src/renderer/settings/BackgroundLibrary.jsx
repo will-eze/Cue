@@ -49,7 +49,7 @@ function Tile({ item, busy, onApply, onAdd, onPick }) {
           // Pick mode — used by "New theme from a background": one action that turns
           // this background into a new theme (downloads it + auto-derives a look).
           <button onClick={() => onPick(item)}
-            className="px-md py-[5px] text-[12px] font-label-sm font-bold rounded-md bg-primary/15 border border-primary/40 text-primary hover:bg-primary/25 active:scale-95 transition-all cursor-pointer flex items-center gap-xs">
+            className="btn btn-xs btn-secondary">
             <span className="material-symbols-outlined text-[16px]">add</span>Create theme
           </button>
         ) : (
@@ -58,7 +58,7 @@ function Tile({ item, busy, onApply, onAdd, onPick }) {
             <div className="flex flex-wrap gap-xs justify-center">
               {SURFACES.map((s) => (
                 <button key={s.key} onClick={() => onApply(item, s.key)}
-                  className="px-sm py-[3px] text-[11px] font-label-sm font-bold rounded-md bg-primary/15 border border-primary/40 text-primary hover:bg-primary/25 active:scale-95 transition-all cursor-pointer">
+                  className="btn btn-xs btn-secondary">
                   {s.label}
                 </button>
               ))}
@@ -172,7 +172,7 @@ function BrowserModal({ items, tagCounts, onClose, onChange, onPick, title = 'Ba
           <div className="flex items-center gap-xs shrink-0">
             {['all', 'video', 'photo'].map((k) => (
               <button key={k} onClick={() => setKind(k)}
-                className={`px-sm py-[3px] text-[11px] font-label-sm rounded-md border transition-colors cursor-pointer ${kind === k ? 'bg-primary/15 border-primary/40 text-primary' : 'border-outline-variant/30 text-on-surface-variant hover:text-on-surface'}`}>
+                className={`btn btn-xs btn-toggle btn-toggle-outline ${kind === k ? 'is-on' : ''}`}>
                 {k}
               </button>
             ))}
@@ -185,12 +185,12 @@ function BrowserModal({ items, tagCounts, onClose, onChange, onPick, title = 'Ba
         {/* tag chips */}
         <div className="flex items-center gap-xs px-lg py-sm border-b border-outline-variant/20 overflow-x-auto flex-shrink-0">
           <button onClick={() => setActiveTag(null)}
-            className={`px-sm py-[2px] text-[11px] font-label-sm rounded-full border whitespace-nowrap transition-colors cursor-pointer ${!activeTag ? 'bg-primary/15 border-primary/40 text-primary' : 'border-outline-variant/30 text-on-surface-variant hover:text-on-surface'}`}>
+            className={`btn btn-xs btn-toggle btn-toggle-outline ${!activeTag ? 'is-on' : ''}`}>
             All
           </button>
           {topTags.map((t) => (
             <button key={t} onClick={() => setActiveTag(activeTag === t ? null : t)}
-              className={`px-sm py-[2px] text-[11px] font-label-sm rounded-full border whitespace-nowrap transition-colors cursor-pointer ${activeTag === t ? 'bg-primary/15 border-primary/40 text-primary' : 'border-outline-variant/30 text-on-surface-variant hover:text-on-surface'}`}>
+              className={`btn btn-xs btn-toggle btn-toggle-outline ${activeTag === t ? 'is-on' : ''}`}>
               {t}
             </button>
           ))}
@@ -289,7 +289,7 @@ export default function BackgroundLibrary() {
         <button
           onClick={() => setOpen(true)}
           disabled={total === 0}
-          className="shrink-0 px-md py-xs text-label-sm font-label-sm font-bold bg-primary/10 border border-primary/30 text-primary rounded-lg hover:bg-primary/20 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-default flex items-center gap-xs"
+          className="btn btn-sm btn-secondary shrink-0"
         >
           <span className="material-symbols-outlined text-[18px]">wallpaper</span>
           Browse {total > 0 ? total : ''} backgrounds

@@ -76,8 +76,8 @@ export default function UpdateAvailableModal({ info, onClose }) {
           <div className="flex justify-end gap-sm mt-xs">
             <button
               onClick={skipThisVersion}
-              className="px-md py-xs rounded text-label-sm font-label-sm text-on-surface-variant hover:bg-surface-variant transition-colors cursor-pointer"
-            >Skip This Version</button>
+              className="btn btn-sm btn-ghost"
+            >Skip this version</button>
             <button
               onClick={onClose}
               className="btn btn-sm btn-ghost"

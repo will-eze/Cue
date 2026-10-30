@@ -910,7 +910,7 @@ function ApplyThemeModal({ hasSlide, onApply, onClose }) {
           <div className="flex items-center gap-[2px] bg-surface-container rounded-lg p-[3px]">
             {[{ id: 'slide', label: 'This slide' }, { id: 'all', label: 'All slides' }].map((s) => (
               <button key={s.id} onClick={() => setScope(s.id)} disabled={s.id === 'slide' && !hasSlide}
-                className={`px-md py-1 rounded text-label-sm font-label-sm transition-colors cursor-pointer disabled:opacity-30 ${scope === s.id ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>
+                className={`btn btn-sm btn-toggle ${scope === s.id ? 'is-on' : ''}`}>
                 {s.label}
               </button>
             ))}
@@ -1077,7 +1077,7 @@ function Seg({ options, value, onChange }) {
     <div className="flex rounded overflow-hidden border border-outline-variant/40">
       {options.map(([v, label]) => (
         <button key={v} onClick={() => onChange(v)}
-          className={`px-sm py-1 text-label-sm font-label-sm transition-colors ${value === v ? 'bg-primary-container text-on-primary' : 'text-on-surface-variant hover:bg-surface-variant'}`}>{label}</button>
+          className={`btn btn-sm btn-toggle ${value === v ? 'is-on' : ''}`}>{label}</button>
       ))}
     </div>
   );

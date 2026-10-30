@@ -310,11 +310,7 @@ export default function App() {
           <button
             onClick={() => setStageOpen((v) => !v)}
             title="Stage display controls"
-            className={`h-7 px-md text-label-sm font-label-sm font-bold rounded transition-all active:scale-95 cursor-pointer flex items-center gap-xs ${
-              stageOpen
-                ? 'bg-surface-container-highest border border-outline-variant/60 text-on-surface'
-                : 'bg-surface-container-high border border-outline-variant/30 text-on-surface-variant/70 hover:border-outline-variant/60 hover:text-on-surface'
-            }`}
+            className={`btn btn-sm btn-toggle btn-toggle-outline ${stageOpen ? 'is-on' : ''}`}
           >
             <span className="material-symbols-outlined text-[13px]" style={{ fontVariationSettings: "'FILL' 1" }}>monitor_heart</span>
             Stage
@@ -694,11 +690,7 @@ function StagePanel() {
             />
             <button onClick={handleToggle}
               title={running ? 'Pause the timer' : 'Start (commits the duration shown)'}
-              className={`flex-1 h-7 text-[11px] font-mono rounded border transition-colors cursor-pointer ${
-                running
-                  ? 'bg-secondary-container/70 border-secondary/50 text-secondary hover:bg-secondary-container'
-                  : 'bg-tertiary-container/80 border-tertiary/50 text-tertiary hover:bg-tertiary-container'
-              }`}>
+              className={`btn btn-sm flex-1 ${running ? 'btn-secondary' : 'btn-go'}`}>
               {running ? '⏸ Pause' : (totalSec > 0 && remaining !== totalSec ? '▶ Resume' : '▶ Start')}
             </button>
             <button onClick={handleReset} title="Reset to the set duration"
@@ -711,11 +703,7 @@ function StagePanel() {
           <div className="flex gap-[4px] mb-xs">
             {[5, 10, 15, 20, 30].map((m) => (
               <button key={m} onClick={() => applyQuick(m * 60)}
-                className={`flex-1 h-6 text-[11px] font-mono tabular-nums rounded border transition-colors cursor-pointer ${
-                  totalSec === m * 60
-                    ? 'bg-primary/15 border-primary/50 text-primary'
-                    : 'bg-surface-container-high border-outline-variant/30 text-on-surface-variant hover:text-on-surface hover:border-outline-variant'
-                }`}>
+                className={`btn btn-xs btn-toggle btn-toggle-outline flex-1 tabular-nums ${totalSec === m * 60 ? 'is-on' : ''}`}>
                 {m}m
               </button>
             ))}
@@ -765,7 +753,7 @@ function StagePanel() {
           />
           <div className="flex gap-xs mt-xs">
             <button onClick={sendMsg} disabled={!stageMsg.trim()}
-              className="flex-1 h-7 text-[11px] font-mono bg-primary-container/70 border border-primary/40 text-primary hover:bg-primary-container rounded transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed">
+              className="btn btn-sm btn-primary flex-1">
               Send
             </button>
             <button
@@ -789,9 +777,7 @@ function StagePanel() {
               <div className="flex bg-surface-container-lowest border border-outline-variant/40 rounded overflow-hidden">
                 {[['in','In'],['at','At']].map(([m, lbl]) => (
                   <button key={m} onClick={() => setSchedMode(m)}
-                    className={`px-sm h-5 text-[11px] font-mono transition-colors cursor-pointer ${
-                      schedMode === m ? 'bg-primary-container/70 text-primary' : 'text-on-surface-variant hover:text-on-surface'
-                    }`}>
+                    className={`btn btn-xs btn-toggle ${schedMode === m ? 'is-on' : ''}`}>
                     {lbl}
                   </button>
                 ))}
@@ -830,8 +816,8 @@ function StagePanel() {
             </div>
 
             <button onClick={scheduleMsg} disabled={!canSchedule}
-              className="w-full h-7 text-[11px] font-mono bg-surface-container-high border border-outline-variant/40 text-on-surface-variant hover:border-outline-variant hover:text-on-surface rounded transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed">
-              + Schedule Message
+              className="btn btn-sm btn-secondary w-full">
+              + Schedule message
             </button>
 
             {/* Live preview of what the current inputs will schedule */}

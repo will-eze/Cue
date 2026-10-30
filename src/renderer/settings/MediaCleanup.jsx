@@ -139,13 +139,13 @@ export default function MediaCleanup() {
                 <button
                   onClick={handleDelete}
                   disabled={deleting}
-                  className="bg-error text-on-error px-md py-sm rounded-lg text-label-sm font-label-sm font-bold hover:brightness-110 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+                  className="btn btn-danger-solid"
                 >
                   {deleting ? 'Deleting…' : 'Delete'}
                 </button>
                 <button
                   onClick={() => setConfirmDelete(false)}
-                  className="text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface cursor-pointer px-sm"
+                  className="btn btn-ghost"
                 >
                   Cancel
                 </button>
@@ -154,7 +154,7 @@ export default function MediaCleanup() {
               <button
                 onClick={() => setConfirmDelete(true)}
                 disabled={selected.size === 0}
-                className="bg-error/15 text-error border border-error/40 px-md py-sm rounded-lg text-label-sm font-label-sm font-bold flex items-center gap-xs hover:bg-error/25 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-default"
+                className="btn btn-danger"
               >
                 <span className="material-symbols-outlined text-[14px]">delete</span>
                 Delete Selected ({selected.size})

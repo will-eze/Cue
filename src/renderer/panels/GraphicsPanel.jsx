@@ -243,16 +243,12 @@ export default function GraphicsPanel({ activeServiceId }) {
           <span className="material-symbols-outlined text-[14px] text-on-surface-variant/60 ml-1">send</span>
           <button onClick={() => { setDest([]); localStorage.setItem('cue.graphics.destOverride', '[]'); }}
             title="Send each graphic to the destination saved with it. Pick In-Room, Online or Stream to send everything there instead."
-            className={`flex items-center gap-xs px-sm py-1 rounded text-label-sm font-label-sm transition-colors cursor-pointer ${
-              dest.length === 0 ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'
-            }`}>
+            className={`btn btn-sm btn-toggle ${dest.length === 0 ? 'is-on' : ''}`}>
             <span className="material-symbols-outlined text-[13px]">tune</span>As saved
           </button>
           {KIND_OPTS.map((d) => (
             <button key={d.id} onClick={() => toggleDest(d.id)}
-              className={`flex items-center gap-xs px-sm py-1 rounded text-label-sm font-label-sm transition-colors cursor-pointer ${
-                dest.includes(d.id) ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'
-              }`}>
+              className={`btn btn-sm btn-toggle ${dest.includes(d.id) ? 'is-on' : ''}`}>
               <span className="material-symbols-outlined text-[13px]">{d.icon}</span>{d.label}
             </button>
           ))}
@@ -264,7 +260,7 @@ export default function GraphicsPanel({ activeServiceId }) {
               <div className="flex items-center gap-xs">
                 <span className="text-[11px] font-mono text-error shrink-0">Clear all?</span>
                 <button onClick={() => { setConfirmClearAll(false); clearAll(); }}
-                  className="text-[11px] font-mono text-error hover:text-error/70 cursor-pointer border border-error/40 px-sm py-[2px] rounded transition-colors">Yes</button>
+                  className="btn btn-xs btn-danger">Yes</button>
                 <button onClick={() => setConfirmClearAll(false)}
                   className="text-[11px] font-mono text-on-surface-variant hover:text-on-surface cursor-pointer transition-colors">No</button>
               </div>
@@ -297,8 +293,7 @@ export default function GraphicsPanel({ activeServiceId }) {
                 const active = channelMode(ch) === m.id;
                 return (
                   <button key={m.id} onClick={() => setChannelModeFor(ch, m.id)} title={m.label}
-                    className={`flex items-center gap-xs px-sm py-[2px] rounded text-[11px] font-label-sm transition-colors cursor-pointer ${
-                      active ? 'bg-primary text-on-primary font-bold' : 'text-on-surface-variant hover:text-on-surface'}`}>
+                    className={`btn btn-xs btn-toggle ${active ? 'is-on' : ''}`}>
                     <span className="material-symbols-outlined text-[12px]">{m.icon}</span>
                     {m.short}
                   </button>
@@ -497,7 +492,7 @@ function GraphicCard({ g, liveOn = [], dismissAt = null, paused = false, destLab
             <>
               <button
                 onClick={() => { setConfirmingDelete(false); onDelete(); }}
-                className="px-sm py-[2px] rounded bg-error text-white text-[11px] font-mono cursor-pointer hover:bg-error/80 transition-colors"
+                className="btn btn-xs btn-danger-solid"
               >Yes</button>
               <button
                 onClick={() => setConfirmingDelete(false)}
@@ -527,9 +522,7 @@ function GraphicCard({ g, liveOn = [], dismissAt = null, paused = false, destLab
           <div className="flex items-center gap-xs shrink-0">
             {canPause && (
               <button onClick={onTogglePause} title={paused ? 'Resume timer' : 'Pause timer'}
-                className={`flex items-center gap-xs px-md py-1.5 rounded text-label-sm font-label-sm border cursor-pointer transition-colors ${
-                  paused ? 'bg-tertiary/15 border-tertiary/50 text-tertiary hover:bg-tertiary/25' : 'bg-surface-container-high border-outline-variant/50 text-on-surface-variant hover:text-on-surface'
-                }`}>
+                className={`btn btn-toggle btn-toggle-outline ${paused ? 'is-on-go' : ''}`}>
                 <span className="material-symbols-outlined text-[14px]">{paused ? 'play_arrow' : 'pause'}</span>{paused ? 'Resume' : 'Pause'}
               </button>
             )}

@@ -234,7 +234,7 @@ function PackageCard({
               <div className="flex items-center gap-xs mt-sm">
                 <button
                   onClick={onRemove}
-                  className="px-md h-7 rounded-lg bg-error text-on-error text-label-sm font-label-sm hover:opacity-90 transition-opacity cursor-pointer"
+                  className="btn btn-sm btn-danger-solid"
                 >
                   Remove
                 </button>
@@ -436,7 +436,7 @@ function GpuPackageCard({ anyBusy, onBusy, busyId }) {
                 Remove all downloaded GPU speech models? Detection falls back to the CPU model.
               </p>
               <div className="flex items-center gap-xs mt-sm">
-                <button onClick={remove} className="px-md h-7 rounded-lg bg-error text-on-error text-label-sm font-label-sm hover:opacity-90 transition-opacity cursor-pointer">Remove</button>
+                <button onClick={remove} className="btn btn-sm btn-danger-solid">Remove</button>
                 <button onClick={() => setConfirming(false)} className="btn btn-sm btn-ghost">Cancel</button>
               </div>
             </div>

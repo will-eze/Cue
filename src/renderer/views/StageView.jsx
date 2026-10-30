@@ -142,9 +142,9 @@ export default function StageView() {
               return (
                 <div key={p.id} className={`group flex items-center rounded-lg border overflow-hidden ${active ? 'border-primary/60 bg-primary/15' : 'border-outline-variant/30 bg-surface-container-high'}`}>
                   <button onClick={() => applyPreset(p)}
-                    className={`pl-sm pr-xs h-8 text-label-sm font-label-sm font-bold cursor-pointer ${active ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>{p.name}</button>
+                    className={`btn btn-toggle pl-sm pr-xs ${active ? 'is-on' : ''}`}>{p.name}</button>
                   <button onClick={() => deletePreset(p.id)} title="Delete preset"
-                    className="px-xs h-8 text-on-surface-variant/60 hover:text-error cursor-pointer"><span className="material-symbols-outlined text-[14px]">close</span></button>
+                    className="btn-icon btn-icon-danger"><span className="material-symbols-outlined text-[14px]">close</span></button>
                 </div>
               );
             })}

@@ -117,7 +117,7 @@ export default function PptxImportModal({ onClose, onDone }) {
                   <span className="material-symbols-outlined text-[14px]">refresh</span> Check again
                 </button>
                 <button onClick={locateManually}
-                  className="text-on-surface-variant px-md py-xs rounded text-label-sm font-label-sm hover:bg-surface-variant transition-colors">
+                  className="btn btn-sm btn-ghost">
                   Locate manually…
                 </button>
               </div>

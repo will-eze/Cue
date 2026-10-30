@@ -51,23 +51,19 @@ function ThemeQuickCard({ theme, bgThumb, isDefault, isSongDefault, isScriptureD
         <div className="flex items-center gap-xs flex-wrap">
           <span className="text-[11px] font-mono text-on-surface-variant/60 shrink-0">Default</span>
           <button onClick={() => onDefault(theme, 'all')} title="App-wide default (all content)"
-            className={`flex items-center justify-center gap-[2px] px-sm py-[4px] text-[11px] font-mono rounded cursor-pointer border transition-colors shrink-0 ${
-              isDefault ? 'bg-tertiary/15 border-tertiary/40 text-tertiary' : 'bg-tertiary-container/10 border-tertiary-container/30 text-on-surface-variant hover:text-tertiary hover:border-tertiary/40'}`}>
+            className={`btn btn-toggle shrink-0 ${isDefault ? 'is-on-go' : ''}`}>
             <span className="material-symbols-outlined text-[12px]">stars</span>All
           </button>
           <button onClick={() => onDefault(theme, 'song')} title="Songs only"
-            className={`flex-1 min-w-[66px] text-[11px] font-mono rounded px-xs py-[4px] cursor-pointer border transition-colors ${
-              isSongDefault ? 'bg-tertiary/15 border-tertiary/40 text-tertiary' : 'border-outline-variant/25 text-on-surface-variant/70 hover:text-tertiary hover:border-tertiary/40'}`}>
+            className={`btn btn-toggle btn-toggle-outline flex-1 min-w-[66px] ${isSongDefault ? 'is-on-go' : ''}`}>
             Songs
           </button>
           <button onClick={() => onDefault(theme, 'scripture')} title="Scripture only"
-            className={`flex-1 min-w-[66px] text-[11px] font-mono rounded px-xs py-[4px] cursor-pointer border transition-colors ${
-              isScriptureDefault ? 'bg-tertiary/15 border-tertiary/40 text-tertiary' : 'border-outline-variant/25 text-on-surface-variant/70 hover:text-tertiary hover:border-tertiary/40'}`}>
+            className={`btn btn-toggle btn-toggle-outline flex-1 min-w-[66px] ${isScriptureDefault ? 'is-on-go' : ''}`}>
             Scripture
           </button>
           <button onClick={() => onDefault(theme, 'slide')} title="Slides only"
-            className={`flex-1 min-w-[66px] text-[11px] font-mono rounded px-xs py-[4px] cursor-pointer border transition-colors ${
-              isSlideDefault ? 'bg-tertiary/15 border-tertiary/40 text-tertiary' : 'border-outline-variant/25 text-on-surface-variant/70 hover:text-tertiary hover:border-tertiary/40'}`}>
+            className={`btn btn-toggle btn-toggle-outline flex-1 min-w-[66px] ${isSlideDefault ? 'is-on-go' : ''}`}>
             Slides
           </button>
         </div>
@@ -168,7 +164,7 @@ export default function LibraryThemesTab({ activeServiceId, onThemesChanged, onA
             ...(favs.size ? [['favorites', `★ ${favs.size}`]] : []),
             ...(activeIds.size ? [['selected', `Selected · ${activeIds.size}`]] : [])].map(([id, label]) => (
             <button key={id} onClick={() => setGroup(id)}
-              className={`px-sm py-[3px] text-[11px] font-mono rounded transition-colors cursor-pointer ${group === id ? 'bg-primary text-on-primary' : 'text-on-surface-variant/70 hover:text-on-surface'}`}>
+              className={`btn btn-xs btn-toggle ${group === id ? 'is-on' : ''}`}>
               {label}
             </button>
           ))}

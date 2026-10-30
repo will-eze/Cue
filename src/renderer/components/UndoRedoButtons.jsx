@@ -13,7 +13,7 @@ export default function UndoRedoButtons({ undo, redo, canUndo, canRedo }) {
         onClick={undo}
         disabled={!canUndo}
         title={`Undo (${mod}Z)`}
-        className="w-7 h-7 flex items-center justify-center rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-variant disabled:opacity-30 disabled:cursor-default cursor-pointer transition-colors"
+        className="btn-icon"
       >
         <span className="material-symbols-outlined text-[17px]">undo</span>
       </button>
@@ -21,7 +21,7 @@ export default function UndoRedoButtons({ undo, redo, canUndo, canRedo }) {
         onClick={redo}
         disabled={!canRedo}
         title={`Redo (${mod}⇧Z)`}
-        className="w-7 h-7 flex items-center justify-center rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-variant disabled:opacity-30 disabled:cursor-default cursor-pointer transition-colors"
+        className="btn-icon"
       >
         <span className="material-symbols-outlined text-[17px]">redo</span>
       </button>

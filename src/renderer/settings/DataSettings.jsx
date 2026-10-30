@@ -76,7 +76,7 @@ export default function DataSettings() {
           <button
             onClick={handleExport}
             disabled={busy != null}
-            className="px-md py-xs text-label-sm font-label-sm font-bold bg-surface-container-high border border-primary/40 text-primary hover:bg-primary/10 active:scale-95 transition-all cursor-pointer rounded-lg whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+            className="btn btn-sm btn-secondary"
           >
             {busy === 'export' ? 'Exporting…' : 'Export'}
           </button>
@@ -96,7 +96,7 @@ export default function DataSettings() {
               <span className="text-label-sm font-label-sm text-error whitespace-nowrap">Overwrite all?</span>
               <button
                 onClick={handleRestore}
-                className="px-md py-xs text-label-sm font-label-sm font-bold bg-error-container text-error rounded-lg border border-error/40 hover:brightness-110 active:scale-95 transition-all cursor-pointer whitespace-nowrap"
+                className="btn btn-sm btn-danger-solid"
               >
                 Choose file
               </button>
@@ -111,7 +111,7 @@ export default function DataSettings() {
             <button
               onClick={() => setConfirming(true)}
               disabled={busy != null}
-              className="px-md py-xs text-label-sm font-label-sm font-bold bg-surface-container-high border border-error/40 text-error hover:bg-error-container/20 active:scale-95 transition-all cursor-pointer rounded-lg whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+              className="btn btn-sm btn-danger"
             >
               {busy === 'restore' ? 'Restoring…' : 'Restore'}
             </button>

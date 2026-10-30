@@ -141,14 +141,14 @@ function ToastRow({ toast, onDismiss }) {
       {toast.action && (
         <button
           onClick={() => { try { toast.action.onClick?.(); } finally { onDismiss(); } }}
-          className="ml-sm shrink-0 px-md py-[3px] text-label-sm font-bold text-primary border border-primary/40 rounded-lg hover:bg-primary-container/20 active:scale-95 transition-all cursor-pointer"
+          className="btn btn-xs btn-secondary ml-sm shrink-0"
         >
           {toast.action.label}
         </button>
       )}
       <button
         onClick={onDismiss}
-        className="ml-xs shrink-0 w-5 h-5 flex items-center justify-center text-on-surface-variant/60 hover:text-on-surface cursor-pointer"
+        className="btn-icon btn-icon-sm ml-xs"
         aria-label="Dismiss"
       >
         <span className="material-symbols-outlined text-[16px]">close</span>

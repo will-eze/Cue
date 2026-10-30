@@ -102,7 +102,7 @@ export default function ContextMenu({ x, y, items, onClose }) {
                 <span className="text-[11px] font-mono text-error flex-1 truncate">Delete?</span>
                 <button
                   onClick={() => { item.onClick(); onCloseRef.current(); }}
-                  className="text-[11px] font-mono text-error hover:text-error/70 cursor-pointer border border-error/40 px-sm py-[2px] rounded transition-colors shrink-0"
+                  className="btn btn-xs btn-danger shrink-0"
                 >Yes</button>
                 <button
                   onClick={() => setConfirmIdx(null)}

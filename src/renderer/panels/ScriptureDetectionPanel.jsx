@@ -14,11 +14,7 @@ export default function ScriptureDetectionPanel({
       {/* Arm/disarm */}
       <button
         onClick={onToggleArm}
-        className={`flex items-center gap-xs px-sm h-8 rounded-lg text-label-sm font-mono font-bold transition-colors cursor-pointer shrink-0 ${
-          armed
-            ? 'bg-tertiary-container/60 border border-tertiary/50 text-tertiary'
-            : 'bg-surface-container-high border border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
-        }`}
+        className={`btn btn-toggle btn-toggle-outline shrink-0 ${armed ? 'is-on-go' : ''}`}
         title="Listen for spoken scripture references and quotes"
       >
         <span className="material-symbols-outlined text-[16px]" style={armed ? { fontVariationSettings: "'FILL' 1" } : undefined}>
@@ -77,7 +73,7 @@ export default function ScriptureDetectionPanel({
             </button>
             <button
               onClick={() => onDismiss(s)}
-              className="flex items-center justify-center w-6 h-7 rounded-md text-on-surface-variant/60 hover:text-error transition-colors cursor-pointer"
+              className="btn-icon btn-icon-danger"
               title="Dismiss"
             >
               <span className="material-symbols-outlined text-[15px]">close</span>

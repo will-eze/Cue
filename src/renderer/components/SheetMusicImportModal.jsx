@@ -210,7 +210,7 @@ export default function SheetMusicImportModal({ onClose, onDone }) {
             <div className="flex flex-col gap-md">
               <p className="text-label-sm font-label-sm text-error">{error}</p>
               <button onClick={reset}
-                className="bg-surface-container-high text-on-surface px-lg py-sm rounded-lg text-label-sm font-label-sm font-bold hover:brightness-110 active:scale-95 transition-all">
+                className="btn btn-secondary">
                 Try another file
               </button>
             </div>
@@ -253,7 +253,7 @@ export default function SheetMusicImportModal({ onClose, onDone }) {
 
               <div className="flex gap-sm">
                 <button onClick={reset}
-                  className="flex-1 bg-surface-container-high text-on-surface px-lg py-sm rounded-lg text-label-sm font-label-sm font-bold hover:brightness-110 active:scale-95 transition-all">
+                  className="btn btn-secondary flex-1">
                   Start over
                 </button>
                 <button onClick={openEditor}

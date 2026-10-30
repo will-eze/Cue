@@ -203,7 +203,7 @@ export default function ScriptureEditor({ onClose, onSave }) {
               Load theme…
             </button>
             <button onClick={onClose} title="Close" aria-label="Close"
-              className="w-8 h-8 flex items-center justify-center rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-variant transition-colors cursor-pointer">
+              className="btn-icon">
               <span className="material-symbols-outlined text-[20px]">close</span>
             </button>
           </div>
@@ -318,9 +318,7 @@ export default function ScriptureEditor({ onClose, onSave }) {
                   {[{ id: 'fullscreen', label: 'Full' }, { id: 'lowerthird', label: 'L3' }].map(({ id, label }) => (
                     <button key={id}
                       onMouseDown={(e) => { e.preventDefault(); setPreviewTemplate(id); }}
-                      className={`px-sm h-6 text-[12px] rounded transition-colors cursor-pointer ${
-                        previewTemplate === id ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:text-on-surface'
-                      }`}
+                      className={`btn btn-xs btn-toggle ${previewTemplate === id ? 'is-on' : ''}`}
                     >{label}</button>
                   ))}
                 </div>

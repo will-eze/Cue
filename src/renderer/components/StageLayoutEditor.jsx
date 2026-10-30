@@ -374,7 +374,7 @@ function TypeControls({ el, patch }) {
     <Row><Label>Align</Label>
       <div className="flex bg-surface-container-lowest border border-outline-variant/40 rounded overflow-hidden">
         {ALIGNS.map(([id, icon]) => (
-          <button key={id} onClick={() => patch({ align: id })} className={`px-sm h-7 cursor-pointer ${((el.align || 'center') === id) ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>
+          <button key={id} onClick={() => patch({ align: id })} className={`btn btn-sm btn-toggle ${((el.align || 'center') === id) ? 'is-on' : ''}`}>
             <span className="material-symbols-outlined text-[15px]">{icon}</span>
           </button>
         ))}

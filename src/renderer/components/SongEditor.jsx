@@ -799,8 +799,8 @@ function ToolBtn({ active, title, onMouseDown, children, className = '' }) {
     <button
       title={title}
       onMouseDown={(e) => { e.preventDefault(); onMouseDown?.(); }}
-      className={`h-7 min-w-[28px] px-1.5 flex items-center justify-center gap-xs rounded-md transition-colors flex-shrink-0 cursor-pointer text-[13px]
-        ${active ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-variant'} ${className}`}
+      aria-pressed={active ? true : undefined}
+      className={`btn btn-sm btn-toggle min-w-[28px] px-1.5 font-normal ${active ? 'is-on' : ''} ${className}`}
     >{children}</button>
   );
 }
@@ -873,8 +873,7 @@ function ToolMenu({ icon, label, title, active, width = 264, children }) {
         ref={btnRef}
         title={title || label}
         onMouseDown={(e) => { e.preventDefault(); setOpen((v) => !v); }}
-        className={`h-7 pl-sm pr-1 flex items-center gap-xs rounded-md transition-colors flex-shrink-0 cursor-pointer text-[13px]
-          ${open || active ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-variant'}`}
+        className={`btn btn-sm btn-toggle pl-sm pr-1 flex-shrink-0 ${open || active ? 'is-on' : ''}`}
       >
         {icon && <span className="material-symbols-outlined text-[16px]">{icon}</span>}
         {label}
@@ -2792,7 +2791,7 @@ export default function SongEditor({ song, onClose, onSave }) {
             {showMeta ? 'Hide details' : 'Show details'}
           </button>
           <button onClick={onClose} title="Close (Esc)"
-            className="w-8 h-8 flex items-center justify-center rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-variant transition-colors cursor-pointer">
+            className="btn-icon">
             <span className="material-symbols-outlined text-[20px]">close</span>
           </button>
         </div>
@@ -3131,11 +3130,7 @@ export default function SongEditor({ song, onClose, onSave }) {
                         <button
                           key={id}
                           onMouseDown={(e) => { e.preventDefault(); setPreviewTemplate(id); }}
-                          className={`px-sm h-[18px] text-[11px] font-mono rounded transition-colors cursor-pointer ${
-                            previewTemplate === id
-                              ? 'bg-primary text-on-primary'
-                              : 'text-on-surface-variant/60 hover:text-on-surface-variant'
-                          }`}
+                          className={`btn btn-xs btn-toggle ${previewTemplate === id ? 'is-on' : ''}`}
                         >{label}</button>
                       ))}
                     </div>

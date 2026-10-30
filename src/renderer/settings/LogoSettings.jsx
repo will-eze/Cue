@@ -108,7 +108,7 @@ export default function LogoSettings() {
             {globalLogoId && (
               <button
                 onClick={handleClearLogo}
-                className="bg-surface-variant text-on-surface-variant px-md py-sm rounded text-label-sm font-label-sm hover:bg-outline-variant transition-all cursor-pointer"
+                className="btn btn-secondary"
               >
                 Reset
               </button>

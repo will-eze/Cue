@@ -119,7 +119,7 @@ function PresBgEditor({ value, onChange }) {
       <div className="flex items-center gap-[2px] bg-surface-container rounded p-[2px] w-fit">
         {modes.map(([id, label]) => (
           <button key={id} onClick={() => push({ ...bg, mode: id })}
-            className={`px-sm py-[2px] text-[11px] font-mono rounded transition-colors cursor-pointer ${bg.mode === id ? 'bg-primary text-on-primary' : 'text-on-surface-variant/60 hover:text-on-surface-variant'}`}>{label}</button>
+            className={`btn btn-xs btn-toggle ${bg.mode === id ? 'is-on' : ''}`}>{label}</button>
         ))}
       </div>
       {bg.mode === 'solid' && (
@@ -222,7 +222,7 @@ function SurfaceSwitch({ value, onChange }) {
       <div className="flex items-center gap-[2px] bg-surface-container rounded-lg p-[3px]">
         {opts.map((o) => (
           <button key={o.id} onClick={() => onChange(o.id)}
-            className={`px-md py-1 rounded text-label-sm font-mono transition-colors cursor-pointer ${value === o.id ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>
+            className={`btn btn-sm btn-toggle ${value === o.id ? 'is-on' : ''}`}>
             {o.label}
           </button>
         ))}
@@ -303,7 +303,7 @@ function BgSpeedControl({ speed, onChange }) {
       <div className="flex items-center gap-[2px] bg-surface-container rounded-lg p-[3px] shrink-0">
         {BG_SPEEDS.map((s) => (
           <button key={s.v} onClick={() => onChange(s.v === 1 ? undefined : s.v)}
-            className={`px-sm py-1 rounded text-[11px] font-mono transition-colors cursor-pointer ${Math.abs(cur - s.v) < 0.01 ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>
+            className={`btn btn-sm btn-toggle ${Math.abs(cur - s.v) < 0.01 ? 'is-on' : ''}`}>
             {s.label}
           </button>
         ))}
@@ -337,7 +337,7 @@ function Segmented({ options, value, onChange }) {
     <div className="flex items-center gap-[2px] bg-surface-container rounded p-[2px] flex-wrap">
       {options.map(([id, label]) => (
         <button key={id} onClick={() => onChange(id)}
-          className={`px-sm py-[3px] text-[11px] font-mono rounded transition-colors cursor-pointer ${value === id ? 'bg-primary text-on-primary' : 'text-on-surface-variant/70 hover:text-on-surface-variant'}`}>{label}</button>
+          className={`btn btn-xs btn-toggle ${value === id ? 'is-on' : ''}`}>{label}</button>
       ))}
     </div>
   );
@@ -456,7 +456,7 @@ function LtBarEditor({ value, onChange }) {
         <div className="flex items-center gap-[2px] bg-surface-container rounded p-[2px]">
           {modes.map(([id, label]) => (
             <button key={id} onClick={() => push({ ...b, mode: id })}
-              className={`px-sm py-[3px] text-[11px] font-mono rounded transition-colors cursor-pointer ${b.mode === id ? 'bg-primary text-on-primary' : 'text-on-surface-variant/70 hover:text-on-surface-variant'}`}>{label}</button>
+              className={`btn btn-xs btn-toggle ${b.mode === id ? 'is-on' : ''}`}>{label}</button>
           ))}
         </div>
         {(b.mode === 'solid' || b.mode === 'gradient') && (
@@ -723,7 +723,7 @@ function ThemeEditorModal({ theme, initialCategory, onClose, onSaved }) {
           <div className="flex-1" />
           <span className="text-[11px] font-mono text-on-surface-variant/60 mr-sm">One theme · any content</span>
           <button onClick={onClose}
-            className="w-7 h-7 flex items-center justify-center rounded-full text-on-surface-variant hover:text-on-surface hover:bg-surface-variant transition-colors cursor-pointer text-sm">
+            className="btn-icon">
             ✕
           </button>
         </div>
@@ -1018,8 +1018,7 @@ function ThemeCard({ theme, services, activeServiceId, onEdit, onCustomize, onDu
             <div className="flex items-stretch gap-[3px]">
               {[['all', 'All', isDefault, 'stars'], ['song', 'Songs', isSongDefault], ['scripture', 'Scripture', isScriptureDefault], ['slide', 'Slides', isSlideDefault]].map(([scope, label, active, icon]) => (
                 <button key={scope} onClick={() => onSetDefault(scope)} title={`Default for ${label.toLowerCase() === 'all' ? 'all content' : label.toLowerCase()}`}
-                  className={`flex-1 min-w-0 flex items-center justify-center gap-[2px] px-[4px] py-[5px] text-[11px] font-mono rounded border transition-colors cursor-pointer ${
-                    active ? 'bg-tertiary/15 border-tertiary/40 text-tertiary' : 'border-outline-variant/25 text-on-surface-variant/70 hover:text-tertiary hover:border-tertiary/40'}`}>
+                  className={`btn btn-toggle btn-toggle-outline flex-1 min-w-0 ${active ? 'is-on-go' : ''}`}>
                   {icon && <span className="material-symbols-outlined text-[12px] shrink-0">{icon}</span>}
                   <span className="truncate">{label}</span>
                 </button>
@@ -1065,7 +1064,7 @@ function ThemeCard({ theme, services, activeServiceId, onEdit, onCustomize, onDu
               {confirmApplyAll ? (
                 <div className="flex items-center gap-sm">
                   <span className="text-[11px] font-mono text-error flex-1 truncate">Bake into all songs?</span>
-                  <button onClick={() => { setConfirmApplyAll(false); handleApplyToAllSongs(); }} className="text-[11px] font-mono text-error hover:text-error/70 cursor-pointer border border-error/40 px-sm py-[2px] rounded transition-colors shrink-0">Yes</button>
+                  <button onClick={() => { setConfirmApplyAll(false); handleApplyToAllSongs(); }} className="btn btn-xs btn-danger shrink-0">Yes</button>
                   <button onClick={() => setConfirmApplyAll(false)} className="text-[11px] font-mono text-on-surface-variant hover:text-on-surface cursor-pointer transition-colors shrink-0">No</button>
                 </div>
               ) : (
@@ -1396,7 +1395,7 @@ export default function ThemeSettings({ activeServiceId, onBackgroundDefaultChan
           <div className="flex items-center gap-xs shrink-0">
             <button
               onClick={() => saveGlobalMaxLines(globalMaxLines - 1)}
-              className="w-7 h-7 flex items-center justify-center rounded-lg border border-outline-variant/30 text-on-surface-variant hover:text-on-surface hover:border-outline-variant cursor-pointer"
+              className="btn-icon btn-icon-outline"
             >−</button>
             <input
               type="number"
@@ -1410,7 +1409,7 @@ export default function ThemeSettings({ activeServiceId, onBackgroundDefaultChan
             />
             <button
               onClick={() => saveGlobalMaxLines(globalMaxLines + 1)}
-              className="w-7 h-7 flex items-center justify-center rounded-lg border border-outline-variant/30 text-on-surface-variant hover:text-on-surface hover:border-outline-variant cursor-pointer"
+              className="btn-icon btn-icon-outline"
             >+</button>
           </div>
         </div>
@@ -1459,7 +1458,7 @@ export default function ThemeSettings({ activeServiceId, onBackgroundDefaultChan
             </button>
             <button
               onClick={() => setEditingTheme({})}
-              className="px-md py-xs text-label-sm font-label-sm font-bold bg-primary/10 border border-primary/30 text-primary rounded-lg hover:bg-primary/20 active:scale-95 transition-all cursor-pointer"
+              className="btn btn-sm btn-secondary"
             >
               + New Theme
             </button>
@@ -1526,7 +1525,7 @@ export default function ThemeSettings({ activeServiceId, onBackgroundDefaultChan
             <div className="flex items-center gap-sm shrink-0">
               <span className="text-[11px] font-mono text-error">Reset every song?</span>
               <button onClick={handleResetAllSongs} disabled={resettingAll}
-                className="text-[11px] font-mono text-error hover:text-error/70 cursor-pointer border border-error/40 px-sm py-[3px] rounded transition-colors disabled:opacity-40">
+                className="btn btn-xs btn-danger">
                 {resettingAll ? 'Resetting…' : 'Yes, reset all'}
               </button>
               <button onClick={() => setConfirmResetAll(false)} disabled={resettingAll}
@@ -1575,7 +1574,7 @@ export default function ThemeSettings({ activeServiceId, onBackgroundDefaultChan
                   <div className="flex items-center gap-[2px] bg-surface-container rounded-lg p-[3px] ml-auto mr-sm">
                     {chips.map(([id, label]) => (
                       <button key={id} onClick={() => setAllFilter(id)}
-                        className={`px-md py-[4px] text-[11px] font-mono rounded transition-colors cursor-pointer ${allFilter === id ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>
+                        className={`btn btn-toggle ${allFilter === id ? 'is-on' : ''}`}>
                         {label}
                       </button>
                     ))}

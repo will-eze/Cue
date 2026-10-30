@@ -139,11 +139,7 @@ export default function ScriptureDetectionSettings() {
                 title={tip}
                 onClick={() => apply({ responsiveness: v })}
                 disabled={busy}
-                className={`px-sm h-8 rounded-lg text-label-sm font-mono border transition-colors cursor-pointer ${
-                  (cfg.responsiveness || 'balanced') === v
-                    ? 'bg-primary/15 border-primary/50 text-primary'
-                    : 'bg-surface-container-high border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
-                }`}
+                className={`btn btn-toggle btn-toggle-outline ${(cfg.responsiveness || 'balanced') === v ? 'is-on' : ''}`}
               >
                 {lbl}
               </button>
@@ -474,11 +470,7 @@ function GpuEngineSettings({ cfg, apply, busy }) {
                 title={tip}
                 onClick={() => apply({ asrEngine: v })}
                 disabled={busy || (v !== 'cpu' && hw === null)}
-                className={`px-sm h-8 rounded-lg text-label-sm font-mono border transition-colors cursor-pointer disabled:opacity-40 ${
-                  engine === v
-                    ? 'bg-primary/15 border-primary/50 text-primary'
-                    : 'bg-surface-container-high border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
-                }`}
+                className={`btn btn-toggle btn-toggle-outline ${engine === v ? 'is-on' : ''}`}
               >
                 {lbl}
               </button>

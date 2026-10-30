@@ -206,7 +206,7 @@ export default function StreamLayoutEditor({ initial, presetId, presetName, onAp
                         <div className="flex bg-surface-container-lowest border border-outline-variant/40 rounded overflow-hidden">
                           {fitOpts.map(([id, lbl]) => (
                             <button key={id} onClick={() => setLayer(ly.kind, { fit: id })}
-                              className={`px-sm h-6 text-[11px] cursor-pointer ${b.fit === id ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>{lbl}</button>
+                              className={`btn btn-xs btn-toggle ${b.fit === id ? 'is-on' : ''}`}>{lbl}</button>
                           ))}
                         </div>
                       </div>
@@ -221,7 +221,7 @@ export default function StreamLayoutEditor({ initial, presetId, presetName, onAp
               <div className="flex bg-surface-container-lowest border border-outline-variant/40 rounded overflow-hidden">
                 {[['feed', 'Camera'], ['program', 'Program']].map(([id, lbl]) => (
                   <button key={id} onClick={() => setLayout((l) => ({ ...l, front: id }))}
-                    className={`px-sm h-6 text-[11px] cursor-pointer ${layout.front === id ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>{lbl}</button>
+                    className={`btn btn-xs btn-toggle ${layout.front === id ? 'is-on' : ''}`}>{lbl}</button>
                 ))}
               </div>
             </div>
@@ -236,7 +236,7 @@ export default function StreamLayoutEditor({ initial, presetId, presetName, onAp
         {/* Footer */}
         <div className="flex items-center gap-sm px-lg h-14 border-t border-outline-variant/30 shrink-0">
           {presetId && (
-            <button onClick={del} disabled={busy} className="flex items-center gap-xs h-9 px-md rounded-lg text-label-sm font-label-sm font-bold text-error hover:bg-error/10 cursor-pointer disabled:opacity-40">
+            <button onClick={del} disabled={busy} className="btn btn-danger">
               <span className="material-symbols-outlined text-[16px]">delete</span>Delete
             </button>
           )}

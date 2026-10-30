@@ -307,11 +307,7 @@ function CopyBtn({ copied, onClick }) {
     <button
       onClick={onClick}
       title="Copy"
-      className={`h-8 px-sm shrink-0 rounded-lg border text-[11px] font-mono transition-colors cursor-pointer flex items-center gap-xs ${
-        copied
-          ? 'bg-tertiary-container/60 border-tertiary/50 text-tertiary'
-          : 'bg-surface-container-high border-outline-variant/40 text-on-surface-variant hover:text-on-surface hover:border-outline-variant'
-      }`}
+      className={`btn btn-toggle btn-toggle-outline shrink-0 ${copied ? 'is-on-go' : ''}`}
     >
       <span className="material-symbols-outlined text-[14px]">{copied ? 'check' : 'content_copy'}</span>
       {copied ? 'Copied' : 'Copy'}

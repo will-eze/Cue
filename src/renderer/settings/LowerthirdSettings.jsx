@@ -78,11 +78,7 @@ export default function LowerthirdSettings() {
             <button
               key={p}
               onClick={() => apply(p)}
-              className={`flex-1 h-8 rounded-lg border text-label-sm font-label-sm font-bold tabular-nums transition-all cursor-pointer ${
-                scale === p
-                  ? 'border-primary bg-primary/8 text-primary'
-                  : 'border-outline-variant/30 bg-surface-container-low text-on-surface-variant hover:border-outline-variant/60'
-              }`}
+              className={`btn btn-toggle btn-toggle-outline flex-1 tabular-nums ${scale === p ? 'is-on' : ''}`}
             >
               {p}%
             </button>

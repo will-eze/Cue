@@ -158,7 +158,7 @@ export default function FontSettings() {
         <div className="px-lg py-sm border-b border-outline-variant/10 flex items-center gap-xs flex-wrap">
           {['all', ...categories].map((c) => (
             <button key={c} onClick={() => setCat(c)}
-              className={`px-md py-[3px] text-label-sm font-label-sm rounded-lg border transition-colors cursor-pointer ${cat === c ? 'bg-primary/15 border-primary/40 text-primary' : 'border-outline-variant/30 text-on-surface-variant hover:text-on-surface'}`}>
+              className={`btn btn-xs btn-toggle btn-toggle-outline ${cat === c ? 'is-on' : ''}`}>
               {c === 'all' ? 'All' : (CAT_LABEL[c] || c)}
             </button>
           ))}
@@ -189,7 +189,7 @@ export default function FontSettings() {
 
                 {/* Favourite — pin to top (per-viewer, localStorage) */}
                 <button onClick={() => toggleFav(f.family)} title={favs.has(f.family) ? 'Unpin' : 'Pin to top'}
-                  className={`shrink-0 w-7 h-7 flex items-center justify-center rounded-lg transition-colors cursor-pointer ${favs.has(f.family) ? 'text-primary' : 'text-on-surface-variant/60 hover:text-on-surface-variant'}`}>
+                  className={`btn-icon ${favs.has(f.family) ? '!text-primary' : ''}`}>
                   <span className="material-symbols-outlined text-[16px]" style={favs.has(f.family) ? { fontVariationSettings: "'FILL' 1" } : undefined}>star</span>
                 </button>
 
@@ -202,7 +202,7 @@ export default function FontSettings() {
                       <span className="material-symbols-outlined text-[15px]">check_circle</span>Installed
                     </span>
                     <button onClick={() => handleRemoveLibrary(f.family)} title="Remove"
-                      className="w-7 h-7 flex items-center justify-center rounded-lg text-on-surface-variant/60 hover:text-error hover:bg-error-container/20 transition-colors cursor-pointer">
+                      className="btn-icon btn-icon-danger">
                       <span className="material-symbols-outlined text-[16px]">delete</span>
                     </button>
                   </div>
@@ -238,13 +238,13 @@ export default function FontSettings() {
               {confirmId === f.id ? (
                 <div className="flex items-center gap-sm shrink-0">
                   <button onClick={() => handleDeleteUser(f.id)}
-                    className="px-md py-xs text-label-sm font-label-sm font-bold bg-error-container text-error rounded-lg border border-error/40 hover:brightness-110 cursor-pointer">Remove</button>
+                    className="btn btn-sm btn-danger-solid">Remove</button>
                   <button onClick={() => setConfirmId(null)}
                     className="btn btn-sm btn-secondary">Cancel</button>
                 </div>
               ) : (
                 <button onClick={() => setConfirmId(f.id)} title="Remove font"
-                  className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg text-on-surface-variant/60 hover:text-error hover:bg-error-container/20 transition-colors cursor-pointer">
+                  className="btn-icon btn-icon-danger">
                   <span className="material-symbols-outlined text-[18px]">delete</span>
                 </button>
               )}

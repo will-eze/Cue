@@ -108,7 +108,7 @@ export default function BibleSettings() {
                   <span className="text-[11px] font-mono text-error">Delete?</span>
                   <button
                     onClick={() => handleDelete(v.id)}
-                    className="text-[11px] font-mono text-error hover:text-error/70 cursor-pointer border border-error/40 px-sm py-[2px] rounded transition-colors"
+                    className="btn btn-xs btn-danger"
                   >Yes</button>
                   <button
                     onClick={() => setConfirmDelete(null)}

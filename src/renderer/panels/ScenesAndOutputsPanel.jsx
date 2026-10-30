@@ -28,9 +28,7 @@ export default function ScenesAndOutputsPanel({ onBackgroundDefaultChanged }) {
 function Seg({ active, onClick, icon, label }) {
   return (
     <button onClick={onClick}
-      className={`flex items-center gap-xs px-md py-1.5 rounded text-label-sm font-label-sm transition-colors cursor-pointer ${
-        active ? 'bg-primary/15 text-primary font-bold' : 'text-on-surface-variant hover:text-on-surface'
-      }`}>
+      className={`btn btn-toggle ${active ? 'is-on' : ''}`}>
       <span className="material-symbols-outlined text-[15px]">{icon}</span>{label}
     </button>
   );

@@ -48,7 +48,7 @@ export default function SingerNotesCleanupModal({ onClose, onDone }) {
               Removes lines like “Solo - Tammi” or “All:” and names before lyrics (“Tammi: …”) from songs already in your library.
             </p>
           </div>
-          <button onClick={onClose} disabled={busy} className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-variant cursor-pointer">
+          <button onClick={onClose} disabled={busy} className="btn-icon">
             <span className="material-symbols-outlined text-[20px]">close</span>
           </button>
         </div>

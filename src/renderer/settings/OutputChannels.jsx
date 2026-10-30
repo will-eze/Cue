@@ -473,7 +473,7 @@ function ChannelCard({ channel, monitors, screens, assignedBounds, onUpdate, onD
                 <span className="text-[11px] font-mono text-error shrink-0">Delete?</span>
                 <button
                   onClick={() => { setConfirmingDelete(false); onDelete(); }}
-                  className="text-[11px] font-mono text-error hover:text-error/70 cursor-pointer border border-error/40 px-sm py-[2px] rounded transition-colors"
+                  className="btn btn-xs btn-danger"
                 >Yes</button>
                 <button
                   onClick={() => setConfirmingDelete(false)}
@@ -630,11 +630,7 @@ function ContentSizeControl({ value, onCommit }) {
           <button
             key={p}
             onClick={() => change(p)}
-            className={`px-sm h-6 rounded text-[11px] font-label-sm tabular-nums transition-colors cursor-pointer ${
-              local === p
-                ? 'bg-primary/10 text-primary border border-primary/40'
-                : 'text-on-surface-variant hover:text-on-surface border border-outline-variant/30'
-            }`}
+            className={`btn btn-xs btn-toggle btn-toggle-outline tabular-nums ${local === p ? 'is-on' : ''}`}
           >{p}</button>
         ))}
       </div>
@@ -792,9 +788,7 @@ function ChannelModeSwitch({ mode, onChange }) {
           key={m.id}
           onClick={() => onChange(m.id)}
           title={m.label}
-          className={`flex items-center gap-xs px-xs py-[1px] rounded text-[11px] font-label-sm transition-colors cursor-pointer ${
-            mode === m.id ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'
-          }`}
+          className={`btn btn-xs btn-toggle ${mode === m.id ? 'is-on' : ''}`}
         >
           <span className="material-symbols-outlined text-[12px]">{m.icon}</span>
           {m.short}

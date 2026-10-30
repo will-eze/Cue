@@ -65,7 +65,7 @@ export default function ShortcutsOverlay({ onClose }) {
             <span className="material-symbols-outlined text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>keyboard</span>
             Keyboard shortcuts
           </h2>
-          <button onClick={onClose} aria-label="Close" className="w-8 h-8 flex items-center justify-center rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-variant cursor-pointer">
+          <button onClick={onClose} aria-label="Close" className="btn-icon">
             <span className="material-symbols-outlined text-[20px]">close</span>
           </button>
         </div>

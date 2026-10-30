@@ -78,7 +78,7 @@ export default function OnlineBibleModal({ onClose, onImported }) {
             <p className="text-[11px] font-mono text-on-surface-variant/60">getbible.net catalog</p>
           </div>
           <button onClick={() => !progress && onClose()}
-            className="w-7 h-7 flex items-center justify-center rounded-full text-on-surface-variant hover:text-on-surface hover:bg-surface-variant transition-colors cursor-pointer text-sm">
+            className="btn-icon">
             ✕
           </button>
         </div>
@@ -180,7 +180,7 @@ export default function OnlineBibleModal({ onClose, onImported }) {
           </span>
           <div className="flex items-center gap-sm">
             <button onClick={() => !progress && onClose()} disabled={!!progress}
-              className="px-lg h-8 text-label-sm font-mono text-on-surface-variant hover:text-on-surface rounded-lg hover:bg-surface-variant transition-colors cursor-pointer disabled:opacity-40">
+              className="btn btn-ghost">
               {failures.length ? 'Close' : 'Cancel'}
             </button>
             <button onClick={handleDownload} disabled={!selectedCount || !!progress}

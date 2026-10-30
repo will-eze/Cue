@@ -49,7 +49,7 @@ export default function MediaPickerModal({ onSelect, onClose, initialId = null }
           </div>
           <button
             onClick={onClose}
-            className="ml-auto w-8 h-8 flex items-center justify-center rounded-full text-on-surface-variant hover:text-on-surface hover:bg-surface-variant transition-colors cursor-pointer"
+            className="btn-icon ml-auto"
           >✕</button>
         </div>
 

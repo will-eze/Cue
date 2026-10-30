@@ -92,7 +92,7 @@ Semantic colours:
 - **Green (`tertiary`)** = GO / success / active output
 - **Error** = destructive actions
 
-Buttons: use the shared classes in `index.css` — `btn` + one of `btn-primary` (blue confirm), `btn-go` (green add/apply/save), `btn-secondary` (outline), `btn-ghost` (Cancel/Close), `btn-danger`; `btn-sm` for dense toolbars. Add layout classes alongside; don't hand-roll new padding/colour/radius button strings.
+Buttons: use the shared classes in `index.css`, never hand-rolled padding/colour/radius strings. Actions: `btn` + `btn-primary` (blue confirm) / `btn-go` (green add/apply/save) / `btn-secondary` (outline) / `btn-ghost` (Cancel/Close) / `btn-danger` (red outline) / `btn-danger-solid` (final destructive confirm); sizes default 32px, `btn-sm` 28px, `btn-xs` 24px (segmented controls and chips only). On/off and pick-one: `btn btn-toggle` (+ `btn-toggle-outline` when standalone) with `is-on` (blue, selected) or `is-on-go` (green, armed mode). Icon-only: `btn-icon` (28px) / `btn-icon-sm` (24px), with `btn-icon-outline`, `btn-icon-danger`, `is-on`; always give them a `title`. Exempt on purpose: the GO / Clear / Logo / Outputs transport, tabs, list rows and cards.
 
 Typography: **Inter everywhere** — body, headlines, AND labels/chips/badges/buttons/timecodes (the `mono`/`label-sm`/`timecode-lg` tokens all map to Inter; use the `tabular-nums` utility where digits must align). Inter is bundled (`src/fonts/fonts.css`, loaded in the operator + every output window) so it always resolves; keep a sans fallback. Do NOT reintroduce JetBrains Mono or any monospace face for UI chrome. **Oswald is output templates only**, never the operator UI.
 

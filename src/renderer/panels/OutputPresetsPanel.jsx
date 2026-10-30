@@ -201,16 +201,16 @@ function PresetCard({ preset, applied, onTake, onEdit, onDelete }) {
             <>
               <span className="text-[11px] font-mono text-error shrink-0">Delete?</span>
               <button onClick={() => { setConfirmingDelete(false); onDelete(); }}
-                className="text-[11px] font-mono text-error hover:text-error/70 cursor-pointer border border-error/40 px-sm py-[2px] rounded transition-colors">Yes</button>
+                className="btn btn-xs btn-danger">Yes</button>
               <button onClick={() => setConfirmingDelete(false)}
                 className="text-[11px] font-mono text-on-surface-variant hover:text-on-surface cursor-pointer transition-colors">No</button>
             </>
           ) : (
             <>
-              <button onClick={onEdit} title="Edit" className="w-6 h-6 flex items-center justify-center rounded text-on-surface-variant hover:text-primary cursor-pointer">
+              <button onClick={onEdit} title="Edit" className="btn-icon btn-icon-sm">
                 <span className="material-symbols-outlined text-[15px]">edit</span>
               </button>
-              <button onClick={() => setConfirmingDelete(true)} title="Delete" className="w-6 h-6 flex items-center justify-center rounded text-on-surface-variant hover:text-error cursor-pointer">
+              <button onClick={() => setConfirmingDelete(true)} title="Delete" className="btn-icon btn-icon-sm btn-icon-danger">
                 <span className="material-symbols-outlined text-[15px]">delete</span>
               </button>
             </>
@@ -319,7 +319,7 @@ function PresetEditor({ preset, onClose, onSaved }) {
           {/* Capture */}
           <div className="flex flex-col gap-xs">
             <button onClick={captureNow} disabled={busy}
-              className="flex items-center justify-center gap-sm px-md py-sm rounded-lg border border-primary/50 bg-primary/10 text-primary hover:bg-primary/15 cursor-pointer disabled:opacity-50">
+              className="btn btn-secondary gap-sm">
               <span className="material-symbols-outlined text-[18px]">photo_camera</span>
               <span className="text-label-sm font-label-sm font-bold">{captured ? 'Re-capture current output' : 'Capture current output'}</span>
             </button>

@@ -18,7 +18,7 @@ function ConfirmButton({ label, confirmLabel = 'Yes, delete', disabled = false, 
         <span className="text-label-sm font-label-sm text-error whitespace-nowrap">Are you sure?</span>
         <button
           onClick={handleConfirm}
-          className="px-md py-xs text-label-sm font-label-sm font-bold bg-error-container text-error rounded-lg border border-error/40 hover:brightness-110 active:scale-95 transition-all cursor-pointer whitespace-nowrap"
+          className="btn btn-sm btn-danger-solid"
         >
           {confirmLabel}
         </button>
@@ -36,7 +36,7 @@ function ConfirmButton({ label, confirmLabel = 'Yes, delete', disabled = false, 
     <button
       onClick={() => setConfirming(true)}
       disabled={disabled}
-      className="px-md py-xs text-label-sm font-label-sm font-bold bg-surface-container-high border border-error/40 text-error hover:bg-error-container/20 active:scale-95 transition-all cursor-pointer rounded-lg whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+      className="btn btn-sm btn-danger"
     >
       {label}
     </button>

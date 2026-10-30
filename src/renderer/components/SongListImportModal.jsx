@@ -193,7 +193,7 @@ function ResultRow({ row, index, dupOf, onChange, onPreview, onCreate, onSplit, 
             <button
               onClick={create}
               title={row.parsed ? 'Open the song editor with the pasted lyrics already split into sections' : 'Create a new song with this title'}
-              className="ml-sm shrink-0 flex items-center gap-xs px-sm py-[2px] rounded-lg border border-tertiary/40 text-tertiary hover:bg-tertiary/10 transition-colors cursor-pointer text-body-md"
+              className="btn btn-xs btn-go ml-sm shrink-0"
             >
               <span className="material-symbols-outlined text-[16px]">add</span>
               {row.parsed ? 'Create from lyrics' : 'Create song'}

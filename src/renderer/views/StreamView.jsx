@@ -182,9 +182,9 @@ export default function StreamView() {
                 return (
                   <div key={p.id} className={`group flex items-center rounded-lg border overflow-hidden ${active ? 'border-primary/60 bg-primary/15' : 'border-outline-variant/30 bg-surface-container-high'}`}>
                     <button onClick={() => applyLayout(p.layout)}
-                      className={`pl-sm pr-xs h-8 text-label-sm font-label-sm font-bold cursor-pointer ${active ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>{p.name}</button>
+                      className={`btn btn-toggle pl-sm pr-xs ${active ? 'is-on' : ''}`}>{p.name}</button>
                     <button onClick={() => setEditor({ presetId: p.id, presetName: p.name, initial: p.layout })} title="Edit layout"
-                      className="px-xs h-8 text-on-surface-variant/60 hover:text-on-surface cursor-pointer"><span className="material-symbols-outlined text-[14px]">edit</span></button>
+                      className="btn-icon"><span className="material-symbols-outlined text-[14px]">edit</span></button>
                   </div>
                 );
               })}
@@ -197,7 +197,7 @@ export default function StreamView() {
               const active = layoutEq(t.make(L), L);
               return (
                 <button key={t.id} onClick={() => applyLayout(t.make(L))} title={t.name}
-                  className={`flex items-center gap-xs h-8 px-sm rounded-lg text-label-sm font-label-sm font-bold cursor-pointer transition-all active:scale-95 border ${active ? 'bg-primary/15 border-primary/60 text-primary' : 'bg-surface-container-high border-outline-variant/30 text-on-surface-variant hover:text-on-surface hover:border-outline-variant/60'}`}>
+                  className={`btn btn-toggle btn-toggle-outline ${active ? 'is-on' : ''}`}>
                   <span className="material-symbols-outlined text-[15px]">{t.icon}</span>{t.name}
                 </button>
               );
@@ -250,7 +250,7 @@ export default function StreamView() {
             <div className="mt-xs flex bg-surface-container-lowest border border-outline-variant/40 rounded overflow-hidden">
               {[['external', 'Feed only'], ['mixed', 'Feed + Cue media']].map(([id, lbl]) => (
                 <button key={id} onClick={() => patchStudio({ audioMode: id })}
-                  className={`flex-1 h-7 text-label-sm font-label-sm cursor-pointer transition-colors ${studio.audioMode === id ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>{lbl}</button>
+                  className={`btn btn-sm btn-toggle flex-1 ${studio.audioMode === id ? 'is-on' : ''}`}>{lbl}</button>
               ))}
             </div>
           </div>

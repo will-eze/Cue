@@ -69,7 +69,7 @@ export default function SongPreviewModal({ song, onClose, onEdit, onAddToRundown
             </div>
             <button
               onClick={onClose}
-              className="w-8 h-8 flex items-center justify-center rounded-full text-on-surface-variant hover:text-on-surface hover:bg-surface-variant transition-colors cursor-pointer flex-shrink-0 mt-xs"
+              className="btn-icon mt-xs"
             >
               <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
                 <path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>

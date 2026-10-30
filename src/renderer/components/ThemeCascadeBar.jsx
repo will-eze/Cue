@@ -109,7 +109,7 @@ export default function ThemeCascadeBar({
                 </span>
                 {onClearRundown && (
                   <button onClick={() => { onClearRundown(); setOpen(false); }}
-                    className="ml-auto shrink-0 text-[11px] font-mono text-primary hover:text-on-primary hover:bg-primary/80 border border-primary/40 rounded px-sm py-[3px] transition-colors cursor-pointer flex items-center gap-[3px]">
+                    className="btn btn-xs btn-secondary ml-auto shrink-0 gap-[3px]">
                     <span className="material-symbols-outlined text-[13px]">close</span>Clear rundown theme
                   </button>
                 )}

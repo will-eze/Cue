@@ -551,7 +551,7 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, onPrevie
               onClick={() => navigateLive(-1)}
               disabled={!chapterData}
               title="Previous verse (←)"
-              className="flex items-center justify-center w-7 h-7 rounded border border-outline-variant/40 bg-surface-container text-on-surface-variant hover:text-primary hover:border-primary/50 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+              className="btn-icon btn-icon-outline"
             >
               <span className="material-symbols-outlined text-[14px]">chevron_left</span>
             </button>
@@ -559,7 +559,7 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, onPrevie
               onClick={() => navigateLive(1)}
               disabled={!chapterData}
               title="Next verse (→)"
-              className="flex items-center justify-center w-7 h-7 rounded border border-outline-variant/40 bg-surface-container text-on-surface-variant hover:text-primary hover:border-primary/50 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+              className="btn-icon btn-icon-outline"
             >
               <span className="material-symbols-outlined text-[14px]">chevron_right</span>
             </button>
@@ -571,11 +571,7 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, onPrevie
             <button
               onClick={toggleSplit}
               title="Split view — show every live verse in two translations at once (full screen + lower third)"
-              className={`flex items-center gap-xs px-sm h-9 rounded-lg text-label-sm font-label-sm font-bold border transition-colors cursor-pointer ${
-                splitEnabled
-                  ? 'bg-primary/15 border-primary/50 text-primary'
-                  : 'bg-surface-container border-outline-variant/40 text-on-surface-variant hover:border-primary/50 hover:text-primary'
-              }`}
+              className={`btn btn-toggle btn-toggle-outline ${splitEnabled ? 'is-on' : ''}`}
             >
               <span className="material-symbols-outlined text-[16px]" style={splitEnabled ? { fontVariationSettings: "'FILL' 1" } : undefined}>vertical_split</span>
               Split
@@ -605,11 +601,7 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, onPrevie
             <button
               onClick={onToggleDetect}
               title="Auto-detect spoken scripture references and quotes from the live audio"
-              className={`flex items-center gap-xs px-sm h-9 rounded-lg text-label-sm font-label-sm font-bold border transition-colors cursor-pointer ${
-                detectArmed
-                  ? 'bg-tertiary-container/60 border-tertiary/50 text-tertiary'
-                  : 'bg-surface-container border-outline-variant/40 text-on-surface-variant hover:border-primary/50 hover:text-primary'
-              }`}
+              className={`btn btn-toggle btn-toggle-outline ${detectArmed ? 'is-on-go' : ''}`}
             >
               <span className="material-symbols-outlined text-[16px]" style={detectArmed ? { fontVariationSettings: "'FILL' 1" } : undefined}>
                 {detectArmed ? 'mic' : 'mic_none'}

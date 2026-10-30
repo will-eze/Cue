@@ -122,7 +122,7 @@ function SceneCard({ scene, onTake, onEdit, onDelete }) {
               <span className="text-[11px] font-mono text-error shrink-0">Delete?</span>
               <button
                 onClick={() => { setConfirmingDelete(false); onDelete(); }}
-                className="text-[11px] font-mono text-error hover:text-error/70 cursor-pointer border border-error/40 px-sm py-[2px] rounded transition-colors"
+                className="btn btn-xs btn-danger"
               >Yes</button>
               <button
                 onClick={() => setConfirmingDelete(false)}
@@ -131,10 +131,10 @@ function SceneCard({ scene, onTake, onEdit, onDelete }) {
             </>
           ) : (
             <>
-              <button onClick={onEdit} title="Edit" className="w-6 h-6 flex items-center justify-center rounded text-on-surface-variant hover:text-primary cursor-pointer">
+              <button onClick={onEdit} title="Edit" className="btn-icon btn-icon-sm">
                 <span className="material-symbols-outlined text-[15px]">edit</span>
               </button>
-              <button onClick={() => setConfirmingDelete(true)} title="Delete" className="w-6 h-6 flex items-center justify-center rounded text-on-surface-variant hover:text-error cursor-pointer">
+              <button onClick={() => setConfirmingDelete(true)} title="Delete" className="btn-icon btn-icon-sm btn-icon-danger">
                 <span className="material-symbols-outlined text-[15px]">delete</span>
               </button>
             </>
@@ -237,7 +237,7 @@ function SceneEditor({ scene, onClose, onSaved }) {
           {/* Capture */}
           <div className="flex flex-col gap-xs">
             <button onClick={captureNow}
-              className="flex items-center justify-center gap-sm px-md py-sm rounded-lg border border-primary/50 bg-primary/10 text-primary hover:bg-primary/15 cursor-pointer">
+              className="btn btn-secondary gap-sm">
               <span className="material-symbols-outlined text-[18px]">photo_camera</span>
               <span className="text-label-sm font-label-sm font-bold">Capture current output</span>
             </button>
@@ -350,9 +350,7 @@ function Segmented({ opts, value, onChange }) {
         const active = value === o.id;
         return (
           <button key={o.id} onClick={() => onChange(o.id)}
-            className={`flex-1 flex items-center justify-center gap-xs px-sm py-1.5 rounded text-label-sm font-label-sm transition-colors cursor-pointer ${
-              active ? 'bg-primary text-on-primary font-bold' : 'text-on-surface-variant hover:text-on-surface'
-            }`}>
+            className={`btn btn-toggle flex-1 ${active ? 'is-on' : ''}`}>
             <span className="material-symbols-outlined text-[14px]">{o.icon}</span>{o.label}
           </button>
         );

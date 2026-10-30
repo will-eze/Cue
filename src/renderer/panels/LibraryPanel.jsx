@@ -303,7 +303,7 @@ function SongPreviewModal({ song, onClose, onEdit, onAddToRundown }) {
         <div className="absolute top-md right-lg flex gap-xs">
           <button onClick={() => { onAddToRundown(song.id); onClose(); }} className="btn btn-sm btn-primary">Add</button>
           <button onClick={() => onEdit(fullSong || song)} className="btn btn-sm btn-secondary">Edit</button>
-          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded text-on-surface-variant/60 hover:text-on-surface hover:bg-surface-variant cursor-pointer">
+          <button onClick={onClose} className="btn-icon">
             <span className="material-symbols-outlined text-[16px]">close</span>
           </button>
         </div>
@@ -1389,11 +1389,7 @@ function MediaSubTab({ active, onClick, icon, children }) {
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-xs px-md py-1 rounded-full text-label-sm font-label-sm cursor-pointer transition-colors ${
-        active
-          ? 'bg-primary/15 text-primary ring-1 ring-inset ring-primary/40'
-          : 'text-on-surface-variant hover:bg-surface-variant'
-      }`}
+      className={`btn btn-sm btn-toggle ${active ? 'is-on' : ''}`}
     >
       <span className="material-symbols-outlined text-[15px]">{icon}</span>
       {children}

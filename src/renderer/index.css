@@ -171,15 +171,39 @@ button:focus:not(:focus-visible),
    danger = destructive. Layout classes (shrink-0, w-full, ml-auto) go alongside. */
 @layer components {
   .btn {
-    @apply inline-flex items-center justify-center gap-xs h-8 px-md rounded-lg text-[14px] font-semibold leading-none whitespace-nowrap transition-colors cursor-pointer select-none;
+    @apply inline-flex items-center justify-center gap-xs h-8 min-h-8 px-md rounded-lg text-[14px] font-semibold leading-none whitespace-nowrap transition-colors cursor-pointer select-none;
   }
   .btn:disabled { @apply opacity-40 cursor-not-allowed; }
-  .btn-sm { @apply h-7 px-sm text-[13px]; }
+  .btn-sm { @apply h-7 min-h-7 px-sm text-[13px]; }
   .btn-primary { @apply bg-primary text-on-primary hover:brightness-110; }
   .btn-go { @apply bg-tertiary-container text-on-tertiary-container hover:brightness-110; }
   .btn-secondary { @apply border border-outline-variant/60 text-on-surface hover:bg-surface-variant; }
   .btn-ghost { @apply text-on-surface-variant hover:text-on-surface hover:bg-surface-variant; }
   .btn-danger { @apply border border-error/50 text-error hover:bg-error/10; }
+  .btn-danger-solid { @apply bg-error text-on-error hover:brightness-110; }
+  .btn-danger-solid:disabled:hover { @apply bg-error; }
+  /* Extra-small: only for segmented controls and chips inside dense bars. */
+  .btn-xs { @apply h-6 min-h-6 px-sm text-[12px] rounded-md; }
+
+  /* On/off and pick-one buttons. Add `is-on` (blue = selected) or `is-on-go`
+     (green = an active/armed mode) when active. `btn-toggle-outline` gives the
+     off state a hairline border for buttons that stand alone (not in a group). */
+  .btn-toggle { @apply border border-transparent text-on-surface-variant hover:text-on-surface hover:bg-surface-variant; }
+  .btn-toggle-outline { @apply border-outline-variant/40; }
+  .btn-toggle.is-on { @apply bg-primary/15 border-primary/40 text-primary hover:bg-primary/20 hover:text-primary; }
+  .btn-toggle.is-on-go { @apply bg-tertiary/10 border-tertiary/40 text-tertiary hover:bg-tertiary/15 hover:text-tertiary; }
+
+  /* Icon-only buttons (close, undo, ⋯). Always give them a title / aria-label. */
+  .btn-icon {
+    @apply inline-flex items-center justify-center shrink-0 w-7 h-7 min-h-6 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-variant transition-colors cursor-pointer;
+  }
+  .btn-icon-sm { @apply w-6 h-6 rounded-md; }
+  .btn-icon:disabled { @apply opacity-40 cursor-not-allowed; }
+  .btn-icon:disabled:hover { background-color: transparent; }
+  .btn-icon.is-on { @apply bg-primary/15 text-primary; }
+  .btn-icon-outline { @apply border border-outline-variant/40 hover:border-outline-variant; }
+  .btn-icon-danger { @apply hover:text-error hover:bg-error/10; }
+
   .btn:disabled:hover { filter: none; background-color: transparent; }
   .btn-primary:disabled:hover { @apply bg-primary; }
   .btn-go:disabled:hover { @apply bg-tertiary-container; }

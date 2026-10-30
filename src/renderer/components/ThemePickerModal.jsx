@@ -124,7 +124,7 @@ export default function ThemePickerModal({ onPick, onClose, category = 'song', c
             <div className="flex items-center gap-[2px] bg-surface-container rounded-lg p-[2px] shrink-0">
               {[['all', 'All'], ['collections', 'Collections'], ['mine', `Yours${mineCount ? ` · ${mineCount}` : ''}`]].map(([id, label]) => (
                 <button key={id} onClick={() => setGroup(id)}
-                  className={`px-sm py-[3px] text-[11px] font-mono rounded transition-colors cursor-pointer ${group === id ? 'bg-primary text-on-primary' : 'text-on-surface-variant/70 hover:text-on-surface'}`}>
+                  className={`btn btn-xs btn-toggle ${group === id ? 'is-on' : ''}`}>
                   {label}
                 </button>
               ))}

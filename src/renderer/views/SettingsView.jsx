@@ -91,7 +91,7 @@ function UpdateChecker() {
         <button
           onClick={check}
           disabled={status === 'checking'}
-          className="bg-surface-container text-on-surface px-lg py-sm rounded text-label-sm font-label-sm hover:bg-surface-container-high transition-all cursor-pointer disabled:opacity-50"
+          className="btn btn-secondary"
         >
           {status === 'checking' ? 'Checking…'
             : status === 'uptodate' ? 'Up to date ✓'
@@ -147,13 +147,13 @@ function SettingsFooter() {
             window.location.reload();
           }}
           title="Clear saved panel sizes and reload"
-          className="bg-surface-container text-on-surface-variant px-lg py-sm rounded text-label-sm font-label-sm hover:bg-surface-container-high hover:text-on-surface transition-all cursor-pointer"
+          className="btn btn-secondary"
         >
           Reset Layout
         </button>
         <button
           onClick={() => window.cue.settings.openDataFolder()}
-          className="bg-surface-container text-on-surface px-lg py-sm rounded text-label-sm font-label-sm hover:bg-surface-container-high transition-all cursor-pointer"
+          className="btn btn-secondary"
         >
           Open Data Folder
         </button>
