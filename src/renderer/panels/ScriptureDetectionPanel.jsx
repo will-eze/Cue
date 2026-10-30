@@ -70,7 +70,7 @@ export default function ScriptureDetectionPanel({
             </span>
             <button
               onClick={() => onGoLive(s)}
-              className="flex items-center justify-center px-sm h-7 rounded-md bg-tertiary-container text-on-tertiary text-label-sm font-mono font-bold hover:brightness-110 active:scale-95 transition-all cursor-pointer"
+              className="btn btn-sm btn-go"
               title="Send this verse live"
             >
               Go

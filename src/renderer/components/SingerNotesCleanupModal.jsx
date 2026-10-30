@@ -75,13 +75,13 @@ export default function SingerNotesCleanupModal({ onClose, onDone }) {
         </div>
 
         <div className="px-lg py-md border-t border-outline-variant/20 flex items-center justify-end gap-sm">
-          <button onClick={onClose} disabled={busy} className="px-lg h-9 rounded-lg text-body-md text-on-surface-variant hover:text-on-surface hover:bg-surface-variant cursor-pointer">
+          <button onClick={onClose} disabled={busy} className="btn btn-ghost">
             Cancel
           </button>
           <button
             onClick={apply}
             disabled={busy || !picked.size}
-            className="px-lg h-9 rounded-lg text-body-md font-semibold bg-tertiary-container text-on-tertiary-container hover:opacity-90 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            className="btn btn-go"
           >
             {busy ? 'Cleaning…' : `Clean ${picked.size} song${picked.size === 1 ? '' : 's'}`}
           </button>

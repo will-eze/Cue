@@ -119,7 +119,7 @@ export default function SongScrapeModal({ onClose, onSaved }) {
                   className="bg-surface-container-lowest border border-outline-variant/30 rounded px-sm py-1 text-body-md text-on-surface focus:outline-none focus:border-primary" />
               </label>
               <button onClick={runSearch} disabled={searching || !`${title}${artist}`.trim()}
-                className="bg-primary text-on-primary px-md py-1 rounded text-label-sm font-label-sm font-bold hover:brightness-110 active:scale-95 transition-all flex items-center gap-xs disabled:opacity-50 disabled:cursor-not-allowed h-[30px]">
+                className="btn btn-sm btn-primary">
                 <span className="material-symbols-outlined text-[16px]">{searching ? 'hourglass_empty' : 'search'}</span>
                 {searching ? 'Searching…' : 'Search'}
               </button>
@@ -134,7 +134,7 @@ export default function SongScrapeModal({ onClose, onSaved }) {
                   className="bg-surface-container-lowest border border-outline-variant/30 rounded px-sm py-1 text-body-md text-on-surface focus:outline-none focus:border-primary" />
               </label>
               <button onClick={loadFromUrl} disabled={fetching}
-                className="bg-primary text-on-primary px-md py-1 rounded text-label-sm font-label-sm font-bold hover:brightness-110 active:scale-95 transition-all flex items-center gap-xs disabled:opacity-50 h-[30px]">
+                className="btn btn-sm btn-primary">
                 <span className="material-symbols-outlined text-[16px]">download</span> Fetch
               </button>
             </div>
@@ -219,11 +219,11 @@ export default function SongScrapeModal({ onClose, onSaved }) {
           {error && <p className="text-label-sm font-label-sm text-error truncate">{error}</p>}
           <div className="ml-auto flex items-center gap-sm">
             <button onClick={onClose}
-              className="text-on-surface-variant px-md py-xs rounded text-label-sm font-label-sm hover:bg-surface-variant transition-colors">
+              className="btn btn-sm btn-ghost">
               Cancel
             </button>
             <button onClick={save} disabled={!loaded || saving || !draftLyrics.trim()}
-              className="bg-tertiary text-on-tertiary px-lg py-xs rounded text-label-sm font-label-sm font-bold hover:brightness-110 active:scale-95 transition-all flex items-center gap-xs disabled:opacity-40 disabled:cursor-not-allowed">
+              className="btn btn-sm btn-go">
               <span className="material-symbols-outlined text-[16px]">{saving ? 'hourglass_empty' : 'library_add'}</span>
               {saving ? 'Saving…' : 'Add to Library'}
             </button>

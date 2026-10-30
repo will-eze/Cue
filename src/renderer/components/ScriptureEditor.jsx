@@ -55,6 +55,29 @@ export default function ScriptureEditor({ onClose, onSave }) {
 
   const fonts = useFonts();
 
+  // Preview text: a stock verse, or any passage the operator types (first installed
+  // translation) so they can check a long verse or a short one against the style.
+  const [sampleQuery, setSampleQuery] = useState('');
+  const [sample, setSample] = useState({ text: SAMPLE_TEXT, ref: SAMPLE_REF, abbrev: 'KJV' });
+  const [sampleMiss, setSampleMiss] = useState(false);
+  useEffect(() => {
+    const q = sampleQuery.trim();
+    if (!q) { setSample({ text: SAMPLE_TEXT, ref: SAMPLE_REF, abbrev: 'KJV' }); setSampleMiss(false); return undefined; }
+    const t = setTimeout(async () => {
+      try {
+        const versions = await window.cue.bible.versions();
+        const v = versions?.[0];
+        if (!v) { setSampleMiss('none'); return; }
+        const res = await window.cue.bible.resolve(v.id, q, 99);
+        if (res?.verses?.length) {
+          setSample({ text: res.verses.map((x) => x.text).join(' '), ref: res.reference, abbrev: res.versionAbbrev || v.abbrev });
+          setSampleMiss(false);
+        } else setSampleMiss('ref');
+      } catch { setSampleMiss('ref'); }
+    }, 250);
+    return () => clearTimeout(t);
+  }, [sampleQuery]);
+
   // Load saved scripture verse style, reference style + background. Seeded via
   // reset() so the async hydrate is the baseline, not the first undo step.
   useEffect(() => {
@@ -136,7 +159,17 @@ export default function ScriptureEditor({ onClose, onSave }) {
     }
   }
 
-  const refLine = `${SAMPLE_REF} (KJV)`;
+  const refLine = `${sample.ref} (${sample.abbrev})`;
+
+  // One-line summary of a style for the cards on the left.
+  const summary = (st) => [
+    st.fontFamily || 'Theme font',
+    st.fontSize ? `${st.fontSize}px` : null,
+    st.bold ? 'Bold' : null,
+    st.italic ? 'Italic' : null,
+    st.uppercase ? 'All caps' : null,
+    st.align ? ({ left: 'Left', center: 'Centred', right: 'Right', justify: 'Justified' })[st.align] : null,
+  ].filter(Boolean).join(' · ');
 
   return createPortal(
     <div className="fixed inset-0 bg-background/90 backdrop-blur-sm flex items-center justify-center z-50 p-2">
@@ -144,55 +177,22 @@ export default function ScriptureEditor({ onClose, onSave }) {
 
         {/* Header */}
         <div className="flex items-center gap-md px-lg py-sm border-b border-outline-variant/30 bg-surface-container-high flex-shrink-0">
-          <div className="flex items-center gap-sm">
-            <span className="material-symbols-outlined text-primary text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>menu_book</span>
-            <div>
-              <h2 className="text-headline-md font-bold text-primary leading-tight tracking-tight">Scripture Appearance</h2>
-              <p className="text-[11px] font-mono text-on-surface-variant/60">Applies to every verse</p>
-            </div>
+          <span className="material-symbols-outlined text-primary text-[20px] shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>menu_book</span>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-headline-md font-semibold text-on-surface leading-tight truncate">Scripture appearance</h2>
+            <p className="text-body-md text-on-surface-variant truncate">Applies to every verse you put on screen</p>
           </div>
-          <div className="flex-1" />
-          <UndoRedoButtons undo={doc.undo} redo={doc.redo} canUndo={doc.canUndo} canRedo={doc.canRedo} />
-          <button onClick={() => setShowThemePicker(true)}
-            className="flex items-center gap-xs bg-surface-container text-on-surface-variant text-[11px] font-mono rounded-lg px-sm h-7 border border-outline-variant/30 hover:border-outline-variant hover:text-on-surface cursor-pointer transition-colors">
-            <span className="material-symbols-outlined text-[15px]">style</span>
-            Load Theme…
-          </button>
-          <button onClick={onClose}
-            className="w-7 h-7 flex items-center justify-center rounded-full text-on-surface-variant hover:text-on-surface hover:bg-surface-variant transition-colors cursor-pointer text-sm">
-            ✕
-          </button>
-        </div>
-
-        {/* Background row */}
-        <div className="flex-shrink-0 border-b border-outline-variant/20 bg-surface-container/40 px-lg py-sm flex items-center gap-md">
-          <div>
-            <label className="block text-[11px] font-mono text-on-surface-variant/60 mb-0.5">Default Background</label>
-            <div className="flex items-center gap-sm">
-              <div className="w-16 aspect-video rounded border border-outline-variant/30 bg-surface-container overflow-hidden cursor-pointer group relative flex-shrink-0"
-                onClick={() => setShowBgPicker(true)}>
-                {background ? (
-                  /\.(mp4|webm|mov)$/i.test(background.path)
-                    ? <video src={mediaUrl(background.path)} className="w-full h-full object-cover" muted />
-                    : <img src={mediaUrl(background.path)} className="w-full h-full object-cover" alt="" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <span className="material-symbols-outlined text-on-surface-variant/70 text-base">wallpaper</span>
-                  </div>
-                )}
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                  <span className="material-symbols-outlined text-white text-xs">edit</span>
-                </div>
-              </div>
-              {background && (
-                <button onClick={() => setBackground(null)}
-                  className="text-[11px] font-mono text-error/60 hover:text-error cursor-pointer">Clear</button>
-              )}
-            </div>
+          <div className="flex items-center gap-sm shrink-0">
+            <UndoRedoButtons undo={doc.undo} redo={doc.redo} canUndo={doc.canUndo} canRedo={doc.canRedo} />
+            <button onClick={() => setShowThemePicker(true)} className="btn btn-secondary">
+              <span className="material-symbols-outlined text-[16px]">style</span>
+              Load theme…
+            </button>
+            <button onClick={onClose} title="Close" aria-label="Close"
+              className="w-8 h-8 flex items-center justify-center rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-variant transition-colors cursor-pointer">
+              <span className="material-symbols-outlined text-[20px]">close</span>
+            </button>
           </div>
-          <p className="text-body-sm text-on-surface-variant/70 max-w-md">
-            Shown behind every scripture verse unless a per-slot override is set in the rundown. Images and videos supported.
-          </p>
         </div>
 
         {showBgPicker && (
@@ -211,89 +211,139 @@ export default function ScriptureEditor({ onClose, onSave }) {
           />
         )}
 
-        {/* Target toggle — choose what the toolbar edits */}
-        <div className="flex items-center gap-sm px-lg py-xs border-b border-outline-variant/20 bg-surface-container/40 flex-shrink-0">
-          <span className="text-[11px] font-mono text-on-surface-variant/60">Editing</span>
-          <div className="flex items-center gap-[2px] bg-surface-container rounded p-[2px]">
-            {[{ id: 'verse', label: 'Verse Text' }, { id: 'reference', label: 'Reference' }].map(({ id, label }) => (
-              <button key={id}
-                onMouseDown={(e) => { e.preventDefault(); setTarget(id); }}
-                className={`px-md h-6 text-[11px] font-mono rounded transition-colors cursor-pointer ${
-                  target === id ? 'bg-primary text-on-primary' : 'text-on-surface-variant/60 hover:text-on-surface-variant'
-                }`}
-              >{label}</button>
-            ))}
-          </div>
-          <span className="text-[11px] font-mono text-on-surface-variant/60">
-            {target === 'reference' ? 'Styling “John 3:16 (KJV)”' : 'Styling the verse text'}
-          </span>
-        </div>
-
-        {/* Toolbar — edits the verse or reference style depending on target */}
-        <FormattingToolbar
-          style={activeStyle}
-          onChange={setActiveStyle}
-          fonts={fonts}
-          hasSelection={() => false}
-          execCmd={() => {}}
-          previewTemplate={previewTemplate}
-          simple={target === 'reference'}
-        />
-
-        {/* Preview */}
-        <div className="flex-1 flex flex-col min-h-0 bg-surface-container-lowest p-md">
-          <div className="flex items-center justify-between mb-sm flex-shrink-0">
-            <span className="text-[11px] font-mono text-on-surface-variant/60">
-              {previewTemplate === 'lowerthird' ? 'Lower Third' : 'Fullscreen'} — sample verse
-            </span>
-            <div className="flex items-center gap-[2px] bg-surface-container rounded p-[2px]">
-              {[{ id: 'fullscreen', label: 'Full' }, { id: 'lowerthird', label: 'L3' }].map(({ id, label }) => (
+        <div className="flex-1 flex min-h-0">
+          {/* Left: what you're styling, the background, and the preview text */}
+          <div className="w-[360px] shrink-0 border-r border-outline-variant/30 overflow-y-auto custom-scrollbar p-lg flex flex-col gap-lg">
+            <section className="flex flex-col gap-sm">
+              <h3 className="text-[13px] font-semibold text-on-surface">What you're styling</h3>
+              {[
+                { id: 'verse', label: 'Verse text', body: sample.text, st: style, clamp: true },
+                { id: 'reference', label: 'Reference', body: refLine, st: refStyle },
+              ].map(({ id, label, body, st, clamp }) => (
                 <button key={id}
-                  onMouseDown={(e) => { e.preventDefault(); setPreviewTemplate(id); }}
-                  className={`px-sm h-[18px] text-[11px] font-mono rounded transition-colors cursor-pointer ${
-                    previewTemplate === id ? 'bg-primary text-on-primary' : 'text-on-surface-variant/60 hover:text-on-surface-variant'
+                  onMouseDown={(e) => { e.preventDefault(); setTarget(id); }}
+                  aria-pressed={target === id}
+                  className={`text-left rounded-lg border px-md py-sm transition-colors cursor-pointer ${
+                    target === id
+                      ? 'border-primary/60 bg-primary/10'
+                      : 'border-outline-variant/30 bg-surface-container hover:border-outline-variant/60'
                   }`}
-                >{label}</button>
+                >
+                  <span className="flex items-center justify-between gap-sm">
+                    <span className={`text-[13px] font-semibold ${target === id ? 'text-primary' : 'text-on-surface'}`}>{label}</span>
+                    {target === id && <span className="text-[12px] text-primary">Editing</span>}
+                  </span>
+                  <span className={`block mt-xs text-[15px] leading-snug text-on-surface ${clamp ? 'line-clamp-3' : 'truncate'}`}>{body}</span>
+                  <span className="block mt-xs text-[12px] text-on-surface-variant truncate">{summary(st)}</span>
+                </button>
               ))}
-            </div>
-          </div>
-          <div className="flex-1 flex items-center justify-center min-h-0 overflow-hidden">
-            {/* Height-bound 16:9 box: fits the available section regardless of toolbar height */}
-            <div className="h-full max-w-full relative" style={{ aspectRatio: '16 / 9' }}>
-              {previewTemplate === 'lowerthird' ? (
-                <LowerThirdPreview text={SAMPLE_TEXT} runs={[]} style={style} copyright={refLine} copyrightAlign="right" copyrightStyle={refStyle} />
-              ) : (
-                <SlidePreview text={SAMPLE_TEXT} runs={[]} style={style} backgroundPath={background?.path ?? null} copyright={refLine} copyrightAlign="right" copyrightStyle={refStyle}
-                  onTextBoxChange={(box) => setStyle((s) => ({ ...s, textBox: box }))}
-                  onRefPosChange={(pos) => setRefStyle((s) => ({ ...s, pos }))} />
-              )}
-              {bgLoading && (
-                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-xs bg-background/55 pointer-events-none">
-                  <span className="material-symbols-outlined text-primary animate-spin text-[28px]">progress_activity</span>
-                  <span className="text-[11px] font-mono text-on-surface-variant">Loading background…</span>
+            </section>
+
+            <section className="flex flex-col gap-sm">
+              <h3 className="text-[13px] font-semibold text-on-surface">Default background</h3>
+              <div className="flex items-center gap-md">
+                <button onClick={() => setShowBgPicker(true)} title="Choose a background"
+                  className="w-32 aspect-video shrink-0 rounded-lg border border-outline-variant/30 bg-surface-container overflow-hidden cursor-pointer group relative">
+                  {background ? (
+                    /\.(mp4|webm|mov)$/i.test(background.path)
+                      ? <video src={mediaUrl(background.path)} className="w-full h-full object-cover" muted />
+                      : <img src={mediaUrl(background.path)} className="w-full h-full object-cover" alt="" />
+                  ) : (
+                    <span className="w-full h-full flex items-center justify-center">
+                      <span className="material-symbols-outlined text-on-surface-variant/70 text-[22px]">wallpaper</span>
+                    </span>
+                  )}
+                  <span className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <span className="material-symbols-outlined text-white text-[18px]">edit</span>
+                  </span>
+                </button>
+                <div className="flex flex-col gap-xs min-w-0">
+                  <button onClick={() => setShowBgPicker(true)} className="btn btn-sm btn-secondary">{background ? 'Change…' : 'Choose…'}</button>
+                  {background && <button onClick={() => setBackground(null)} className="btn btn-sm btn-ghost">Remove</button>}
                 </div>
-              )}
+              </div>
+              <p className="text-body-md text-on-surface-variant">
+                Shown behind every verse unless a rundown item sets its own. Images and videos both work.
+              </p>
+            </section>
+
+            <section className="flex flex-col gap-sm">
+              <h3 className="text-[13px] font-semibold text-on-surface">Preview with</h3>
+              <input
+                value={sampleQuery}
+                onChange={(e) => setSampleQuery(e.target.value)}
+                placeholder="John 3:16, or any reference"
+                className="h-9 px-md rounded-lg bg-surface-container-lowest border border-outline-variant/40 text-body-md text-on-surface placeholder:text-on-surface-variant/60 outline-none focus:border-primary"
+              />
+              <p className={`text-[12px] ${sampleMiss === 'ref' ? 'text-error' : 'text-on-surface-variant'}`}>
+                {sampleMiss === 'none' ? 'Install a Bible translation in the Scripture tab to preview your own verses.'
+                  : sampleMiss ? 'No passage found for that reference.'
+                  : 'Try a long passage to check the text still fits.'}
+              </p>
+            </section>
+          </div>
+
+          {/* Right: toolbar + live preview, as in the Song Editor */}
+          <div className="flex-1 min-w-0 flex flex-col">
+            <FormattingToolbar
+              style={activeStyle}
+              onChange={setActiveStyle}
+              fonts={fonts}
+              hasSelection={() => false}
+              execCmd={() => {}}
+              previewTemplate={previewTemplate}
+              simple={target === 'reference'}
+            />
+
+            <div className="flex-1 flex flex-col min-h-0 bg-surface-container-lowest p-md">
+              <div className="flex items-center justify-between mb-sm flex-shrink-0">
+                <span className="text-[12px] text-on-surface-variant">
+                  {target === 'reference' ? 'Reference' : 'Verse text'} · {previewTemplate === 'lowerthird' ? 'Lower third' : 'Fullscreen'}
+                </span>
+                <div className="flex items-center gap-[2px] bg-surface-container rounded-md p-[2px]">
+                  {[{ id: 'fullscreen', label: 'Full' }, { id: 'lowerthird', label: 'L3' }].map(({ id, label }) => (
+                    <button key={id}
+                      onMouseDown={(e) => { e.preventDefault(); setPreviewTemplate(id); }}
+                      className={`px-sm h-6 text-[12px] rounded transition-colors cursor-pointer ${
+                        previewTemplate === id ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:text-on-surface'
+                      }`}
+                    >{label}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex-1 flex items-center justify-center min-h-0 overflow-hidden">
+                {/* Height-bound 16:9 box: fits the available section regardless of toolbar height */}
+                <div className="h-full max-w-full relative" style={{ aspectRatio: '16 / 9' }}>
+                  {previewTemplate === 'lowerthird' ? (
+                    <LowerThirdPreview text={sample.text} runs={[]} style={style} copyright={refLine} copyrightAlign="right" copyrightStyle={refStyle} />
+                  ) : (
+                    <SlidePreview text={sample.text} runs={[]} style={style} backgroundPath={background?.path ?? null} copyright={refLine} copyrightAlign="right" copyrightStyle={refStyle}
+                      onTextBoxChange={(box) => setStyle((s) => ({ ...s, textBox: box }))}
+                      onRefPosChange={(pos) => setRefStyle((s) => ({ ...s, pos }))} />
+                  )}
+                  {bgLoading && (
+                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-xs bg-background/55 pointer-events-none">
+                      <span className="material-symbols-outlined text-primary animate-spin text-[28px]">progress_activity</span>
+                      <span className="text-[12px] text-on-surface-variant">Loading background…</span>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-lg py-sm border-t border-outline-variant/30 bg-surface-container-high flex-shrink-0">
-          <div className="flex items-center gap-xs">
-            <span className="w-1.5 h-1.5 rounded-full bg-tertiary/60" />
-            <span className="text-[11px] font-mono text-on-surface-variant/60">
-              {styleIsDefault(style) ? 'Template defaults' : 'Custom style'}
-            </span>
-          </div>
-          <div className="flex items-center gap-sm">
-            {saveError && <span className="text-label-sm font-mono text-error">{saveError}</span>}
-            <button onClick={onClose}
-              className="px-lg h-8 text-label-sm font-mono text-on-surface-variant hover:text-on-surface rounded-lg hover:bg-surface-variant transition-colors cursor-pointer">
-              Cancel
-            </button>
-            <button onClick={handleSave} disabled={saving || !loaded}
-              className="px-lg h-8 text-label-sm font-mono bg-tertiary-container text-on-tertiary-container disabled:opacity-40 rounded-lg transition-colors cursor-pointer hover:opacity-90">
-              {saving ? 'Saving…' : 'Save Appearance'}
+        <div className="flex items-center justify-between gap-md px-lg py-sm border-t border-outline-variant/30 bg-surface-container-high flex-shrink-0">
+          <span className="flex items-center gap-xs text-body-md text-on-surface-variant min-w-0 truncate">
+            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${styleIsDefault(style) ? 'bg-on-surface-variant/50' : 'bg-tertiary'}`} />
+            {styleIsDefault(style) ? 'Using the theme defaults' : 'Custom style'}
+          </span>
+          <div className="flex items-center gap-sm shrink-0">
+            {saveError && <span className="text-body-md text-error">{saveError}</span>}
+            <button onClick={onClose} className="btn btn-ghost">Cancel</button>
+            <button onClick={handleSave} disabled={saving || !loaded} className="btn btn-go">
+              {saving ? 'Saving…' : 'Save appearance'}
             </button>
           </div>
         </div>

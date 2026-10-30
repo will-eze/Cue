@@ -80,11 +80,11 @@ export default function UpdateAvailableModal({ info, onClose }) {
             >Skip This Version</button>
             <button
               onClick={onClose}
-              className="px-md py-xs rounded text-label-sm font-label-sm text-on-surface-variant hover:bg-surface-variant transition-colors cursor-pointer"
+              className="btn btn-sm btn-ghost"
             >Later</button>
             <button
               onClick={install}
-              className="bg-primary text-on-primary px-lg py-xs rounded text-label-sm font-label-sm font-bold hover:brightness-110 active:scale-95 transition-all cursor-pointer flex items-center gap-xs"
+              className="btn btn-sm btn-primary"
             >
               <span className="material-symbols-outlined text-[14px]">download</span>
               Install Now

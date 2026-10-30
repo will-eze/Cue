@@ -38,7 +38,7 @@ const CONFIDENCE_META = {
   exact: { icon: 'check_circle', cls: 'text-tertiary', label: 'Exact' },
   high:  { icon: 'check_circle', cls: 'text-primary',  label: 'Match' },
   low:   { icon: 'warning',      cls: 'text-yellow-400', label: 'Fuzzy' },
-  none:  { icon: 'cancel',       cls: 'text-error',    label: 'Not Found' },
+  none:  { icon: 'cancel',       cls: 'text-error',    label: 'Not found' },
 };
 
 // A single library song the operator can preview or pick — used both for the
@@ -67,6 +67,7 @@ function SongOption({ song, current, onPick, onPreview, isPreviewing }) {
 
 function ResultRow({ row, index, dupOf, onChange, onPreview, onCreate, onSplit, previewId }) {
   const [open, setOpen] = useState(false);
+  const [showLines, setShowLines] = useState(false);
   const [q, setQ] = useState('');
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -125,13 +126,14 @@ function ResultRow({ row, index, dupOf, onChange, onPreview, onCreate, onSplit, 
   }
 
   return (
-    <div className={`flex items-center gap-md px-md py-sm rounded-lg border transition-colors ${
+    <div className={`rounded-lg border transition-colors ${
       previewId && effective && previewId === effective.id
         ? 'border-primary/60 bg-primary/10'
         : row.selected
           ? 'border-primary/40 bg-primary/5'
           : 'border-outline-variant/30 bg-surface-container'
     }`}>
+    <div className="flex items-center gap-md px-md py-sm">
       {/* Select toggle */}
       <input
         type="checkbox"
@@ -148,9 +150,17 @@ function ResultRow({ row, index, dupOf, onChange, onPreview, onCreate, onSplit, 
         {(row.lines.length > 1 || dupOf != null) && (
           <p className="flex items-center gap-sm text-label-sm text-on-surface-variant mt-[1px]">
             {row.lines.length > 1 && (
-              <span title={row.query} className="truncate">
-                {row.lyrics ? `Pasted lyrics · ${row.lines.length} lines` : `${row.lines.length} lines combined`}
-              </span>
+              <button
+                onClick={() => setShowLines((v) => !v)}
+                aria-expanded={showLines}
+                title={showLines ? 'Hide the pasted lines' : 'Show the pasted lines in this row'}
+                className="flex items-center gap-[2px] min-w-0 hover:text-on-surface cursor-pointer"
+              >
+                <span className="truncate">
+                  {row.lyrics ? `Pasted lyrics · ${row.lines.length} lines` : `${row.lines.length} lines combined`}
+                </span>
+                <span className={`material-symbols-outlined text-[16px] shrink-0 transition-transform ${showLines ? 'rotate-180' : ''}`}>expand_more</span>
+              </button>
             )}
             {dupOf != null && (
               <span className="shrink-0 text-yellow-400" title="This song is already earlier in the list">Repeat of #{dupOf + 1}</span>
@@ -295,6 +305,14 @@ function ResultRow({ row, index, dupOf, onChange, onPreview, onCreate, onSplit, 
             </button>
         </AnchoredMenu>
       </div>
+    </div>
+      {showLines && row.lines.length > 1 && (
+        <ol className="pl-[88px] pr-md pb-sm space-y-[2px]">
+          {row.lines.map((l, i) => (
+            <li key={i} className="text-body-md text-on-surface-variant truncate" title={l}>{l}</li>
+          ))}
+        </ol>
+      )}
     </div>
   );
 }
@@ -554,7 +572,7 @@ export default function SongListImportModal({ onCancel, onAddManyToRundown }) {
           <div className="flex items-center gap-sm min-w-0">
             <span className="material-symbols-outlined text-primary">format_list_bulleted_add</span>
             <div className="min-w-0">
-              <h2 className="text-headline-md font-bold text-on-surface tracking-tight">Paste Song List</h2>
+              <h2 className="text-headline-md font-bold text-on-surface tracking-tight">Paste song list</h2>
               <p className="text-label-sm font-label-sm text-on-surface-variant">
                 {step === 'input'
                   ? 'Paste a set list, titles or lyrics, however messy, to match against your library'
@@ -676,7 +694,7 @@ export default function SongListImportModal({ onCancel, onAddManyToRundown }) {
             <button
               onClick={onCancel}
               disabled={step === 'matching' || step === 'adding'}
-              className="px-lg py-sm rounded-lg text-label-sm font-label-sm text-on-surface-variant hover:bg-surface-variant transition-colors cursor-pointer disabled:opacity-40"
+              className="btn btn-ghost"
             >
               Cancel
             </button>
@@ -684,19 +702,19 @@ export default function SongListImportModal({ onCancel, onAddManyToRundown }) {
               <button
                 onClick={handleMatch}
                 disabled={!text.trim() || step === 'matching'}
-                className="px-lg py-sm rounded-lg text-label-sm font-label-sm font-bold bg-primary text-on-primary hover:brightness-110 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100 flex items-center gap-xs"
+                className="btn btn-primary"
               >
                 {step === 'matching' && <span className="material-symbols-outlined text-[14px] animate-spin" style={{ animationDuration: '1s' }}>progress_activity</span>}
-                {step === 'matching' ? 'Matching…' : 'Match Songs'}
+                {step === 'matching' ? 'Matching…' : 'Match songs'}
               </button>
             )}
             {step === 'results' && (
               <button
                 onClick={handleAdd}
                 disabled={selectedCount === 0}
-                className="px-lg py-sm rounded-lg text-label-sm font-label-sm font-bold bg-tertiary-container text-on-tertiary hover:brightness-110 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
+                className="btn btn-go"
               >
-                Add {selectedCount || ''} Song{selectedCount === 1 ? '' : 's'} to Rundown
+                Add {selectedCount || ''} song{selectedCount === 1 ? '' : 's'} to rundown
               </button>
             )}
           </div>

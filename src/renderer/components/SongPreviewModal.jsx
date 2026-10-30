@@ -121,20 +121,20 @@ export default function SongPreviewModal({ song, onClose, onEdit, onAddToRundown
         <div className="flex items-center gap-sm px-lg py-md border-t border-outline-variant/20 bg-surface-container-high rounded-b-xl flex-shrink-0">
           <button
             onClick={() => onEdit(fullSong || song)}
-            className="px-md h-8 text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface bg-surface-container hover:bg-surface-variant border border-outline-variant/30 rounded-lg transition-colors cursor-pointer"
+            className="btn btn-secondary"
           >
             Edit
           </button>
           <div className="flex-1" />
           <button
             onClick={onClose}
-            className="px-md h-8 text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface rounded-lg hover:bg-surface-variant transition-colors cursor-pointer"
+            className="btn btn-ghost"
           >
             Close
           </button>
           <button
             onClick={() => onAddToRundown(song.id)}
-            className="px-md h-8 text-label-sm font-label-sm bg-primary text-on-primary rounded-lg transition-colors cursor-pointer hover:opacity-90"
+            className="btn btn-primary"
           >
             Add to Rundown
           </button>

@@ -305,7 +305,7 @@ function AutoAdvanceModal({ item, onApply, onClose }) {
           ))}
           <button
             onClick={() => apply(null)}
-            className="py-xs text-[12px] font-mono rounded border border-outline-variant/30 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface cursor-pointer transition-colors"
+            className="btn btn-sm btn-secondary"
           >
             Off
           </button>
@@ -363,7 +363,7 @@ function AutoAdvanceModal({ item, onApply, onClose }) {
           />
           <button
             onClick={() => apply(secs)}
-            className="shrink-0 px-md py-xs bg-primary text-on-primary text-label-sm font-label-sm rounded cursor-pointer hover:brightness-110 active:scale-95"
+            className="btn btn-sm btn-primary shrink-0"
           >
             Set
           </button>
@@ -722,7 +722,7 @@ export default function RundownPanel({
           />
           <button
             onClick={handleCreateService}
-            className="shrink-0 px-sm py-xs bg-primary text-on-primary text-label-sm font-label-sm rounded cursor-pointer hover:brightness-110 active:scale-95"
+            className="btn btn-sm btn-primary shrink-0"
           >
             Create
           </button>
@@ -759,7 +759,7 @@ export default function RundownPanel({
               <button
                 onClick={() => setBulkBgPicker(true)}
                 title="Set the same background on all selected songs/scripture"
-                className="flex items-center gap-xs text-[11px] font-label-sm text-on-surface-variant hover:text-on-surface border border-outline-variant/40 hover:border-outline-variant rounded px-sm py-[2px] cursor-pointer transition-colors"
+                className="btn btn-sm btn-secondary"
               >
                 <span className="material-symbols-outlined text-[13px]">wallpaper</span>
                 Background

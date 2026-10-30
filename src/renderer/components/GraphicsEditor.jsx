@@ -1167,7 +1167,7 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
                     ))}
                     {!draft.html.trim() && (
                       <button onClick={() => set({ html: STARTER_HTML })}
-                        className="px-xs py-[2px] rounded text-[11px] font-mono bg-surface-container border border-outline-variant/40 text-on-surface-variant hover:text-on-surface cursor-pointer">Starter</button>
+                        className="btn btn-sm btn-secondary">Starter</button>
                     )}
                   </div>
                 </div>
@@ -1302,9 +1302,9 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
 
         {/* Footer */}
         <div className="px-lg py-md border-t border-outline-variant/20 bg-surface-container-high rounded-b-xl flex items-center justify-end gap-sm shrink-0">
-          <button onClick={onClose} className="px-lg py-sm rounded-lg text-label-sm font-label-sm text-on-surface-variant hover:bg-surface-variant cursor-pointer">Cancel</button>
+          <button onClick={onClose} className="btn btn-ghost">Cancel</button>
           <button onClick={save} disabled={!canSave}
-            className="px-lg py-sm rounded-lg text-label-sm font-label-sm font-bold bg-tertiary-container text-on-tertiary hover:brightness-110 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
+            className="btn btn-go">
             {isEdit ? 'Save' : 'Create'}
           </button>
         </div>
@@ -1393,7 +1393,7 @@ function AudioTrackPickerModal({ selectedId, onSelect, onClose }) {
           )}
         </div>
         <div className="px-lg py-sm border-t border-outline-variant/20 flex justify-end shrink-0">
-          <button onClick={onClose} className="px-md py-1.5 rounded text-label-sm font-label-sm bg-surface-container-high border border-outline-variant/40 text-on-surface-variant hover:text-on-surface cursor-pointer">Cancel</button>
+          <button onClick={onClose} className="btn btn-secondary">Cancel</button>
         </div>
       </div>
     </div>,

@@ -1721,7 +1721,7 @@ export default function OperatorView({
       {armNotice && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-sm px-lg py-sm rounded-full border border-outline-variant/50 bg-surface-container-high pointer-events-none text-label-sm font-bold text-on-surface-variant">
           <span className="material-symbols-outlined text-[16px]">lock</span>
-          Bare {armNotice === 'go' ? 'GO' : armNotice === 'output' ? 'Output toggle' : 'Clear'} is disarmed — turn Hotkeys ON (or arm it in Settings)
+          Bare {armNotice === 'go' ? 'GO' : armNotice === 'output' ? 'Output toggle' : 'Clear'} is off. Turn Hotkeys on to use it.
         </div>
       )}
       {/* Top work area */}
@@ -1793,6 +1793,7 @@ export default function OperatorView({
             onToggleLoop={handleToggleLoop}
             bareArmed={bareArmed}
             onToggleBareArmed={toggleBareArmed}
+            onShowShortcuts={() => setHelpOpen(true)}
             jumpKeys={jumpArmed ? JUMP_KEYS : null}
             jumpArmed={jumpArmed}
             onToggleJumpArmed={async () => {

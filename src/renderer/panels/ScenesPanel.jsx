@@ -70,7 +70,7 @@ export default function ScenesPanel() {
         <span className="text-label-sm font-label-sm text-on-surface-variant shrink-0">Scenes</span>
         <span className="text-[11px] font-mono text-on-surface-variant/60 normal-case tracking-normal ml-xs min-w-0 truncate">one-press output state recall</span>
         <button onClick={() => setEditor({})}
-          className="ml-auto shrink-0 flex items-center gap-xs px-md py-xs rounded text-label-sm font-label-sm bg-primary text-on-primary font-bold hover:brightness-110 cursor-pointer">
+          className="btn btn-sm btn-primary ml-auto shrink-0">
           <span className="material-symbols-outlined text-[14px]">add</span> New Scene
         </button>
       </div>
@@ -170,7 +170,7 @@ function SceneCard({ scene, onTake, onEdit, onDelete }) {
 
       <div className="px-md pb-md">
         <button onClick={onTake}
-          className="w-full px-md py-1.5 rounded text-label-sm font-label-sm font-bold bg-tertiary-container text-on-tertiary hover:brightness-110 cursor-pointer">
+          className="btn btn-go w-full">
           Take
         </button>
       </div>
@@ -274,7 +274,7 @@ function SceneEditor({ scene, onClose, onSaved }) {
               ) : (
                 <button
                   onClick={() => setCapturingKey(true)}
-                  className="h-9 rounded-lg border border-outline-variant/40 bg-surface-container-lowest text-body-md text-on-surface hover:border-primary/60 cursor-pointer text-center"
+                  className="btn btn-secondary text-center"
                 >
                   {hotkey || '—'}
                   {hotkey && (
@@ -329,14 +329,14 @@ function SceneEditor({ scene, onClose, onSaved }) {
         <div className="flex items-center gap-sm px-lg h-14 border-t border-outline-variant/30 shrink-0">
           <div className="flex flex-col gap-0">
             <button onClick={testNow}
-              className="flex items-center gap-xs px-md py-1 rounded text-label-sm font-label-sm bg-surface-container border border-outline-variant/40 text-on-surface-variant hover:text-on-surface cursor-pointer">
+              className="btn btn-sm btn-secondary">
               <span className="material-symbols-outlined text-[14px]">play_arrow</span> Test
             </button>
             <span className="text-[11px] font-mono text-on-surface-variant/60 px-xs">Updates live output</span>
           </div>
-          <button onClick={onClose} className="ml-auto px-md py-1.5 rounded text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface cursor-pointer">Cancel</button>
+          <button onClick={onClose} className="btn btn-ghost ml-auto">Cancel</button>
           <button onClick={save} disabled={!name.trim()}
-            className="px-lg py-1.5 rounded text-label-sm font-label-sm font-bold bg-primary text-on-primary hover:brightness-110 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">Save</button>
+            className="btn btn-primary">Save</button>
         </div>
       </div>
     </div>

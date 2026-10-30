@@ -702,7 +702,7 @@ function StagePanel() {
               {running ? '⏸ Pause' : (totalSec > 0 && remaining !== totalSec ? '▶ Resume' : '▶ Start')}
             </button>
             <button onClick={handleReset} title="Reset to the set duration"
-              className="h-7 px-sm text-[11px] font-mono bg-surface-container-high border border-outline-variant/40 text-on-surface-variant hover:border-outline-variant hover:text-on-surface rounded transition-colors cursor-pointer">
+              className="btn btn-sm btn-secondary">
               ↺
             </button>
           </div>
@@ -772,12 +772,12 @@ function StagePanel() {
               onClick={() => savePreset(stageMsg.trim())}
               disabled={!stageMsg.trim() || msgPresets.includes(stageMsg.trim())}
               title="Save as preset"
-              className="h-7 px-sm text-[11px] font-mono bg-surface-container-high border border-outline-variant/40 text-on-surface-variant hover:border-outline-variant hover:text-on-surface rounded transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+              className="btn btn-sm btn-secondary"
             >
               + Preset
             </button>
             <button onClick={clearMsg}
-              className="h-7 px-sm text-[11px] font-mono bg-surface-container-high border border-outline-variant/40 text-on-surface-variant hover:border-outline-variant hover:text-on-surface rounded transition-colors cursor-pointer">
+              className="btn btn-sm btn-secondary">
               Clear
             </button>
           </div>

@@ -102,7 +102,7 @@ export default function DataSettings() {
               </button>
               <button
                 onClick={() => setConfirming(false)}
-                className="px-md py-xs text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface bg-surface-container hover:bg-surface-variant border border-outline-variant/30 rounded-lg transition-colors cursor-pointer"
+                className="btn btn-sm btn-secondary"
               >
                 Cancel
               </button>

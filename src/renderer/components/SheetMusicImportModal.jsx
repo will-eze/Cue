@@ -163,7 +163,7 @@ export default function SheetMusicImportModal({ onClose, onDone }) {
               </p>
               {error && <p className="text-label-sm font-label-sm text-error">{error}</p>}
               <button onClick={download}
-                className="bg-primary text-on-primary px-lg py-sm rounded-lg text-label-sm font-label-sm font-bold hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-xs">
+                className="btn btn-primary">
                 <span className="material-symbols-outlined text-[16px]">download</span> Download OCR model
               </button>
             </div>
@@ -257,7 +257,7 @@ export default function SheetMusicImportModal({ onClose, onDone }) {
                   Start over
                 </button>
                 <button onClick={openEditor}
-                  className="flex-[2] bg-primary text-on-primary px-lg py-sm rounded-lg text-label-sm font-label-sm font-bold hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-xs">
+                  className="btn btn-primary flex-[2]">
                   <span className="material-symbols-outlined text-[16px]">edit_note</span> Open in Song Editor
                 </button>
               </div>

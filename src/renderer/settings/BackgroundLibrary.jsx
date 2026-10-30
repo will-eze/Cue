@@ -212,7 +212,7 @@ function BrowserModal({ items, tagCounts, onClose, onChange, onPick, title = 'Ba
               {visible < filtered.length && (
                 <div ref={sentinelRef} className="flex justify-center pt-lg">
                   <button onClick={() => setVisible((v) => Math.min(v + BATCH, filtered.length))}
-                    className="px-lg py-sm text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface border border-outline-variant/30 hover:border-outline-variant rounded-lg transition-colors cursor-pointer flex items-center gap-xs">
+                    className="btn btn-secondary">
                     <span className="material-symbols-outlined text-[18px]">expand_more</span>
                     Load more · {shown.length} of {filtered.length}
                   </button>

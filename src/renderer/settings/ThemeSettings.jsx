@@ -839,11 +839,11 @@ function ThemeEditorModal({ theme, initialCategory, onClose, onSaved }) {
         {/* Footer */}
         <div className="flex items-center justify-end gap-sm px-lg py-sm border-t border-outline-variant/30 bg-surface-container-high flex-shrink-0">
           <button onClick={onClose}
-            className="px-lg h-8 text-label-sm font-mono text-on-surface-variant hover:text-on-surface rounded-lg hover:bg-surface-variant transition-colors cursor-pointer">
+            className="btn btn-ghost">
             Cancel
           </button>
           <button onClick={handleSave} disabled={!name.trim() || saving}
-            className="px-lg h-8 text-label-sm font-mono bg-tertiary-container text-on-tertiary-container disabled:opacity-40 rounded-lg transition-colors cursor-pointer hover:opacity-90">
+            className="btn btn-go">
             {saving ? 'Saving…' : theme?.id ? 'Update Theme' : 'Save Theme'}
           </button>
         </div>
@@ -1058,7 +1058,7 @@ function ThemeCard({ theme, services, activeServiceId, onEdit, onCustomize, onDu
                     : services.map((s) => <option key={s.id} value={s.id}>{s.title}</option>)}
                 </select>
                 <button onClick={handleApplyToRundown} disabled={!selectedServiceId || services.length === 0}
-                  className="shrink-0 px-sm py-[3px] text-[11px] font-mono bg-surface-container border border-outline-variant/40 text-on-surface-variant rounded hover:text-on-surface active:scale-95 transition-all cursor-pointer disabled:opacity-40">
+                  className="btn btn-sm btn-secondary shrink-0">
                   Bake
                 </button>
               </div>
@@ -1070,7 +1070,7 @@ function ThemeCard({ theme, services, activeServiceId, onEdit, onCustomize, onDu
                 </div>
               ) : (
                 <button onClick={() => setConfirmApplyAll(true)}
-                  className="w-full text-[11px] font-mono text-on-surface-variant/60 hover:text-on-surface border border-outline-variant/20 hover:border-outline-variant rounded px-sm py-[3px] transition-colors cursor-pointer">
+                  className="btn btn-sm btn-secondary w-full">
                   Bake into all songs
                 </button>
               )}
@@ -1445,14 +1445,14 @@ export default function ThemeSettings({ activeServiceId, onBackgroundDefaultChan
             <button
               onClick={handleImportTheme}
               title="Import a .cuetheme file"
-              className="px-md py-xs text-label-sm font-label-sm font-bold bg-surface-container border border-outline-variant/40 text-on-surface rounded-lg hover:border-primary/50 hover:text-primary active:scale-95 transition-all cursor-pointer flex items-center gap-xs"
+              className="btn btn-sm btn-secondary"
             >
               <span className="material-symbols-outlined text-[18px]">file_open</span>
               Import
             </button>
             <button
               onClick={() => setBrowsingBg(true)}
-              className="px-md py-xs text-label-sm font-label-sm font-bold bg-surface-container border border-outline-variant/40 text-on-surface rounded-lg hover:border-primary/50 hover:text-primary active:scale-95 transition-all cursor-pointer flex items-center gap-xs"
+              className="btn btn-sm btn-secondary"
             >
               <span className="material-symbols-outlined text-[18px]">wallpaper</span>
               New from a background
@@ -1482,7 +1482,7 @@ export default function ThemeSettings({ activeServiceId, onBackgroundDefaultChan
             {sortedThemes.length > 4 && (
               <button
                 onClick={() => setShowAll(true)}
-                className="mt-md w-full text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface border border-outline-variant/30 hover:border-outline-variant rounded-lg py-sm transition-colors cursor-pointer flex items-center justify-center gap-xs"
+                className="btn btn-secondary mt-md w-full"
               >
                 <span className="material-symbols-outlined text-[18px]">grid_view</span>
                 View all {sortedThemes.length} themes
@@ -1534,7 +1534,7 @@ export default function ThemeSettings({ activeServiceId, onBackgroundDefaultChan
             </div>
           ) : (
             <button onClick={() => setConfirmResetAll(true)}
-              className="shrink-0 px-md py-xs text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface border border-outline-variant/30 hover:border-outline-variant rounded-lg transition-colors cursor-pointer flex items-center gap-xs">
+              className="btn btn-sm btn-secondary shrink-0">
               <span className="material-symbols-outlined text-[16px]">restart_alt</span>
               Reset all songs to theme
             </button>

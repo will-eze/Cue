@@ -240,7 +240,7 @@ function PackageCard({
                 </button>
                 <button
                   onClick={onCancelRemove}
-                  className="px-md h-7 rounded-lg bg-surface-container-high text-on-surface-variant text-label-sm font-label-sm hover:text-on-surface transition-colors cursor-pointer"
+                  className="btn btn-sm btn-ghost"
                 >
                   Cancel
                 </button>
@@ -266,7 +266,7 @@ function PackageCard({
                 <button
                   onClick={onAskRemove}
                   disabled={anyBusy}
-                  className="w-full px-sm h-8 rounded-lg border border-outline-variant/40 bg-surface-container-high text-on-surface-variant text-label-sm font-label-sm hover:text-error hover:border-error/50 transition-colors cursor-pointer disabled:opacity-40"
+                  className="btn btn-secondary w-full"
                 >
                   Remove
                 </button>
@@ -282,7 +282,7 @@ function PackageCard({
               <button
                 onClick={onInstall}
                 disabled={anyBusy}
-                className="w-full flex items-center justify-center gap-xs px-sm h-8 rounded-lg bg-primary text-on-primary text-label-sm font-label-sm hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-40"
+                className="btn btn-primary w-full"
               >
                 <span className="material-symbols-outlined text-[15px]">download</span>Install
               </button>
@@ -291,7 +291,7 @@ function PackageCard({
                   onClick={onLocate}
                   disabled={anyBusy}
                   title="Already installed elsewhere? Point Cue at it."
-                  className="w-full px-sm h-7 rounded-lg border border-outline-variant/40 bg-surface-container-high text-on-surface-variant text-label-sm font-label-sm hover:text-on-surface transition-colors cursor-pointer disabled:opacity-40"
+                  className="btn btn-sm btn-secondary w-full"
                 >
                   Locate…
                 </button>
@@ -302,7 +302,7 @@ function PackageCard({
               <button
                 onClick={onExternal}
                 disabled={anyBusy}
-                className="w-full flex items-center justify-center gap-xs px-sm h-8 rounded-lg bg-primary text-on-primary text-label-sm font-label-sm hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-40"
+                className="btn btn-primary w-full"
               >
                 <span className="material-symbols-outlined text-[15px]">open_in_new</span>Get
               </button>
@@ -310,7 +310,7 @@ function PackageCard({
                 <button
                   onClick={onLocate}
                   disabled={anyBusy}
-                  className="w-full px-sm h-7 rounded-lg border border-outline-variant/40 bg-surface-container-high text-on-surface-variant text-label-sm font-label-sm hover:text-on-surface transition-colors cursor-pointer disabled:opacity-40"
+                  className="btn btn-sm btn-secondary w-full"
                 >
                   Locate…
                 </button>
@@ -437,7 +437,7 @@ function GpuPackageCard({ anyBusy, onBusy, busyId }) {
               </p>
               <div className="flex items-center gap-xs mt-sm">
                 <button onClick={remove} className="px-md h-7 rounded-lg bg-error text-on-error text-label-sm font-label-sm hover:opacity-90 transition-opacity cursor-pointer">Remove</button>
-                <button onClick={() => setConfirming(false)} className="px-md h-7 rounded-lg bg-surface-container-high text-on-surface-variant text-label-sm font-label-sm hover:text-on-surface transition-colors cursor-pointer">Cancel</button>
+                <button onClick={() => setConfirming(false)} className="btn btn-sm btn-ghost">Cancel</button>
               </div>
             </div>
           )}
@@ -457,7 +457,7 @@ function GpuPackageCard({ anyBusy, onBusy, busyId }) {
               <button
                 onClick={() => setConfirming(true)}
                 disabled={anyBusy}
-                className="w-full px-sm h-8 rounded-lg border border-outline-variant/40 bg-surface-container-high text-on-surface-variant text-label-sm font-label-sm hover:text-error hover:border-error/50 transition-colors cursor-pointer disabled:opacity-40"
+                className="btn btn-secondary w-full"
               >
                 Remove
               </button>
@@ -467,7 +467,7 @@ function GpuPackageCard({ anyBusy, onBusy, busyId }) {
               onClick={install}
               disabled={anyBusy || hw === null}
               title={hw === null ? 'No compatible GPU' : `Downloads ${rec.label} (~${rec.approxMB} MB)`}
-              className="w-full flex items-center justify-center gap-xs px-sm h-8 rounded-lg bg-primary text-on-primary text-label-sm font-label-sm hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-40"
+              className="btn btn-primary w-full"
             >
               <span className="material-symbols-outlined text-[15px]">download</span>Install
             </button>

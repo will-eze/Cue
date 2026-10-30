@@ -167,7 +167,7 @@ export default function OutputChannels() {
         </div>
         <button
           onClick={() => setCreatingChannel(true)}
-          className="bg-primary-container text-on-primary px-md py-sm rounded-lg text-label-sm font-label-sm font-bold flex items-center gap-xs hover:brightness-110 active:scale-95 transition-all cursor-pointer shrink-0"
+          className="btn btn-primary shrink-0"
         >
           <span className="material-symbols-outlined text-[14px]">add</span>
           New Channel
@@ -314,14 +314,14 @@ export default function OutputChannels() {
           <div className="flex gap-sm justify-end">
             <button
               onClick={() => { setCreatingChannel(false); setNewChannel({ name: '', type: 'screen', template: 'fullscreen', ndi_fps: 30, ndi_width: 1920, ndi_height: 1080, ndi_audio_muted: 1 }); }}
-              className="px-md py-sm text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface border border-outline-variant/30 rounded-lg cursor-pointer transition-colors"
+              className="btn btn-secondary"
             >
               Cancel
             </button>
             <button
               onClick={handleCreateChannel}
               disabled={!newChannel.name.trim()}
-              className="px-md py-sm text-label-sm font-label-sm font-bold bg-primary-container text-on-primary rounded-lg hover:brightness-110 active:scale-95 cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              className="btn btn-primary"
             >
               Create
             </button>
@@ -418,7 +418,7 @@ function ChannelCard({ channel, monitors, screens, assignedBounds, onUpdate, onD
             </label>
             <button
               onClick={saveEdit}
-              className="px-sm py-[3px] text-label-sm font-label-sm font-bold bg-primary-container text-on-primary rounded cursor-pointer hover:brightness-110 transition-all shrink-0"
+              className="btn btn-sm btn-primary shrink-0"
             >
               Save
             </button>

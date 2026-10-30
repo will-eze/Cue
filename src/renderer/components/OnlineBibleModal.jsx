@@ -184,7 +184,7 @@ export default function OnlineBibleModal({ onClose, onImported }) {
               {failures.length ? 'Close' : 'Cancel'}
             </button>
             <button onClick={handleDownload} disabled={!selectedCount || !!progress}
-              className="px-lg h-8 text-label-sm font-mono bg-tertiary-container text-on-tertiary-container disabled:opacity-40 rounded-lg transition-colors cursor-pointer hover:opacity-90 flex items-center gap-xs">
+              className="btn btn-go">
               <span className="material-symbols-outlined text-[16px]">cloud_download</span>
               {progress ? 'Downloading…' : `Download${selectedCount ? ` (${selectedCount})` : ''}`}
             </button>

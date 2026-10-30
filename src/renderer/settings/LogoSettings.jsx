@@ -101,7 +101,7 @@ export default function LogoSettings() {
           <div className="flex gap-sm">
             <button
               onClick={handlePickLogo}
-              className="bg-primary-container text-on-primary-container px-md py-sm rounded text-label-sm font-label-sm font-bold hover:brightness-110 active:scale-95 transition-all cursor-pointer"
+              className="btn btn-primary"
             >
               Pick Media
             </button>

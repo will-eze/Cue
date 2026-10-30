@@ -50,7 +50,7 @@ export default function PackagesSettings() {
         </div>
         <button
           onClick={() => setOpen(true)}
-          className="ml-auto flex items-center gap-xs bg-primary text-on-primary px-lg h-10 rounded-lg text-label-sm font-label-sm hover:opacity-90 transition-opacity cursor-pointer"
+          className="btn btn-primary ml-auto"
         >
           <span className="material-symbols-outlined text-[18px]">tune</span>
           Manage Packages

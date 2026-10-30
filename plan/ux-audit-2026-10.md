@@ -63,7 +63,7 @@ separate "songs".
 - [x] **Learn from corrections (strongest next win).** When the operator overrides a match
   ("Imela" → *Imela (Thank You)*), store `alias → song_id`; next week it's an exact hit.
   Shipped as `song_aliases` (schema v35); corrections and ticked check-this guesses are remembered and matched first; the Song Editor lists them as "Also called" with a forget button.
-- [ ] Show *which* lines were folded into a row (expandable), not just "6 lines".
+- [x] Show *which* lines were folded into a row: the "6 lines" note expands to list them.
 - [x] **Data bug in the bundled hymnal:** GHS 7 "Turn Your Eyes Upon Jesus" contains the
   lyrics of GHS 9 "Great Is Thy Faithfulness" (byte-identical). Fixed in the JSON + `patchGhs7Lyrics` backfill (only rewrites an install still holding the wrong text).
 
@@ -76,13 +76,9 @@ separate "songs".
   half is a lyrics document (every section, 15px), click any line to type there, Alt+↑/↓
   between sections, Split / By-stanza on the active card, play order collapsed to one
   line (`V1 · C · V2 · C · B`). Formatting + preview on the right.
-- [ ] **Formatting toolbar** still uses 9–10px uppercase menus (Spacing / Effects / List /
-  Box). Move to 12–13px sentence case; group into "Text", "Layout", "Effects".
-- [ ] **Canvas text-box handles are always on.** Show them only when the box is selected
-  (click the canvas) — at rest the preview should look like the output.
-- [ ] **Presentation, Scripture and Graphics editors** share the same patterns (15/11/15
-  sub-12px sizes respectively). Apply the same document-first layout where it fits
-  (Scripture editor especially).
+- [x] **Formatting toolbar**: 13px controls, icon alignment buttons; row 1 is text (font, size, colour, B/I/U/S, caps, alignment), row 2 puts line height, shadow, outline and lists directly on the bar, with Spacing / Effects / List / Box menus for the detail.
+- [x] ~~Canvas handles only when selected~~ — decided to keep them always on.
+- [x] **Scripture editor** redesigned like the Song Editor: left pane with selectable Verse text / Reference cards, the default background, and a "Preview with" box for any reference; toolbar + preview on the right. Presentation editor stays as is (slides are intentionally separate).
 
 ---
 
@@ -92,12 +88,12 @@ separate "songs".
 |---|---|---|
 | O1 | Two stacked chrome rows (tabs + status) use ~78px; the most important state — *is anything reaching the audience?* — is the faintest text on screen (`IDLE · NO OUTPUTS`, 11px grey uppercase). | One top bar. Output state becomes a prominent pill: green "2 outputs live", amber "Outputs off — audience sees nothing", grey "No outputs configured →". |
 | O2 | The red `• LIVE` button is an outputs on/off toggle that looks like a status badge; next to GO / CLEAR / LOGO it reads as "go live". It also showed red LIVE while zero windows were open. | **[x] Kept as a button** with three unmistakable states: solid red "Outputs on · N", grey outline "Outputs off" (crossed screen), amber "No screens" (enabled but nothing open). |
-| O3 | Duplicate empty states: "NOTHING IN PREVIEW" in the monitor and again in the slide strip; "NOTHING LIVE" twice. The live column's lower half is empty space until something airs. | One empty state per column; when nothing is live, show the next item's first slide ("Up next") in the live strip area. |
+| O3 | (declined) Duplicate empty states: "NOTHING IN PREVIEW" in the monitor and again in the slide strip; "NOTHING LIVE" twice. The live column's lower half is empty space until something airs. | One empty state per column; when nothing is live, show the next item's first slide ("Up next") in the live strip area. |
 | O4 | GO at rest is dark-green text on green (low contrast); CLEAR/LOGO are outlined grey-red / grey-blue. | GO: white text on green, larger; CLEAR/LOGO neutral secondary buttons with their colour only on hover/active. |
 | O5 | When no background resolves for an item, its rundown thumbnail is a black square with a note icon — 48px of nothing per row. | Collapse to a slim type icon when there's no background. |
-| O6 | Every library row shows a "GHS" chip even when you're *in* the GHS folder or the whole library is GHS. | Hide a tag chip when it's the active filter; show at most 2 chips. |
-| O7 | `HOTKEYS ON` chip has no explanation. | Tooltip + click opens the shortcuts overlay. |
-| O8 | Graphics destination chips `DEFAULT / IN-ROOM / ONLINE / STREAM` — "Default" is unexplained. | Rename "Each graphic's own" (or "Auto") with a tooltip. |
+| O6 | (declined) Every library row shows a "GHS" chip even when you're *in* the GHS folder or the whole library is GHS. | Hide a tag chip when it's the active filter; show at most 2 chips. |
+| O7 | `HOTKEYS ON` chip has no explanation. | **[x]** Tooltip explains on/off; a ? button beside it opens the shortcuts overlay. |
+| O8 | Graphics destination chips `DEFAULT / IN-ROOM / ONLINE / STREAM` — "Default" is unexplained. | **[x]** Renamed "As saved" with a tooltip. |
 | O9 | Library list sorted lexically (GHS 1, 10, 100, 101…) outside the GHS folder. | **[x] fixed** — natural sort everywhere. |
 
 ---
@@ -119,7 +115,7 @@ Measured across `src/renderer`:
 
 Proposed system (one PR, then screen by screen):
 
-**Status: first global pass shipped** — all 8–10px sizes → 11px (operator screen 11px → 12px), forced uppercase + letter-spacing removed from ~560 class strings (PREVIEW / LIVE / GO / ON AIR are literal caps and stay), `label-sm` tracking removed, faint text raised to /60. Next: replace hand-rolled buttons with two shared styles.
+**Status: first global pass shipped** — all 8–10px sizes → 11px (operator screen 11px → 12px), forced uppercase + letter-spacing removed from ~560 class strings (PREVIEW / LIVE / GO / ON AIR are literal caps and stay), `label-sm` tracking removed, faint text raised to /60. Shared buttons shipped: `.btn` + `btn-primary` / `btn-go` / `btn-secondary` / `btn-ghost` / `btn-danger`, `btn-sm` (index.css); ~130 hand-rolled buttons converted.
 
 1. **Floor of 12px** for any text; 11px only for tabular badges.
 2. **Sentence case by default.** Uppercase only for 3 things: on-air status

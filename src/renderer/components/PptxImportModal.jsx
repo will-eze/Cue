@@ -109,11 +109,11 @@ export default function PptxImportModal({ onClose, onDone }) {
               </div>
               <div className="flex flex-wrap gap-sm">
                 <button onClick={() => window.cue.openExternal(DOWNLOAD_URL)}
-                  className="bg-primary text-on-primary px-md py-xs rounded text-label-sm font-label-sm font-bold hover:brightness-110 active:scale-95 transition-all flex items-center gap-xs">
+                  className="btn btn-sm btn-primary">
                   <span className="material-symbols-outlined text-[14px]">download</span> Download LibreOffice
                 </button>
                 <button onClick={check}
-                  className="bg-surface-container border border-outline-variant/40 text-on-surface px-md py-xs rounded text-label-sm font-label-sm hover:bg-surface-container-high transition-colors flex items-center gap-xs">
+                  className="btn btn-sm btn-secondary">
                   <span className="material-symbols-outlined text-[14px]">refresh</span> Check again
                 </button>
                 <button onClick={locateManually}
@@ -126,7 +126,7 @@ export default function PptxImportModal({ onClose, onDone }) {
                   No LibreOffice? Export your deck to PDF (PowerPoint / Keynote / Google Slides) and import that — pixel-perfect, no conversion.
                 </p>
                 <button onClick={() => chooseFile(true)}
-                  className="bg-surface-container border border-outline-variant/40 text-on-surface px-md py-xs rounded text-label-sm font-label-sm hover:bg-surface-container-high transition-colors flex items-center gap-xs">
+                  className="btn btn-sm btn-secondary">
                   <span className="material-symbols-outlined text-[14px]">picture_as_pdf</span> Import a PDF instead
                 </button>
               </div>
@@ -158,7 +158,7 @@ export default function PptxImportModal({ onClose, onDone }) {
                 </p>
               </div>
               <button onClick={chooseFile}
-                className="bg-primary text-on-primary px-lg py-sm rounded-lg text-label-sm font-label-sm font-bold hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-xs">
+                className="btn btn-primary">
                 <span className="material-symbols-outlined text-[16px]">upload_file</span> Choose PowerPoint file…
               </button>
             </>
@@ -182,7 +182,7 @@ export default function PptxImportModal({ onClose, onDone }) {
               </div>
               <div className="flex gap-sm">
                 <button onClick={() => setStatus('ready')}
-                  className="bg-surface-container border border-outline-variant/40 text-on-surface px-md py-xs rounded text-label-sm font-label-sm hover:bg-surface-container-high transition-colors">
+                  className="btn btn-sm btn-secondary">
                   Try another file
                 </button>
               </div>

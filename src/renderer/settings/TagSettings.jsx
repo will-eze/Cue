@@ -81,7 +81,7 @@ export default function TagSettings() {
         <button
           onClick={handleCreate}
           disabled={!newName.trim()}
-          className="bg-primary-container text-on-primary px-md py-sm rounded-lg text-label-sm font-label-sm font-bold flex items-center gap-xs hover:brightness-110 active:scale-95 transition-all cursor-pointer shrink-0 disabled:opacity-40 disabled:cursor-default"
+          className="btn btn-primary shrink-0"
         >
           <span className="material-symbols-outlined text-[14px]">add</span>
           Add Tag

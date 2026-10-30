@@ -791,7 +791,7 @@ export function LowerThirdPreview({ text, runs, style, copyright, copyrightAlign
 // ─── Formatting Toolbar ────────────────────────────────────────────────────
 
 function Divider() {
-  return <div className="w-px h-5 bg-outline-variant/40 flex-shrink-0 mx-0.5" />;
+  return <div className="w-px h-5 bg-outline-variant/40 flex-shrink-0 mx-xs" />;
 }
 
 function ToolBtn({ active, title, onMouseDown, children, className = '' }) {
@@ -799,7 +799,7 @@ function ToolBtn({ active, title, onMouseDown, children, className = '' }) {
     <button
       title={title}
       onMouseDown={(e) => { e.preventDefault(); onMouseDown?.(); }}
-      className={`h-6 min-w-[24px] px-1 flex items-center justify-center rounded transition-colors flex-shrink-0 cursor-pointer text-[12px] font-mono
+      className={`h-7 min-w-[28px] px-1.5 flex items-center justify-center gap-xs rounded-md transition-colors flex-shrink-0 cursor-pointer text-[13px]
         ${active ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-variant'} ${className}`}
     >{children}</button>
   );
@@ -808,7 +808,7 @@ function ToolBtn({ active, title, onMouseDown, children, className = '' }) {
 function ColorSwatch({ value, onChange, title }) {
   return (
     <div className="relative flex-shrink-0" title={title}>
-      <div className="w-6 h-6 rounded border border-outline-variant/50 cursor-pointer overflow-hidden" style={{ background: value || '#ffffff' }}>
+      <div className="w-7 h-7 rounded-md border border-outline-variant/50 cursor-pointer overflow-hidden" style={{ background: value || '#ffffff' }}>
         <input type="color" value={value || '#ffffff'} onChange={(e) => onChange(e.target.value)}
           className="opacity-0 absolute inset-0 w-full h-full cursor-pointer" />
       </div>
@@ -823,7 +823,7 @@ function NumInput({ value, onChange, min, max, step = 0.1, width = 'w-12', place
       placeholder={placeholder}
       onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}
       onFocus={(e) => e.target.select()}
-      className={`${width} bg-surface-container-lowest border border-outline-variant/40 text-on-surface text-[11px] rounded px-1 h-6 outline-none focus:border-primary text-center`}
+      className={`${width} bg-surface-container-lowest border border-outline-variant/40 text-on-surface text-[13px] tabular-nums rounded-md px-1 h-7 outline-none focus:border-primary text-center`}
     />
   );
 }
@@ -873,12 +873,12 @@ function ToolMenu({ icon, label, title, active, width = 264, children }) {
         ref={btnRef}
         title={title || label}
         onMouseDown={(e) => { e.preventDefault(); setOpen((v) => !v); }}
-        className={`h-6 px-1.5 flex items-center gap-[3px] rounded transition-colors flex-shrink-0 cursor-pointer text-[11px] font-mono tracking-[0.04em]
+        className={`h-7 pl-sm pr-1 flex items-center gap-xs rounded-md transition-colors flex-shrink-0 cursor-pointer text-[13px]
           ${open || active ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-variant'}`}
       >
-        {icon && <span className="material-symbols-outlined text-[13px]">{icon}</span>}
+        {icon && <span className="material-symbols-outlined text-[16px]">{icon}</span>}
         {label}
-        <span className="material-symbols-outlined text-[13px] -mr-1">arrow_drop_down</span>
+        <span className="material-symbols-outlined text-[16px]">arrow_drop_down</span>
       </button>
       {open && createPortal(
         <div ref={panelRef}
@@ -894,8 +894,8 @@ function ToolMenu({ icon, label, title, active, width = 264, children }) {
 
 function MenuRow({ label, children }) {
   return (
-    <div className="flex items-center gap-sm min-h-6">
-      <span className="text-[11px] font-mono text-on-surface-variant/60 flex-1">{label}</span>
+    <div className="flex items-center gap-sm min-h-7">
+      <span className="text-[13px] text-on-surface-variant flex-1">{label}</span>
       {children}
     </div>
   );
@@ -904,7 +904,7 @@ function MenuRow({ label, children }) {
 function MenuSection({ children }) {
   return (
     <div className="flex items-center gap-sm pt-xs first:pt-0">
-      <span className="text-[11px] font-mono font-bold text-on-surface-variant">{children}</span>
+      <span className="text-[12px] font-semibold text-on-surface">{children}</span>
       <span className="flex-1 h-px bg-outline-variant/30" />
     </div>
   );
@@ -968,7 +968,8 @@ export function FormattingToolbar({ style, onChange, fonts, hasSelection, execCm
     }
   }
 
-  const row = 'flex items-center gap-1 px-md py-1.5 flex-wrap';
+  const row = 'flex items-center gap-xs px-md py-sm flex-wrap';
+  const groupLabel = 'text-[12px] text-on-surface-variant/70 mr-xs shrink-0';
 
   return (
     <div className="border-b border-outline-variant/30 bg-surface-container">
@@ -978,9 +979,10 @@ export function FormattingToolbar({ style, onChange, fonts, hasSelection, execCm
         <select
           value={style.fontFamily || ''}
           onChange={(e) => set('fontFamily', e.target.value || null)}
-          className="bg-surface-container-high text-on-surface text-[12px] rounded px-1.5 h-6 border border-outline-variant/50 w-32 outline-none focus:border-primary cursor-pointer flex-shrink-0"
+          title="Font"
+          className="bg-surface-container-high text-on-surface text-[13px] rounded-md px-sm h-7 border border-outline-variant/50 w-40 outline-none focus:border-primary cursor-pointer flex-shrink-0"
         >
-          <option value="">Default Font</option>
+          <option value="">Default font</option>
           {(() => {
             // Group by category; bundled fonts first within each so the shipped,
             // pixel-identical faces sit at the top of the list.
@@ -1015,11 +1017,11 @@ export function FormattingToolbar({ style, onChange, fonts, hasSelection, execCm
           type="number" list="cue-font-sizes" min={6} max={500} step={1}
           value={style.fontSize ?? ''}
           placeholder="Size"
-          title="Font size (px) — type any value or pick a preset"
+          title="Font size in px. Type any value or pick a preset."
           onChange={(e) => set('fontSize', e.target.value === '' ? null : Number(e.target.value))}
           onBlur={(e) => { const v = e.target.value; if (v !== '') set('fontSize', Math.max(6, Math.min(500, Number(v) || 6))); }}
           onFocus={(e) => e.target.select()}
-          className="bg-surface-container-high text-on-surface text-[12px] rounded px-1 h-6 border border-outline-variant/50 w-[58px] outline-none focus:border-primary flex-shrink-0 text-center"
+          className="bg-surface-container-high text-on-surface text-[13px] tabular-nums rounded-md px-1 h-7 border border-outline-variant/50 w-[68px] outline-none focus:border-primary flex-shrink-0 text-center"
         />
         <datalist id="cue-font-sizes">{FONT_SIZES.map((s) => <option key={s} value={s} />)}</datalist>
 
@@ -1053,26 +1055,21 @@ export function FormattingToolbar({ style, onChange, fonts, hasSelection, execCm
         }} className="line-through">S</ToolBtn>
 
         {/* Uppercase */}
-        <ToolBtn active={style.uppercase} title="Uppercase" onMouseDown={() => set('uppercase', !style.uppercase)}>
-          AA
+        <ToolBtn active={style.uppercase} title="All caps" onMouseDown={() => set('uppercase', !style.uppercase)}>
+          <span className="material-symbols-outlined text-[18px]">match_case</span>
         </ToolBtn>
 
         <Divider />
 
         {/* H-Align */}
         {[
-          { v: 'left',    icon: '≡', label: 'Align left' },
-          { v: 'center',  icon: '≡', label: 'Align centre' },
-          { v: 'right',   icon: '≡', label: 'Align right' },
-          { v: 'justify', icon: '≡', label: 'Justify' },
-        ].map(({ v, icon, label: lbl }, i) => (
+          { v: 'left',    icon: 'format_align_left',    label: 'Align left' },
+          { v: 'center',  icon: 'format_align_center',  label: 'Align centre' },
+          { v: 'right',   icon: 'format_align_right',   label: 'Align right' },
+          { v: 'justify', icon: 'format_align_justify', label: 'Justify' },
+        ].map(({ v, icon, label: lbl }) => (
           <ToolBtn key={v} active={style.align === v} title={lbl} onMouseDown={() => set('align', v)}>
-            <svg width="12" height="10" viewBox="0 0 12 10" fill="currentColor">
-              {i === 0 && (<><rect x="0" y="0" width="12" height="1.5" rx=".7"/><rect x="0" y="4" width="8" height="1.5" rx=".7"/><rect x="0" y="8" width="10" height="1.5" rx=".7"/></>)}
-              {i === 1 && (<><rect x="0" y="0" width="12" height="1.5" rx=".7"/><rect x="2" y="4" width="8" height="1.5" rx=".7"/><rect x="1" y="8" width="10" height="1.5" rx=".7"/></>)}
-              {i === 2 && (<><rect x="0" y="0" width="12" height="1.5" rx=".7"/><rect x="4" y="4" width="8" height="1.5" rx=".7"/><rect x="2" y="8" width="10" height="1.5" rx=".7"/></>)}
-              {i === 3 && (<><rect x="0" y="0" width="12" height="1.5" rx=".7"/><rect x="0" y="4" width="12" height="1.5" rx=".7"/><rect x="0" y="8" width="12" height="1.5" rx=".7"/></>)}
-            </svg>
+            <span className="material-symbols-outlined text-[18px]">{icon}</span>
           </ToolBtn>
         ))}
 
@@ -1080,20 +1077,20 @@ export function FormattingToolbar({ style, onChange, fonts, hasSelection, execCm
 
         {/* V-Align */}
         {!simple && [
-          { v: 'top',    icon: '⬆', label: 'Align top' },
-          { v: 'center', icon: '⊟', label: 'Align middle' },
-          { v: 'bottom', icon: '⬇', label: 'Align bottom' },
+          { v: 'top',    icon: 'vertical_align_top',    label: 'Text at top of box' },
+          { v: 'center', icon: 'vertical_align_center', label: 'Text in middle of box' },
+          { v: 'bottom', icon: 'vertical_align_bottom', label: 'Text at bottom of box' },
         ].map(({ v, icon, label: lbl }) => (
           <ToolBtn key={v} active={style.verticalAlign === v} title={lbl} onMouseDown={() => set('verticalAlign', v)}>
-            {icon}
+            <span className="material-symbols-outlined text-[18px]">{icon}</span>
           </ToolBtn>
         ))}
 
         {!styleIsDefault(style) && (
           <>
             <Divider />
-            <ToolBtn title="Reset all styles" onMouseDown={() => onChange({ ...DEFAULT_STYLE })}>
-              <span className="text-[11px] text-error/70 hover:text-error">Reset</span>
+            <ToolBtn title="Reset all formatting to the theme" onMouseDown={() => onChange({ ...DEFAULT_STYLE })} className="!text-error/80 hover:!text-error">
+              <span className="material-symbols-outlined text-[16px]">format_clear</span>Reset
             </ToolBtn>
           </>
         )}
@@ -1103,6 +1100,25 @@ export function FormattingToolbar({ style, onChange, fonts, hasSelection, execCm
           the frequent controls above stay one click away. Each trigger lights up
           when its group holds non-default styling, so nothing hides silently. */}
       <div className={`${row} border-t border-outline-variant/20`}>
+
+        {/* Most-used settings sit directly on the bar; the menus after hold the detail. */}
+        <span className={groupLabel}>Line height</span>
+        <NumInput value={style.lineSpacing} onChange={(v) => set('lineSpacing', v)} min={0.5} max={4} step={0.05} width="w-14" placeholder="1.25" />
+        <Divider />
+        <ToolBtn active={shadowEnabled} title="Text shadow (details under Effects)" onMouseDown={toggleShadow}>
+          <span className="material-symbols-outlined text-[16px]">shadow</span>Shadow
+        </ToolBtn>
+        <ToolBtn active={strokeEnabled} title="Text outline (details under Effects)" onMouseDown={toggleStroke}>
+          <span className="material-symbols-outlined text-[16px]">border_style</span>Outline
+        </ToolBtn>
+        <Divider />
+        <ToolBtn active={style.listStyle === 'disc'} title="Bulleted list" onMouseDown={() => set('listStyle', style.listStyle === 'disc' ? null : 'disc')}>
+          <span className="material-symbols-outlined text-[18px]">format_list_bulleted</span>
+        </ToolBtn>
+        <ToolBtn active={style.listStyle === 'decimal'} title="Numbered list" onMouseDown={() => set('listStyle', style.listStyle === 'decimal' ? null : 'decimal')}>
+          <span className="material-symbols-outlined text-[18px]">format_list_numbered</span>
+        </ToolBtn>
+        <Divider />
 
         <ToolMenu icon="format_line_spacing" label="Spacing" active={spacingActive} title="Line, paragraph and letter spacing">
           <MenuRow label="Line height">
@@ -1181,10 +1197,10 @@ export function FormattingToolbar({ style, onChange, fonts, hasSelection, execCm
             <div className="flex gap-[3px]">
               <ToolBtn active={!style.listStyle} title="No list" onMouseDown={() => set('listStyle', null)}>None</ToolBtn>
               <ToolBtn active={style.listStyle === 'disc'} title="Unordered bullet list" onMouseDown={() => set('listStyle', 'disc')}>
-                <span className="material-symbols-outlined text-[13px]">format_list_bulleted</span>
+                <span className="material-symbols-outlined text-[18px]">format_list_bulleted</span>
               </ToolBtn>
               <ToolBtn active={style.listStyle === 'decimal'} title="Numbered list" onMouseDown={() => set('listStyle', 'decimal')}>
-                <span className="material-symbols-outlined text-[13px]">format_list_numbered</span>
+                <span className="material-symbols-outlined text-[18px]">format_list_numbered</span>
               </ToolBtn>
             </div>
           </MenuRow>
@@ -1210,7 +1226,7 @@ export function FormattingToolbar({ style, onChange, fonts, hasSelection, execCm
                   { axis: 'v', where: 'bottom', icon: 'align_vertical_bottom',   t: 'Align box bottom' },
                 ].map(({ axis, where, icon, t }) => (
                   <ToolBtn key={`${axis}-${where}`} title={t} onMouseDown={() => objAlign(axis, where)}>
-                    <span className="material-symbols-outlined text-[13px]">{icon}</span>
+                    <span className="material-symbols-outlined text-[18px]">{icon}</span>
                   </ToolBtn>
                 ))}
               </div>
@@ -1656,11 +1672,11 @@ function PasteView({ onParse, onCancel }) {
       <div className="flex gap-sm">
         <button onClick={() => { const p = parseLyrics(text, { detectTitle: true }); if (p.sections.length) onParse(p); }}
           disabled={!text.trim()}
-          className="px-lg h-8 text-label-sm font-mono bg-primary text-on-primary disabled:opacity-40 rounded-lg transition-colors cursor-pointer">
+          className="btn btn-primary">
           Import Sections
         </button>
         <button onClick={onCancel}
-          className="px-lg h-8 text-label-sm font-mono text-on-surface-variant hover:text-on-surface cursor-pointer rounded-lg hover:bg-surface-variant transition-colors">
+          className="btn btn-ghost">
           Cancel
         </button>
       </div>
@@ -2638,17 +2654,17 @@ export default function SongEditor({ song, onClose, onSave }) {
           {themeList.length > 0 && (
             <button
               onClick={() => setShowThemePicker(true)}
-              className="flex items-center gap-xs px-md h-8 text-body-md text-on-surface-variant hover:text-on-surface border border-outline-variant/40 hover:border-outline-variant rounded-lg cursor-pointer transition-colors"
+              className="btn btn-secondary"
             >
               <span className="material-symbols-outlined text-[18px]">style</span>
               Load theme…
             </button>
           )}
-          <button onClick={() => setShowPaste(true)} title="Replace the lyrics by pasting the whole song" className="flex items-center gap-xs px-md h-8 text-body-md text-on-surface-variant hover:text-on-surface border border-outline-variant/40 hover:border-outline-variant rounded-lg cursor-pointer transition-colors">
+          <button onClick={() => setShowPaste(true)} title="Replace the lyrics by pasting the whole song" className="btn btn-secondary">
             <span className="material-symbols-outlined text-[18px]">content_paste</span>
             Paste song
           </button>
-          <button onClick={() => setShowMeta((v) => !v)} className="flex items-center gap-xs px-md h-8 text-body-md text-on-surface-variant hover:text-on-surface border border-outline-variant/40 hover:border-outline-variant rounded-lg cursor-pointer transition-colors">
+          <button onClick={() => setShowMeta((v) => !v)} className="btn btn-secondary">
             <span className="material-symbols-outlined text-[18px]">{showMeta ? 'expand_less' : 'expand_more'}</span>
             {showMeta ? 'Hide details' : 'Show details'}
           </button>
@@ -2843,7 +2859,7 @@ export default function SongEditor({ song, onClose, onSave }) {
                 <button
                   onMouseDown={(e) => { e.preventDefault(); addSection(); }}
                   title="Add a section after the one you're in (or type a name like “Chorus” on its own line and press Enter)"
-                  className="shrink-0 flex items-center gap-[2px] h-7 px-sm rounded-md border border-outline-variant/40 text-[12px] text-on-surface hover:border-primary hover:text-primary transition-colors cursor-pointer"
+                  className="btn btn-sm btn-secondary shrink-0"
                 >
                   <span className="material-symbols-outlined text-[16px]">add</span>Section
                 </button>
@@ -2975,7 +2991,7 @@ export default function SongEditor({ song, onClose, onSave }) {
                   <div className="flex items-center justify-between mb-sm flex-shrink-0">
                     <div className="flex items-center gap-sm">
                       <span className="text-[11px] font-mono text-on-surface-variant/60">
-                        {activeSection ? `${activeSection.type.charAt(0).toUpperCase()}${activeSection.type.slice(1)} — ` : ''}{previewTemplate === 'lowerthird' ? 'Lower Third' : 'Fullscreen'}
+                        {activeSection ? `${activeSection.type.charAt(0).toUpperCase()}${activeSection.type.slice(1)} · ` : ''}{previewTemplate === 'lowerthird' ? 'Lower third' : 'Fullscreen'}
                       </span>
                       {previewParts.length > 1 && (
                         <span className="text-[11px] font-mono text-primary/70 tabular-nums">
@@ -3112,12 +3128,12 @@ export default function SongEditor({ song, onClose, onSave }) {
             <div className="flex items-center gap-sm">
               {saveError && <span className="text-label-sm font-mono text-error">{saveError}</span>}
               <button onClick={onClose}
-                className="px-lg h-9 text-body-md text-on-surface-variant hover:text-on-surface rounded-lg hover:bg-surface-variant transition-colors cursor-pointer">
+                className="btn btn-ghost">
                 Cancel
               </button>
               <button onClick={handleSave} disabled={!title.trim() || saving}
                 title={!title.trim() ? 'Add a title to save' : undefined}
-                className="px-lg h-9 text-body-md font-semibold bg-tertiary-container text-on-tertiary-container disabled:opacity-40 rounded-lg transition-colors cursor-pointer hover:opacity-90">
+                className="btn btn-go">
                 {saving ? 'Saving…' : 'Save song'}
               </button>
             </div>

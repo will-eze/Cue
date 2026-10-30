@@ -447,7 +447,7 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, onPrevie
         <div className="flex shrink-0 border-t border-outline-variant/30">
           <button
             onClick={() => setShowEditor(true)}
-            title="Appearance — scripture text & reference style"
+            title="Scripture appearance: verse text, reference and background"
             className="flex-1 flex items-center justify-center gap-xs py-sm text-label-sm font-label-sm text-on-surface-variant hover:text-primary hover:bg-surface-variant transition-colors cursor-pointer border-r border-outline-variant/30"
           >
             <span className="material-symbols-outlined text-[15px]">format_paint</span>

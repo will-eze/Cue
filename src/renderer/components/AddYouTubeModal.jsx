@@ -214,12 +214,12 @@ export default function AddYouTubeModal({ onClose, onConfirm, initialUrl = '' })
         <div className="flex justify-end gap-sm mt-xs">
           <button
             onClick={onClose}
-            className="px-md py-xs rounded text-label-sm font-label-sm text-on-surface-variant hover:bg-surface-variant transition-colors cursor-pointer"
+            className="btn btn-sm btn-ghost"
           >Cancel</button>
           <button
             onClick={handleConfirm}
             disabled={!valid}
-            className="bg-primary text-on-primary px-lg py-xs rounded text-label-sm font-label-sm font-bold hover:brightness-110 active:scale-95 transition-all cursor-pointer flex items-center gap-xs disabled:opacity-40 disabled:cursor-not-allowed"
+            className="btn btn-sm btn-primary"
           >
             <span className="material-symbols-outlined text-[14px]">add</span>
             Add to Rundown

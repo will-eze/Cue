@@ -169,7 +169,7 @@ export default function StreamView() {
           <div className="flex items-center gap-sm">
             <p className="text-label-sm font-label-sm text-outline">Program Layout</p>
             <button onClick={() => setEditor({ initial: L })}
-              className="ml-auto flex items-center gap-xs h-7 px-sm rounded-lg text-label-sm font-label-sm font-bold bg-surface-container-high border border-outline-variant/30 text-on-surface-variant hover:text-on-surface hover:border-outline-variant/60 cursor-pointer transition-all active:scale-95">
+              className="btn btn-sm btn-secondary ml-auto">
               <span className="material-symbols-outlined text-[15px]">tune</span>Customise
             </button>
           </div>

@@ -522,7 +522,7 @@ function GpuEngineSettings({ cfg, apply, busy }) {
                   <button
                     onClick={() => onDownload(m.id)}
                     disabled={busy || !!dl}
-                    className="flex items-center gap-xs px-sm h-8 rounded-lg border border-outline-variant/40 bg-surface-container-high text-on-surface-variant text-label-sm font-mono hover:text-primary hover:border-primary/50 transition-colors cursor-pointer disabled:opacity-40"
+                    className="btn btn-secondary"
                   >
                     <span className="material-symbols-outlined text-[15px]">download</span>Get
                   </button>
@@ -555,7 +555,7 @@ function StatusChip({ ok, okText, pendingText, onClick, disabled }) {
     <button
       onClick={onClick}
       disabled={disabled}
-      className="flex items-center gap-xs px-sm h-8 rounded-lg border border-outline-variant/40 bg-surface-container-high text-on-surface-variant text-label-sm font-mono hover:text-primary hover:border-primary/50 transition-colors cursor-pointer disabled:opacity-40"
+      className="btn btn-secondary"
     >
       <span className="material-symbols-outlined text-[15px]">download</span>{pendingText}
     </button>

@@ -183,7 +183,7 @@ export default function StageLayoutEditor({ value, onChange }) {
         <div className="flex items-center gap-sm shrink-0 flex-wrap">
           <div className="relative" ref={addRef}>
             <button onClick={() => setAddOpen((v) => !v)}
-              className="flex items-center gap-xs h-9 px-md rounded-lg text-label-sm font-label-sm font-bold bg-primary text-on-primary hover:brightness-110 active:scale-95 transition-all cursor-pointer">
+              className="btn btn-primary">
               <span className="material-symbols-outlined text-[16px]">add</span>Add Element
             </button>
             <AnchoredMenu
@@ -205,7 +205,7 @@ export default function StageLayoutEditor({ value, onChange }) {
           {/* Ready-made starting layouts */}
           {TEMPLATES.map((t) => (
             <button key={t.id} onClick={() => applyTemplate(t)} title={`Apply “${t.name}” layout`}
-              className="flex items-center gap-xs h-8 px-sm rounded-lg text-label-sm font-label-sm font-bold bg-surface-container-high border border-outline-variant/30 text-on-surface-variant hover:text-on-surface hover:border-outline-variant/60 cursor-pointer transition-all active:scale-95">
+              className="btn btn-secondary">
               <span className="material-symbols-outlined text-[15px]">{t.icon}</span>{t.name}
             </button>
           ))}

@@ -132,7 +132,7 @@ export default function FontSettings() {
         <button
           onClick={handleImport}
           disabled={busy}
-          className="px-md py-xs text-label-sm font-label-sm font-bold bg-surface-container-high border border-outline-variant/40 text-on-surface-variant hover:text-on-surface hover:border-outline-variant active:scale-95 transition-all cursor-pointer rounded-lg whitespace-nowrap disabled:opacity-40 flex items-center gap-xs"
+          className="btn btn-sm btn-secondary"
         >
           <span className="material-symbols-outlined text-[16px]">upload_file</span>
           {busy ? 'Installing…' : 'Install your own'}
@@ -240,7 +240,7 @@ export default function FontSettings() {
                   <button onClick={() => handleDeleteUser(f.id)}
                     className="px-md py-xs text-label-sm font-label-sm font-bold bg-error-container text-error rounded-lg border border-error/40 hover:brightness-110 cursor-pointer">Remove</button>
                   <button onClick={() => setConfirmId(null)}
-                    className="px-md py-xs text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface bg-surface-container-high border border-outline-variant/30 rounded-lg cursor-pointer">Cancel</button>
+                    className="btn btn-sm btn-secondary">Cancel</button>
                 </div>
               ) : (
                 <button onClick={() => setConfirmId(f.id)} title="Remove font"

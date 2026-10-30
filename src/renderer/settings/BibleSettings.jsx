@@ -55,7 +55,7 @@ export default function BibleSettings() {
         <button
           onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setImportMenu({ x: r.right - 200, y: r.bottom + 4 }); }}
           disabled={importing}
-          className="bg-primary-container text-on-primary px-md py-sm rounded-lg text-label-sm font-label-sm font-bold flex items-center gap-xs hover:brightness-110 active:scale-95 transition-all cursor-pointer shrink-0 disabled:opacity-50"
+          className="btn btn-primary shrink-0"
         >
           <span className="material-symbols-outlined text-[14px]">upload</span>
           {importing ? 'Importing…' : 'Import Translation'}

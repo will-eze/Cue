@@ -168,14 +168,14 @@ export default function SongImportModal({ preview, onCancel, onImported }) {
           <button
             onClick={onCancel}
             disabled={committing}
-            className="px-lg py-sm rounded-lg text-label-sm font-label-sm text-on-surface-variant hover:bg-surface-variant transition-colors cursor-pointer disabled:opacity-40"
+            className="btn btn-ghost"
           >
             Cancel
           </button>
           <button
             onClick={handleImport}
             disabled={committing || selCount === 0}
-            className="px-lg py-sm rounded-lg text-label-sm font-label-sm font-bold bg-tertiary-container text-on-tertiary hover:brightness-110 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
+            className="btn btn-go"
           >
             {committing ? 'Importing…' : `Import ${selCount || ''} Song${selCount === 1 ? '' : 's'}`.trim()}
           </button>

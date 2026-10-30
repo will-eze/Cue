@@ -528,9 +528,9 @@ export default function PresentationEditor({ presentationId, onClose, onSave }) 
         <div className="titlebar-drag flex items-center justify-end gap-sm h-10 px-lg">
           <div className="titlebar-nodrag flex items-center gap-sm">
             <UndoRedoButtons undo={doc.undo} redo={doc.redo} canUndo={doc.canUndo} canRedo={doc.canRedo} />
-            <button onClick={onClose} className="px-md py-xs rounded text-label-sm font-label-sm text-on-surface-variant hover:bg-surface-variant transition-colors">Cancel</button>
+            <button onClick={onClose} className="btn btn-sm btn-ghost">Cancel</button>
             <button onClick={save} disabled={saving}
-              className="bg-tertiary-container text-on-tertiary px-lg py-xs rounded text-label-sm font-label-sm font-bold hover:brightness-110 active:scale-95 transition-all disabled:opacity-50">
+              className="btn btn-sm btn-go">
               {saving ? 'Saving…' : 'Save'}
             </button>
           </div>
@@ -559,7 +559,7 @@ export default function PresentationEditor({ presentationId, onClose, onSave }) 
           </div>
           <div className="m-sm">
             <button onClick={() => setNewSlideOpen(true)}
-              className="w-full bg-surface-container border border-outline-variant/40 text-on-surface px-md py-xs rounded text-label-sm font-label-sm hover:bg-surface-container-high transition-colors flex items-center justify-center gap-xs">
+              className="btn btn-sm btn-secondary w-full">
               <span className="material-symbols-outlined text-[14px]">add</span> Slide
             </button>
           </div>
@@ -757,9 +757,9 @@ function SaveTemplateModal({ elements, backgroundId, onClose }) {
               className="w-full px-sm py-xs bg-surface-container-lowest border border-outline-variant/50 rounded text-body-sm text-on-surface outline-none focus:border-primary"
             />
             <div className="flex gap-xs justify-end">
-              <button onClick={onClose} className="px-md py-xs text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface cursor-pointer rounded transition-colors">Cancel</button>
+              <button onClick={onClose} className="btn btn-sm btn-ghost">Cancel</button>
               <button onClick={doSave} disabled={!name.trim()}
-                className="px-md py-xs text-label-sm font-label-sm bg-primary-container text-on-primary rounded cursor-pointer hover:brightness-110 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+                className="btn btn-sm btn-primary">
                 Save
               </button>
             </div>
@@ -863,7 +863,7 @@ function NewSlideModal({ currentElements, onAdd, onAddTemplate, onClose }) {
                 </div>
                 <button
                   onClick={() => onAddTemplate(tplId)}
-                  className="px-lg py-sm bg-primary-container text-on-primary text-label-sm font-label-sm rounded-lg cursor-pointer hover:brightness-110 active:scale-95 transition-all">
+                  className="btn btn-primary">
                   Use Template
                 </button>
               </div>
@@ -978,7 +978,7 @@ function Inspector({ el, fonts, onChange, onDelete, onFront, onBack, onDuplicate
           <Row label="Fit">
             <Seg options={[['contain', 'Contain'], ['cover', 'Cover']]} value={el.fit || 'contain'} onChange={(v) => set('fit', v)} />
           </Row>
-          <button onClick={onReplaceImage} className="bg-surface-container border border-outline-variant/40 text-on-surface px-md py-xs rounded text-label-sm font-label-sm hover:bg-surface-container-high transition-colors">
+          <button onClick={onReplaceImage} className="btn btn-sm btn-secondary">
             Replace image…
           </button>
         </div>
@@ -1029,8 +1029,8 @@ function Inspector({ el, fonts, onChange, onDelete, onFront, onBack, onDuplicate
           <Field label="Opacity" value={el.opacity ?? 1} step={0.05} onChange={(v) => set('opacity', clamp(Number(v || 0), 0, 1))} />
         </div>
         <div className="flex gap-xs">
-          <button onClick={onBack} className="flex-1 bg-surface-container border border-outline-variant/40 text-on-surface px-sm py-xs rounded text-label-sm font-label-sm hover:bg-surface-container-high transition-colors">Send back</button>
-          <button onClick={onFront} className="flex-1 bg-surface-container border border-outline-variant/40 text-on-surface px-sm py-xs rounded text-label-sm font-label-sm hover:bg-surface-container-high transition-colors">Bring front</button>
+          <button onClick={onBack} className="btn btn-sm btn-secondary flex-1">Send back</button>
+          <button onClick={onFront} className="btn btn-sm btn-secondary flex-1">Bring front</button>
         </div>
       </div>
     </div>

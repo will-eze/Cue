@@ -98,7 +98,7 @@ function CcliReportModal({ onClose }) {
               <button
                 onClick={exportCsv}
                 disabled={!report.rows.length}
-                className="bg-primary text-on-primary px-lg py-sm rounded text-label-sm font-label-sm font-bold hover:brightness-110 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-xs"
+                className="btn btn-primary"
               >
                 <span className="material-symbols-outlined text-[15px]">download</span>
                 Export CSV
@@ -171,7 +171,7 @@ export default function SongUsageSettings() {
         </div>
         <button
           onClick={() => setOpen(true)}
-          className="shrink-0 bg-primary text-on-primary px-lg py-sm rounded text-label-sm font-label-sm font-bold hover:brightness-110 active:scale-95 transition-all cursor-pointer flex items-center gap-xs"
+          className="btn btn-primary shrink-0"
         >
           <span className="material-symbols-outlined text-[15px]">summarize</span>
           Open CCLI Report

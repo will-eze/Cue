@@ -868,6 +868,7 @@ export default function PreviewLivePanel({
   onToggleJumpArmed,
   bareArmed = true,
   onToggleBareArmed,
+  onShowShortcuts,
 }) {
   const previewSlides = previewItem ? getSlides(previewItem) : [];
   const liveSlides    = liveItem    ? getSlides(liveItem)    : [];
@@ -1184,7 +1185,9 @@ export default function PreviewLivePanel({
                 {onToggleBareArmed && (
                   <button
                     onClick={onToggleBareArmed}
-                    title="Arm the bare transport keys (GO / Output / Clear). Disarmed, they're ignored so a stray keystroke can't air."
+                    title={bareArmed
+                      ? 'Single-key shortcuts for GO, Clear and Outputs are on. Click to turn them off.'
+                      : 'Single-key shortcuts are off, so a stray keystroke can\'t air anything. ⌘/Ctrl shortcuts still work. Click to turn them on.'}
                     className={`flex items-center gap-xs text-[11px] font-mono px-xs py-[2px] rounded border transition-colors cursor-pointer ${
                       bareArmed
                         ? 'bg-tertiary/10 border-tertiary/40 text-tertiary'
@@ -1192,13 +1195,13 @@ export default function PreviewLivePanel({
                     }`}
                   >
                     <span className="material-symbols-outlined text-[11px]">bolt</span>
-                    Hotkeys {bareArmed ? 'ON' : 'OFF'}
+                    Hotkeys {bareArmed ? 'on' : 'off'}
                   </button>
                 )}
                 {liveSlides.length > 1 && onToggleJumpArmed && (
                   <button
                     onClick={onToggleJumpArmed}
-                    title="Toggle Q/W/E… verse-jump keys for the live item"
+                    title="Q, W, E… jump straight to a slide of the live item. Click to turn on or off."
                     className={`flex items-center gap-xs text-[11px] font-mono px-xs py-[2px] rounded border transition-colors cursor-pointer ${
                       jumpArmed
                         ? 'bg-tertiary/10 border-tertiary/40 text-tertiary'
@@ -1206,7 +1209,17 @@ export default function PreviewLivePanel({
                     }`}
                   >
                     <span className="material-symbols-outlined text-[11px]">keyboard</span>
-                    Jump {jumpArmed ? 'ON' : 'OFF'}
+                    Jump {jumpArmed ? 'on' : 'off'}
+                  </button>
+                )}
+                {onShowShortcuts && (
+                  <button
+                    onClick={onShowShortcuts}
+                    title="All keyboard shortcuts (?)"
+                    aria-label="Keyboard shortcuts"
+                    className="w-6 h-6 flex items-center justify-center rounded text-on-surface-variant/70 hover:text-on-surface hover:bg-surface-variant transition-colors cursor-pointer"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">help</span>
                   </button>
                 )}
               </div>

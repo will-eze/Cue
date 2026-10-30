@@ -38,7 +38,7 @@ function parseStyle(g) {
   catch { return {}; }
 }
 
-// Destination override — a toggleable SET of kinds. Empty set = "Default" (use each
+// Destination override — a toggleable SET of kinds. Empty set = "As saved" (use each
 // graphic's saved target). Any combination is allowed (e.g. Online + Stream).
 const DEST_KINDS = ['screen', 'ndi', 'stream'];
 const KIND_OPTS = [
@@ -236,16 +236,17 @@ export default function GraphicsPanel({ activeServiceId }) {
       {/* Toolbar */}
       <div className="flex items-center gap-sm px-md h-11 border-b border-outline-variant/30 shrink-0">
         <span className="material-symbols-outlined text-[18px] text-primary shrink-0">branding_watermark</span>
-        <span className="text-label-sm font-label-sm text-on-surface-variant min-w-0 truncate">Broadcast Graphics</span>
+        <span className="text-label-sm font-label-sm text-on-surface-variant min-w-0 truncate">Broadcast graphics</span>
 
         {/* Live destination override — Default, or any combination of kinds */}
-        <div className="ml-md shrink-0 flex items-center gap-[2px] bg-surface-container rounded-lg p-[3px]" title="Where graphics are sent — In-Room = screens, Online = NDI, Stream = the broadcast composite. Combine any.">
+        <div className="ml-md shrink-0 flex items-center gap-[2px] bg-surface-container rounded-lg p-[3px]" title="Where graphics are sent. In-Room is the screens, Online is NDI, Stream is the broadcast. Combine any.">
           <span className="material-symbols-outlined text-[14px] text-on-surface-variant/60 ml-1">send</span>
           <button onClick={() => { setDest([]); localStorage.setItem('cue.graphics.destOverride', '[]'); }}
+            title="Send each graphic to the destination saved with it. Pick In-Room, Online or Stream to send everything there instead."
             className={`flex items-center gap-xs px-sm py-1 rounded text-label-sm font-label-sm transition-colors cursor-pointer ${
               dest.length === 0 ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'
             }`}>
-            <span className="material-symbols-outlined text-[13px]">tune</span>Default
+            <span className="material-symbols-outlined text-[13px]">tune</span>As saved
           </button>
           {KIND_OPTS.map((d) => (
             <button key={d.id} onClick={() => toggleDest(d.id)}
@@ -270,16 +271,16 @@ export default function GraphicsPanel({ activeServiceId }) {
             ) : (
               <button onClick={() => setConfirmClearAll(true)}
                 className="flex items-center gap-xs px-md py-xs rounded text-label-sm font-label-sm bg-surface-container-high border border-secondary/50 text-secondary hover:bg-surface-variant cursor-pointer">
-                <span className="material-symbols-outlined text-[14px]">block</span> Clear All
+                <span className="material-symbols-outlined text-[14px]">block</span> Clear all
               </button>
             )
           )}
           <button onClick={() => setGallery(true)}
-            className="flex items-center gap-xs px-md py-xs rounded text-label-sm font-label-sm bg-surface-container-high border border-outline-variant/40 text-on-surface-variant hover:text-on-surface cursor-pointer">
+            className="btn btn-sm btn-secondary">
             <span className="material-symbols-outlined text-[14px]">grid_view</span> Designs
           </button>
           <button onClick={() => setEditor({})}
-            className="flex items-center gap-xs px-md py-xs rounded text-label-sm font-label-sm bg-primary text-on-primary font-bold hover:brightness-110 cursor-pointer">
+            className="btn btn-sm btn-primary">
             <span className="material-symbols-outlined text-[14px]">add</span> New Graphic
           </button>
         </div>
@@ -386,7 +387,7 @@ export default function GraphicsPanel({ activeServiceId }) {
               className="flex-1 bg-surface-container-lowest border border-outline-variant/40 rounded-lg px-sm py-1.5 text-body-md text-on-surface focus:outline-none focus:border-primary"
             />
             <button onClick={fireQuickTicker} disabled={!quickTicker.trim()}
-              className="px-md py-1.5 rounded-lg text-label-sm font-label-sm font-bold bg-tertiary-container text-on-tertiary hover:brightness-110 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">Start</button>
+              className="btn btn-go">Start</button>
             <button onClick={() => window.cue.output.ticker.hide(quickTarget())} disabled={!tickerLive}
               className="px-md py-1.5 rounded-lg text-label-sm font-label-sm bg-surface-container-high border border-secondary/50 text-secondary hover:bg-surface-variant cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">Stop</button>
           </div>
@@ -535,7 +536,7 @@ function GraphicCard({ g, liveOn = [], dismissAt = null, paused = false, destLab
             <button onClick={onClear} className="px-md py-1.5 rounded text-label-sm font-label-sm bg-surface-container-high border border-secondary/50 text-secondary hover:bg-surface-variant cursor-pointer">{clearLabel}</button>
           </div>
         ) : (
-          <button onClick={onTake} className="px-md py-1.5 rounded text-label-sm font-label-sm font-bold bg-primary text-on-primary hover:brightness-110 cursor-pointer shrink-0">{takeLabel}</button>
+          <button onClick={onTake} className="btn btn-primary shrink-0">{takeLabel}</button>
         )}
       </div>
     </div>

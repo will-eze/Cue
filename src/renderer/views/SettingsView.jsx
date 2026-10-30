@@ -81,7 +81,7 @@ function UpdateChecker() {
       {status === 'available' ? (
         <button
           onClick={install}
-          className="bg-primary text-on-primary px-lg py-sm rounded text-label-sm font-label-sm hover:opacity-90 transition-all cursor-pointer"
+          className="btn btn-primary"
         >
           Update to v{info.latest}
         </button>

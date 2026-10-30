@@ -129,7 +129,7 @@ export default function StageView() {
               onKeyDown={(e) => { if (e.key === 'Enter') savePreset(); }}
               className="w-48 bg-surface-container-lowest border border-outline-variant/30 rounded px-sm py-[5px] text-body-sm text-on-surface outline-none focus:border-primary" />
             <button onClick={savePreset} disabled={!presetName.trim() || saving}
-              className="flex items-center gap-xs h-8 px-md rounded-lg text-label-sm font-label-sm font-bold bg-primary text-on-primary hover:brightness-110 active:scale-95 transition-all cursor-pointer disabled:opacity-40">
+              className="btn btn-primary">
               <span className="material-symbols-outlined text-[15px]">bookmark_add</span>{saving ? 'Saving…' : 'Save'}
             </button>
           </div>

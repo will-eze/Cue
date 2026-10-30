@@ -158,7 +158,7 @@ export default function StreamLayoutEditor({ initial, presetId, presetName, onAp
               <div className="grid grid-cols-3 gap-xs">
                 {TEMPLATES.map((t) => (
                   <button key={t.id} onClick={() => applyTemplate(t)}
-                    className="flex items-center justify-center gap-xs h-9 rounded-lg text-label-sm font-label-sm font-bold bg-surface-container-high border border-outline-variant/30 text-on-surface-variant hover:text-on-surface hover:border-outline-variant/60 cursor-pointer transition-all active:scale-95">
+                    className="btn btn-secondary">
                     <span className="material-symbols-outlined text-[16px]">{t.icon}</span>{t.name}
                   </button>
                 ))}
@@ -241,11 +241,11 @@ export default function StreamLayoutEditor({ initial, presetId, presetName, onAp
             </button>
           )}
           <div className="ml-auto flex items-center gap-sm">
-            <button onClick={onClose} className="h-9 px-md rounded-lg text-label-sm font-label-sm font-bold text-on-surface-variant hover:text-on-surface cursor-pointer">Cancel</button>
+            <button onClick={onClose} className="btn btn-ghost">Cancel</button>
             {presetId && (
-              <button onClick={() => save(true)} disabled={busy} className="h-9 px-md rounded-lg text-label-sm font-label-sm font-bold bg-surface-container-high border border-outline-variant/40 text-on-surface hover:border-outline-variant/70 cursor-pointer disabled:opacity-40">Save as New</button>
+              <button onClick={() => save(true)} disabled={busy} className="btn btn-secondary">Save as New</button>
             )}
-            <button onClick={() => save(false)} disabled={busy} className="h-9 px-md rounded-lg text-label-sm font-label-sm font-bold bg-primary text-on-primary hover:brightness-110 active:scale-95 transition-all cursor-pointer disabled:opacity-40">
+            <button onClick={() => save(false)} disabled={busy} className="btn btn-primary">
               {busy ? 'Saving…' : presetId ? 'Save' : 'Save Preset'}
             </button>
           </div>

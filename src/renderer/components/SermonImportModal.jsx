@@ -129,7 +129,7 @@ export default function SermonImportModal({ onClose, onDone }) {
               {error && <p className="text-label-sm font-label-sm text-error">{error}</p>}
 
               <button onClick={generate} disabled={!filePath}
-                className="bg-primary text-on-primary px-lg py-sm rounded-lg text-label-sm font-label-sm font-bold hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-xs disabled:opacity-40 disabled:cursor-not-allowed">
+                className="btn btn-primary">
                 <span className="material-symbols-outlined text-[16px]">auto_awesome</span> Generate slides
               </button>
             </>

@@ -165,3 +165,22 @@ button:focus:not(:focus-visible),
   color: #424754;
   pointer-events: none;
 }
+
+/* Shared buttons. Two shapes (filled, outline) at two sizes; colour follows the
+   semantic palette: primary = blue (confirm/select), go = green (GO/add/apply),
+   danger = destructive. Layout classes (shrink-0, w-full, ml-auto) go alongside. */
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-xs h-8 px-md rounded-lg text-[14px] font-semibold leading-none whitespace-nowrap transition-colors cursor-pointer select-none;
+  }
+  .btn:disabled { @apply opacity-40 cursor-not-allowed; }
+  .btn-sm { @apply h-7 px-sm text-[13px]; }
+  .btn-primary { @apply bg-primary text-on-primary hover:brightness-110; }
+  .btn-go { @apply bg-tertiary-container text-on-tertiary-container hover:brightness-110; }
+  .btn-secondary { @apply border border-outline-variant/60 text-on-surface hover:bg-surface-variant; }
+  .btn-ghost { @apply text-on-surface-variant hover:text-on-surface hover:bg-surface-variant; }
+  .btn-danger { @apply border border-error/50 text-error hover:bg-error/10; }
+  .btn:disabled:hover { filter: none; background-color: transparent; }
+  .btn-primary:disabled:hover { @apply bg-primary; }
+  .btn-go:disabled:hover { @apply bg-tertiary-container; }
+}

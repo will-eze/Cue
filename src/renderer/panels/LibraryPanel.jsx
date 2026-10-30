@@ -301,8 +301,8 @@ function SongPreviewModal({ song, onClose, onEdit, onAddToRundown }) {
           </div>
         </div>
         <div className="absolute top-md right-lg flex gap-xs">
-          <button onClick={() => { onAddToRundown(song.id); onClose(); }} className="px-md py-[5px] rounded text-[11px] font-label-sm font-bold bg-primary text-on-primary hover:brightness-110 cursor-pointer">Add</button>
-          <button onClick={() => onEdit(fullSong || song)} className="px-md py-[5px] rounded text-[11px] font-label-sm bg-surface-container border border-outline-variant/40 text-on-surface-variant hover:bg-surface-variant cursor-pointer">Edit</button>
+          <button onClick={() => { onAddToRundown(song.id); onClose(); }} className="btn btn-sm btn-primary">Add</button>
+          <button onClick={() => onEdit(fullSong || song)} className="btn btn-sm btn-secondary">Edit</button>
           <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded text-on-surface-variant/60 hover:text-on-surface hover:bg-surface-variant cursor-pointer">
             <span className="material-symbols-outlined text-[16px]">close</span>
           </button>
@@ -478,7 +478,7 @@ function LiveInputsTab({ onAddLiveInput }) {
               />
               <button
                 onClick={() => onAddLiveInput?.({ name: selected, label: label.trim() || defaultLabel(selected) })}
-                className="bg-primary text-on-primary px-md py-xs rounded text-label-sm font-label-sm font-bold hover:brightness-110 active:scale-95 transition-all cursor-pointer flex items-center gap-xs shrink-0"
+                className="btn btn-sm btn-primary shrink-0"
               >
                 <span className="material-symbols-outlined text-[14px]">add</span>
                 Add to Service
@@ -903,7 +903,7 @@ export default function LibraryPanel({ activeServiceId, onThemesChanged, onApply
                 onClick={() => setImportMenuOpen((o) => !o)}
                 disabled={parsingSongs}
                 title="Import songs"
-                className="bg-surface-container border border-outline-variant/40 text-on-surface px-md py-xs rounded text-label-sm font-label-sm hover:bg-surface-container-high active:scale-95 transition-all cursor-pointer flex items-center gap-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                className="btn btn-sm btn-secondary"
               >
                 <span className="material-symbols-outlined text-[14px]">file_upload</span>
                 {parsingSongs ? 'Reading…' : 'Import'}
@@ -953,7 +953,7 @@ export default function LibraryPanel({ activeServiceId, onThemesChanged, onApply
                     >
                       <span className="material-symbols-outlined text-[16px] text-on-surface-variant mt-[1px]">format_list_bulleted_add</span>
                       <span className="flex flex-col">
-                        <span className="text-body-md text-on-surface">Paste Song List…</span>
+                        <span className="text-body-md text-on-surface">Paste song list…</span>
                         <span className="text-label-sm font-label-sm text-on-surface-variant tracking-normal normal-case">Match a list of titles and add to rundown</span>
                       </span>
                     </button>
@@ -983,7 +983,7 @@ export default function LibraryPanel({ activeServiceId, onThemesChanged, onApply
           {tab === 'songs' && (
             <button
               onClick={() => setEditSong({})}
-              className="bg-primary text-on-primary px-md py-xs rounded text-label-sm font-label-sm font-bold hover:brightness-110 active:scale-95 transition-all cursor-pointer flex items-center gap-xs"
+              className="btn btn-sm btn-primary"
             >
               <span className="material-symbols-outlined text-[14px]">add</span>
               New Song
@@ -1012,7 +1012,7 @@ export default function LibraryPanel({ activeServiceId, onThemesChanged, onApply
             <button
               onClick={() => openYouTube()}
               title="Add a YouTube video (downloaded for this session only)"
-              className="bg-surface-container border border-outline-variant/40 text-on-surface px-md py-xs rounded text-label-sm font-label-sm hover:bg-surface-container-high active:scale-95 transition-all cursor-pointer flex items-center gap-xs"
+              className="btn btn-sm btn-secondary"
             >
               <span className="material-symbols-outlined text-[14px]">smart_display</span>
               YouTube
@@ -1022,7 +1022,7 @@ export default function LibraryPanel({ activeServiceId, onThemesChanged, onApply
             <button
               onClick={handleImportMedia}
               disabled={importing}
-              className="bg-primary text-on-primary px-md py-xs rounded text-label-sm font-label-sm font-bold hover:brightness-110 active:scale-95 transition-all cursor-pointer flex items-center gap-xs disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn btn-sm btn-primary"
             >
               <span className="material-symbols-outlined text-[14px]">upload</span>
               {importing ? 'Importing…' : 'Import'}
@@ -1033,7 +1033,7 @@ export default function LibraryPanel({ activeServiceId, onThemesChanged, onApply
               <button
                 onClick={() => setSermonImport(true)}
                 title="Turn a sermon document into a presentation"
-                className="bg-surface-container border border-outline-variant/40 text-on-surface px-md py-xs rounded text-label-sm font-label-sm hover:bg-surface-container-high active:scale-95 transition-all cursor-pointer flex items-center gap-xs"
+                className="btn btn-sm btn-secondary"
               >
                 <span className="material-symbols-outlined text-[14px]">menu_book</span>
                 Sermon to Slides
@@ -1041,14 +1041,14 @@ export default function LibraryPanel({ activeServiceId, onThemesChanged, onApply
               <button
                 onClick={() => setPptxImport(true)}
                 title="Import a PowerPoint (.pptx) file"
-                className="bg-surface-container border border-outline-variant/40 text-on-surface px-md py-xs rounded text-label-sm font-label-sm hover:bg-surface-container-high active:scale-95 transition-all cursor-pointer flex items-center gap-xs"
+                className="btn btn-sm btn-secondary"
               >
                 <span className="material-symbols-outlined text-[14px]">upload_file</span>
                 Import PowerPoint
               </button>
               <button
                 onClick={() => setEditPresentation({})}
-                className="bg-primary text-on-primary px-md py-xs rounded text-label-sm font-label-sm font-bold hover:brightness-110 active:scale-95 transition-all cursor-pointer flex items-center gap-xs"
+                className="btn btn-sm btn-primary"
               >
                 <span className="material-symbols-outlined text-[14px]">add</span>
                 New Presentation
