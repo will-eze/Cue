@@ -162,8 +162,9 @@ export function importSongs(parsedSongs = []) {
     const out = [];
     for (const song of parsedSongs) {
       const { lastInsertRowid } = db.prepare(
-        'INSERT INTO songs (title, author, copyright, default_background_id) VALUES (?, ?, ?, ?)'
-      ).run(song.title || 'Untitled', song.author || null, song.copyright || null, null);
+        'INSERT INTO songs (title, author, copyright, default_background_id, arrangement_json) VALUES (?, ?, ?, ?, ?)'
+      ).run(song.title || 'Untitled', song.author || null, song.copyright || null, null,
+        serializeArrangement(song.arrangement, (song.sections || []).length));
       (song.sections || []).forEach((s, i) =>
         db.prepare('INSERT INTO song_sections (song_id, type, order_index, content, style_json) VALUES (?, ?, ?, ?, ?)')
           .run(lastInsertRowid, _IMPORT_TYPES.has(s.type) ? s.type : 'verse', i, s.content, s.style_json ?? null)
@@ -225,7 +226,7 @@ export function seedGhsHymnal() {
     try {
       const toImport = readBundledGhsRows()
         .filter((r) => r.ok && !r.existing)
-        .map((r) => ({ title: r.title, author: r.author, copyright: r.copyright, sections: r.sections, tags: r.tags }));
+        .map((r) => ({ title: r.title, author: r.author, copyright: r.copyright, sections: r.sections, arrangement: r.arrangement, tags: r.tags }));
       if (toImport.length) importSongs(toImport);
       setSetting('ghs_seeded', true);
     } catch { /* no bundled hymnal present (e.g. dev checkout without resources) */ }

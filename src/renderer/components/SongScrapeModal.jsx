@@ -78,6 +78,7 @@ export default function SongScrapeModal({ onClose, onSaved }) {
         title: (draftTitle || 'Untitled').trim(),
         author: draftAuthor.trim() || null,
         sections: parsed.sections,
+        arrangement: parsed.arrangement,
       });
       onSaved?.(id);
     } finally {

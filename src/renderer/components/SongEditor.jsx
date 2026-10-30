@@ -8,6 +8,7 @@ import useEditHistory, { useUndoRedoKeys } from '../utils/useEditHistory';
 import { useToast } from './Toast';
 import { mediaUrl } from '../utils/mediaUrl';
 import { sectionOrdinals, sectionLabels, SLIDE_BREAK } from '../utils/sectionLabels';
+import { parseLyrics } from '../../shared/lyrics-parse.js';
 import { normalizeLookStyle } from '../utils/presentationThemes';
 import TreatmentOverlays, { glassBoxStyle } from './TreatmentOverlays';
 import { useFonts } from '../utils/fonts';
@@ -369,65 +370,7 @@ function buildBarBg(ltBar) {
 }
 
 // ─── Song parser ───────────────────────────────────────────────────────────
-
-function parseSong(rawText) {
-  if (!rawText.trim()) return [];
-  const lines = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
-  const KW = 'verse|chorus|bridge|pre[-\\s]?chorus|prechorus|tag|intro|outro|refrain';
-  const HEADER_PATTERNS = [
-    new RegExp('^\\[(.{1,40}?)\\]\\s*:?\\s*$'),
-    new RegExp(`^(${KW})\\s*\\d*[a-z]?\\s*:$`, 'i'),
-    new RegExp(`^(${KW})\\s*\\d*[a-z]?$`, 'i'),
-    // Keyword + optional number + optional letter suffix + optional voice-part words,
-    // then a directive separator — "Verse 1a Solo- Devine", "Chorus- Unison", "Chorus (Men)".
-    // The voice-part words ([A-Za-z] only, no punctuation) sit BETWEEN the number
-    // and the separator, so a real lyric line ("I lay it all down, …") can't match.
-    new RegExp(`^(${KW})\\s*\\d*[a-z]?(?:\\s+[A-Za-z][A-Za-z'']*){0,4}\\s*[-–—:/(].*$`, 'i'),
-  ];
-  const TYPE_MAP = {
-    verse:'verse',v:'verse',chorus:'chorus',ch:'chorus',refrain:'refrain',
-    bridge:'bridge',br:'bridge','pre-chorus':'pre-chorus','pre chorus':'pre-chorus',
-    prechorus:'pre-chorus',tag:'tag',intro:'intro',outro:'outro',
-  };
-  function matchHeader(line) {
-    const t = line.trim();
-    if (!t || t.length > 60) return null;
-    for (const re of HEADER_PATTERNS) { const m = t.match(re); if (m) return (m[1] ?? m[0]).replace(/:?\s*$/, '').trim(); }
-    return null;
-  }
-  function labelToType(label) {
-    const l = label.toLowerCase().replace(/[\[\]]/g, '').replace(/\s+/g, ' ').trim();
-    const base = l.replace(/\s*\d+$/, '').trim();
-    return TYPE_MAP[base] || TYPE_MAP[l] || 'verse';
-  }
-  const TRAILING_TAG_RE = new RegExp(`\\s*\\[(${KW}|ch|br|v)\\s*\\d*\\]\\s*$`, 'i');
-  function cleanLine(line) {
-    return line.trim().replace(TRAILING_TAG_RE, '').replace(/^\s*[\[\(]?\d+[\]\)\.:]?\s+/, '');
-  }
-  const sections = []; let currentType = null, currentLines = [], hasHeaders = false, prevBlank = true;
-  function flush() {
-    while (currentLines.length && !currentLines[0].trim()) currentLines.shift();
-    while (currentLines.length && !currentLines[currentLines.length-1].trim()) currentLines.pop();
-    const content = currentLines.join('\n').trim();
-    if (content) sections.push({ type: currentType || 'verse', content });
-    currentLines = []; currentType = null;
-  }
-  for (const line of lines) {
-    const isBlank = !line.trim();
-    const headerLabel = matchHeader(line);
-    if (headerLabel) { flush(); currentType = labelToType(headerLabel); hasHeaders = true; prevBlank = true; continue; }
-    if (/^\s*\d+[.):]?\s*$/.test(line)) { prevBlank = true; continue; }
-    if (prevBlank && !isBlank) {
-      const m = line.match(/^\s*(\d{1,2})[.)]?\s+(.+)$/);
-      if (m) { flush(); currentType = 'verse'; hasHeaders = true; currentLines.push(cleanLine(m[2])); prevBlank = false; continue; }
-    }
-    if (isBlank) { currentLines.push(''); prevBlank = true; }
-    else { currentLines.push(cleanLine(line)); prevBlank = false; }
-  }
-  flush();
-  if (!hasHeaders) return rawText.split(/\n\s*\n/).map(b => b.trim()).filter(Boolean).map(content => ({ type: 'verse', content }));
-  return sections;
-}
+// Shared with file import / scraper / set-list create: src/shared/lyrics-parse.js.
 
 // ─── Slide Preview ─────────────────────────────────────────────────────────
 
@@ -1548,10 +1491,11 @@ function PasteView({ onParse, onCancel }) {
   return (
     <div className="flex flex-col gap-md p-lg flex-1">
       <p className="text-body-sm text-on-surface-variant leading-relaxed">
-        Paste the full song text. Headers like{' '}
-        <span className="text-on-surface font-mono">[Verse 1]</span>,{' '}
-        <span className="text-on-surface font-mono">Chorus:</span>, or{' '}
-        <span className="text-on-surface font-mono">BRIDGE</span> are detected and stripped.
+        Paste the song exactly as it was sent. Section labels like{' '}
+        <span className="text-on-surface font-medium">Verse 1 — Mary</span>,{' '}
+        <span className="text-on-surface font-medium">*Chorus x2*</span> or{' '}
+        <span className="text-on-surface font-medium">Repeat Chorus</span> become sections; singer names,
+        "All / Men / Leader" cues, chords and CCLI footers are removed.
       </p>
       <textarea
         autoFocus value={text} onChange={(e) => setText(e.target.value)} rows={12}
@@ -1559,7 +1503,7 @@ function PasteView({ onParse, onCancel }) {
         className="w-full bg-surface-container-lowest text-on-surface text-body-sm rounded-lg px-md py-sm border border-outline-variant/50 outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 resize-none font-mono leading-relaxed flex-1"
       />
       <div className="flex gap-sm">
-        <button onClick={() => { const p = parseSong(text); if (p.length) onParse(p); }}
+        <button onClick={() => { const p = parseLyrics(text, { detectTitle: true }); if (p.sections.length) onParse(p); }}
           disabled={!text.trim()}
           className="px-lg h-8 text-label-sm font-mono bg-primary text-on-primary disabled:opacity-40 rounded-lg transition-colors cursor-pointer uppercase tracking-[0.05em]">
           Import Sections
@@ -1975,8 +1919,18 @@ export default function SongEditor({ song, onClose, onSave }) {
   }
 
   function handleParsedImport(parsed) {
-    const mapped = parsed.map((p) => ({ _key: newKey(), type: p.type, content: p.content, runs: [] }));
-    setSections(mapped);
+    const mapped = parsed.sections.map((p) => ({ _key: newKey(), type: p.type, content: p.content, runs: [] }));
+    // One undo step: sections, plus the played order the paste implied ("Repeat
+    // Chorus", a chorus written twice → arrangement, not duplicate sections), plus
+    // metadata it carried (title line, SongSelect footer) — never overwriting.
+    doc.set((d) => ({
+      ...d,
+      sections: mapped,
+      arrangement: Array.isArray(parsed.arrangement) ? parsed.arrangement.map((i) => mapped[i]?._key).filter(Boolean) : null,
+      title: d.title.trim() ? d.title : (parsed.title || d.title),
+      author: d.author.trim() ? d.author : (parsed.author || d.author),
+      copyright: d.copyright.trim() ? d.copyright : (parsed.copyright || d.copyright),
+    }));
     setShowPaste(false);
     if (mapped.length) {
       setActiveSectionKey(mapped[0]._key);

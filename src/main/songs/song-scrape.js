@@ -416,8 +416,8 @@ export async function fetchLyrics(candidate = {}) {
     }
   }
 
-  const sections = parseLyricsToSections(lyrics);
+  const { sections, arrangement } = parseLyricsToSections(lyrics, { title });
   if (!sections.length) throw new Error('Lyrics were found but could not be split into sections.');
   title = title || 'Untitled';
-  return { title, author: author || null, sections, source, raw: lyrics };
+  return { title, author: author || null, sections, arrangement, source, raw: lyrics };
 }

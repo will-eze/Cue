@@ -56,6 +56,7 @@ export default function SongImportModal({ preview, onCancel, onImported }) {
         author: r.author,
         copyright: r.copyright,
         sections: r.sections,
+        arrangement: r.arrangement,
         tags: r.tags,
       }));
       const result = await window.cue.songs.importCommit(payload);

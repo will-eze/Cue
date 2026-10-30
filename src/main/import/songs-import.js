@@ -13,6 +13,7 @@
 import fs from 'fs';
 import path from 'path';
 import Database from 'better-sqlite3';
+import { parseLyrics } from '../../shared/lyrics-parse.js';
 
 // The only section types song_sections.type allows (schema CHECK constraint).
 const ALLOWED_TYPES = new Set(['verse', 'chorus', 'refrain', 'bridge', 'pre-chorus', 'tag', 'intro', 'outro']);
@@ -122,115 +123,15 @@ function parseOpenLyrics(raw, fallbackTitle) {
 // (those start with a non-chord letter or have trailing words), so headers survive.
 const CHORD_RE = /\[[A-G][#b]?(?:maj|min|sus|dim|aug|add|m|M)?\d*(?:\/[A-G][#b]?)?\]/g;
 
-// Performance / voice-part directives EasyWorship users place on their own line —
-// "All", "All - Unison", "Men:", "(Women)", "Soprano", "Instrumental", "x2". These
-// caption WHO sings or HOW, never lyric content, so EW import drops them from the
-// text. Real section headers ("Chorus", "Verse 2") are claimed by matchHeader
-// first and survive as the section's type/label; this list is only the residue
-// that has no place in Cue's section vocabulary.
-const NONLYRIC_TOKENS = new Set([
-  'all', 'unison', 'solo', 'duet', 'trio', 'everyone', 'group', 'together',
-  'men', 'man', 'male', 'women', 'woman', 'female', 'ladies', 'lady',
-  'boys', 'boy', 'girls', 'girl', 'kids', 'child', 'children', 'youth', 'adults',
-  'soprano', 'sopranos', 'alto', 'altos', 'tenor', 'tenors', 'bass', 'basses',
-  'baritone', 'descant', 'harmony', 'melody', 'part', 'parts',
-  'lead', 'leader', 'worship leader', 'cantor', 'choir', 'chorale',
-  'congregation', 'people', 'response', 'call',
-  'spoken', 'sung', 'shout', 'whisper', 'hum', 'humming', 'clap', 'clapping',
-  'instrumental', 'interlude', 'musical', 'music', 'ending',
-  'vamp', 'reprise', 'modulation', 'repeat', 'optional', 'echo',
-  'acapella', 'acappella', 'a cappella', 'spontaneous', 'adlib', 'ad lib', 'ad-lib',
-]);
-
-// True when a whole line is a performance/voice-part directive rather than lyric.
-// Conservative: directives are short, and every separator-delimited part must be a
-// known token (or a bare number), so multi-word lyrics like "Men and women of God"
-// stay put. Used only by the EW importer (stripAnnotations) — callers that want the
-// historic paste behaviour leave it off.
-function isNonLyricLine(line) {
-  let t = String(line || '').trim();
-  if (!t || t.length > 40) return false;                 // real lyric lines run longer
-  const wrap = /^\(([^()]*)\)$|^\[([^\[\]]*)\]$/.exec(t); // unwrap "(All)" / "[Men]"
-  if (wrap) t = (wrap[1] ?? wrap[2]).trim();
-  // Drop a trailing repeat count: "x2", "(x2)", "2x", "(3 times)", "(repeat all)".
-  t = t.replace(/[\s(]*(?:x\s*\d+|\d+\s*x|\d+\s*times?|repeat(?:\s*all)?)[\s)]*$/i, '').trim();
-  if (!t) return true;                                   // line was only a multiplier
-  t = t.replace(/[.,:;!?]+$/g, '').trim();
-  if (!t) return false;
-  const parts = t.split(/\s*[-–—/:|]\s*|\s+&\s+/).map((p) => p.trim()).filter(Boolean);
-  if (!parts.length) return false;
-  return parts.every((p) => {
-    const w = p.toLowerCase().replace(/\s*\d+$/, '').trim();  // "men 2" → "men"
-    return NONLYRIC_TOKENS.has(w) || NONLYRIC_TOKENS.has(p.toLowerCase()) || /^\d+$/.test(p);
-  });
-}
-
-// Header / blank-line section parser. Ported from SongEditor.jsx's Paste Song
-// parser so file import and paste behave identically. `stripAnnotations` (EW only)
-// additionally drops performance/voice-part directive lines (see isNonLyricLine)
-// so e.g. "All - Unison" never reaches the lyric text, while a true "Chorus"
-// header is still consumed by matchHeader and becomes the section type.
-function parseSections(rawText, { stripAnnotations = false } = {}) {
-  if (!rawText.trim()) return [];
-  let lines = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
-  const KW = 'verse|chorus|bridge|pre[-\\s]?chorus|prechorus|tag|intro|outro|refrain';
-  const HEADER_PATTERNS = [
-    new RegExp('^\\[(.{1,40}?)\\]\\s*:?\\s*$'),
-    new RegExp(`^(${KW})\\s*\\d*[a-z]?\\s*:$`, 'i'),
-    new RegExp(`^(${KW})\\s*\\d*[a-z]?$`, 'i'),
-    // EW: a known section word trailed by a directive — "Verse 1 - All",
-    // "Chorus (Men)", "Chorus: Women", "Verse 1a Solo- Devine" (voice-part words
-    // between the number and the separator) — keeps the section word, drops the rest.
-    ...(stripAnnotations ? [new RegExp(`^(${KW})\\s*\\d*[a-z]?(?:\\s+[A-Za-z][A-Za-z'']*){0,4}\\s*[-–—:/(].*$`, 'i')] : []),
-  ];
-  const TYPE_MAP = {
-    verse: 'verse', v: 'verse', chorus: 'chorus', ch: 'chorus', refrain: 'refrain',
-    bridge: 'bridge', br: 'bridge', 'pre-chorus': 'pre-chorus', 'pre chorus': 'pre-chorus',
-    prechorus: 'pre-chorus', tag: 'tag', intro: 'intro', outro: 'outro',
-    ending: 'outro', end: 'outro', vamp: 'tag', interlude: 'bridge',
-  };
-  function matchHeader(line) {
-    const t = line.trim();
-    if (!t || t.length > 60) return null;
-    for (const re of HEADER_PATTERNS) { const m = t.match(re); if (m) return (m[1] ?? m[0]).replace(/:?\s*$/, '').trim(); }
-    return null;
-  }
-  // EW: drop directive lines up front (a header still wins, so it's preserved),
-  // so both the section loop and the headerless fallback below see clean text.
-  if (stripAnnotations) lines = lines.filter((l) => matchHeader(l) || !isNonLyricLine(l));
-  function labelToType(label) {
-    const l = label.toLowerCase().replace(/[\[\]]/g, '').replace(/\s+/g, ' ').trim();
-    const base = l.replace(/\s*\d+$/, '').trim();
-    return TYPE_MAP[base] || TYPE_MAP[l] || 'verse';
-  }
-  const TRAILING_TAG_RE = new RegExp(`\\s*\\[(${KW}|ch|br|v)\\s*\\d*\\]\\s*$`, 'i');
-  function cleanLine(line) {
-    return line.trim().replace(TRAILING_TAG_RE, '').replace(/^\s*[\[\(]?\d+[\]\)\.:]?\s+/, '');
-  }
-  const sections = [];
-  let currentType = null, currentLines = [], hasHeaders = false, prevBlank = true;
-  function flush() {
-    while (currentLines.length && !currentLines[0].trim()) currentLines.shift();
-    while (currentLines.length && !currentLines[currentLines.length - 1].trim()) currentLines.pop();
-    const content = currentLines.join('\n').trim();
-    if (content) sections.push({ type: currentType || 'verse', content });
-    currentLines = []; currentType = null;
-  }
-  for (const line of lines) {
-    const isBlank = !line.trim();
-    const headerLabel = matchHeader(line);
-    if (headerLabel) { flush(); currentType = labelToType(headerLabel); hasHeaders = true; prevBlank = true; continue; }
-    if (/^\s*\d+[.):]?\s*$/.test(line)) { prevBlank = true; continue; }
-    if (prevBlank && !isBlank) {
-      const m = line.match(/^\s*(\d{1,2})[.)]?\s+(.+)$/);
-      if (m) { flush(); currentType = 'verse'; hasHeaders = true; currentLines.push(cleanLine(m[2])); prevBlank = false; continue; }
-    }
-    if (isBlank) { currentLines.push(''); prevBlank = true; }
-    else { currentLines.push(cleanLine(line)); prevBlank = false; }
-  }
-  flush();
-  if (!hasHeaders) return lines.join('\n').split(/\n\s*\n/).map((b) => b.trim()).filter(Boolean).map((content) => ({ type: 'verse', content }));
-  return sections;
+// Header / blank-line section parser — the shared lyrics parser
+// (src/shared/lyrics-parse.js) so file import, Song Editor → Paste, the web
+// scraper and the set-list "create from paste" flow all split identically. It
+// drops singer names glued to headers ("Verse 1 — Mary"), voice-part directive
+// lines ("All", "Men:"), chord-only lines and CCLI footers, and folds a chorus
+// written out twice (or a bare "Repeat Chorus") into `arrangement` instead of a
+// duplicate section. Returns { sections, arrangement, … }.
+function parseSections(rawText, opts) {
+  return parseLyrics(rawText, opts);
 }
 
 function parseTextOrChordPro(raw, fallbackTitle) {
@@ -255,13 +156,14 @@ function parseTextOrChordPro(raw, fallbackTitle) {
     out.push(line.replace(CHORD_RE, '')); // strip inline chords; harmless on plain text
   }
   if (ccli) copyright = (copyright ? copyright + ' · ' : '') + 'CCLI ' + ccli;
-  const sections = parseSections(out.join('\n'));
-  if (!sections.length) throw new Error('No lyrics found in file.');
+  const parsed = parseSections(out.join('\n'));
+  if (!parsed.sections.length) throw new Error('No lyrics found in file.');
   return {
     title: title || fallbackTitle,
-    author: author || null,
-    copyright: copyright || null,
-    sections,
+    author: author || parsed.author || null,
+    copyright: copyright || parsed.copyright || null,
+    sections: parsed.sections,
+    arrangement: parsed.arrangement,
   };
 }
 
@@ -499,7 +401,7 @@ function parseEasyWorship(dbPath) {
       const text = rawText
         ? rawText.split('\n').map((l) => l.trim()).join('\n').replace(/\n{3,}/g, '\n\n').trim()
         : '';
-      const sections = text ? parseSections(text, { stripAnnotations: true }) : [];
+      const { sections, arrangement } = text ? parseSections(text) : { sections: [], arrangement: null };
       const copyright = [s.copyright, s.administrator].map((x) => (x || '').trim()).filter(Boolean).join(' · ') || null;
       return {
         ok: sections.length > 0,
@@ -508,6 +410,7 @@ function parseEasyWorship(dbPath) {
         title: (s.title || '').trim() || 'Untitled',
         author: (s.author || '').trim() || null,
         copyright,
+        arrangement,
         sections: sections.map((x) => {
           // EasyWorship keeps a verse's multiple slides as blank-line-separated
           // stanzas under one header. Turn each internal blank line into a slide
@@ -538,9 +441,10 @@ export function parseGhsItems(items) {
   return (items || []).map((it) => {
     const title = `GHS ${it.number}${it.name ? ' - ' + it.name : ''}`;
     const text = (it.lyrics || '').split('\n').map((l) => l.trim()).join('\n').replace(/\n{3,}/g, '\n\n').trim();
-    const sections = text ? parseSections(text) : [];
+    const { sections, arrangement } = text ? parseSections(text) : { sections: [], arrangement: null };
     return {
       ok: sections.length > 0,
+      arrangement,
       file: `GHS ${it.number}`,
       format: 'GHS',
       title,
@@ -563,18 +467,23 @@ function fileHead(fp) {
 // Parse a raw lyric blob (scraped from the web, or pasted) into Cue sections,
 // reusing the SAME header/blank-line parser as file import + Paste Song so a
 // scraped song splits into verses/chorus/etc. exactly like every other path.
-// Returns [{ type, content }]; an empty array when nothing usable parsed.
-export function parseLyricsToSections(rawText) {
+// Returns { sections: [{ type, content }], arrangement }; empty sections when
+// nothing usable parsed. `opts` passes through to parseLyrics (title, detectTitle).
+export function parseLyricsToSections(rawText, opts) {
   const text = String(rawText || '')
     .replace(/\r\n?/g, '\n')
     .split('\n').map((l) => l.replace(/[ \t]+$/g, '')).join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
-  if (!text) return [];
-  return parseSections(text).map((s) => ({
-    type: ALLOWED_TYPES.has(s.type) ? s.type : 'verse',
-    content: s.content,
-  }));
+  if (!text) return { sections: [], arrangement: null };
+  const parsed = parseSections(text, opts);
+  return {
+    ...parsed,
+    sections: parsed.sections.map((s) => ({
+      type: ALLOWED_TYPES.has(s.type) ? s.type : 'verse',
+      content: s.content,
+    })),
+  };
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
