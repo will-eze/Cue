@@ -1585,6 +1585,12 @@ export default function SongEditor({ song, onClose, onSave }) {
   const editorRef    = useRef(null);
   const sectionsRef  = useRef([]);
   const activeKeyRef = useRef(null);
+  // Names set lists have used for this song (Paste Song List corrections).
+  const [aliases, setAliases] = useState([]);
+  useEffect(() => {
+    if (!song?.id || !window.cue.songs.listAliases) { setAliases([]); return; }
+    window.cue.songs.listAliases(song.id).then((a) => setAliases(Array.isArray(a) ? a : [])).catch(() => setAliases([]));
+  }, [song?.id]);
   const sidebarRef   = useRef(null);   // lyrics document scroller
   const caretPoint   = useRef(null);   // where the operator clicked to activate a section
   const fonts        = useFonts();
@@ -2249,6 +2255,28 @@ export default function SongEditor({ song, onClose, onSave }) {
                 </button>
               )}
             </div>
+
+            {/* Remembered set-list names — matched instantly by Paste Song List */}
+            {aliases.length > 0 && (
+              <div className="flex items-center gap-xs mt-sm flex-wrap" title="Names your set lists have used for this song. Paste Song List matches these instantly.">
+                <span className={`${labelCls} mb-0`}>Also called:</span>
+                {aliases.map((a) => (
+                  <span key={a.alias} className="flex items-center gap-[2px] text-label-sm pl-sm pr-[2px] py-[1px] rounded-full border border-outline-variant/40 text-on-surface">
+                    {a.alias}
+                    <button
+                      onClick={async () => {
+                        try { await window.cue.songs.forgetAlias(song.id, a.alias); } catch { /* ignore */ }
+                        setAliases((prev) => prev.filter((x) => x.alias !== a.alias));
+                      }}
+                      title="Forget this name"
+                      className="w-4 h-4 flex items-center justify-center rounded-full text-on-surface-variant hover:text-error cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-[13px]">close</span>
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

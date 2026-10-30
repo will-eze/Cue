@@ -337,7 +337,7 @@ function dice(a, b) {
 
 // Title forms a library song answers to: "GHS 12 - Blessed Assurance" answers to
 // "blessed assurance", "ghs 12", "hymn 12"; "Imela (Thank You)" to "imela" too.
-function titleKeys(title) {
+export function titleKeys(title) {
   const keys = new Set();
   const n = norm(title);
   if (n) keys.add(n);
@@ -355,7 +355,8 @@ function titleKeys(title) {
 
 // Build the in-memory title / first-line index once per paste.
 // songs: [{ id, title, author, firstLines: string[] }]
-export function buildIndex(songs) {
+// aliases: [{ alias, song_id }] — names the operator previously confirmed.
+export function buildIndex(songs, aliases = []) {
   const byKey = new Map();         // normalised title key → [song]
   const byFirstLine = new Map();   // normalised first line → [song]
   const entries = [];              // { song, key, grams, kind: 'title'|'line' }
@@ -369,7 +370,20 @@ export function buildIndex(songs) {
       entries.push({ song: s, key: k, grams: trigrams(k), kind: 'line' });
     }
   }
-  return { byKey, byFirstLine, entries, songs };
+  const byId = new Map(songs.map((s) => [s.id, s]));
+  const byAlias = new Map();
+  for (const a of aliases) {
+    const s = byId.get(a.song_id);
+    const k = norm(a.alias_norm || a.alias);
+    if (s && k) byAlias.set(k, s);
+  }
+  return { byKey, byFirstLine, byAlias, entries, songs };
+}
+
+// The key an alias is stored under — the same normalisation the matcher looks up.
+export function aliasKey(text) {
+  const c = cleanTitleLine(text);
+  return norm(c.variants[0] || text);
 }
 
 const slim = (s) => (s ? { id: s.id, title: s.title, author: s.author ?? null } : null);
@@ -384,6 +398,13 @@ function hymnKey(text) {
 // Title-ish lookup for one short line: exact title → hymn number → first line →
 // fuzzy title/first-line. Returns { song, confidence, score, via } | null.
 function lookupTitle(variants, index) {
+  // The operator's own earlier correction beats everything else.
+  if (index.byAlias?.size) {
+    for (const v of variants) {
+      const hit = index.byAlias.get(norm(v));
+      if (hit) return { song: hit, others: [], confidence: 'exact', score: 2.5, via: 'alias', variant: v };
+    }
+  }
   for (const v of variants) {
     const hk = hymnKey(v);
     if (hk) {
@@ -500,7 +521,7 @@ function continues(line, songId, lib) {
 // Returns rows: [{ input, query, lines, lyrics, match, alternates, confidence,
 //                  duplicateOf, title }]
 export function matchSetList(raw, lib) {
-  const index = lib.index || buildIndex(lib.songs || []);
+  const index = lib.index || buildIndex(lib.songs || [], lib.aliases || []);
   const L = { ...lib, index, titleOf: (id) => (index.songs.find((s) => s.id === id)?.title || '') };
   const units = segmentSetList(raw);
 

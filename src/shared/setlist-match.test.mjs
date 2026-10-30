@@ -248,6 +248,14 @@ You are good, You are kind`;
   ok('legacy example', JSON.stringify(titles(rows)) === JSON.stringify(['Abide with Me', 'Crown Him with Many Crowns', 'Rock of Ages']), titles(rows));
 }
 
+// ── Remembered aliases (operator corrections) win, before title/fuzzy ─────
+{
+  const withAlias = { ...lib, aliases: [{ alias_norm: 'the river song', song_id: 19 }, { alias_norm: 'thank you song', song_id: 18 }] };
+  const rows = matchSetList('1. The River Song - Mary\n2. Thank You Song (Key: G)\n3. Rock of Ages', withAlias);
+  ok('aliases: matched', JSON.stringify(titles(rows)) === JSON.stringify(['River of Mercy', 'Imela (Thank You)', 'Rock of Ages']), titles(rows));
+  ok('aliases: via alias, exact', rows[0].via === 'alias' && rows[0].confidence === 'exact', rows[0]);
+}
+
 // ── Segmenter never yields empty units ──────────────────────────────────────
 ok('segment: empty', segmentSetList('').length === 0);
 ok('segment: only headers', segmentSetList('Worship\nPraise\n\nOffering').length === 0);

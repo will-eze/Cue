@@ -22,6 +22,9 @@ export function registerSongsIpc() {
     catch (err) { return { ok: false, error: err.message }; }
   });
   ipcMain.handle('songs:matchTitles', h((_e, rawText) => songs.matchTitles(rawText)));
+  ipcMain.handle('songs:rememberAliases', h((_e, pairs) => songs.rememberAliases(pairs)));
+  ipcMain.handle('songs:listAliases', h((_e, songId) => songs.listAliases(songId)));
+  ipcMain.handle('songs:forgetAlias', h((_e, songId, alias) => songs.forgetAlias(songId, alias)));
   ipcMain.handle('songs:importParse', h((_e, filePaths) => parseSongFiles(filePaths)));
   ipcMain.handle('songs:importGhs', h(() => songs.readBundledGhsRows()));
   ipcMain.handle('songs:importCommit', h((_e, parsedSongs) => songs.importSongs(parsedSongs)));

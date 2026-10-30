@@ -914,6 +914,23 @@ const migrations = [
       ALTER TABLE service_items ADD COLUMN theme_override_id INTEGER REFERENCES themes(id) ON DELETE SET NULL;
     `);
   },
+  // v35 — Song aliases: what an operator's set lists CALL a song ("Imela", "Way
+  // Maker – Sinach") → the library song they confirmed it means in Paste Song List.
+  // Keyed by the normalised alias (one alias → one song; a newer correction wins).
+  // ON DELETE CASCADE so deleting a song forgets its aliases.
+  function v35(database) {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS song_aliases (
+        alias_norm TEXT PRIMARY KEY,
+        alias      TEXT NOT NULL,
+        song_id    INTEGER NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
+        uses       INTEGER NOT NULL DEFAULT 1,
+        created_at DATETIME NOT NULL DEFAULT (datetime('now')),
+        updated_at DATETIME NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_song_aliases_song ON song_aliases(song_id);
+    `);
+  },
 ];
 
 function runMigrations() {

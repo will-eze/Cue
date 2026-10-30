@@ -4,7 +4,7 @@ import path from 'path';
 import { getDb } from './schema.js';
 import { get as getSetting, set as setSetting } from './settings.js';
 import { parseGhsItems } from '../import/songs-import.js';
-import { words as _words, distinctive as _distinctive, ftsQuery as _ftsQuery, rankByOverlap, matchSetList } from '../../shared/setlist-match.js';
+import { words as _words, distinctive as _distinctive, ftsQuery as _ftsQuery, rankByOverlap, matchSetList, aliasKey, titleKeys } from '../../shared/setlist-match.js';
 
 // Natural title order: "GHS 2" before "GHS 10", "10,000 Reasons" after "9…".
 const _titleCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
@@ -468,11 +468,48 @@ export function matchTitles(rawText) {
   const songs = db.prepare('SELECT id, title, author FROM songs').all()
     .map((s) => ({ ...s, firstLines: firstLines.get(s.id) || [] }));
 
+  const aliases = db.prepare('SELECT alias_norm, song_id FROM song_aliases').all();
+
   return matchSetList(rawText, {
     songs,
+    aliases,
     textOf,
     fts: (expr) => ftsStmt.all(expr),
   });
+}
+
+// Remember what a set list called a song, from a Paste Song List the operator
+// confirmed: [{ alias, songId }]. A newer correction for the same alias wins.
+// Aliases that are just the song's own title add nothing and are skipped.
+export function rememberAliases(pairs = []) {
+  const db = getDb();
+  const titleOf = db.prepare('SELECT title FROM songs WHERE id = ?');
+  const up = db.prepare(`
+    INSERT INTO song_aliases (alias_norm, alias, song_id) VALUES (?, ?, ?)
+    ON CONFLICT(alias_norm) DO UPDATE SET
+      song_id = excluded.song_id, alias = excluded.alias,
+      uses = CASE WHEN song_id = excluded.song_id THEN uses + 1 ELSE 1 END,
+      updated_at = datetime('now')
+  `);
+  let n = 0;
+  db.transaction(() => {
+    for (const { alias, songId } of pairs) {
+      const key = aliasKey(alias || '');
+      const t = titleOf.get(songId);
+      if (!key || key.length < 2 || !t || titleKeys(t.title).includes(key)) continue;
+      up.run(key, String(alias).trim().slice(0, 200), songId);
+      n++;
+    }
+  })();
+  return n;
+}
+
+export function listAliases(songId) {
+  return getDb().prepare('SELECT alias, alias_norm, uses FROM song_aliases WHERE song_id = ? ORDER BY uses DESC, alias').all(songId);
+}
+
+export function forgetAlias(songId, alias) {
+  getDb().prepare('DELETE FROM song_aliases WHERE song_id = ? AND (alias_norm = ? OR alias = ?)').run(songId, aliasKey(alias), alias);
 }
 
 export function listTags() {

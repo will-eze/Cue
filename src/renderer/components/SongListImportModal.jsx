@@ -12,6 +12,7 @@ const VIA_LABEL = {
   firstline: 'Matched by a first lyric line',
   lyrics: 'Matched by lyrics',
   fuzzy: 'Matched by a similar title (check spelling)',
+  alias: 'Remembered — you matched this name to this song before',
 };
 
 // Raw matcher rows → modal rows. Confident hits are pre-ticked; a repeat of a song
@@ -502,6 +503,13 @@ export default function SongListImportModal({ onCancel, onAddManyToRundown }) {
       .map((r) => (r.override ?? r.match).id);
     if (!ids.length) return;
     setStep('adding');
+    // Remember the operator's judgement: a pasted name they corrected (or a
+    // check-this guess they ticked) is matched straight away next time.
+    const pairs = rows
+      .filter((r) => r.selected && !r.lyrics && (r.override ?? r.match)
+        && (r.override || r.confidence === 'low' || r.via === 'fuzzy'))
+      .map((r) => ({ alias: r.input, songId: (r.override ?? r.match).id }));
+    if (pairs.length) { try { await window.cue.songs.rememberAliases(pairs); } catch { /* best-effort */ } }
     try {
       await onAddManyToRundown(ids);
     } finally {
