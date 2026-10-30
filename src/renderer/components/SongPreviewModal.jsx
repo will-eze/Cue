@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { splitSectionContent, splitByMaxLines, maxLinesOf } from '../utils/sectionLabels';
+import { splitSectionContent, splitByMaxLines, maxLinesOf, sectionLabels } from '../utils/sectionLabels';
+import { useLyricsCopy, sectionChipClass } from '../utils/lyricsClipboard';
+import { useToast } from './Toast';
 import { useModalGuard } from '../utils/modalGuard';
 
 const TYPE_LABELS = {
@@ -12,6 +14,10 @@ export default function SongPreviewModal({ song, onClose, onEdit, onAddToRundown
   useModalGuard();
   const [fullSong, setFullSong] = useState(null);
   const [globalMaxLines, setGlobalMaxLines] = useState(0);
+  const lyricsRef = React.useRef(null);
+  const toast = useToast();
+  // ⌘C copies with section labels, ⌘⇧C lyrics only — same as the Song Editor.
+  useLyricsCopy(lyricsRef, (msg) => toast.show({ message: msg, duration: 2000 }));
 
   useEffect(() => {
     window.cue.songs.get(song.id).then(setFullSong);
@@ -73,7 +79,7 @@ export default function SongPreviewModal({ song, onClose, onEdit, onAddToRundown
         </div>
 
         {/* Sections */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-lg">
+        <div ref={lyricsRef} className="flex-1 overflow-y-auto custom-scrollbar p-lg select-text">
           {!fullSong ? (
             <div className="text-label-sm font-label-sm text-on-surface-variant/60">Loading…</div>
           ) : fullSong.sections?.length === 0 ? (
@@ -81,18 +87,20 @@ export default function SongPreviewModal({ song, onClose, onEdit, onAddToRundown
           ) : (
             <div className="flex flex-col gap-lg">
               {fullSong.sections?.map((section, i) => {
-                const isChorus = section.type === 'chorus' || section.type === 'refrain';
+                const labels = sectionLabels(fullSong.sections);
                 return (
-                  <div key={section.id || i} className="pl-md">
-                    <div className={`section-chip mb-sm inline-flex ${isChorus ? 'bg-primary text-on-primary border-transparent' : ''}`}>
-                      {TYPE_LABELS[section.type] || section.type}
+                  <div key={section.id || i} data-sec>
+                    <div className="mb-sm">
+                      <span data-sec-label className={sectionChipClass(section.type)}>{labels[i] || TYPE_LABELS[section.type] || section.type}</span>
                     </div>
+                    <div data-sec-body className="whitespace-pre-wrap">
                     {splitSectionContent(section.content)
                       .flatMap((p) => splitByMaxLines(p, effectiveMax(section)))
                       .map((part, pi, arr) => (
                       <React.Fragment key={pi}>
+                        {pi > 0 && <span className="hidden">{'\n\n'}</span>}
                         {pi > 0 && (
-                          <div className="flex items-center gap-sm my-sm text-[11px] font-mono text-on-surface-variant/60">
+                          <div data-no-copy className="flex items-center gap-sm my-sm text-[11px] font-mono text-on-surface-variant/60 whitespace-normal">
                             <span className="flex-1 h-px bg-outline-variant/20" />slide break<span className="flex-1 h-px bg-outline-variant/20" />
                           </div>
                         )}
@@ -101,6 +109,7 @@ export default function SongPreviewModal({ song, onClose, onEdit, onAddToRundown
                         </pre>
                       </React.Fragment>
                     ))}
+                    </div>
                   </div>
                 );
               })}

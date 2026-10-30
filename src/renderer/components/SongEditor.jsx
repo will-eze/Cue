@@ -7,8 +7,9 @@ import UndoRedoButtons from './UndoRedoButtons';
 import useEditHistory, { useUndoRedoKeys } from '../utils/useEditHistory';
 import { useToast } from './Toast';
 import { mediaUrl } from '../utils/mediaUrl';
-import { sectionOrdinals, sectionLabels, SLIDE_BREAK } from '../utils/sectionLabels';
+import { sectionOrdinals, sectionLabels, SLIDE_BREAK, maxLinesOf } from '../utils/sectionLabels';
 import { parseLyrics, parseHeaderLine, singerNamesIn, cleanSectionText } from '../../shared/lyrics-parse.js';
+import { sectionChipClass } from '../utils/lyricsClipboard';
 import { normalizeLookStyle } from '../utils/presentationThemes';
 import TreatmentOverlays, { glassBoxStyle } from './TreatmentOverlays';
 import { useFonts } from '../utils/fonts';
@@ -257,7 +258,7 @@ function serializeSection(type, text, runs, style) {
 // part correctly. Empty parts (leading/trailing/back-to-back markers) are dropped;
 // a section with no marker yields exactly one part. Mirrors splitSectionContent()
 // in utils/sectionLabels.js, but offset-aware so runs survive.
-function splitForPreview(text, runs) {
+function splitForPreview(text, runs, cap = 0) {
   const raw = text || '';
   const allRuns = runs || [];
   const bounds = [];
@@ -282,7 +283,25 @@ function splitForPreview(text, runs) {
     }
     parts.push({ text: raw.slice(ts, te), runs: partRuns });
   }
-  return parts.length ? parts : [{ text: '', runs: [] }];
+  // Max-lines pagination, exactly as output does it (splitByMaxLines after the ⁂
+  // split): chunks of `cap` typed lines, runs rebased into each chunk.
+  const out = [];
+  for (const part of parts) {
+    const lines = part.text.split('\n');
+    if (!(cap > 0) || lines.length <= cap) { out.push(part); continue; }
+    let off = 0;
+    for (let i = 0; i < lines.length; i += cap) {
+      const chunk = lines.slice(i, i + cap).join('\n');
+      const cs = off, ce = off + chunk.length;
+      out.push({
+        text: chunk,
+        runs: part.runs.filter((r) => r.end > cs && r.start < ce)
+          .map((r) => ({ ...r, start: Math.max(0, r.start - cs), end: Math.min(chunk.length, r.end - cs) })),
+      });
+      off = ce + 1;
+    }
+  }
+  return out.length ? out : [{ text: '', runs: [] }];
 }
 
 function buildShadowCss(shadow) {
@@ -1446,12 +1465,15 @@ const HEAD_TONE = {
 };
 
 function headHtml(sec, label) {
-  const tone = HEAD_TONE[sec.type] || 'text-on-surface';
+  // A coloured label chip + a hairline across the column, so each section start
+  // stands out from the lyrics. No title tooltip — it covered the lyrics; the
+  // always-visible chevron says "click for options".
   return `<div data-head="1" data-key="${esc(sec._key)}" data-type="${esc(sec.type)}" contenteditable="false" `
-    + `class="flex items-baseline gap-sm pt-[10px] pb-[1px] select-none cursor-pointer group/head" title="Change type, move or delete this section">`
+    + `class="flex items-center gap-sm pt-[14px] pb-[4px] select-none cursor-pointer group/head">`
     + `<span data-num class="w-6 shrink-0 text-right text-[11px] tabular-nums text-on-surface-variant/70"></span>`
-    + `<span data-label class="text-[12px] font-semibold ${tone} group-hover/head:underline">${esc(label)}</span>`
-    + `<span class="material-symbols-outlined text-[14px] leading-none text-on-surface-variant/60 opacity-0 group-hover/head:opacity-100">expand_more</span>`
+    + `<span data-label class="${sectionChipClass(sec.type)} group-hover/head:brightness-125">${esc(label)}</span>`
+    + `<span class="material-symbols-outlined text-[16px] leading-none text-on-surface-variant/60 group-hover/head:text-on-surface">expand_more</span>`
+    + `<span class="flex-1 h-px bg-outline-variant/30"></span>`
     + `</div>`;
 }
 
@@ -1711,7 +1733,13 @@ export default function SongEditor({ song, onClose, onSave }) {
   const caretTarget  = useRef(null);   // { key, atEnd } — where to put the caret after a re-render
   const scanHeaders  = useRef(false);
   const plainCopy    = useRef(false);  // next copy event = lyrics only (⌘⇧C)  // next input came from Enter/paste → look for typed section names
-  const [headMenu, setHeadMenu] = useState(null); // { key, x, y } section menu from a header click
+  const [headMenu, setHeadMenu] = useState(null);
+  // App-wide max-lines default (Settings › Themes) — the editor previews the same
+  // automatic slide splits the output will make.
+  const [globalMaxLines, setGlobalMaxLines] = useState(0);
+  useEffect(() => {
+    window.cue.settings.get('song_max_lines').then((v) => { const n = Number(v); setGlobalMaxLines(n > 0 ? n : 0); }).catch(() => {});
+  }, []); // { key, x, y } section menu from a header click
   const fonts        = useFonts();
   const sensors      = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -1890,9 +1918,55 @@ export default function SongEditor({ song, onClose, onSave }) {
   // The block = the last head/break at or before the caret. Its section drives the
   // preview; the number of breaks since the head picks the preview part.
   const [activeFrame, setActiveFrame] = useState(null); // { top, height } in editor px
+  // Max-lines auto splits, drawn as dashed lines over the document (not in it, so
+  // typing never fights them): [{ y, key, part, cap }] in wrapper px.
+  const [autoMarks, setAutoMarks] = useState([]);
+  const capRef = useRef(() => 0);
+
+  function computeAutoMarks(root) {
+    const base = root.offsetTop;
+    const rootTop = root.getBoundingClientRect().top;
+    const marks = [];
+    for (const head of root.querySelectorAll('[data-head]')) {
+      const body = head.nextElementSibling;
+      if (!body?.dataset?.body) continue;
+      const sec = sectionsRef.current.find((x) => x._key === head.dataset.key);
+      const cap = capRef.current(sec);
+      if (!(cap > 0)) continue;
+      let part = 0, line = 0, started = false, pending = null;
+      const walk = (node) => {
+        for (const n of node.childNodes) {
+          if (n.nodeType === Node.TEXT_NODE) {
+            if (n.textContent.trim()) { started = true; if (pending) { marks.push(pending); pending = null; } }
+            continue;
+          }
+          if (n.nodeType !== Node.ELEMENT_NODE) continue;
+          if (n.dataset?.break) { part++; line = 0; started = false; pending = null; continue; }
+          if (n.tagName === 'BR') {
+            if (!started) continue;
+            line++;
+            if (line % cap === 0) {
+              const r = document.createRange();
+              r.selectNode(n);
+              const rect = r.getBoundingClientRect();
+              if (rect.bottom) pending = { y: base + rect.bottom - rootTop, key: head.dataset.key, part, cap };
+            }
+            continue;
+          }
+          if (n.tagName === 'DIV' && started) line++;
+          walk(n);
+        }
+      };
+      walk(body);
+    }
+    return marks;
+  }
+
   function syncActiveFromSelection() {
     const root = editorRef.current;
     if (!root) return;
+    const marks = computeAutoMarks(root);
+    setAutoMarks(marks);
     const sel = window.getSelection();
     const anchor = sel && sel.rangeCount ? sel.anchorNode : null;
     if (!anchor || !root.contains(anchor)) return;
@@ -1908,13 +1982,28 @@ export default function SongEditor({ song, onClose, onSave }) {
     if (!head?.dataset.head) return;
     const key = head.dataset.key;
     if (key !== activeKeyRef.current) setActiveSectionKey(key);
-    setPreviewPart(bi - hi);
-    // offsetTop is relative to the editor (position:relative); the frame lives in the
-    // editor's wrapper, so add the editor's own offset within it.
+    const manualPart = bi - hi;
     const base = root.offsetTop;
-    const top = base + blocks[bi].offsetTop;
+    let top = base + blocks[bi].offsetTop;
     const next = blocks[bi + 1];
-    const bottom = base + (next ? next.offsetTop : root.offsetHeight);
+    let bottom = base + (next ? next.offsetTop : root.offsetHeight);
+    // Which auto chunk of this part holds the caret? (by vertical position)
+    const partMarks = marks.filter((m) => m.key === key && m.part === manualPart);
+    let chunk = 0;
+    if (partMarks.length && sel.rangeCount) {
+      const r = sel.getRangeAt(0).cloneRange();
+      r.collapse(true);
+      let cr = r.getBoundingClientRect();
+      if (!cr.top && !cr.bottom) cr = (anchor.nodeType === Node.ELEMENT_NODE ? anchor : anchor.parentElement).getBoundingClientRect();
+      const caretY = base + cr.top + cr.height / 2 - root.getBoundingClientRect().top;
+      chunk = partMarks.filter((m) => m.y <= caretY).length;
+      if (chunk > 0) top = partMarks[chunk - 1].y;
+      if (chunk < partMarks.length) bottom = partMarks[chunk].y;
+    }
+    // Preview part = auto chunks of earlier manual parts + this chunk.
+    let before = 0;
+    for (let p = 0; p < manualPart; p++) before += 1 + marks.filter((m) => m.key === key && m.part === p).length;
+    setPreviewPart(before + chunk);
     setActiveFrame({ top: top + 2, height: Math.max(24, bottom - top) });
   }
   useEffect(() => {
@@ -1927,6 +2016,9 @@ export default function SongEditor({ song, onClose, onSave }) {
     if (ro) ro.observe(editorRef.current);
     return () => { document.removeEventListener('selectionchange', onSel); cancelAnimationFrame(raf); ro?.disconnect(); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Max-lines cap changed (song field or app default) → redraw the auto-split lines.
+  useEffect(() => { requestAnimationFrame(syncActiveFromSelection); }, [maxLines, globalMaxLines]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Preview follows the active section's (live) content.
   useEffect(() => {
@@ -2516,7 +2608,10 @@ export default function SongEditor({ song, onClose, onSave }) {
 
   // The active section's display parts (split on the ⁂ marker). The preview shows
   // one part at a time so the operator never sees a slide with a marker in it.
-  const previewParts = splitForPreview(previewContent.text, previewContent.runs);
+  // Same cascade as expandSongSections: per-song cap → section theme cap → app default.
+  const capFor = (sec) => (Number(maxLines) > 0 ? Number(maxLines) : 0) || (sec ? maxLinesOf(sec) : 0) || globalMaxLines;
+  capRef.current = capFor;
+  const previewParts = splitForPreview(previewContent.text, previewContent.runs, capFor(sections.find((x) => x._key === activeSectionKey)));
   const partIdx      = Math.min(Math.max(previewPart, 0), previewParts.length - 1);
   const activePart   = previewParts[partIdx] || { text: '', runs: [] };
 
@@ -2782,6 +2877,20 @@ export default function SongEditor({ song, onClose, onSave }) {
                       style={{ top: activeFrame.top, height: activeFrame.height }}
                     />
                   )}
+                  {autoMarks.map((m, i) => (
+                    <div
+                      key={i}
+                      className="absolute left-[40px] right-[8px] border-t border-dashed border-on-surface-variant/50 pointer-events-none z-[1]"
+                      style={{ top: m.y + 1 }}
+                    >
+                      <span
+                        title={`New slide here — max ${m.cap} lines per slide`}
+                        className="material-symbols-outlined absolute -left-[26px] -top-[8px] text-[14px] leading-none text-on-surface-variant pointer-events-auto cursor-help"
+                      >
+                        content_cut
+                      </span>
+                    </div>
+                  ))}
                   <div
                     ref={editorRef}
                     contentEditable="true"
@@ -2812,7 +2921,11 @@ export default function SongEditor({ song, onClose, onSave }) {
               <div className="px-md py-sm border-t border-outline-variant/20 flex items-center gap-sm">
                 <div className="min-w-0 flex-1">
                   <div className="text-body-md text-on-surface">Max lines per slide</div>
-                  <div className="text-label-sm text-on-surface-variant">Longer sections split automatically · 0 = app default</div>
+                  <div className="text-label-sm text-on-surface-variant">
+                    {(Number(maxLines) || globalMaxLines)
+                      ? `Splits shown as dashed lines in the lyrics${Number(maxLines) ? '' : ` · using app default (${globalMaxLines})`}`
+                      : 'Off — sections show as one slide · 0 = app default'}
+                  </div>
                 </div>
                 <input
                   type="number"

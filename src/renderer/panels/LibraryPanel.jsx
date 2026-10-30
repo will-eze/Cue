@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useToast } from '../components/Toast';
+import { useLyricsCopy, sectionChipClass } from '../utils/lyricsClipboard';
+import { sectionLabels } from '../utils/sectionLabels';
 import { FixedSizeList as List } from 'react-window';
 import SongImportModal from '../components/SongImportModal';
 import SongListImportModal from '../components/SongListImportModal';
@@ -224,6 +226,9 @@ function SongPreviewModal({ song, onClose, onEdit, onAddToRundown }) {
   const contentRef = useRef(null);
   useFocusTrap(panelRef);
   const [fullSong, setFullSong] = useState(null);
+  const toast = useToast();
+  // ⌘C copies with section labels, ⌘⇧C lyrics only — same as the Song Editor.
+  useLyricsCopy(contentRef, (msg) => toast.show({ message: msg, duration: 2000 }));
   useEffect(() => {
     setFullSong(null);
     // Drop any leftover selection when switching directly to another song.
@@ -266,7 +271,7 @@ function SongPreviewModal({ song, onClose, onEdit, onAddToRundown }) {
             title + lyrics and nothing else. The action buttons are an absolutely
             positioned sibling, deliberately OUTSIDE contentRef. */}
         <div ref={contentRef} className="flex flex-col flex-1 min-h-0 select-text">
-          <div className="px-lg py-md pr-[190px] border-b border-outline-variant/20 shrink-0 min-w-0">
+          <div data-copy-meta className="px-lg py-md pr-[190px] border-b border-outline-variant/20 shrink-0 min-w-0">
             <h2 className="text-body-lg text-on-surface font-medium truncate">{song.title}</h2>
             {author && <div className="text-label-sm font-label-sm text-on-surface-variant truncate mt-[2px]">{author}</div>}
             {fullSong?.copyright && <div className="text-[11px] text-on-surface-variant/60 truncate mt-[2px]">{fullSong.copyright}</div>}
@@ -277,19 +282,20 @@ function SongPreviewModal({ song, onClose, onEdit, onAddToRundown }) {
             ) : !fullSong.sections?.length ? (
               <div className="text-label-sm font-label-sm text-on-surface-variant/60">No lyrics</div>
             ) : (
-              <div className="space-y-md">
-                {fullSong.sections.map((s, i) => {
-                  const text = (s.content || '').split('⁂').map((t) => t.trim()).filter(Boolean).join('\n\n');
-                  if (!text) return null;
-                  return (
-                    <div key={i}>
-                      <div className="text-[11px] text-on-surface-variant/60 font-label-sm mb-xs">
-                        {SECTION_TYPE_LABELS[s.type] || s.type}
+              <div className="space-y-lg">
+                {(() => {
+                  const labels = sectionLabels(fullSong.sections);
+                  return fullSong.sections.map((s, i) => {
+                    const text = (s.content || '').split('⁂').map((t) => t.trim()).filter(Boolean).join('\n\n');
+                    if (!text) return null;
+                    return (
+                      <div key={i} data-sec>
+                        <div className="mb-sm"><span data-sec-label className={sectionChipClass(s.type)}>{labels[i] || SECTION_TYPE_LABELS[s.type] || s.type}</span></div>
+                        <div data-sec-body className="text-body-md text-on-surface leading-relaxed whitespace-pre-wrap">{text}</div>
                       </div>
-                      <div className="text-body-md text-on-surface leading-relaxed whitespace-pre-wrap">{text}</div>
-                    </div>
-                  );
-                })}
+                    );
+                  });
+                })()}
               </div>
             )}
           </div>

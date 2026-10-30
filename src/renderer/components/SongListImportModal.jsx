@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 import SongEditor from './SongEditor';
 import AnchoredMenu from './AnchoredMenu';
 import { useModalGuard } from '../utils/modalGuard';
+import { useLyricsCopy, sectionChipClass } from '../utils/lyricsClipboard';
+import { sectionLabels } from '../utils/sectionLabels';
 
 // How a row was matched — shown as the confidence badge's tooltip so the operator
 // can judge a guess ("similar title" deserves a look; "hymn number" doesn't).
@@ -339,6 +341,8 @@ function DetectedPane({ live, text }) {
 
 // Right-hand pane: full lyrics of whichever song is being previewed.
 function PreviewPane({ song, loading }) {
+  const ref = useRef(null);
+  useLyricsCopy(ref);
   return (
     <div className="w-96 shrink-0 border-l border-outline-variant/20 bg-surface-container-lowest flex flex-col min-h-0">
       {!song ? (
@@ -354,7 +358,7 @@ function PreviewPane({ song, loading }) {
             <p className="text-body-lg font-bold text-on-surface truncate" title={song.title}>{song.title}</p>
             {song.author && <p className="text-label-sm font-label-sm text-on-surface-variant truncate">{song.author}</p>}
           </div>
-          <div className="flex-1 overflow-y-auto custom-scrollbar p-lg space-y-md">
+          <div ref={ref} className="flex-1 overflow-y-auto custom-scrollbar p-lg space-y-lg select-text">
             {loading ? (
               <div className="flex items-center justify-center py-xl">
                 <span className="material-symbols-outlined text-primary text-3xl animate-spin" style={{ animationDuration: '1s' }}>progress_activity</span>
@@ -362,12 +366,12 @@ function PreviewPane({ song, loading }) {
             ) : !song.sections || song.sections.length === 0 ? (
               <p className="text-label-sm font-label-sm text-on-surface-variant/70">No lyrics stored</p>
             ) : (
-              song.sections.map((sec, i) => (
-                <div key={i}>
+              song.sections.map((sec, i, all) => (
+                <div key={i} data-sec>
                   {sec.type && (
-                    <p className="text-label-sm font-label-sm text-primary/80 mb-xs capitalize">{sec.type}</p>
+                    <div className="mb-sm"><span data-sec-label className={sectionChipClass(sec.type)}>{sectionLabels(all)[i]}</span></div>
                   )}
-                  <p className="text-body-md text-on-surface-variant whitespace-pre-wrap leading-relaxed">{sec.content}</p>
+                  <p data-sec-body className="text-body-md text-on-surface whitespace-pre-wrap leading-relaxed">{(sec.content || '').split('⁂').map((t) => t.trim()).filter(Boolean).join('\n\n')}</p>
                 </div>
               ))
             )}
