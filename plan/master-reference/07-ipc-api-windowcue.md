@@ -20,7 +20,12 @@ All renderer↔main communication is via `ipcRenderer.invoke` / `ipcMain.handle`
 | `importParse(filePaths)` | `[{ok, file, format, title, author, copyright, sections, tags?, error?}]` | Parses song files (no DB write). Auto-detects OpenLyrics XML / ChordPro / text / EasyWorship SQLite (one .db → many rows). Per-file failures returned as `{ok:false, error}`. |
 | `importGhs()` | same row shape, all `format:'GHS'`, `tags:['GHS']`, with `existing:bool` | Parses the bundled GHS hymnal; flags rows already in the DB. |
 | `importCommit(parsedSongs)` | `{count, ids}` | Bulk-creates songs in one transaction. Each `song.tags[]` (names) is get-or-created and assigned. |
-| `matchTitles(rawText)` | `[{input, match:{id,title,author}\|null, alternates:[{id,title,author}], confidence}]` | Paste-Song-List matcher. Parses a dirty pasted set list into entries and matches each (lyric-first) against the library. `confidence` ∈ `exact`\|`high`\|`low`\|`none`. See §16. |
+| `matchTitles(rawText)` | `[{input, match:{id,title,author}\|null, alternates:[{id,title,author}], confidence, reason, …}]` | Paste-Song-List matcher. Thin SQLite/FTS adapter over `src/shared/setlist-match.js matchSetList` (line-grain segmentation, library-evidence merging, tiers alias → hymn number → exact title → first line → fuzzy). `confidence` ∈ `exact`\|`high`\|`low`\|`none`; `reason` explains the tier per row. See §16. |
+| `rememberAliases(pairs)` | void | Persists operator corrections `[{alias, songId}]` into `song_aliases` (v35); a newer correction for the same normalised alias replaces the older one. |
+| `listAliases(songId)` | `[{alias, uses, …}]` | A song's learned aliases ("Also called" in the Song Editor). |
+| `forgetAlias(songId, alias)` | void | Removes one learned alias. |
+| `scanSingerNotes()` | `[{id, title, changes…}]` | Library tool: dry-run of `lyrics-parse cleanSectionText` over every song — lists songs whose sections still carry singer names / directive lines (pre-parser imports). No DB write. |
+| `applySingerNotes(ids)` | `{count}` | Applies that cleanup to the chosen songs (runs re-aligned so styling survives). |
 | `scrapeSearch(query)` | `{ok, results:[{title,artist,url,provider}]}\|{ok:false,error}` | Online Song Finder — search Genius by title/artist; runs in main (no CSP/CORS issue). |
 | `scrapeFetch(candidate)` | `{ok,title,artist,sections:[…]}\|{ok:false,error}` | Fetch + clean lyrics for one search result (Genius / AZLyrics / arbitrary `url`); returns parsed sections ready for an editable preview before saving. |
 | `applyStyleToSong(songId, styleJson)` | void | Merges `styleJson` into every section of a song (preserving inline runs). |

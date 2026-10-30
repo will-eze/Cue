@@ -65,10 +65,15 @@ Oswald is reserved for output window templates only. Do not use in operator UI.
 | `.drag-handle` | `cursor: grab` |
 | `.titlebar-drag` | `-webkit-app-region: drag` |
 | `.titlebar-nodrag` | `-webkit-app-region: no-drag` |
-| `.section-chip` | JetBrains Mono label chip style |
+| `.section-chip` | Section-label chip (Inter); per-type colour via `utils/lyricsClipboard.js sectionChipClass` |
+| `.btn` + variant | Shared action button. Variants: `btn-primary` (blue confirm), `btn-go` (green add/apply/save), `btn-secondary` (outline), `btn-ghost` (Cancel/Close), `btn-danger` (red outline), `btn-danger-solid` (final destructive confirm). Sizes: default 32px, `btn-sm` 28px, `btn-xs` 24px (segmented controls/chips only). |
+| `.btn-toggle` | On/off and pick-one control; `is-on` (blue, selected) / `is-on-go` (green, armed mode); `btn-toggle-outline` when standalone. |
+| `.btn-icon` / `.btn-icon-sm` | Icon-only button (28 / 24px); modifiers `btn-icon-outline`, `btn-icon-danger`, `is-on`. Always carries a `title`. |
 | Custom scrollbar | 6px, `surface-container-low` track, `surface-container-highest` thumb |
 
 ### Component rules
+- **Buttons:** use the shared `.btn*` classes above, never hand-rolled padding/colour/radius strings. Deliberately exempt: the GO / Clear / Logo / Outputs transport, tabs, list rows, cards and switches.
+- **Copy:** sentence case, no forced uppercase/letter-spacing on labels, no text below ~11px in chrome, no em dashes in user-facing messages.
 - **Borders:** `border border-outline-variant/30` on containers. `/20`–`/40` opacity suffixes preferred.
 - **Border radius:** `rounded-lg` (0.25rem) for cards/panels. `rounded-xl` (0.5rem) for modals.
 - **No box shadows on flat surfaces.** Depth is expressed via surface lightness levels.

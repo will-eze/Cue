@@ -47,6 +47,7 @@
 | v32 | Added `output_channels.content_font_scale` (INTEGER NOT NULL DEFAULT 100) — per-channel percentage multiplier on the fullscreen fill-target font size (100 = neutral), independent of the global `lowerthird_font_scale`. Rides the window's `?cfs=` query param and live-updates via `content:scale` (no window recreate — the NDI sender survives). §13. |
 | v33 | Added `songs.max_lines` (INTEGER NOT NULL DEFAULT 0) — a per-song cap on AUTHORED lines per display slide; overflow auto-paginates (`expandSongSections` → `splitByMaxLines`). 0 = inherit: falls through to a section's theme `style_json.maxLines` then the global `song_max_lines` setting (§8, §16). |
 | v34 | Theme cascade — "assign a theme, don't bake it" (§9). Added `services.theme_id` and `service_items.theme_override_id`, both `REFERENCES themes(id) ON DELETE SET NULL` and nullable (= inherit the level above). The effective theme resolves item override → service → per-kind app default (`settings.default_theme_id_{song\|scripture\|slide}`) → app default (`default_theme_id`) → built-in. Themes resolve LIVE (`mergeSlideStyle`), no longer copied into `song_sections.style_json`. |
+| v35 | Song aliases. Created `song_aliases` (+ `idx_song_aliases_song`): what an operator's set lists CALL a song → the library song they confirmed it means in Paste Song List. Keyed by the normalised alias (`setlist-match.js aliasKey`), one alias → one song, a newer correction wins. `ON DELETE CASCADE` so deleting a song forgets its aliases (§16). |
 
 ### All tables
 
@@ -229,6 +230,17 @@ used_at DATETIME NOT NULL DEFAULT (datetime('now'))
 
 One row per song aired. `OperatorView` fires `songs:logUsage(songId)` on every live-song change; `db/songs.js logUsage` **dedupes per song within ~12h** (one service window) and **snapshots** title/author/copyright so a later song edit/delete never corrupts a historical report (hence no FK on `song_id`). `usageReport(fromIso, toIso)` groups by the snapshot and powers Settings → CCLI (`SongUsageSettings.jsx`): a date-range table, client-side CSV export (blob download), and a confirm-gated `usageClear`. Logging fires ONLY from the live-song-change effect — never from GO variants (a slide jump inside the same song would double-count).
 
+#### `song_aliases` (v35 — learned set-list names)
+```sql
+alias_norm TEXT PRIMARY KEY   -- aliasKey(alias): normalised lookup key
+alias      TEXT NOT NULL      -- as the operator's list wrote it (shown as "Also called")
+song_id    INTEGER NOT NULL REFERENCES songs(id) ON DELETE CASCADE
+uses       INTEGER NOT NULL DEFAULT 1
+created_at DATETIME, updated_at DATETIME
+```
+
+Written by `songs.rememberAliases(pairs)` when the operator confirms a corrected/chosen match in Paste Song List; read by `matchTitles` as the FIRST lookup tier (it deliberately beats an exact title match). The Song Editor lists a song's aliases as "Also called" (`listAliases` / `forgetAlias`).
+
 #### `themes` (v15 — theme / template library; v22 — theme packs)
 ```sql
 id INTEGER PRIMARY KEY AUTOINCREMENT
@@ -320,6 +332,7 @@ Known keys:
 | `song_max_lines` | number | Global default cap on authored lines/slide for songs (0–20, default 0 = unlimited). Bottom of the max-lines cascade — a song's own `max_lines` or a theme's `style_json.maxLines` overrides it (§8, §16). Set in Settings → Themes |
 | `bin_<name>_path` | string\|null | Per-binary manual override (`bin_yt-dlp_path`, `bin_ffmpeg_path`) from the Settings → Packages "Locate…" flow; tried before the auto-downloaded/PATH/common-dir search (§6). `null` reverts to auto-resolution |
 | `ghs_punct_fix_v1` | boolean | Set true after the one-time OCR-punctuation backfill (`patchGhsPunctuation`) runs on five bundled GHS hymns; gates it so it never re-runs (§16) |
+| `ghs7_lyrics_fix_v1` | boolean | Set true after the one-time GHS 7 lyrics backfill (`patchGhs7Lyrics`) runs; gates it so it never re-runs (§16) |
 
 **localStorage keys** (UI state only — not in DB):
 | Key | Description |

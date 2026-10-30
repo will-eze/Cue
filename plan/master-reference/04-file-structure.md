@@ -245,7 +245,14 @@ src/
 │   │                         resolveAnchors (spec→{showAt,clearAt}), collides/overlapIds (true-conflict detection),
 │   │                         resolveActive (which message owns the bar), pruneExpired, nextPruneDelay. stage.js
 │   │                         mirrors resolveActive inline (classic <script>). Tested by stage-schedule.test.mjs.
-│   └── stage-schedule.test.mjs  Node assertion test (in `npm test`) — anchor/collision/active/prune edge cases.
+│   ├── stage-schedule.test.mjs  Node assertion test (in `npm test`) — anchor/collision/active/prune edge cases.
+│   ├── lyrics-parse.js       THE lyrics → sections parser (Song Editor paste, file/EasyWorship/GHS import, web scraper,
+│   │                         set-list "create from lyrics"). parseLyrics/parseLyricSections → {sections, arrangement};
+│   │                         parseHeaderLine, isDirectiveLine, singerNamesIn, cleanSectionText. Delete-only invariant.
+│   ├── lyrics-parse.test.mjs Node test (in `npm test`).
+│   ├── setlist-match.js      Pure Paste-Song-List segmentation + matching (matchSetList; library injected by
+│   │                         db/songs.js). norm/ftsQuery/rankByOverlap shared with songs.search().
+│   └── setlist-match.test.mjs Node test (in `npm test`).
 │
 ├── renderer/
 │   ├── main.jsx              React entry point. Mounts <App />.
@@ -365,7 +372,9 @@ src/
 │   │   ├── ShortcutsOverlay.jsx   ? cheatsheet modal; reads the live shortcut settings. Also opened by Settings → Shortcuts "View All".
 │   │   ├── TopBarTabs.jsx         Customisable top-nav extras: pinnable Settings-subsection deep-link tabs (dnd reorder, ×-unpin, + picker, Reset). Persisted in the `topbar_tabs` setting.
 │   │   ├── UndoRedoButtons.jsx    Shared editor-toolbar Undo/Redo pair, driven by a useEditHistory instance.
-│   │   ├── SongEditor.jsx         Full-screen song CRUD modal (createPortal). Sections sidebar with DnD reorder.
+│   │   ├── SongEditor.jsx         Full-screen song CRUD modal (createPortal). Lyrics pane is ONE continuous
+│   │   │                          contentEditable document (section heads = non-editable data-head chips, ⁂ breaks =
+│   │   │                          data-break lines); see §16. "Also called" lists learned set-list aliases.
 │   │   │                          Two-tab preview: Fullscreen (1920×1080 scaled SlidePreview) + Lower Third (LowerThirdPreview).
 │   │   │                          FormattingToolbar: Row 1 (font/size/color/B/I/U/AA/H-align/V-align/Reset).
 │   │   │                          Row 2 (line/track spacing, shadow on+controls, stroke on+controls,
@@ -524,6 +533,10 @@ src/
 │   │                              opens PackageManagerModal.
 │   │
 │   └── utils/
+│       ├── shortcuts.js          The ONE operator shortcut list (shortcutGroups, combo, isMac) — feeds the `?` overlay
+│       │                         and Settings › Shortcuts; platform-formatted (⌘⇧C on macOS, Ctrl+Shift+C elsewhere).
+│       ├── lyricsClipboard.js    useLyricsCopy(ref) (⌘C = labelled lyrics, ⌘⇧C = lyrics only) + sectionChipClass —
+│       │                         shared by every read-only lyric view (Library preview, rundown preview).
 │       ├── useEditHistory.js     Shared editor undo/redo: useEditHistory(initial) → {state,set,reset,undo,redo,canUndo,canRedo} (bounded past/present/future, coalesced by tag) + useUndoRedoKeys (⌘Z/⌘⇧Z capture-phase). Reducer stays pure (StrictMode).
 │       ├── mediaUrl.js           mediaUrl(absPath) → cue-media://localhost/encoded/path
 │       ├── youtube.js            looksLikeYouTube(s) — shared client-side YouTube-URL gate (modal + clipboard chip)
