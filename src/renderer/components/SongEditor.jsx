@@ -1324,7 +1324,7 @@ function SortableArrangementRow({ rid, label, typeColor, onRemove }) {
           <circle cx="1.5" cy="8.5" r="1.2"/><circle cx="5.5" cy="8.5" r="1.2"/>
         </svg>
       </button>
-      <span className={`text-[9px] font-mono font-bold uppercase tracking-[0.06em] truncate flex-1 ${typeColor}`}>
+      <span className={`text-label-sm font-semibold truncate flex-1 rounded px-sm ${typeColor}`}>
         {label}
       </span>
       <button
@@ -1356,32 +1356,46 @@ function ArrangementPanel({ sections, arrangement, onChange }) {
     onChange(arrayMove([...arrangement], oi, ni));
   }
 
+  // Collapsed by default to a one-line summary ("V1 · C · V2 · C · B") so the lyrics
+  // keep the room; expand to reorder / repeat.
+  const [open, setOpen] = useState(false);
+  const short = (l) => l.replace(/^Verse /, 'V').replace(/^Chorus ?/, 'C').replace(/^Pre-Chorus ?/, 'PC').replace(/^Bridge ?/, 'B').replace(/^Refrain ?/, 'R');
+  const summary = (active ? rows.map((r) => r.label) : labels).map(short).join(' · ');
+
   return (
-    <div className="border-t border-outline-variant/30 bg-surface-container/40 flex flex-col max-h-[40%]">
-      <div className="px-sm py-1.5 border-b border-outline-variant/20 flex items-center justify-between flex-shrink-0">
-        <span className="text-[9px] font-mono text-on-surface-variant/50 uppercase tracking-[0.06em]" title="The order sections play live. Repeats allowed — e.g. V1 C V2 C B C C.">
-          Arrangement
-        </span>
+    <div className={`border-t border-outline-variant/30 bg-surface-container/40 flex flex-col flex-shrink-0 ${open ? 'max-h-[40%]' : ''}`}>
+      <div className="px-md py-sm flex items-center gap-sm flex-shrink-0">
+        <button
+          onClick={() => setOpen((o) => !o)}
+          className="flex items-center gap-xs min-w-0 flex-1 text-left cursor-pointer group/arr"
+          title="The order sections play live. Repeats allowed — e.g. V1 C V2 C B C C."
+        >
+          <span className="material-symbols-outlined text-[18px] text-on-surface-variant">{open ? 'expand_more' : 'chevron_right'}</span>
+          <span className="text-body-md text-on-surface shrink-0">Play order</span>
+          <span className="text-label-sm text-on-surface-variant truncate tabular-nums group-hover/arr:text-on-surface">
+            {summary || '—'}{active ? '' : ' (as written)'}
+          </span>
+        </button>
         {active ? (
           <button
             onClick={() => onChange(null)}
             title="Back to the natural section order"
-            className="text-[9px] font-mono text-on-surface-variant/50 hover:text-error cursor-pointer transition-colors uppercase tracking-[0.05em]"
+            className="shrink-0 text-label-sm text-on-surface-variant hover:text-error cursor-pointer transition-colors"
           >
             Reset
           </button>
         ) : (
           <button
-            onClick={() => onChange(sections.map((s) => s._key))}
+            onClick={() => { onChange(sections.map((s) => s._key)); setOpen(true); }}
             disabled={!sections.length}
             title="Create a custom played order (starts from the natural order)"
-            className="text-[9px] font-mono text-primary hover:text-primary/80 cursor-pointer transition-colors uppercase tracking-[0.05em] disabled:opacity-40"
+            className="shrink-0 text-label-sm text-primary hover:text-primary/80 cursor-pointer transition-colors disabled:opacity-40"
           >
-            + Create
+            Customise
           </button>
         )}
       </div>
-      {active && (
+      {active && open && (
         <>
           <div className="flex-1 overflow-y-auto custom-scrollbar min-h-0">
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
@@ -1404,9 +1418,9 @@ function ArrangementPanel({ sections, arrangement, onChange }) {
           <select
             value=""
             onChange={(e) => { const k = e.target.value; if (k) onChange([...arrangement, k]); }}
-            className="mx-sm my-1.5 text-[9px] font-mono uppercase tracking-[0.05em] text-primary bg-surface-container-lowest border border-outline-variant/40 rounded px-1 h-[20px] outline-none cursor-pointer flex-shrink-0"
+            className="mx-md my-sm text-label-sm text-primary bg-surface-container-lowest border border-outline-variant/40 rounded-md px-sm h-7 outline-none cursor-pointer flex-shrink-0"
           >
-            <option value="">+ Add section…</option>
+            <option value="">+ Add a section to the play order…</option>
             {sections.map((s, i) => (
               <option key={s._key} value={s._key} className="bg-surface-container text-on-surface normal-case font-normal">{labels[i]}</option>
             ))}
@@ -1417,72 +1431,71 @@ function ArrangementPanel({ sections, arrangement, onChange }) {
   );
 }
 
-function SortableSectionItem({ section, ordinal, isActive, onSelect, onDelete, onTypeChange }) {
+// One section in the lyrics document. Every section shows its full lyrics at a
+// readable size; the ACTIVE one hosts the single live contentEditable (`editor`),
+// the rest render the same HTML read-only so clicking a line activates that
+// section with the caret where you clicked — no select-then-edit-elsewhere hop.
+function SectionCard({ section, label, isActive, onActivate, onDelete, onTypeChange, editor, actions }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: section._key });
-  const preview = (section.content || '').split('\n').slice(0, 2).join(' · ').slice(0, 60) || '(empty)';
   const typeColor = TYPE_COLORS[section.type] || TYPE_COLORS.default;
-
+  const parts = (section.content || '').split(SLIDE_BREAK).filter((p) => p.trim()).length;
   return (
     <div
       ref={setNodeRef}
       data-section-key={section._key}
       style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
-      onClick={() => onSelect(section._key)}
-      className={`group relative flex flex-col gap-0.5 px-sm py-2 border-b border-outline-variant/15 cursor-pointer transition-colors
-        ${isActive ? 'bg-primary/10 border-l-2 border-l-primary' : 'hover:bg-surface-variant/40 border-l-2 border-l-transparent'}`}
+      className={`group rounded-lg border transition-colors ${
+        isActive ? 'border-primary/50 bg-surface-container' : 'border-outline-variant/20 bg-surface-container-low hover:border-outline-variant/50'
+      }`}
     >
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-sm px-md pt-sm">
         <button
-          className="drag-handle cursor-grab text-on-surface-variant/25 hover:text-on-surface-variant flex-shrink-0 transition-colors"
-          {...attributes} {...listeners} tabIndex={-1} onClick={(e) => e.stopPropagation()}
+          className="drag-handle cursor-grab text-on-surface-variant/40 hover:text-on-surface-variant flex-shrink-0 transition-colors"
+          {...attributes} {...listeners} tabIndex={-1} title="Drag to reorder"
         >
-          <svg width="7" height="10" viewBox="0 0 7 10" fill="currentColor">
-            <circle cx="1.5" cy="1.5" r="1.2"/><circle cx="5.5" cy="1.5" r="1.2"/>
-            <circle cx="1.5" cy="5" r="1.2"/><circle cx="5.5" cy="5" r="1.2"/>
-            <circle cx="1.5" cy="8.5" r="1.2"/><circle cx="5.5" cy="8.5" r="1.2"/>
-          </svg>
+          <span className="material-symbols-outlined text-[18px]">drag_indicator</span>
         </button>
-
         <select
           value={section.type}
-          onChange={(e) => { e.stopPropagation(); onTypeChange(section._key, e.target.value); }}
-          onClick={(e) => e.stopPropagation()}
-          className={`text-[9px] font-mono font-bold uppercase tracking-[0.06em] border rounded px-1 h-[18px] outline-none cursor-pointer bg-transparent flex-shrink-0 ${typeColor}`}
+          onChange={(e) => onTypeChange(section._key, e.target.value)}
+          title="Section type"
+          className={`text-label-sm font-semibold capitalize border rounded-md px-sm h-6 outline-none cursor-pointer flex-shrink-0 ${typeColor}`}
         >
           {SECTION_TYPES.map((t) => (
-            <option key={t} value={t} className="bg-surface-container text-on-surface normal-case font-normal">{t}</option>
+            <option key={t} value={t} className="bg-surface-container text-on-surface capitalize font-normal">{t}</option>
           ))}
         </select>
-
-        {ordinal != null && (
-          <span className={`text-[9px] font-mono font-bold tabular-nums flex-shrink-0 ${typeColor}`}>{ordinal}</span>
+        <span className="text-label-sm text-on-surface-variant truncate">{label}</span>
+        {parts > 1 && (
+          <span title={`Shows as ${parts} slides`} className="flex items-center gap-[2px] text-label-sm text-on-surface-variant flex-shrink-0">
+            <span className="material-symbols-outlined text-[14px]">content_cut</span>{parts} slides
+          </span>
         )}
-
-        {(() => {
-          const parts = (section.content || '').split(SLIDE_BREAK).filter((p) => p.trim()).length;
-          return parts > 1 ? (
-            <span
-              title={`${parts} slides`}
-              className="flex items-center gap-[1px] text-[8px] font-mono text-on-surface-variant/50 flex-shrink-0"
-            >
-              <span className="material-symbols-outlined text-[10px]">content_cut</span>{parts}
-            </span>
-          ) : null;
-        })()}
-
-        <button
-          onClick={(e) => { e.stopPropagation(); onDelete(section._key); }}
-          className="ml-auto opacity-0 group-hover:opacity-100 text-on-surface-variant/40 hover:text-error transition-all cursor-pointer w-4 h-4 flex items-center justify-center rounded flex-shrink-0 text-[10px]"
-          tabIndex={-1} title="Remove section"
-        >✕</button>
+        <div className="ml-auto flex items-center gap-sm flex-shrink-0">
+          {isActive && actions}
+          <button
+            onClick={() => onDelete(section._key)}
+            className="opacity-40 group-hover:opacity-100 text-on-surface-variant hover:text-error transition-all cursor-pointer w-6 h-6 flex items-center justify-center rounded-md hover:bg-error/10"
+            tabIndex={-1} title="Remove section"
+          >
+            <span className="material-symbols-outlined text-[16px]">delete</span>
+          </button>
+        </div>
       </div>
-
-      <p className="text-[10px] text-on-surface-variant/60 leading-tight pl-[15px] truncate">
-        {preview}
-      </p>
+      {isActive ? editor : (
+        <div
+          onMouseDown={(e) => { e.preventDefault(); onActivate(section._key, { x: e.clientX, y: e.clientY }); }}
+          className={`${LYRIC_TEXT_CLS} cursor-text ${section.content?.trim() ? '' : 'text-on-surface-variant/50 italic'}`}
+          dangerouslySetInnerHTML={{ __html: section.content?.trim() ? renderEditorHtml(section.content, section.runs || []) : 'Empty — click to type lyrics' }}
+        />
+      )}
     </div>
   );
 }
+
+// Shared by the live editor and the read-only cards so a click maps to the same
+// character once the card turns editable.
+const LYRIC_TEXT_CLS = 'px-md pb-md pt-sm text-[15px] leading-[1.6] text-on-surface whitespace-pre-wrap break-words outline-none';
 
 // ─── Paste view ───────────────────────────────────────────────────────────
 
@@ -1572,36 +1585,14 @@ export default function SongEditor({ song, onClose, onSave }) {
   const editorRef    = useRef(null);
   const sectionsRef  = useRef([]);
   const activeKeyRef = useRef(null);
-  const sidebarRef   = useRef(null);   // section list — wheel flicks through sections
-  const wheelAccum   = useRef(0);
+  const sidebarRef   = useRef(null);   // lyrics document scroller
+  const caretPoint   = useRef(null);   // where the operator clicked to activate a section
   const fonts        = useFonts();
   const sensors      = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   // Keep sectionsRef in sync
   useEffect(() => { sectionsRef.current = sections; }, [sections]);
   useEffect(() => { activeKeyRef.current = activeSectionKey; }, [activeSectionKey]);
-
-  // Flick through sections by scrolling over the list — no need to click each one.
-  // A native non-passive listener (React's onWheel is passive, so preventDefault is
-  // ignored there) steps the active section one notch per ~24px of wheel.
-  useEffect(() => {
-    const el = sidebarRef.current;
-    if (!el) return;
-    const onWheel = (e) => {
-      const list = sectionsRef.current;
-      if (list.length < 2) return;
-      e.preventDefault();
-      wheelAccum.current += e.deltaY;
-      if (Math.abs(wheelAccum.current) < 24) return;
-      const dir = wheelAccum.current > 0 ? 1 : -1;
-      wheelAccum.current = 0;
-      const idx  = list.findIndex((s) => s._key === activeKeyRef.current);
-      const next = Math.min(Math.max((idx < 0 ? 0 : idx) + dir, 0), list.length - 1);
-      if (list[next] && next !== idx) switchSection(list[next]._key);
-    };
-    el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
-  }, []);
 
   // Keep the active section visible as it changes (wheel/click), since the wheel
   // handler suppresses native list scrolling.
@@ -1745,6 +1736,20 @@ export default function SongEditor({ song, onClose, onSave }) {
       setPreviewContent({ text: sec.content || '', runs: sec.runs || [] });
       setPreviewPart(0);
     }
+    // Activated by a click on its read-only text → drop the caret on that spot.
+    const pt = caretPoint.current;
+    caretPoint.current = null;
+    if (pt) {
+      requestAnimationFrame(() => {
+        const el = editorRef.current;
+        if (!el) return;
+        el.focus();
+        const range = document.caretRangeFromPoint?.(pt.x, pt.y);
+        const sel = window.getSelection();
+        if (range && el.contains(range.startContainer)) { sel.removeAllRanges(); sel.addRange(range); }
+        else { const r = document.createRange(); r.selectNodeContents(el); r.collapse(false); sel.removeAllRanges(); sel.addRange(r); }
+      });
+    }
   }, [activeSectionKey]);
 
   // Undo / redo restores `sections` but the contentEditable is uncontrolled, so its
@@ -1804,7 +1809,26 @@ export default function SongEditor({ song, onClose, onSave }) {
     document.execCommand('insertText', false, e.clipboardData.getData('text/plain'));
   }
 
+  function activateSection(key, point) {
+    caretPoint.current = point || null;
+    if (key === activeKeyRef.current) return;
+    switchSection(key);
+  }
+
   function handleEditorKeyDown(e) {
+    // Alt+↑/↓ → previous / next section, caret at its start.
+    if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      e.preventDefault();
+      const list = sectionsRef.current;
+      const idx = list.findIndex((x) => x._key === activeKeyRef.current);
+      const next = list[idx + (e.key === 'ArrowUp' ? -1 : 1)];
+      if (next) {
+        const el = sidebarRef.current?.querySelector(`[data-section-key="${next._key}"]`);
+        const r = el?.getBoundingClientRect();
+        activateSection(next._key, r ? { x: r.left + 24, y: r.top + 44 } : null);
+      }
+      return;
+    }
     // ⌘/Ctrl+Enter → split slide here; plain Enter → soft line break.
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); insertSplit(); return; }
     if (e.key === 'Enter') { e.preventDefault(); document.execCommand('insertLineBreak'); }
@@ -1885,6 +1909,7 @@ export default function SongEditor({ song, onClose, onSave }) {
     const sec = { _key: k, type: 'verse', content: '', runs: [] };
     setSections((prev) => [...prev, sec]);
     flushActiveSection();
+    caretPoint.current = { x: -1, y: -1 }; // focus the new (empty) section
     setActiveSectionKey(k);
     setPreviewContent({ text: '', runs: [] });
   }
@@ -2043,7 +2068,7 @@ export default function SongEditor({ song, onClose, onSave }) {
   }
 
   const inputCls  = 'w-full bg-surface-container-lowest text-on-surface text-body-sm rounded-lg px-md py-1.5 border border-outline-variant/50 outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors';
-  const labelCls  = 'block text-[9px] font-mono text-on-surface-variant/60 mb-0.5 uppercase tracking-[0.05em]';
+  const labelCls  = 'block text-label-sm text-on-surface-variant mb-1';
   const activeSection = sections.find((s) => s._key === activeSectionKey);
 
   // Where this song's background comes from, mirroring the live cascade
@@ -2077,10 +2102,10 @@ export default function SongEditor({ song, onClose, onSave }) {
           <div className="flex items-center gap-sm">
             <span className="material-symbols-outlined text-primary text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>music_note</span>
             <div>
-              <h2 className="text-headline-md font-bold text-primary leading-tight tracking-tight">
-                {song?.id ? 'Edit Song' : 'New Song'}
+              <h2 className="text-headline-md font-semibold text-on-surface leading-tight">
+                {title.trim() || (song?.id ? 'Edit Song' : 'New Song')}
               </h2>
-              <p className="text-[9px] font-mono text-on-surface-variant/50 uppercase tracking-[0.06em]">Song Editor</p>
+              <p className="text-label-sm text-on-surface-variant">{song?.id ? 'Editing song' : 'New song'}</p>
             </div>
           </div>
 
@@ -2091,23 +2116,23 @@ export default function SongEditor({ song, onClose, onSave }) {
           {themeList.length > 0 && (
             <button
               onClick={() => setShowThemePicker(true)}
-              className="flex items-center gap-xs bg-surface-container text-on-surface-variant text-[10px] font-mono rounded-lg px-sm h-7 border border-outline-variant/30 hover:border-outline-variant hover:text-on-surface outline-none cursor-pointer uppercase tracking-[0.05em] transition-colors"
+              className="flex items-center gap-xs px-md h-8 text-body-md text-on-surface-variant hover:text-on-surface border border-outline-variant/40 hover:border-outline-variant rounded-lg cursor-pointer transition-colors"
             >
-              <span className="material-symbols-outlined text-[15px]">style</span>
-              Load Theme…
+              <span className="material-symbols-outlined text-[18px]">style</span>
+              Load theme…
             </button>
           )}
-          <button onClick={() => setShowPaste(true)}
-            className="px-sm h-7 text-label-sm font-mono text-on-surface-variant hover:text-on-surface border border-outline-variant/30 hover:border-outline-variant rounded-lg cursor-pointer transition-colors uppercase tracking-[0.05em] text-[10px]">
-            ↙ Paste Song
+          <button onClick={() => setShowPaste(true)} title="Replace the lyrics by pasting the whole song" className="flex items-center gap-xs px-md h-8 text-body-md text-on-surface-variant hover:text-on-surface border border-outline-variant/40 hover:border-outline-variant rounded-lg cursor-pointer transition-colors">
+            <span className="material-symbols-outlined text-[18px]">content_paste</span>
+            Paste song
           </button>
-          <button onClick={() => setShowMeta((v) => !v)}
-            className="px-sm h-7 text-label-sm font-mono text-on-surface-variant hover:text-on-surface border border-outline-variant/30 hover:border-outline-variant rounded-lg cursor-pointer transition-colors uppercase tracking-[0.05em] text-[10px]">
-            {showMeta ? 'Hide Meta' : 'Show Meta'}
+          <button onClick={() => setShowMeta((v) => !v)} className="flex items-center gap-xs px-md h-8 text-body-md text-on-surface-variant hover:text-on-surface border border-outline-variant/40 hover:border-outline-variant rounded-lg cursor-pointer transition-colors">
+            <span className="material-symbols-outlined text-[18px]">{showMeta ? 'expand_less' : 'expand_more'}</span>
+            {showMeta ? 'Hide details' : 'Show details'}
           </button>
-          <button onClick={onClose}
-            className="w-7 h-7 flex items-center justify-center rounded-full text-on-surface-variant hover:text-on-surface hover:bg-surface-variant transition-colors cursor-pointer text-sm">
-            ✕
+          <button onClick={onClose} title="Close (Esc)"
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-variant transition-colors cursor-pointer">
+            <span className="material-symbols-outlined text-[20px]">close</span>
           </button>
         </div>
 
@@ -2248,19 +2273,22 @@ export default function SongEditor({ song, onClose, onSave }) {
         ) : (
           <div className="flex flex-1 min-h-0">
 
-            {/* ── Sections sidebar ──────────────────────────────────── */}
-            <div className="w-48 flex-shrink-0 border-r border-outline-variant/30 bg-surface-container-lowest flex flex-col">
-              <div className="px-sm py-1.5 border-b border-outline-variant/20 bg-surface-container flex items-center justify-between">
-                <span className="text-[9px] font-mono text-on-surface-variant/50 uppercase tracking-[0.06em]">
-                  {sections.length} Section{sections.length !== 1 ? 's' : ''}
-                </span>
+            {/* ── Lyrics document ─────────────────────────────────── */}
+            <div className="w-[44%] min-w-[340px] max-w-[640px] flex-shrink-0 border-r border-outline-variant/30 bg-surface-container-lowest flex flex-col min-h-0">
+              <div className="px-md py-sm border-b border-outline-variant/20 flex items-center justify-between gap-md flex-shrink-0">
+                <div className="min-w-0">
+                  <p className="text-body-md font-semibold text-on-surface">Lyrics</p>
+                  <p className="text-label-sm text-on-surface-variant truncate" title="Enter = new line · ⌘/Ctrl+Enter = split into a new slide · Alt+↑/↓ = previous / next section">
+                    Click any line to edit · ⌘/Ctrl+Enter splits a slide · Alt+↑/↓ moves between sections
+                  </p>
+                </div>
                 <button onClick={addSection}
-                  className="text-[9px] font-mono text-primary hover:text-primary/80 cursor-pointer transition-colors uppercase tracking-[0.05em]">
-                  + Add
+                  className="shrink-0 flex items-center gap-xs h-8 px-md rounded-lg border border-outline-variant/40 text-body-md text-on-surface hover:border-primary hover:text-primary transition-colors cursor-pointer">
+                  <span className="material-symbols-outlined text-[18px]">add</span>Section
                 </button>
               </div>
 
-              <div ref={sidebarRef} className="flex-1 overflow-y-auto custom-scrollbar">
+              <div ref={sidebarRef} className="flex-1 overflow-y-auto custom-scrollbar p-md space-y-sm">
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                   <SortableContext items={sections.map((s) => s._key)} strategy={verticalListSortingStrategy}>
                     {(() => {
@@ -2268,27 +2296,58 @@ export default function SongEditor({ song, onClose, onSave }) {
                       // type shows no number. Recomputed live as sections change.
                       const ordinals = sectionOrdinals(sections);
                       return sections.map((sec, i) => (
-                        <SortableSectionItem
+                        <SectionCard
                           key={sec._key}
                           section={sec}
-                          ordinal={ordinals[i]}
+                          label={ordinals[i] != null ? String(ordinals[i]) : ''}
                           isActive={sec._key === activeSectionKey}
-                          onSelect={switchSection}
+                          onActivate={activateSection}
                           onDelete={deleteSection}
                           onTypeChange={onTypeChange}
+                          actions={(
+                            <>
+                              <button
+                                onMouseDown={(e) => { e.preventDefault(); insertSplit(); }}
+                                title="Split into a new slide at the cursor (⌘/Ctrl+Enter)"
+                                className="flex items-center gap-[2px] h-6 px-sm rounded-md text-label-sm text-on-surface-variant hover:text-primary hover:bg-primary/10 cursor-pointer transition-colors"
+                              >
+                                <span className="material-symbols-outlined text-[15px]">content_cut</span>Split here
+                              </button>
+                              <button
+                                onMouseDown={(e) => { e.preventDefault(); autoSplit(); }}
+                                title="Split this section into one slide per blank-line stanza"
+                                className="flex items-center gap-[2px] h-6 px-sm rounded-md text-label-sm text-on-surface-variant hover:text-primary hover:bg-primary/10 cursor-pointer transition-colors"
+                              >
+                                <span className="material-symbols-outlined text-[15px]">splitscreen</span>By stanza
+                              </button>
+                            </>
+                          )}
+                          editor={(
+                            <div
+                              ref={editorRef}
+                              contentEditable="true"
+                              suppressContentEditableWarning
+                              onInput={handleEditorInput}
+                              onPaste={handleEditorPaste}
+                              onKeyDown={handleEditorKeyDown}
+                              className={`${LYRIC_TEXT_CLS} caret-primary min-h-[3.2em]`}
+                            />
+                          )}
                         />
                       ));
                     })()}
                   </SortableContext>
                 </DndContext>
                 {sections.length === 0 && (
-                  <div className="flex flex-col items-center justify-center h-32 gap-sm px-md text-center">
-                    <span className="material-symbols-outlined text-outline-variant/40 text-3xl">playlist_add</span>
-                    <span className="text-[9px] font-mono text-on-surface-variant/30 uppercase tracking-[0.05em]">No sections</span>
-                    <button onClick={addSection}
-                      className="text-[9px] font-mono text-primary hover:text-primary/80 cursor-pointer">+ Add section</button>
+                  <div className="flex flex-col items-center justify-center py-xl gap-sm text-center">
+                    <span className="material-symbols-outlined text-on-surface-variant/40 text-4xl">lyrics</span>
+                    <p className="text-body-md text-on-surface-variant">No lyrics yet — add a section, or use Paste Song to drop in the whole song.</p>
                   </div>
                 )}
+                <button onClick={addSection}
+                  className="w-full flex items-center justify-center gap-xs h-10 rounded-lg border border-dashed border-outline-variant/40 text-body-md text-on-surface-variant hover:border-primary hover:text-primary transition-colors cursor-pointer">
+                  <span className="material-symbols-outlined text-[18px]">add</span>Add section
+                </button>
               </div>
 
               {/* Played order (arrangement) — repeats sections without duplicating lyrics */}
@@ -2299,8 +2358,8 @@ export default function SongEditor({ song, onClose, onSave }) {
                   default. 0 = inherit the global (Settings › Themes). */}
               <div className="px-md py-sm border-t border-outline-variant/20 flex items-center gap-sm">
                 <div className="min-w-0 flex-1">
-                  <div className="text-[10px] font-mono text-on-surface-variant uppercase tracking-[0.05em]">Max Lines / Slide</div>
-                  <div className="text-[9px] text-on-surface-variant/50">0 = use global default</div>
+                  <div className="text-body-md text-on-surface">Max lines per slide</div>
+                  <div className="text-label-sm text-on-surface-variant">Longer sections split automatically · 0 = app default</div>
                 </div>
                 <input
                   type="number"
@@ -2318,7 +2377,7 @@ export default function SongEditor({ song, onClose, onSave }) {
               </div>
             </div>
 
-            {/* ── Editor main area ──────────────────────────────────── */}
+            {/* ── Look: formatting + live slide preview ─────────────── */}
             <div className="flex-1 flex flex-col min-h-0 min-w-0">
 
               {/* Formatting toolbar */}
@@ -2345,11 +2404,8 @@ export default function SongEditor({ song, onClose, onSave }) {
                 </div>
               )}
 
-              {/* Content area: preview left, editor right */}
-              <div className="flex flex-1 min-h-0 gap-0">
-
                 {/* Slide preview */}
-                <div className="flex-1 flex flex-col min-h-0 bg-surface-container-lowest border-r border-outline-variant/20 p-md">
+                <div className="flex-1 flex flex-col min-h-0 bg-surface-container-lowest p-md">
                   <div className="flex items-center justify-between mb-sm flex-shrink-0">
                     <div className="flex items-center gap-sm">
                       <span className="text-[9px] font-mono text-on-surface-variant/40 uppercase tracking-[0.06em]">
@@ -2436,77 +2492,6 @@ export default function SongEditor({ song, onClose, onSave }) {
                   )}
                 </div>
 
-                {/* Section text editor */}
-                <div className="w-72 flex-shrink-0 flex flex-col min-h-0">
-                  <div className="px-md py-1.5 border-b border-outline-variant/20 bg-surface-container flex items-center justify-between flex-shrink-0">
-                    <span className="text-[9px] font-mono text-on-surface-variant/50 uppercase tracking-[0.06em]">
-                      {activeSection?.type ?? 'Section'}
-                    </span>
-                    {activeSection && (
-                      <div className="flex items-center gap-sm">
-                        <button
-                          onMouseDown={(e) => { e.preventDefault(); insertSplit(); }}
-                          title="Split into a new slide at the cursor (⌘/Ctrl+Enter)"
-                          className="flex items-center gap-[2px] text-[9px] font-mono text-on-surface-variant hover:text-primary cursor-pointer uppercase tracking-[0.05em] transition-colors"
-                        >
-                          <span className="material-symbols-outlined text-[13px]">content_cut</span>
-                          Split
-                        </button>
-                        <button
-                          onMouseDown={(e) => { e.preventDefault(); autoSplit(); }}
-                          title="Split this section into one slide per blank-line stanza"
-                          className="flex items-center gap-[2px] text-[9px] font-mono text-on-surface-variant hover:text-primary cursor-pointer uppercase tracking-[0.05em] transition-colors"
-                        >
-                          <span className="material-symbols-outlined text-[13px]">splitscreen</span>
-                          Auto
-                        </button>
-                        <select
-                          value={activeSection.type}
-                          onChange={(e) => onTypeChange(activeSection._key, e.target.value)}
-                          className="text-[9px] font-mono bg-transparent border-none outline-none cursor-pointer text-on-surface-variant hover:text-on-surface"
-                        >
-                          {SECTION_TYPES.map((t) => (
-                            <option key={t} value={t} className="bg-surface-container text-on-surface">{t}</option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex-1 relative overflow-hidden">
-                    {activeSectionKey ? (
-                      <div
-                        ref={editorRef}
-                        contentEditable="true"
-                        suppressContentEditableWarning
-                        onInput={handleEditorInput}
-                        onPaste={handleEditorPaste}
-                        onKeyDown={handleEditorKeyDown}
-                        className="absolute inset-0 overflow-y-auto custom-scrollbar px-md py-md outline-none text-on-surface leading-relaxed whitespace-pre-wrap caret-primary text-body-md resize-none"
-                        style={{
-                          fontFamily:     style.fontFamily || undefined,
-                          textAlign:      style.align || 'center',
-                          fontWeight:     style.bold ? 700 : undefined,
-                          fontStyle:      style.italic ? 'italic' : undefined,
-                          textDecoration: (style.underline || style.strikethrough) ? buildDecorationCss(style) : undefined,
-                          textTransform:  style.uppercase ? 'uppercase' : undefined,
-                        }}
-                      />
-                    ) : (
-                      <div className="flex items-center justify-center h-full text-[9px] font-mono text-on-surface-variant/30 uppercase tracking-[0.06em]">
-                        Select a section
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Character count */}
-                  <div className="px-md py-1 border-t border-outline-variant/20 bg-surface-container flex-shrink-0">
-                    <span className="text-[9px] font-mono text-on-surface-variant/30">
-                      {previewContent.text.length} chars · {previewContent.text.split('\n').length} lines
-                    </span>
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
         )}
@@ -2516,19 +2501,20 @@ export default function SongEditor({ song, onClose, onSave }) {
           <div className="flex items-center justify-between px-lg py-sm border-t border-outline-variant/30 bg-surface-container-high flex-shrink-0">
             <div className="flex items-center gap-xs">
               <span className="w-1.5 h-1.5 rounded-full bg-tertiary/60" />
-              <span className="text-[9px] font-mono text-on-surface-variant/50 uppercase tracking-[0.06em]">
+              <span className="text-label-sm text-on-surface-variant">
                 {sections.length} section{sections.length !== 1 ? 's' : ''}
               </span>
             </div>
             <div className="flex items-center gap-sm">
               {saveError && <span className="text-label-sm font-mono text-error">{saveError}</span>}
               <button onClick={onClose}
-                className="px-lg h-8 text-label-sm font-mono text-on-surface-variant hover:text-on-surface rounded-lg hover:bg-surface-variant transition-colors cursor-pointer uppercase tracking-[0.05em]">
+                className="px-lg h-9 text-body-md text-on-surface-variant hover:text-on-surface rounded-lg hover:bg-surface-variant transition-colors cursor-pointer">
                 Cancel
               </button>
               <button onClick={handleSave} disabled={!title.trim() || saving}
-                className="px-lg h-8 text-label-sm font-mono bg-tertiary-container text-on-tertiary-container disabled:opacity-40 rounded-lg transition-colors cursor-pointer uppercase tracking-[0.05em] hover:opacity-90">
-                {saving ? 'Saving…' : 'Save Song'}
+                title={!title.trim() ? 'Add a title to save' : undefined}
+                className="px-lg h-9 text-body-md font-semibold bg-tertiary-container text-on-tertiary-container disabled:opacity-40 rounded-lg transition-colors cursor-pointer hover:opacity-90">
+                {saving ? 'Saving…' : 'Save song'}
               </button>
             </div>
           </div>
