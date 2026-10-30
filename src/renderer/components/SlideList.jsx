@@ -32,12 +32,12 @@ export default function SlideList({ slides, activeIdx, onSelect, onDoubleClick, 
             data-idx={idx}
             onClick={() => onSelect(idx)}
             onDoubleClick={onDoubleClick ? () => onDoubleClick(idx) : undefined}
-            className={`shrink-0 p-sm rounded text-left w-full cursor-pointer transition-all border-l-4 ${
+            className={`shrink-0 px-md py-sm rounded-lg text-left w-full cursor-pointer transition-colors border ${
               isActive
                 ? isPreview
-                  ? 'bg-primary-container/20 border-primary'
-                  : 'bg-secondary-container/20 border-secondary'
-                : 'bg-surface-container border-outline-variant/30 opacity-60 hover:opacity-100'
+                  ? 'bg-primary-container/25 border-primary/70'
+                  : 'bg-secondary-container/25 border-secondary/70'
+                : 'bg-surface-container border-outline-variant/20 hover:border-outline-variant/60'
             }`}
           >
             <p className={`text-[11px] font-label-sm mb-xs flex items-center gap-1 ${
@@ -61,7 +61,7 @@ export default function SlideList({ slides, activeIdx, onSelect, onDoubleClick, 
                 </span>
               )}
             </p>
-            <p className="text-[14px] text-on-surface leading-tight whitespace-pre-wrap">
+            <p className={`text-[14px] leading-snug whitespace-pre-wrap ${isActive ? 'text-on-surface' : 'text-on-surface-variant'}`}>
               {slide.content}
             </p>
           </button>

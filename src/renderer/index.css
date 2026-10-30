@@ -59,19 +59,15 @@ body {
 @keyframes cue-ticker-crawl { from { transform: translateX(0); } to { transform: translateX(-100%); } }
 
 /* ── Tally states ──────────────────────────────────────────── */
-.tally-live    { border-left: 4px solid #ffb3ad; background: rgba(164,2,23,0.12); }
-.tally-preview { border-left: 4px solid #adc6ff; background: rgba(77,142,255,0.08); }
-.tally-idle    { border-left: 4px solid transparent; }
+/* Tinted rows, no vertical accent bar (design rule) — the coloured title and the
+   LIVE / PRVW badge carry the state. */
+.tally-live    { background: rgba(164,2,23,0.22); }
+.tally-preview { background: rgba(77,142,255,0.14); }
+.tally-idle    { }
 
 /* ── Active slide ──────────────────────────────────────────── */
-.slide-active-preview {
-  border-left: 4px solid #adc6ff !important;
-  background: rgba(77,142,255,0.12) !important;
-}
-.slide-active-live {
-  border-left: 4px solid #ffb3ad !important;
-  background: rgba(164,2,23,0.15) !important;
-}
+.slide-active-preview { background: rgba(77,142,255,0.14) !important; }
+.slide-active-live    { background: rgba(164,2,23,0.22) !important; }
 
 /* ── Resize handles ────────────────────────────────────────── */
 .resize-h { cursor: col-resize; user-select: none; }

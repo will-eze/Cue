@@ -675,10 +675,8 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, onPrevie
                   onClick={() => handleRowClick(idx)}
                   onDoubleClick={() => emitLive(chapterData, idx)}
                   onContextMenu={(e) => { e.preventDefault(); setSelectedIdx(idx); setContextMenu({ x: e.clientX, y: e.clientY, idx }); }}
-                  className={`flex items-start gap-md px-md py-xs cursor-pointer border-l-4 transition-colors ${
-                    isLive ? 'border-secondary' : isSelected ? 'border-primary' : 'border-transparent'
-                  } ${
-                    isSelected ? 'bg-primary/10' : 'hover:bg-surface-variant/50'
+                  className={`flex items-start gap-md px-md py-xs cursor-pointer transition-colors ${
+                    isLive ? 'bg-secondary-container/30' : isSelected ? 'bg-primary/15' : 'hover:bg-surface-variant/50'
                   }`}
                 >
                   <span className={`w-28 shrink-0 text-label-sm font-label-sm pt-[1px] ${isLive ? 'text-secondary' : 'text-primary'}`}>

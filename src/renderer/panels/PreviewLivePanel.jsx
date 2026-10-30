@@ -913,6 +913,15 @@ export default function PreviewLivePanel({
   function handleRate(e)           { window.cue.output.media?.setRate(Number(e.target.value)); }
   const playRate = transport?.rate || 1;
 
+  // Short name of an item for the slide-list header rows.
+  const itemName = (item) => !item ? '' : (
+    item.song?.title || item.scripture?.reference || item.presentation?.title || item.asset?.filename
+    || item.youtube?.title || item.liveInput?.name || item.title || (item.content?.split('\n')[0]?.trim()) || ''
+  );
+  // Both columns get a header row of the SAME fixed height above their slide list,
+  // so the preview and live lists always start level.
+  const ROW = 'flex items-center gap-xs h-7 w-full min-w-0 flex-shrink-0';
+
   return (
     <div className="flex flex-col h-full gap-gutter">
       {/* Monitors row */}
@@ -932,6 +941,14 @@ export default function PreviewLivePanel({
             stageChannelId={selectedChannel?.id}
             ltFontScale={ltFontScale}
           />
+          <div className={ROW}>
+            <span className="text-[12px] text-on-surface-variant truncate min-w-0" title={itemName(previewItem)}>{itemName(previewItem)}</span>
+            {previewSlides.length > 1 && (
+              <span className="ml-auto shrink-0 text-[12px] text-on-surface-variant/70 tabular-nums" title="Double-click a slide to send it live">
+                {previewSlideIdx + 1} / {previewSlides.length}
+              </span>
+            )}
+          </div>
           <div className="flex-1 overflow-y-auto pr-xs">
             {previewSlides.length > 0 ? (
               <SlideList
@@ -1051,8 +1068,11 @@ export default function PreviewLivePanel({
           )}
 
           {/* Monitor switches (scrollable, left) + Hotkeys/Jump arm toggles (fixed, right) */}
-          {(multiChannel || onToggleBareArmed || (liveSlides.length > 1 && onToggleJumpArmed)) && (
-            <div className="flex items-center gap-xs w-full min-w-0">
+          {(
+            <div className={ROW}>
+              {!multiChannel && (
+                <span className="text-[12px] text-on-surface-variant truncate min-w-0" title={itemName(liveItem)}>{itemName(liveItem)}</span>
+              )}
               {multiChannel && (
                 <div className="flex items-center gap-xs flex-1 min-w-0 overflow-x-auto custom-scrollbar pb-[2px]">
                   {allChannels.map((ch, idx) => {

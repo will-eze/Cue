@@ -83,7 +83,7 @@ export default function SongPreviewModal({ song, onClose, onEdit, onAddToRundown
               {fullSong.sections?.map((section, i) => {
                 const isChorus = section.type === 'chorus' || section.type === 'refrain';
                 return (
-                  <div key={section.id || i} className={`${isChorus ? 'border-l-2 border-primary pl-md' : 'border-l-2 border-outline-variant/20 pl-md'}`}>
+                  <div key={section.id || i} className="pl-md">
                     <div className={`section-chip mb-sm inline-flex ${isChorus ? 'bg-primary text-on-primary border-transparent' : ''}`}>
                       {TYPE_LABELS[section.type] || section.type}
                     </div>
