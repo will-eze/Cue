@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import ShortcutsOverlay from '../components/ShortcutsOverlay';
+import { shortcutGroups } from '../utils/shortcuts';
 
 const isMac = window.cue.platform === 'darwin';
 const MOD = isMac ? '⌘' : 'Ctrl';
@@ -14,35 +15,6 @@ const ACTIONS = [
 ];
 
 const DEFAULTS = { go: 'g', logo: 'l', live: 'o' };
-
-// Bare-key transport (no modifier) — always active when no text field is focused.
-const BARE_SHORTCUTS = [
-  { keys: ['Space'],      desc: 'Advance LIVE to the next slide' },
-  { keys: ['↓'],          desc: 'Next preview slide / item' },
-  { keys: ['↑'],          desc: 'Previous preview slide / item' },
-  { keys: ['Esc'],        desc: 'Clear — hide content on all outputs' },
-  { keys: ['S'],          desc: 'Focus the song search bar' },
-  { keys: ['Q', 'W', 'E', '…'], desc: 'Jump LIVE to slide 1, 2, 3 … (when verse-jump is armed)' },
-  { keys: ['1', '–', '9'], desc: 'Recall the Scene bound to that number' },
-  { keys: ['`'],          desc: 'Toggle the Stage controls panel' },
-];
-
-// Standard app shortcuts on the OS modifier — same as any desktop app, never
-// shadowed by transport.
-const MOD_SHORTCUTS = [
-  { keys: [`${MOD}+C`, `${MOD}+X`, `${MOD}+V`], desc: 'Copy / cut / paste (text)' },
-  { keys: [`${MOD}+Z`, `${MOD}+⇧Z`], desc: 'Undo / redo (in editors)' },
-  { keys: [`${MOD}+S`], desc: 'Save the open editor' },
-  { keys: [`${MOD}+B`, `${MOD}+I`, `${MOD}+U`], desc: 'Bold / italic / underline (in editors)' },
-  { keys: [`${MOD}+A`], desc: 'Select all rundown items (or text, when text is selected)' },
-  { keys: [`${MOD}+D`], desc: 'Duplicate the selected rundown item(s)' },
-  { keys: [`${MOD}+F`], desc: 'Find — focus the song search bar' },
-  { keys: [`${MOD}+N`], desc: 'New — open the command palette to add anything' },
-  { keys: [`${MOD}+K`], desc: 'Command palette — find & add anything' },
-  { keys: [`${MOD}+,`], desc: 'Open / leave Settings' },
-  { keys: ['Ctrl+Tab', 'Ctrl+⇧Tab'], desc: 'Next / previous Library tab' },
-  { keys: ['?'], desc: 'Show the keyboard-shortcut overlay' },
-];
 
 export default function ShortcutSettings() {
   const [keys, setKeys] = useState(DEFAULTS);
@@ -131,10 +103,10 @@ export default function ShortcutSettings() {
         ))}
       </div>
 
-      {/* Fixed reference — bare transport */}
-      <ReferenceCard title="Bare keys (transport — no modifier)" rows={BARE_SHORTCUTS} />
-      {/* Fixed reference — standard app shortcuts */}
-      <ReferenceCard title="Standard app shortcuts (with the OS modifier)" rows={MOD_SHORTCUTS} />
+      {/* Full reference — the same shared list the ? overlay shows */}
+      {shortcutGroups({ go: keys.keyboard_go || 'g', logo: keys.keyboard_logo || 'l', live: keys.keyboard_live || 'o' }).map((g) => (
+        <ReferenceCard key={g.title} title={g.title} rows={g.rows} />
+      ))}
 
       {/* Safety: arm the bare GO / Clear / Output keys (a stray press can't go to air). */}
       <div className="bg-surface-container-low border border-outline-variant/30 rounded-xl px-md py-sm flex items-center gap-lg">
@@ -199,7 +171,7 @@ function ReferenceCard({ title, rows }) {
   return (
     <div className="bg-surface-container-low border border-outline-variant/30 rounded-xl overflow-hidden">
       <div className="px-md py-sm border-b border-outline-variant/20">
-        <span className="text-label-sm font-label-sm text-on-surface-variant">{title}</span>
+        <span className="text-[13px] font-semibold text-on-surface">{title}</span>
       </div>
       {rows.map((row, i) => (
         <div
@@ -210,13 +182,13 @@ function ReferenceCard({ title, rows }) {
             {row.keys.map((k) => (
               <span
                 key={k}
-                className="text-label-sm font-mono text-on-surface-variant bg-surface-container-high border border-outline-variant/30 px-sm py-[3px] rounded text-[11px] shrink-0"
+                className="text-[13px] tabular-nums whitespace-nowrap text-on-surface bg-surface-container-high border border-outline-variant/30 px-sm py-[3px] rounded-md shrink-0"
               >
                 {k}
               </span>
             ))}
           </div>
-          <span className="text-body-sm text-on-surface-variant">{row.desc}</span>
+          <span className="text-body-md text-on-surface-variant">{row.desc}</span>
         </div>
       ))}
     </div>

@@ -1,14 +1,13 @@
 import React, { useEffect, useState } from 'react';
+import { shortcutGroups, combo } from '../utils/shortcuts';
 
 // Live keyboard-shortcut cheatsheet, opened with `?` from the operator. Reads the
 // configurable shortcut settings so it always reflects the operator's own keymap,
 // and lists the fixed single-key shortcuts. Close with Esc / backdrop / ✕.
 
-const isMac = window.cue.platform === 'darwin';
-
 function Key({ children }) {
   return (
-    <span className="inline-flex items-center justify-center min-w-[26px] h-7 px-2 text-label-sm font-mono text-on-surface bg-surface-container-high border border-outline-variant/40 rounded">
+    <span className="inline-flex items-center justify-center min-w-[26px] h-7 px-sm text-[13px] tabular-nums whitespace-nowrap text-on-surface bg-surface-container-high border border-outline-variant/40 rounded-md">
       {children}
     </span>
   );
@@ -17,7 +16,7 @@ function Key({ children }) {
 function Row({ keys, desc }) {
   return (
     <div className="flex items-center gap-md py-[6px]">
-      <div className="flex items-center gap-xs w-40 shrink-0">
+      <div className="flex items-center gap-xs w-[160px] shrink-0">
         {keys.map((k, i) => (
           <React.Fragment key={i}>
             {i > 0 && <span className="text-on-surface-variant/60 text-[11px]">/</span>}
@@ -25,7 +24,7 @@ function Row({ keys, desc }) {
           </React.Fragment>
         ))}
       </div>
-      <span className="text-body-sm text-on-surface-variant">{desc}</span>
+      <span className="text-body-md text-on-surface-variant">{desc}</span>
     </div>
   );
 }
@@ -33,7 +32,7 @@ function Row({ keys, desc }) {
 function Group({ title, children }) {
   return (
     <div>
-      <p className="text-label-sm font-label-sm text-on-surface-variant/70 mb-xs">{title}</p>
+      <p className="text-[13px] font-semibold text-on-surface mb-xs">{title}</p>
       <div className="divide-y divide-outline-variant/10">{children}</div>
     </div>
   );
@@ -58,61 +57,35 @@ export default function ShortcutsOverlay({ onClose }) {
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const mod = isMac ? '⌘' : 'Ctrl';
-  const up = (s) => (s || '').toUpperCase();
-
   return (
     <div className="fixed inset-0 z-[55] flex items-center justify-center bg-black/60 p-xl" onClick={onClose}>
-      <div className="w-full max-w-2xl bg-surface-container-low border border-outline-variant/30 rounded-xl overflow-hidden shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-5xl bg-surface-container-low border border-outline-variant/30 rounded-xl overflow-hidden shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="px-lg py-md border-b border-outline-variant/20 flex items-center justify-between">
           <h2 className="text-headline-md font-semibold text-on-surface flex items-center gap-sm">
             <span className="material-symbols-outlined text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>keyboard</span>
-            Keyboard Shortcuts
+            Keyboard shortcuts
           </h2>
-          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center text-on-surface-variant/60 hover:text-on-surface cursor-pointer">
-            <span className="material-symbols-outlined text-[18px]">close</span>
+          <button onClick={onClose} aria-label="Close" className="w-8 h-8 flex items-center justify-center rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-variant cursor-pointer">
+            <span className="material-symbols-outlined text-[20px]">close</span>
           </button>
         </div>
-        <div className="px-lg py-md grid grid-cols-2 gap-x-xl gap-y-lg max-h-[70vh] overflow-auto">
-          <Group title="Transport (bare keys)">
-            <Row keys={['Space']} desc="Advance LIVE to the next slide" />
-            <Row keys={[up(sc.go)]} desc="GO — send preview to live" />
-            <Row keys={['Esc']} desc="Clear all outputs" />
-            <Row keys={[up(sc.logo)]} desc="Show logo on all outputs" />
-            <Row keys={[up(sc.live)]} desc="Toggle output windows on / off" />
-          </Group>
-          <Group title="Navigation">
-            <Row keys={['↓']} desc="Next preview slide / item" />
-            <Row keys={['↑']} desc="Previous preview slide / item" />
-            <Row keys={['Q', 'W', 'E', '…']} desc="Jump LIVE to slide 1, 2, 3 … (when armed)" />
-            <Row keys={['S', `${mod}+F`]} desc="Focus the song search bar" />
-            <Row keys={['Ctrl+Tab']} desc="Next / previous Library tab (+⇧)" />
-          </Group>
-          <Group title="Editing (standard)">
-            <Row keys={[`${mod}+C`, `${mod}+X`, `${mod}+V`]} desc="Copy / cut / paste" />
-            <Row keys={[`${mod}+Z`]} desc="Undo (+⇧ to redo)" />
-            <Row keys={[`${mod}+S`]} desc="Save the open editor" />
-            <Row keys={[`${mod}+B`, `${mod}+I`, `${mod}+U`]} desc="Bold / italic / underline" />
-            <Row keys={[`${mod}+A`]} desc="Select all rundown items" />
-            <Row keys={[`${mod}+D`]} desc="Duplicate selected item(s)" />
-          </Group>
-          <Group title="Global">
-            <Row keys={[`${mod}+K`, `${mod}+N`]} desc="Command palette — find & add anything" />
-            <Row keys={[`${mod}+,`]} desc="Open / leave Settings" />
-            <Row keys={['1', '–', '9']} desc="Recall the Scene bound to that number" />
-            <Row keys={['?']} desc="Show / hide this cheatsheet" />
-          </Group>
+        <div className="px-lg py-md grid grid-cols-2 gap-x-xl gap-y-lg max-h-[70vh] overflow-auto custom-scrollbar">
+          {shortcutGroups(sc).map((g) => (
+            <Group key={g.title} title={g.title}>
+              {g.rows.map((r) => <Row key={r.desc} keys={r.keys} desc={r.desc} />)}
+            </Group>
+          ))}
         </div>
         <div className="px-lg py-sm border-t border-outline-variant/20 flex items-center justify-between gap-md">
-          <span className="text-[11px] text-on-surface-variant/60">
-            Bare GO / Esc / Output fire on a single press only when armed (Settings → Shortcuts). The {mod}-shortcuts always work.
+          <span className="text-[12px] text-on-surface-variant">
+            Single-key GO, Clear and Outputs only work while Hotkeys are on. {combo('mod')} shortcuts always work. Keys are set in Settings › Shortcuts.
           </span>
           <button
             onClick={() => {
               ['layout_h_pct', 'layout_v_pct'].forEach((k) => localStorage.removeItem(k));
               window.location.reload();
             }}
-            className="shrink-0 text-[11px] text-on-surface-variant/60 hover:text-on-surface-variant cursor-pointer underline underline-offset-2 transition-colors"
+            className="shrink-0 text-[12px] text-on-surface-variant hover:text-on-surface cursor-pointer underline underline-offset-2 transition-colors"
           >
             Reset panel layout
           </button>

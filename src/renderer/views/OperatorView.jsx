@@ -527,9 +527,10 @@ export default function OperatorView({
       if (viewActiveRef.current && e.ctrlKey && !e.altKey && !e.metaKey && e.key === 'Tab') {
         e.preventDefault(); cycleLibraryTabRef.current?.(e.shiftKey ? -1 : 1); return;
       }
-      // Ctrl+. / Ctrl+, — quick forward/back through the Library tabs. Kept on the
-      // literal Ctrl key (not the OS modifier) so ⌘, still opens Settings on macOS.
-      if (viewActiveRef.current && e.ctrlKey && !e.altKey && !e.metaKey && (e.key === '.' || e.key === ',')) {
+      // ⌃. / ⌃, — quick forward/back through the Library tabs. macOS only: there the
+      // literal Ctrl key is free (⌘, opens Settings); on Windows Ctrl IS the OS
+      // modifier, so Ctrl+, must stay Settings (App.jsx) — Ctrl+Tab covers it.
+      if (isMac && viewActiveRef.current && e.ctrlKey && !e.altKey && !e.metaKey && (e.key === '.' || e.key === ',')) {
         e.preventDefault(); cycleLibraryTabRef.current?.(e.key === '.' ? 1 : -1); return;
       }
 

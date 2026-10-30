@@ -1493,12 +1493,14 @@ function headHtml(sec, label) {
     + `</div>`;
 }
 
-// A slide break as the editor shows it: the next slide's number in the gutter.
+// A slide break as the editor shows it: scissors in the gutter + a faint dashed
+// line, drawn exactly like the automatic max-lines splits (the overlay below) so
+// every slide boundary reads the same; only the tooltip says which kind it is.
 const EDITOR_BREAK_HTML =
-  '<div data-break="1" contenteditable="false" class="flex items-center gap-sm pt-[8px] pb-[1px] -ml-8 select-none">'
-  + '<span data-num class="w-6 shrink-0 text-right text-[11px] tabular-nums text-on-surface-variant/70"></span>'
-  + '<span class="text-[11px] italic text-on-surface-variant/60">continues</span>'
-  + '<span class="flex-1 h-px bg-outline-variant/30"></span>'
+  '<div data-break="1" contenteditable="false" title="Slide break (⌘/Ctrl+Enter). Backspace just after it removes it." '
+  + 'class="relative h-[14px] -ml-8 select-none cursor-default">'
+  + '<span class="material-symbols-outlined absolute left-[-2px] top-1/2 -translate-y-1/2 text-[14px] leading-none text-on-surface-variant/60">content_cut</span>'
+  + '<span class="absolute left-[24px] right-0 top-1/2 border-t border-dashed border-on-surface-variant/25"></span>'
   + '</div>';
 
 function bodyInnerHtml(content, runs) {
@@ -1899,6 +1901,20 @@ export default function SongEditor({ song, onClose, onSave }) {
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose, saving, showBgPicker, headMenu]);
 
+  // ⌘S / Ctrl+S saves (same as the other editors). A ref keeps the listener on the latest handleSave.
+  const saveShortcutRef = useRef(null);
+  saveShortcutRef.current = handleSave;
+  useEffect(() => {
+    const onKey = (e) => {
+      const mod = window.cue.platform === 'darwin' ? e.metaKey : e.ctrlKey;
+      if (!mod || e.altKey || e.shiftKey || e.key.toLowerCase() !== 's') return;
+      e.preventDefault();
+      saveShortcutRef.current?.();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
   // ── Continuous editor: state → DOM ─────────────────────────────────────
   // Re-render the whole song document from `sections` — on load, after structural
   // edits (type change, move, delete, split, paste-import) and undo/redo, all of
@@ -1983,6 +1999,19 @@ export default function SongEditor({ song, onClose, onSave }) {
     if (!root) return;
     const marks = computeAutoMarks(root);
     setAutoMarks(marks);
+    // Slide numbers on the section headers count every slide, manual breaks and
+    // automatic (max-lines) splits alike, so the numbers match what airs.
+    {
+      const ys = marks.map((m) => m.y).sort((a, b) => a - b);
+      let n = 0, mi = 0;
+      for (const el of root.querySelectorAll('[data-head],[data-break]')) {
+        const y = root.offsetTop + el.offsetTop;
+        while (mi < ys.length && ys[mi] < y) { n++; mi++; }
+        n++;
+        const num = el.querySelector('[data-num]');
+        if (num && num.textContent !== String(n)) num.textContent = String(n);
+      }
+    }
     const sel = window.getSelection();
     const anchor = sel && sel.rangeCount ? sel.anchorNode : null;
     if (!anchor || !root.contains(anchor)) return;
@@ -2386,10 +2415,36 @@ export default function SongEditor({ song, onClose, onSave }) {
 
   // Insert a slide-break marker at the caret. The section stays one logical unit;
   // it just renders as multiple slides at the break (variable-size parts).
+  function textFollowsCaret() {
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return false;
+    const r = sel.getRangeAt(0);
+    let node = r.endContainer;
+    let next;
+    if (node.nodeType === Node.TEXT_NODE) {
+      if (node.textContent.slice(r.endOffset).trim()) return true;
+      next = node.nextSibling;
+    } else {
+      next = node.childNodes[r.endOffset] || null;
+    }
+    // Climb out of inline run spans when they end at the caret.
+    while (!next && node && node !== editorRef.current && !node.dataset?.body) {
+      next = node.nextSibling; node = node.parentNode;
+    }
+    for (; next; next = next.nextSibling) {
+      if (next.nodeType === Node.TEXT_NODE) { if (next.textContent.trim()) return true; continue; }
+      if (next.tagName === 'BR' || next.dataset?.break || next.tagName === 'DIV') return false;
+      if (next.textContent.trim()) return true;
+    }
+    return false;
+  }
+
   function insertSplit() {
     if (!editorRef.current) return;
     editorRef.current.focus();
-    document.execCommand('insertHTML', false, EDITOR_BREAK_HTML + '<br>');
+    // The break is a block, so text after the caret already starts the next line.
+    // Only add a <br> when nothing follows on this line (else it saves a blank line).
+    document.execCommand('insertHTML', false, EDITOR_BREAK_HTML + (textFollowsCaret() ? '' : '<br>'));
     handleEditorInput();
   }
 
@@ -2896,12 +2951,12 @@ export default function SongEditor({ song, onClose, onSave }) {
                   {autoMarks.map((m, i) => (
                     <div
                       key={i}
-                      className="absolute left-[40px] right-[8px] border-t border-dashed border-on-surface-variant/50 pointer-events-none z-[1]"
+                      className="absolute left-[40px] right-[16px] border-t border-dashed border-on-surface-variant/25 pointer-events-none z-[1]"
                       style={{ top: m.y + 1 }}
                     >
                       <span
-                        title={`New slide here — max ${m.cap} lines per slide`}
-                        className="material-symbols-outlined absolute -left-[26px] -top-[8px] text-[14px] leading-none text-on-surface-variant pointer-events-auto cursor-help"
+                        title={`Automatic slide break: max ${m.cap} lines per slide`}
+                        className="material-symbols-outlined absolute -left-[26px] -top-[7px] text-[14px] leading-none text-on-surface-variant/60 pointer-events-auto cursor-help"
                       >
                         content_cut
                       </span>

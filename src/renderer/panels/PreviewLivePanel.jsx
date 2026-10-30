@@ -1188,27 +1188,29 @@ export default function PreviewLivePanel({
                     title={bareArmed
                       ? 'Single-key shortcuts for GO, Clear and Outputs are on. Click to turn them off.'
                       : 'Single-key shortcuts are off, so a stray keystroke can\'t air anything. ⌘/Ctrl shortcuts still work. Click to turn them on.'}
-                    className={`flex items-center gap-xs text-[11px] font-mono px-xs py-[2px] rounded border transition-colors cursor-pointer ${
+                    className={`flex items-center gap-xs text-[12px] h-6 px-sm rounded-md border transition-colors cursor-pointer ${
                       bareArmed
                         ? 'bg-tertiary/10 border-tertiary/40 text-tertiary'
                         : 'bg-surface-container border-outline-variant/30 text-on-surface-variant/60 hover:text-on-surface-variant'
                     }`}
                   >
-                    <span className="material-symbols-outlined text-[11px]">bolt</span>
+                    <span className="material-symbols-outlined text-[14px]">bolt</span>
                     Hotkeys {bareArmed ? 'on' : 'off'}
                   </button>
                 )}
-                {liveSlides.length > 1 && onToggleJumpArmed && (
+                {onToggleJumpArmed && (
                   <button
                     onClick={onToggleJumpArmed}
-                    title="Q, W, E… jump straight to a slide of the live item. Click to turn on or off."
-                    className={`flex items-center gap-xs text-[11px] font-mono px-xs py-[2px] rounded border transition-colors cursor-pointer ${
+                    title={liveSlides.length > 1
+                      ? 'Q, W, E… jump straight to a slide of the live item. Click to turn on or off.'
+                      : 'Q, W, E… jump straight to a slide of the live item. Works once a song with several slides is live. Click to turn on or off.'}
+                    className={`flex items-center gap-xs text-[12px] h-6 px-sm rounded-md border transition-colors cursor-pointer ${
                       jumpArmed
                         ? 'bg-tertiary/10 border-tertiary/40 text-tertiary'
                         : 'bg-surface-container border-outline-variant/30 text-on-surface-variant/60 hover:text-on-surface-variant'
                     }`}
                   >
-                    <span className="material-symbols-outlined text-[11px]">keyboard</span>
+                    <span className="material-symbols-outlined text-[14px]">keyboard</span>
                     Jump {jumpArmed ? 'on' : 'off'}
                   </button>
                 )}

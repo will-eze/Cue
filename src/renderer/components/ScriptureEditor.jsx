@@ -137,6 +137,20 @@ export default function ScriptureEditor({ onClose, onSave }) {
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose, saving, showBgPicker]);
 
+  // ⌘S / Ctrl+S saves, like the other editors.
+  const saveShortcutRef = React.useRef(null);
+  saveShortcutRef.current = () => { if (!saving && loaded) handleSave(); };
+  useEffect(() => {
+    const onKey = (e) => {
+      const mod = window.cue.platform === 'darwin' ? e.metaKey : e.ctrlKey;
+      if (!mod || e.altKey || e.shiftKey || e.key.toLowerCase() !== 's') return;
+      e.preventDefault();
+      saveShortcutRef.current?.();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
   async function handleSave() {
     setSaving(true); setSaveError('');
     try {
