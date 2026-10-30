@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import MediaPickerModal from './MediaPickerModal';
 import { useModalGuard } from '../utils/modalGuard';
@@ -8,7 +8,7 @@ import useEditHistory, { useUndoRedoKeys } from '../utils/useEditHistory';
 import { useToast } from './Toast';
 import { mediaUrl } from '../utils/mediaUrl';
 import { sectionOrdinals, sectionLabels, SLIDE_BREAK } from '../utils/sectionLabels';
-import { parseLyrics } from '../../shared/lyrics-parse.js';
+import { parseLyrics, parseHeaderLine } from '../../shared/lyrics-parse.js';
 import { normalizeLookStyle } from '../utils/presentationThemes';
 import TreatmentOverlays, { glassBoxStyle } from './TreatmentOverlays';
 import { useFonts } from '../utils/fonts';
@@ -1431,71 +1431,146 @@ function ArrangementPanel({ sections, arrangement, onChange }) {
   );
 }
 
-// One section in the lyrics document. Every section shows its full lyrics at a
-// readable size; the ACTIVE one hosts the single live contentEditable (`editor`),
-// the rest render the same HTML read-only so clicking a line activates that
-// section with the caret where you clicked — no select-then-edit-elsewhere hop.
-function SectionCard({ section, label, isActive, onActivate, onDelete, onTypeChange, editor, actions }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: section._key });
-  const typeColor = TYPE_COLORS[section.type] || TYPE_COLORS.default;
-  const parts = (section.content || '').split(SLIDE_BREAK).filter((p) => p.trim()).length;
-  return (
-    <div
-      ref={setNodeRef}
-      data-section-key={section._key}
-      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
-      className={`group rounded-lg border transition-colors ${
-        isActive ? 'border-primary/50 bg-surface-container' : 'border-outline-variant/20 bg-surface-container-low hover:border-outline-variant/50'
-      }`}
-    >
-      <div className="flex items-center gap-sm px-md pt-sm">
-        <button
-          className="drag-handle cursor-grab text-on-surface-variant/60 hover:text-on-surface-variant flex-shrink-0 transition-colors"
-          {...attributes} {...listeners} tabIndex={-1} title="Drag to reorder"
-        >
-          <span className="material-symbols-outlined text-[18px]">drag_indicator</span>
-        </button>
-        <select
-          value={section.type}
-          onChange={(e) => onTypeChange(section._key, e.target.value)}
-          title="Section type"
-          className={`text-label-sm font-semibold capitalize border rounded-md px-sm h-6 outline-none cursor-pointer flex-shrink-0 ${typeColor}`}
-        >
-          {SECTION_TYPES.map((t) => (
-            <option key={t} value={t} className="bg-surface-container text-on-surface capitalize font-normal">{t}</option>
-          ))}
-        </select>
-        <span className="text-label-sm text-on-surface-variant truncate">{label}</span>
-        {parts > 1 && (
-          <span title={`Shows as ${parts} slides`} className="flex items-center gap-[2px] text-label-sm text-on-surface-variant flex-shrink-0">
-            <span className="material-symbols-outlined text-[14px]">content_cut</span>{parts} slides
-          </span>
-        )}
-        <div className="ml-auto flex items-center gap-sm flex-shrink-0">
-          {isActive && actions}
-          <button
-            onClick={() => onDelete(section._key)}
-            className="opacity-40 group-hover:opacity-100 text-on-surface-variant hover:text-error transition-all cursor-pointer w-6 h-6 flex items-center justify-center rounded-md hover:bg-error/10"
-            tabIndex={-1} title="Remove section"
-          >
-            <span className="material-symbols-outlined text-[16px]">delete</span>
-          </button>
-        </div>
-      </div>
-      {isActive ? editor : (
-        <div
-          onMouseDown={(e) => { e.preventDefault(); onActivate(section._key, { x: e.clientX, y: e.clientY }); }}
-          className={`${LYRIC_TEXT_CLS} cursor-text ${section.content?.trim() ? '' : 'text-on-surface-variant/60 italic'}`}
-          dangerouslySetInnerHTML={{ __html: section.content?.trim() ? renderEditorHtml(section.content, section.runs || []) : 'Empty — click to type lyrics' }}
-        />
-      )}
-    </div>
-  );
+// ─── Continuous song document (EasyWorship-style) ───────────────────────────
+// The whole song is ONE contentEditable. Each section starts with a non-editable
+// header line (slide number + label, `data-head` carrying the section's _key and
+// type); the editable text up to the next header is that section's lyrics. A ⁂
+// slide break inside a section renders as a numbered, non-editable `data-break`
+// line, so every display slide gets its own number like EasyWorship's Words pane.
+// DOM → sections on every input (extractSongSections); sections → DOM only on
+// load / structural edits / undo (renderSongHtml), so typing never loses the caret.
+
+const HEAD_TONE = {
+  chorus: 'text-primary', refrain: 'text-primary', 'pre-chorus': 'text-primary',
+  bridge: 'text-tertiary', tag: 'text-tertiary',
+};
+
+function headHtml(sec, label) {
+  const tone = HEAD_TONE[sec.type] || 'text-on-surface';
+  return `<div data-head="1" data-key="${esc(sec._key)}" data-type="${esc(sec.type)}" contenteditable="false" `
+    + `class="flex items-baseline gap-sm pt-[10px] pb-[1px] select-none cursor-pointer group/head" title="Change type, move or delete this section">`
+    + `<span data-num class="w-6 shrink-0 text-right text-[11px] tabular-nums text-on-surface-variant/70"></span>`
+    + `<span data-label class="text-[12px] font-semibold ${tone} group-hover/head:underline">${esc(label)}</span>`
+    + `<span class="material-symbols-outlined text-[14px] leading-none text-on-surface-variant/60 opacity-0 group-hover/head:opacity-100">expand_more</span>`
+    + `</div>`;
 }
 
-// Shared by the live editor and the read-only cards so a click maps to the same
-// character once the card turns editable.
-const LYRIC_TEXT_CLS = 'px-md pb-md pt-sm text-[15px] leading-[1.6] text-on-surface whitespace-pre-wrap break-words outline-none';
+// A slide break as the editor shows it: the next slide's number in the gutter.
+const EDITOR_BREAK_HTML =
+  '<div data-break="1" contenteditable="false" class="flex items-center gap-sm pt-[8px] pb-[1px] -ml-8 select-none">'
+  + '<span data-num class="w-6 shrink-0 text-right text-[11px] tabular-nums text-on-surface-variant/70"></span>'
+  + '<span class="text-[11px] italic text-on-surface-variant/60">continues</span>'
+  + '<span class="flex-1 h-px bg-outline-variant/30"></span>'
+  + '</div>';
+
+function bodyInnerHtml(content, runs) {
+  const html = renderWithRuns(content || '', runs || []).replace(/(?:<br>)?⁂(?:<br>)?/g, EDITOR_BREAK_HTML);
+  return html || '<br>';
+}
+
+// Selector for a section's header (keys are app-generated, but quote-escape anyway).
+// Not CSS.escape: this file imports dnd-kit's `CSS`, which shadows the global.
+const headSel = (key) => `[data-head][data-key="${String(key).replace(/["\\]/g, '\\$&')}"]`;
+
+function renderSongHtml(sections) {
+  const labels = sectionLabels(sections);
+  return sections.map((sec, i) =>
+    headHtml(sec, labels[i]) + `<div data-body="1" class="pl-8">${bodyInnerHtml(sec.content, sec.runs)}</div>`
+  ).join('');
+}
+
+// Walk the editor: every data-head opens a section; all following nodes up to the
+// next head are its body. Fields other than type/content/runs (id, style_json…) are
+// carried over from the previous state by _key.
+function extractSongSections(root, prev = []) {
+  const prevByKey = new Map(prev.map((p) => [p._key, p]));
+  const out = [];
+  let cur = null;
+  let buf = [];
+  const flush = () => {
+    if (!cur) return;
+    const tmp = document.createElement('div');
+    for (const n of buf) tmp.appendChild(n.cloneNode(true));
+    const { text, runs } = extractContentAndRuns(tmp);
+    out.push({ ...(prevByKey.get(cur._key) || {}), _key: cur._key, type: cur.type, content: text, runs });
+    buf = [];
+  };
+  for (const node of root.childNodes) {
+    if (node.nodeType === Node.ELEMENT_NODE && node.dataset?.head) {
+      flush();
+      cur = { _key: node.dataset.key, type: node.dataset.type || 'verse' };
+      continue;
+    }
+    if (!cur) continue; // ensureLeadHead() guarantees a head first
+    buf.push(node);
+  }
+  flush();
+  return out;
+}
+
+// Number every slide (heads + breaks, in document order) and refresh the labels
+// (Verse 1 / Verse 2 numbering follows the live section list).
+function renumberSong(root, sections) {
+  let n = 0;
+  for (const el of root.querySelectorAll('[data-head],[data-break]')) {
+    n += 1;
+    const num = el.querySelector('[data-num]');
+    if (num) num.textContent = String(n);
+  }
+  const labels = sectionLabels(sections);
+  root.querySelectorAll('[data-head]').forEach((h, i) => {
+    const l = h.querySelector('[data-label]');
+    if (l && labels[i] && l.textContent !== labels[i]) l.textContent = labels[i];
+  });
+}
+
+// Lines typed/pasted as a section name on their own ("Chorus", "Verse 2 — Mary")
+// become a new section, EasyWorship-style. Uses the shared header parser.
+// Only sections in `onlyKeys` (the one just edited) are scanned, so an Enter in one
+// section never restructures header-like lines elsewhere in an existing song.
+function splitOnHeaderLines(sections, newKeyFn, onlyKeys) {
+  let changed = false;
+  let caretKey = null;
+  const added = []; // [afterKey, newKey] — new sections join the play order after their source
+  const out = [];
+  for (const sec of sections) {
+    if (onlyKeys && !onlyKeys.has(sec._key)) { out.push(sec); continue; }
+    const lines = (sec.content || '').split('\n');
+    let cur = { ...sec, content: '', runs: [] };
+    let curStart = 0;       // char offset (in sec.content) where cur's text begins
+    let acc = [];
+    let offset = 0;
+    const close = (endOffset) => {
+      const text = acc.join('\n');
+      const lead = text.match(/^\n*/)[0].length;
+      const trimmed = text.replace(/^\n+/, '').replace(/\n+$/, '');
+      const base = curStart + lead;
+      cur.content = trimmed;
+      cur.runs = (sec.runs || [])
+        .filter((r) => r.end > base && r.start < base + trimmed.length)
+        .map((r) => ({ ...r, start: Math.max(0, r.start - base), end: Math.min(trimmed.length, r.end - base) }));
+      out.push(cur);
+    };
+    lines.forEach((line, i) => {
+      const h = line.trim() && line.trim().length <= 40 && !line.includes(SLIDE_BREAK) ? parseHeaderLine(line) : null;
+      if (h && !h.tail) {
+        close(offset);
+        changed = true;
+        const prevKey = cur._key;
+        cur = { _key: newKeyFn(), type: h.type, content: '', runs: [] };
+        caretKey = cur._key;
+        added.push([prevKey, cur._key]);
+        acc = [];
+        curStart = offset + line.length + 1;
+      } else {
+        acc.push(line);
+      }
+      offset += line.length + 1;
+    });
+    close(offset);
+  }
+  return { sections: out, changed, caretKey, added };
+}
 
 // ─── Paste view ───────────────────────────────────────────────────────────
 
@@ -1592,7 +1667,9 @@ export default function SongEditor({ song, onClose, onSave }) {
     window.cue.songs.listAliases(song.id).then((a) => setAliases(Array.isArray(a) ? a : [])).catch(() => setAliases([]));
   }, [song?.id]);
   const sidebarRef   = useRef(null);   // lyrics document scroller
-  const caretPoint   = useRef(null);   // where the operator clicked to activate a section
+  const caretTarget  = useRef(null);   // { key, atEnd } — where to put the caret after a re-render
+  const scanHeaders  = useRef(false);  // next input came from Enter/paste → look for typed section names
+  const [headMenu, setHeadMenu] = useState(null); // { key, x, y } section menu from a header click
   const fonts        = useFonts();
   const sensors      = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -1700,10 +1777,8 @@ export default function SongEditor({ song, onClose, onSave }) {
           arrangement: arr,
           maxLines: Number(s.max_lines) > 0 ? Number(s.max_lines) : 0,
         });
-        if (mapped.length) {
-          setActiveSectionKey(mapped[0]._key);
-          setPreviewContent({ text: mapped[0].content, runs: mapped[0].runs });
-        }
+        if (mapped.length) setActiveSectionKey(mapped[0]._key);
+        setDomSyncTick((t) => t + 1);
       });
     } else {
       // New song — optionally seed title/lyrics from a prefill (e.g. the Paste
@@ -1722,7 +1797,7 @@ export default function SongEditor({ song, onClose, onSave }) {
         maxLines: 0,
       });
       setActiveSectionKey(mapped[0]._key);
-      setPreviewContent({ text: mapped[0].content, runs: mapped[0].runs });
+      setDomSyncTick((t) => t + 1);
     }
   }, [song?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1733,111 +1808,193 @@ export default function SongEditor({ song, onClose, onSave }) {
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose, saving, showBgPicker]);
 
-  // When active section changes → load its content into contenteditable
-  useEffect(() => {
-    if (!activeSectionKey || !editorRef.current) return;
-    const sec = sectionsRef.current.find((s) => s._key === activeSectionKey);
-    if (sec) {
-      editorRef.current.innerHTML = renderEditorHtml(sec.content || '', sec.runs || []);
-      setPreviewContent({ text: sec.content || '', runs: sec.runs || [] });
-      setPreviewPart(0);
-    }
-    // Activated by a click on its read-only text → drop the caret on that spot.
-    const pt = caretPoint.current;
-    caretPoint.current = null;
-    if (pt) {
-      requestAnimationFrame(() => {
-        const el = editorRef.current;
-        if (!el) return;
-        el.focus();
-        const range = document.caretRangeFromPoint?.(pt.x, pt.y);
+  // ── Continuous editor: state → DOM ─────────────────────────────────────
+  // Re-render the whole song document from `sections` — on load, after structural
+  // edits (type change, move, delete, split, paste-import) and undo/redo, all of
+  // which bump domSyncTick. Ordinary typing never re-renders (DOM → state only).
+  // Layout effect + synchronous caret placement: keystrokes typed right after a
+  // structural edit (e.g. "Chorus" + Enter, then straight on typing) must land in
+  // the new section, not wherever innerHTML reset the selection.
+  useLayoutEffect(() => {
+    const root = editorRef.current;
+    if (!root) return;
+    root.innerHTML = renderSongHtml(sections);
+    renumberSong(root, sections);
+    const tgt = caretTarget.current;
+    caretTarget.current = null;
+    if (tgt) {
+      const head = root.querySelector(headSel(tgt.key));
+      const body = head?.nextElementSibling;
+      if (body) {
+        root.focus({ preventScroll: true });
+        const r = document.createRange();
+        r.selectNodeContents(body);
+        r.collapse(tgt.atEnd !== true);
         const sel = window.getSelection();
-        if (range && el.contains(range.startContainer)) { sel.removeAllRanges(); sel.addRange(range); }
-        else { const r = document.createRange(); r.selectNodeContents(el); r.collapse(false); sel.removeAllRanges(); sel.addRange(r); }
-      });
+        sel.removeAllRanges();
+        sel.addRange(r);
+        head.scrollIntoView({ block: 'nearest' });
+      }
     }
-  }, [activeSectionKey]);
+    syncActiveFromSelection();
+  }, [domSyncTick, showPaste]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Undo / redo restores `sections` but the contentEditable is uncontrolled, so its
-  // DOM must be re-rendered from the (restored) active section. Bumped only by
-  // handleUndo/handleRedo. If the active section was removed by the undo, fall back
-  // to the first remaining section.
+  // ── Which slide is the caret in? → preview + highlight frame ───────────
+  // The block = the last head/break at or before the caret. Its section drives the
+  // preview; the number of breaks since the head picks the preview part.
+  const [activeFrame, setActiveFrame] = useState(null); // { top, height } in editor px
+  function syncActiveFromSelection() {
+    const root = editorRef.current;
+    if (!root) return;
+    const sel = window.getSelection();
+    const anchor = sel && sel.rangeCount ? sel.anchorNode : null;
+    if (!anchor || !root.contains(anchor)) return;
+    const blocks = [...root.querySelectorAll('[data-head],[data-break]')];
+    let bi = -1;
+    blocks.forEach((b, i) => {
+      if (b === anchor || b.contains(anchor) || (b.compareDocumentPosition(anchor) & Node.DOCUMENT_POSITION_FOLLOWING)) bi = i;
+    });
+    if (bi < 0) return;
+    let hi = bi;
+    while (hi > 0 && !blocks[hi].dataset.head) hi--;
+    const head = blocks[hi];
+    if (!head?.dataset.head) return;
+    const key = head.dataset.key;
+    if (key !== activeKeyRef.current) setActiveSectionKey(key);
+    setPreviewPart(bi - hi);
+    const top = blocks[bi].offsetTop;
+    const next = blocks[bi + 1];
+    const bottom = next ? next.offsetTop : root.offsetTop + root.offsetHeight;
+    setActiveFrame({ top: top - 2, height: Math.max(24, bottom - top + 2) });
+  }
   useEffect(() => {
-    if (domSyncTick === 0 || !editorRef.current) return;
-    // Read from this render's closure (post-undo `sections`/`activeSectionKey`), not
-    // refs, so it never depends on effect ordering.
-    let sec = sections.find((s) => s._key === activeSectionKey);
-    if (!sec) {
-      sec = sections[0];
-      if (sec) setActiveSectionKey(sec._key);
-    }
-    if (sec) {
-      editorRef.current.innerHTML = renderEditorHtml(sec.content || '', sec.runs || []);
-      setPreviewContent({ text: sec.content || '', runs: sec.runs || [] });
-      setPreviewPart(0);
-    }
-  }, [domSyncTick]); // eslint-disable-line react-hooks/exhaustive-deps
+    let raf = 0;
+    const onSel = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(syncActiveFromSelection); };
+    document.addEventListener('selectionchange', onSel);
+    return () => { document.removeEventListener('selectionchange', onSel); cancelAnimationFrame(raf); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Flush active section to sections array ──────────────────────────────
-  // Skips when the DOM matches the stored section, so a structural action that
-  // flushes first doesn't push a spurious (no-change) undo step.
-  const flushActiveSection = useCallback(() => {
-    const key = activeKeyRef.current;
-    if (!key || !editorRef.current) return;
-    const { text, runs } = extractContentAndRuns(editorRef.current);
-    const cur = sectionsRef.current.find((s) => s._key === key);
-    if (cur && cur.content === text && JSON.stringify(cur.runs || []) === JSON.stringify(runs || [])) return;
-    setSections((prev) => prev.map((s) => s._key === key ? { ...s, content: text, runs } : s));
-  }, []);
+  // Preview follows the active section's (live) content.
+  useEffect(() => {
+    const sec = sections.find((x) => x._key === activeSectionKey) || sections[0];
+    setPreviewContent({ text: sec?.content || '', runs: sec?.runs || [] });
+  }, [sections, activeSectionKey]);
 
-  function switchSection(key) {
-    if (key === activeKeyRef.current) return;
-    flushActiveSection();
-    setActiveSectionKey(key);
-    const sec = sectionsRef.current.find((s) => s._key === key);
-    if (sec) setPreviewContent({ text: sec.content || '', runs: sec.runs || [] });
+  // Structural edits: update state, then re-render the document with the caret in `key`.
+  // `added` = [afterKey, newKey] pairs: with a custom play order, a new section
+  // plays right after each occurrence of the section it was created from — or it
+  // would silently never reach the screen.
+  function restructure(updater, key, atEnd, added = []) {
+    doc.set((d) => {
+      const nd = updater(d);
+      const keys = new Set(nd.sections.map((x) => x._key));
+      let arr = Array.isArray(nd.arrangement) ? nd.arrangement.filter((k) => keys.has(k)) : nd.arrangement;
+      for (const [after, k] of added) {
+        if (!Array.isArray(arr) || arr.includes(k)) continue;
+        const out = [];
+        let placed = false;
+        for (const x of arr) { out.push(x); if (x === after) { out.push(k); placed = true; } }
+        arr = placed ? out : [...out, k];
+      }
+      return { ...nd, arrangement: Array.isArray(arr) && !arr.length ? null : arr };
+    });
+    if (key) caretTarget.current = { key, atEnd };
+    setDomSyncTick((t) => t + 1);
   }
 
-  // ── Editor input handler ────────────────────────────────────────────────
-  // Updates the live preview AND flushes into `sections` through history, coalesced
-  // per section so a typing run is one undo step. The contentEditable is uncontrolled
-  // (innerHTML set imperatively), so this state update never disturbs the caret.
+  // ── Editor input: DOM → state ───────────────────────────────────────────
+  function ensureLeadHead(root) {
+    const first = root.firstChild;
+    if (first && first.nodeType === Node.ELEMENT_NODE && first.dataset?.head) return;
+    if (!root.textContent.trim() && !root.querySelector('[data-head]')) return;
+    const holder = document.createElement('div');
+    holder.innerHTML = headHtml({ _key: newKey(), type: 'verse' }, 'Verse');
+    root.insertBefore(holder.firstChild, root.firstChild);
+  }
+
   function handleEditorInput() {
-    if (!editorRef.current) return;
-    const { text, runs } = extractContentAndRuns(editorRef.current);
-    setPreviewContent({ text, runs });
-    const key = activeKeyRef.current;
-    if (key) setSections((prev) => prev.map((s) => s._key === key ? { ...s, content: text, runs } : s), `lyrics:${key}`);
+    const root = editorRef.current;
+    if (!root) return;
+    ensureLeadHead(root);
+    let next = extractSongSections(root, sectionsRef.current);
+    if (scanHeaders.current) {
+      scanHeaders.current = false;
+      // Scan only what this keystroke/paste changed.
+      const prevByKey = new Map(sectionsRef.current.map((x) => [x._key, x.content]));
+      const touched = new Set(next.filter((x) => prevByKey.get(x._key) !== x.content).map((x) => x._key));
+      const here = caretSectionKey(root);
+      if (here) touched.add(here); // Enter only adds a (trimmed) trailing newline
+      const r = splitOnHeaderLines(next, newKey, touched);
+      if (r.changed) { restructure((d) => ({ ...d, sections: r.sections }), r.caretKey, false, r.added); return; }
+    }
+    const keys = new Set(next.map((x) => x._key));
+    doc.set((d) => {
+      const arr = Array.isArray(d.arrangement) ? d.arrangement.filter((k) => keys.has(k)) : d.arrangement;
+      return { ...d, sections: next, arrangement: Array.isArray(arr) && !arr.length ? null : arr };
+    }, 'lyrics');
+    renumberSong(root, next);
+    syncActiveFromSelection();
   }
 
   function handleEditorPaste(e) {
     e.preventDefault();
-    document.execCommand('insertText', false, e.clipboardData.getData('text/plain'));
-  }
-
-  function activateSection(key, point) {
-    caretPoint.current = point || null;
-    if (key === activeKeyRef.current) return;
-    switchSection(key);
+    const text = e.clipboardData.getData('text/plain');
+    // A pasted line that is a section name ("Chorus") splits into a new section.
+    if (/\n/.test(text)) scanHeaders.current = true;
+    document.execCommand('insertText', false, text);
   }
 
   function handleEditorKeyDown(e) {
-    // Alt+↑/↓ → previous / next section, caret at its start.
+    // Alt+↑/↓ → previous / next section.
     if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
       e.preventDefault();
       const list = sectionsRef.current;
       const idx = list.findIndex((x) => x._key === activeKeyRef.current);
       const next = list[idx + (e.key === 'ArrowUp' ? -1 : 1)];
-      if (next) {
-        const el = sidebarRef.current?.querySelector(`[data-section-key="${next._key}"]`);
-        const r = el?.getBoundingClientRect();
-        activateSection(next._key, r ? { x: r.left + 24, y: r.top + 44 } : null);
-      }
+      if (next) focusSection(next._key);
       return;
     }
-    // ⌘/Ctrl+Enter → split slide here; plain Enter → soft line break.
+    // ⌘/Ctrl+Enter → split slide here; plain Enter → line break, and a line that
+    // reads as a section name ("Chorus", "Verse 2") becomes a new section.
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); insertSplit(); return; }
-    if (e.key === 'Enter') { e.preventDefault(); document.execCommand('insertLineBreak'); }
+    if (e.key === 'Enter') { e.preventDefault(); scanHeaders.current = true; document.execCommand('insertLineBreak'); }
+  }
+
+  // _key of the section the caret is in (nearest header at or before it).
+  function caretSectionKey(root) {
+    const sel = window.getSelection();
+    const anchor = sel && sel.rangeCount ? sel.anchorNode : null;
+    if (!anchor || !root.contains(anchor)) return null;
+    let key = null;
+    for (const h of root.querySelectorAll('[data-head]')) {
+      if (h === anchor || h.contains(anchor) || (h.compareDocumentPosition(anchor) & Node.DOCUMENT_POSITION_FOLLOWING)) key = h.dataset.key;
+    }
+    return key;
+  }
+
+  // Put the caret at the start of a section and bring it into view.
+  function focusSection(key) {
+    const root = editorRef.current;
+    const head = root?.querySelector(headSel(key));
+    const body = head?.nextElementSibling;
+    if (!body) return;
+    root.focus();
+    const r = document.createRange();
+    r.selectNodeContents(body);
+    r.collapse(true);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(r);
+    head.scrollIntoView({ block: 'nearest' });
+  }
+
+  // Header click → section menu (type / move / delete).
+  function handleEditorMouseDown(e) {
+    const head = e.target.closest?.('[data-head]');
+    if (!head || !editorRef.current?.contains(head)) return;
+    e.preventDefault();
+    const r = head.querySelector('[data-label]')?.getBoundingClientRect() || head.getBoundingClientRect();
+    setHeadMenu({ key: head.dataset.key, x: r.left, y: r.bottom + 4 });
   }
 
   function hasSelection() {
@@ -1856,31 +2013,24 @@ export default function SongEditor({ song, onClose, onSave }) {
   function insertSplit() {
     if (!editorRef.current) return;
     editorRef.current.focus();
-    // Insert the styled, atomic divider at the caret; a trailing <br> drops the
-    // caret onto a fresh line after the break. extractContentAndRuns turns the
-    // divider back into the canonical ⁂ marker.
-    document.execCommand('insertHTML', false, SLIDE_BREAK_HTML + '<br>');
+    document.execCommand('insertHTML', false, EDITOR_BREAK_HTML + '<br>');
     handleEditorInput();
   }
 
-  // Auto-split the active section into parts at every blank line — the quick way
-  // to break a multi-stanza verse into one slide per stanza. Existing breaks are
-  // normalised first so re-running is idempotent. Inline runs are dropped (the
-  // restructured whitespace would invalidate their offsets).
-  function autoSplit() {
-    if (!editorRef.current) return;
-    const { text } = extractContentAndRuns(editorRef.current);
-    const clean = text.replace(/\s*⁂\s*/g, '\n');          // neutralise existing breaks
+  // Split the active section into one slide per blank-line stanza. Idempotent.
+  // Inline runs are dropped (the restructured whitespace would invalidate offsets).
+  function autoSplit(key = activeKeyRef.current) {
+    const sec = sectionsRef.current.find((x) => x._key === key);
+    if (!sec) return;
+    const clean = (sec.content || '').replace(/\s*⁂\s*/g, '\n');
     const parts = clean.split(/\n[ \t]*\n+/).map((p) => p.trim()).filter(Boolean);
-    if (parts.length <= 1) return;                          // nothing to split on
+    if (parts.length <= 1) return;
     const joined = parts.join(`\n${SLIDE_BREAK}\n`);
-    editorRef.current.innerHTML = renderEditorHtml(joined, []);
-    handleEditorInput();
+    restructure((d) => ({ ...d, sections: d.sections.map((x) => x._key === key ? { ...x, content: joined, runs: [] } : x) }), key);
   }
 
-  // Canvas text edit committed from SlidePreview. Reconstructs the full section
-  // content by replacing only the active preview part (for split sections, the
-  // other parts are preserved). Re-seeds the right panel editor DOM.
+  // Canvas text edit committed from SlidePreview: replace only the active preview
+  // part of the active section (other split parts preserved), then re-render.
   function handleCanvasTextChange(newText) {
     const key = activeKeyRef.current;
     if (!key) return;
@@ -1904,53 +2054,40 @@ export default function SongEditor({ song, onClose, onSave }) {
       });
       newFullText = updated.join(SLIDE_BREAK);
     }
-    setSections((prev) => prev.map((s) => s._key === key ? { ...s, content: newFullText, runs: [] } : s));
-    setPreviewContent({ text: newFullText, runs: [] });
-    if (editorRef.current) editorRef.current.innerHTML = renderEditorHtml(newFullText, []);
+    restructure((d) => ({ ...d, sections: d.sections.map((x) => x._key === key ? { ...x, content: newFullText, runs: [] } : x) }));
   }
 
   // ── Section mutations ───────────────────────────────────────────────────
-  function addSection() {
+  // New section goes after the one the caret is in (or at the end).
+  function addSection(type = 'verse') {
     const k = newKey();
-    const sec = { _key: k, type: 'verse', content: '', runs: [] };
-    setSections((prev) => [...prev, sec]);
-    flushActiveSection();
-    caretPoint.current = { x: -1, y: -1 }; // focus the new (empty) section
-    setActiveSectionKey(k);
-    setPreviewContent({ text: '', runs: [] });
+    const after = activeKeyRef.current || sectionsRef.current[sectionsRef.current.length - 1]?._key;
+    restructure((d) => {
+      const i = d.sections.findIndex((x) => x._key === activeKeyRef.current);
+      const list = [...d.sections];
+      list.splice(i < 0 ? list.length : i + 1, 0, { _key: k, type, content: '', runs: [] });
+      return { ...d, sections: list };
+    }, k, false, after ? [[after, k]] : []);
   }
 
   function onTypeChange(key, value) {
-    setSections((prev) => prev.map((s) => s._key === key ? { ...s, type: value } : s));
+    restructure((d) => ({ ...d, sections: d.sections.map((x) => x._key === key ? { ...x, type: value } : x) }), key);
+  }
+
+  function moveSection(key, dir) {
+    restructure((d) => {
+      const i = d.sections.findIndex((x) => x._key === key);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= d.sections.length) return d;
+      return { ...d, sections: arrayMove(d.sections, i, j) };
+    }, key);
   }
 
   function deleteSection(key) {
-    const prev = sections;
-    const next = prev.filter((s) => s._key !== key);
-    setSections(next);
-    // A deleted section vanishes from the arrangement too; an emptied arrangement
-    // reverts to natural order rather than lingering as a zero-slide song.
-    setArrangement((a) => {
-      if (!a) return a;
-      const filtered = a.filter((k) => k !== key);
-      return filtered.length ? filtered : null;
-    });
-    if (key === activeKeyRef.current && next.length) {
-      const idx = Math.max(0, prev.findIndex((s) => s._key === key) - 1);
-      const newActive = next[Math.min(idx, next.length - 1)];
-      setActiveSectionKey(newActive._key);
-      setPreviewContent({ text: newActive.content, runs: newActive.runs });
-    } else if (!next.length) {
-      setActiveSectionKey(null);
-      setPreviewContent({ text: '', runs: [] });
-    }
-  }
-
-  function handleDragEnd({ active, over }) {
-    if (!over || active.id === over.id) return;
-    const oi = sections.findIndex((s) => s._key === active.id);
-    const ni = sections.findIndex((s) => s._key === over.id);
-    setSections(arrayMove(sections, oi, ni));
+    const list = sectionsRef.current;
+    const i = list.findIndex((x) => x._key === key);
+    const neighbour = list[i - 1] || list[i + 1];
+    restructure((d) => ({ ...d, sections: d.sections.filter((x) => x._key !== key) }), neighbour?._key);
   }
 
   function handleParsedImport(parsed) {
@@ -1969,8 +2106,9 @@ export default function SongEditor({ song, onClose, onSave }) {
     setShowPaste(false);
     if (mapped.length) {
       setActiveSectionKey(mapped[0]._key);
-      setPreviewContent({ text: mapped[0].content, runs: [] });
+      caretTarget.current = { key: mapped[0]._key };
     }
+    setDomSyncTick((t) => t + 1);
   }
 
   // ── Tags ────────────────────────────────────────────────────────────────
@@ -2003,18 +2141,12 @@ export default function SongEditor({ song, onClose, onSave }) {
     if (!title.trim() || saving) return;
     setSaving(true); setSaveError('');
     try {
-      // For the active section read directly from the DOM; all others from state.
-      const activeKey = activeKeyRef.current;
-      const sectionData = sectionsRef.current.map((sec) => {
-        let content = sec.content || '';
-        let runs    = sec.runs    || [];
-        if (sec._key === activeKey && editorRef.current) {
-          const extracted = extractContentAndRuns(editorRef.current);
-          content = extracted.text;
-          runs    = extracted.runs;
-        }
-        return serializeSection(sec.type, content, runs, style);
-      });
+      // Read the live document (state is kept in sync on input; this is belt-and-braces).
+      const live = editorRef.current && !showPaste
+        ? extractSongSections(editorRef.current, sectionsRef.current)
+        : sectionsRef.current;
+      if (live.length) sectionsRef.current = live;
+      const sectionData = live.map((sec) => serializeSection(sec.type, sec.content || '', sec.runs || [], style));
       // Arrangement keys → 0-based positions in the exact section order being saved
       // (stale keys dropped). null clears back to natural order.
       const keyIdx = new Map(sectionsRef.current.map((s, i) => [s._key, i]));
@@ -2301,81 +2433,63 @@ export default function SongEditor({ song, onClose, onSave }) {
         ) : (
           <div className="flex flex-1 min-h-0">
 
-            {/* ── Lyrics document ─────────────────────────────────── */}
-            <div className="w-[44%] min-w-[340px] max-w-[640px] flex-shrink-0 border-r border-outline-variant/30 bg-surface-container-lowest flex flex-col min-h-0">
-              <div className="px-md py-sm border-b border-outline-variant/20 flex items-center justify-between gap-md flex-shrink-0">
-                <div className="min-w-0">
-                  <p className="text-body-md font-semibold text-on-surface">Lyrics</p>
-                  <p className="text-label-sm text-on-surface-variant truncate" title="Enter = new line · ⌘/Ctrl+Enter = split into a new slide · Alt+↑/↓ = previous / next section">
-                    Click any line to edit · ⌘/Ctrl+Enter splits a slide · Alt+↑/↓ moves between sections
-                  </p>
+            {/* ── Lyrics: one continuous document (EasyWorship-style Words pane) ── */}
+            <div className="w-[38%] min-w-[320px] max-w-[520px] flex-shrink-0 border-r border-outline-variant/30 bg-surface-container-lowest flex flex-col min-h-0">
+              {/* Section strip: jump anywhere in a long song; + adds a section after the caret. */}
+              <div className="px-sm py-[6px] border-b border-outline-variant/20 flex items-center gap-xs flex-shrink-0">
+                <div className="flex-1 min-w-0 flex items-center gap-[4px] overflow-x-auto custom-scrollbar">
+                  {(() => {
+                    const labels = sectionLabels(sections, { abbrev: true });
+                    return sections.map((sec, i) => (
+                      <button
+                        key={sec._key}
+                        onMouseDown={(e) => { e.preventDefault(); focusSection(sec._key); }}
+                        title={`Go to ${sectionLabels(sections)[i]}`}
+                        className={`shrink-0 h-6 px-sm rounded-md text-[12px] font-medium tabular-nums transition-colors cursor-pointer ${
+                          sec._key === activeSectionKey
+                            ? 'bg-primary/20 text-primary'
+                            : `${HEAD_TONE[sec.type] || 'text-on-surface-variant'} hover:bg-surface-variant`
+                        }`}
+                      >
+                        {labels[i]}
+                      </button>
+                    ));
+                  })()}
                 </div>
-                <button onClick={addSection}
-                  className="shrink-0 flex items-center gap-xs h-8 px-md rounded-lg border border-outline-variant/40 text-body-md text-on-surface hover:border-primary hover:text-primary transition-colors cursor-pointer">
-                  <span className="material-symbols-outlined text-[18px]">add</span>Section
+                <button
+                  onMouseDown={(e) => { e.preventDefault(); addSection(); }}
+                  title="Add a section after the one you're in (or type a name like “Chorus” on its own line and press Enter)"
+                  className="shrink-0 flex items-center gap-[2px] h-7 px-sm rounded-md border border-outline-variant/40 text-[12px] text-on-surface hover:border-primary hover:text-primary transition-colors cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[16px]">add</span>Section
                 </button>
               </div>
 
-              <div ref={sidebarRef} className="flex-1 overflow-y-auto custom-scrollbar p-md space-y-sm">
-                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                  <SortableContext items={sections.map((s) => s._key)} strategy={verticalListSortingStrategy}>
-                    {(() => {
-                      // Number repeated section types (Verse 1, Verse 2…); a lone
-                      // type shows no number. Recomputed live as sections change.
-                      const ordinals = sectionOrdinals(sections);
-                      return sections.map((sec, i) => (
-                        <SectionCard
-                          key={sec._key}
-                          section={sec}
-                          label={ordinals[i] != null ? String(ordinals[i]) : ''}
-                          isActive={sec._key === activeSectionKey}
-                          onActivate={activateSection}
-                          onDelete={deleteSection}
-                          onTypeChange={onTypeChange}
-                          actions={(
-                            <>
-                              <button
-                                onMouseDown={(e) => { e.preventDefault(); insertSplit(); }}
-                                title="Split into a new slide at the cursor (⌘/Ctrl+Enter)"
-                                className="flex items-center gap-[2px] h-6 px-sm rounded-md text-label-sm text-on-surface-variant hover:text-primary hover:bg-primary/10 cursor-pointer transition-colors"
-                              >
-                                <span className="material-symbols-outlined text-[15px]">content_cut</span>Split here
-                              </button>
-                              <button
-                                onMouseDown={(e) => { e.preventDefault(); autoSplit(); }}
-                                title="Split this section into one slide per blank-line stanza"
-                                className="flex items-center gap-[2px] h-6 px-sm rounded-md text-label-sm text-on-surface-variant hover:text-primary hover:bg-primary/10 cursor-pointer transition-colors"
-                              >
-                                <span className="material-symbols-outlined text-[15px]">splitscreen</span>By stanza
-                              </button>
-                            </>
-                          )}
-                          editor={(
-                            <div
-                              ref={editorRef}
-                              contentEditable="true"
-                              suppressContentEditableWarning
-                              onInput={handleEditorInput}
-                              onPaste={handleEditorPaste}
-                              onKeyDown={handleEditorKeyDown}
-                              className={`${LYRIC_TEXT_CLS} caret-primary min-h-[3.2em]`}
-                            />
-                          )}
-                        />
-                      ));
-                    })()}
-                  </SortableContext>
-                </DndContext>
-                {sections.length === 0 && (
-                  <div className="flex flex-col items-center justify-center py-xl gap-sm text-center">
-                    <span className="material-symbols-outlined text-on-surface-variant/60 text-4xl">lyrics</span>
-                    <p className="text-body-md text-on-surface-variant">No lyrics yet — add a section, or use Paste Song to drop in the whole song.</p>
-                  </div>
-                )}
-                <button onClick={addSection}
-                  className="w-full flex items-center justify-center gap-xs h-10 rounded-lg border border-dashed border-outline-variant/40 text-body-md text-on-surface-variant hover:border-primary hover:text-primary transition-colors cursor-pointer">
-                  <span className="material-symbols-outlined text-[18px]">add</span>Add section
-                </button>
+              <div ref={sidebarRef} className="flex-1 overflow-y-auto custom-scrollbar">
+                <div className="relative px-sm pb-lg">
+                  {/* Frame around the slide the caret is in (EasyWorship's selected slide). */}
+                  {activeFrame && (
+                    <div
+                      className="absolute left-[2px] right-[2px] rounded-md border border-primary/50 bg-primary/[0.06] pointer-events-none transition-[top,height] duration-100"
+                      style={{ top: activeFrame.top, height: activeFrame.height }}
+                    />
+                  )}
+                  <div
+                    ref={editorRef}
+                    contentEditable="true"
+                    suppressContentEditableWarning
+                    spellCheck
+                    onInput={handleEditorInput}
+                    onPaste={handleEditorPaste}
+                    onKeyDown={handleEditorKeyDown}
+                    onMouseDown={handleEditorMouseDown}
+                    className="relative outline-none caret-primary text-[13px] leading-[1.5] text-on-surface whitespace-pre-wrap break-words pr-sm"
+                  />
+                </div>
+                <p className="px-md pb-md text-[12px] text-on-surface-variant/70">
+                  Type a section name (“Chorus”, “Verse 2”) on its own line and press Enter to start a new section ·
+                  ⌘/Ctrl+Enter starts a new slide · click a section name to change or move it
+                </p>
               </div>
 
               {/* Played order (arrangement) — repeats sections without duplicating lyrics */}
@@ -2523,6 +2637,44 @@ export default function SongEditor({ song, onClose, onSave }) {
             </div>
           </div>
         )}
+
+        {headMenu && (() => {
+          const sec = sections.find((x) => x._key === headMenu.key);
+          if (!sec) return null;
+          const i = sections.indexOf(sec);
+          const item = 'w-full flex items-center gap-sm px-md py-[6px] text-left text-body-md hover:bg-surface-variant cursor-pointer disabled:opacity-40 disabled:cursor-default';
+          const close = () => setHeadMenu(null);
+          return (
+            <>
+              <div className="fixed inset-0 z-[70]" onMouseDown={close} />
+              <div
+                className="fixed z-[71] w-56 py-xs bg-surface-container-high border border-outline-variant/40 rounded-lg shadow-2xl"
+                style={{ left: Math.min(headMenu.x, window.innerWidth - 240), top: Math.max(8, Math.min(headMenu.y, window.innerHeight - 470)) }}
+              >
+                <p className="px-md pt-xs pb-[2px] text-[12px] text-on-surface-variant">Section type</p>
+                {SECTION_TYPES.map((t) => (
+                  <button key={t} className={item} onClick={() => { close(); onTypeChange(sec._key, t); }}>
+                    <span className="material-symbols-outlined text-[16px] w-4">{sec.type === t ? 'check' : ''}</span>
+                    <span className={`capitalize ${HEAD_TONE[t] || 'text-on-surface'}`}>{t}</span>
+                  </button>
+                ))}
+                <div className="my-xs h-px bg-outline-variant/30" />
+                <button className={item} disabled={i === 0} onClick={() => { close(); moveSection(sec._key, -1); }}>
+                  <span className="material-symbols-outlined text-[16px]">arrow_upward</span>Move up
+                </button>
+                <button className={item} disabled={i === sections.length - 1} onClick={() => { close(); moveSection(sec._key, 1); }}>
+                  <span className="material-symbols-outlined text-[16px]">arrow_downward</span>Move down
+                </button>
+                <button className={item} onClick={() => { close(); autoSplit(sec._key); }}>
+                  <span className="material-symbols-outlined text-[16px]">splitscreen</span>One slide per stanza
+                </button>
+                <button className={`${item} text-error`} disabled={sections.length <= 1} onClick={() => { close(); deleteSection(sec._key); }}>
+                  <span className="material-symbols-outlined text-[16px]">delete</span>Delete section
+                </button>
+              </div>
+            </>
+          );
+        })()}
 
         {/* ── Footer ──────────────────────────────────────────────────── */}
         {!showPaste && (
