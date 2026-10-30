@@ -590,7 +590,7 @@ function makeRow(label, query, lines, lyrics, m, source) {
     parsed = { title: p.title || label, author: p.author, copyright: p.copyright, sections: p.sections, arrangement: p.arrangement };
   }
   return {
-    input: label,
+    input: parsed?.title || label,
     query,
     lines,
     lyrics,

@@ -174,9 +174,17 @@ function ResultRow({ row, index, dupOf, onChange, onPreview, onCreate, onSplit, 
             )}
           </button>
         ) : (
-          <div className="flex items-center gap-sm">
+          <div className="flex items-center gap-sm min-w-0">
             <span className={`material-symbols-outlined text-[16px] shrink-0 ${meta.cls}`}>{meta.icon}</span>
-            <span className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-[0.05em]">Not Found</span>
+            <span className="text-body-md text-on-surface-variant shrink-0">Not in library</span>
+            <button
+              onClick={create}
+              title={row.parsed ? 'Open the song editor with the pasted lyrics already split into sections' : 'Create a new song with this title'}
+              className="ml-sm shrink-0 flex items-center gap-xs px-sm py-[2px] rounded-lg border border-tertiary/40 text-tertiary hover:bg-tertiary/10 transition-colors cursor-pointer text-body-md"
+            >
+              <span className="material-symbols-outlined text-[16px]">add</span>
+              {row.parsed ? 'Create from lyrics' : 'Create song'}
+            </button>
           </div>
         )}
       </div>
