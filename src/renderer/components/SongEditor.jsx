@@ -8,7 +8,7 @@ import useEditHistory, { useUndoRedoKeys } from '../utils/useEditHistory';
 import { useToast } from './Toast';
 import { mediaUrl } from '../utils/mediaUrl';
 import { sectionOrdinals, sectionLabels, SLIDE_BREAK } from '../utils/sectionLabels';
-import { parseLyrics, parseHeaderLine } from '../../shared/lyrics-parse.js';
+import { parseLyrics, parseHeaderLine, singerNamesIn, cleanSectionText } from '../../shared/lyrics-parse.js';
 import { normalizeLookStyle } from '../utils/presentationThemes';
 import TreatmentOverlays, { glassBoxStyle } from './TreatmentOverlays';
 import { useFonts } from '../utils/fonts';
@@ -1862,16 +1862,23 @@ export default function SongEditor({ song, onClose, onSave }) {
     const key = head.dataset.key;
     if (key !== activeKeyRef.current) setActiveSectionKey(key);
     setPreviewPart(bi - hi);
-    const top = blocks[bi].offsetTop;
+    // offsetTop is relative to the editor (position:relative); the frame lives in the
+    // editor's wrapper, so add the editor's own offset within it.
+    const base = root.offsetTop;
+    const top = base + blocks[bi].offsetTop;
     const next = blocks[bi + 1];
-    const bottom = next ? next.offsetTop : root.offsetTop + root.offsetHeight;
-    setActiveFrame({ top: top - 2, height: Math.max(24, bottom - top + 2) });
+    const bottom = base + (next ? next.offsetTop : root.offsetHeight);
+    setActiveFrame({ top: top + 2, height: Math.max(24, bottom - top) });
   }
   useEffect(() => {
     let raf = 0;
     const onSel = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(syncActiveFromSelection); };
     document.addEventListener('selectionchange', onSel);
-    return () => { document.removeEventListener('selectionchange', onSel); cancelAnimationFrame(raf); };
+    // Layout shifts (window resize, details panel toggled, fonts loading, text
+    // reflowing above) move the blocks — keep the frame glued to them.
+    const ro = typeof ResizeObserver !== 'undefined' && editorRef.current ? new ResizeObserver(onSel) : null;
+    if (ro) ro.observe(editorRef.current);
+    return () => { document.removeEventListener('selectionchange', onSel); cancelAnimationFrame(raf); ro?.disconnect(); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Preview follows the active section's (live) content.
@@ -1939,9 +1946,50 @@ export default function SongEditor({ song, onClose, onSave }) {
   function handleEditorPaste(e) {
     e.preventDefault();
     const text = e.clipboardData.getData('text/plain');
+    // A whole song (it has section names) goes through the full lyrics parser —
+    // sections, singer notes / chords / CCLI stripped, repeats → play order.
+    const lines = text.replace(/\r\n?/g, '\n').split('\n');
+    const headerLines = lines.filter((l) => { const h = l.trim() && l.trim().length <= 60 ? parseHeaderLine(l) : null; return h && !h.tail; }).length;
+    if (headerLines >= 1 && lines.filter((l) => l.trim()).length >= 3) { pasteWholeSong(text); return; }
     // A pasted line that is a section name ("Chorus") splits into a new section.
     if (/\n/.test(text)) scanHeaders.current = true;
     document.execCommand('insertText', false, text);
+  }
+
+  // Pasted song → sections. Into an empty song it becomes the song (incl. play order
+  // and title/author/copyright when those are blank); otherwise the new sections go
+  // after the section the caret is in (replacing it if that one is empty).
+  function pasteWholeSong(text) {
+    const root = editorRef.current;
+    const p = parseLyrics(text, { detectTitle: true });
+    if (!p.sections.length) { document.execCommand('insertText', false, text); return; }
+    const mapped = p.sections.map((x) => ({ _key: newKey(), type: x.type, content: x.content, runs: [] }));
+    const cur = root ? extractSongSections(root, sectionsRef.current) : sectionsRef.current;
+    const empty = cur.every((x) => !(x.content || '').trim());
+    const fill = (d) => ({
+      title: d.title.trim() ? d.title : (p.title || d.title),
+      author: d.author.trim() ? d.author : (p.author || d.author),
+      copyright: d.copyright.trim() ? d.copyright : (p.copyright || d.copyright),
+    });
+    if (empty) {
+      doc.set((d) => ({
+        ...d, ...fill(d), sections: mapped,
+        arrangement: Array.isArray(p.arrangement) ? p.arrangement.map((i) => mapped[i]?._key).filter(Boolean) : null,
+      }));
+      caretTarget.current = { key: mapped[0]._key };
+      setDomSyncTick((t) => t + 1);
+    } else {
+      const at = root ? caretSectionKey(root) : null;
+      let idx = cur.findIndex((x) => x._key === at);
+      if (idx < 0) idx = cur.length - 1;
+      const replace = cur[idx] && !(cur[idx].content || '').trim();
+      const list = [...cur];
+      list.splice(replace ? idx : idx + 1, replace ? 1 : 0, ...mapped);
+      const anchorKey = replace ? cur[idx - 1]?._key : cur[idx]?._key;
+      const added = mapped.map((m, i) => [i === 0 ? anchorKey : mapped[i - 1]._key, m._key]).filter(([a]) => a);
+      restructure((d) => ({ ...d, ...fill(d), sections: list }), mapped[0]._key, false, added);
+    }
+    toast.show({ message: `Pasted song split into ${mapped.length} section${mapped.length === 1 ? '' : 's'}`, duration: 3000 });
   }
 
   function handleEditorKeyDown(e) {
@@ -2055,6 +2103,27 @@ export default function SongEditor({ song, onClose, onSave }) {
       newFullText = updated.join(SLIDE_BREAK);
     }
     restructure((d) => ({ ...d, sections: d.sections.map((x) => x._key === key ? { ...x, content: newFullText, runs: [] } : x) }));
+  }
+
+  // Singer / voice-part notes still in the lyrics ("Solo - Tammi", "All:", "Tammi: …"
+  // — songs imported before the parser handled them). They would show on screen,
+  // so the editor offers to remove them in one click (an undoable step).
+  const singerNotes = React.useMemo(() => {
+    const names = singerNamesIn(sections.map((x) => x.content));
+    const edits = new Map();
+    for (const sec of sections) {
+      const r = cleanSectionText(sec.content, sec.runs || [], names);
+      if (r) edits.set(sec._key, r);
+    }
+    return edits;
+  }, [sections]);
+  function removeSingerNotes() {
+    const edits = singerNotes;
+    if (!edits.size) return;
+    restructure((d) => ({
+      ...d,
+      sections: d.sections.map((x) => edits.has(x._key) ? { ...x, content: edits.get(x._key).content, runs: edits.get(x._key).runs } : x),
+    }), activeKeyRef.current);
   }
 
   // ── Section mutations ───────────────────────────────────────────────────
@@ -2465,12 +2534,31 @@ export default function SongEditor({ song, onClose, onSave }) {
                 </button>
               </div>
 
+              {singerNotes.size > 0 && (() => {
+                const lines = [...singerNotes.values()].flatMap((r) => r.removed);
+                return (
+                  <div className="mx-sm mt-sm px-md py-sm rounded-lg border border-yellow-400/40 bg-yellow-400/10 flex items-center gap-sm flex-shrink-0">
+                    <span className="material-symbols-outlined text-[18px] text-yellow-300 shrink-0">record_voice_over</span>
+                    <p className="flex-1 min-w-0 text-[13px] text-on-surface">
+                      Singer notes in the lyrics would show on screen:{' '}
+                      <span className="text-on-surface-variant">{lines.slice(0, 3).map((x) => `“${x}”`).join(', ')}{lines.length > 3 ? ` +${lines.length - 3} more` : ''}</span>
+                    </p>
+                    <button
+                      onMouseDown={(e) => { e.preventDefault(); removeSingerNotes(); }}
+                      className="shrink-0 h-7 px-md rounded-md text-[13px] font-semibold bg-yellow-400/20 text-yellow-200 hover:bg-yellow-400/30 cursor-pointer"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                );
+              })()}
+
               <div ref={sidebarRef} className="flex-1 overflow-y-auto custom-scrollbar">
-                <div className="relative px-sm pb-lg">
+                <div className="relative px-md pt-xs pb-lg">
                   {/* Frame around the slide the caret is in (EasyWorship's selected slide). */}
                   {activeFrame && (
                     <div
-                      className="absolute left-[2px] right-[2px] rounded-md border border-primary/50 bg-primary/[0.06] pointer-events-none transition-[top,height] duration-100"
+                      className="absolute left-[6px] right-[6px] rounded-md border border-primary/50 bg-primary/[0.06] pointer-events-none"
                       style={{ top: activeFrame.top, height: activeFrame.height }}
                     />
                   )}
