@@ -122,6 +122,8 @@ export default function App() {
   // the always-mounted listener reading the current view + navigateTo.
   const settingsShortcutRef = useRef(null);
   settingsShortcutRef.current = () => navigateTo(view === 'settings' ? 'operator' : 'settings');
+  const navigateRef = useRef(null);
+  navigateRef.current = navigateTo;
   useEffect(() => {
     const onKey = (e) => {
       const mod = window.cue.platform === 'darwin' ? e.metaKey : e.ctrlKey;
@@ -133,6 +135,18 @@ export default function App() {
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, []);
+
+  // App menu (main/app-menu.js) → navigation / operator overlays. Palette and the
+  // shortcut list live in OperatorView, so switch there first, then hand off via a
+  // window event. Stands down under an open modal, like the keyboard shortcuts.
+  useEffect(() => window.cue.on('menu:command', (cmd) => {
+    if (!cmd || hasOpenModal()) return;
+    if (cmd.type === 'navigate' && cmd.view) { navigateRef.current?.(cmd.view); return; }
+    if (cmd.type === 'palette' || cmd.type === 'shortcuts') {
+      navigateRef.current?.('operator');
+      requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('cue:menu', { detail: cmd.type })));
+    }
+  }), []);
 
   // The currently-active tab id, so exactly one tab highlights (a pinned subsection
   // wins over the base Settings tab when its section is the deep-link target).
@@ -152,12 +166,15 @@ export default function App() {
           macOS: 80px left inset clears the traffic lights (close/min/max).
           Windows: no left inset needed; custom controls sit on the right.
         */}
+        {/* min-w-0 + horizontal scroll: on a narrow window the tab strip scrolls
+            instead of shoving the Windows min/max/close buttons off the edge (the
+            shell is overflow-hidden, so pushed-off controls are unreachable). */}
         <div
-          className="titlebar-nodrag flex items-center gap-lg h-full px-md"
+          className="titlebar-nodrag flex items-center gap-lg h-full px-md min-w-0"
           style={{ paddingLeft: isMac ? 80 : undefined }}
         >
-          <span className="font-bold text-headline-md text-primary tracking-tight">Cue</span>
-          <nav className="flex gap-xs h-full items-center">
+          <span className="font-bold text-headline-md text-primary tracking-tight shrink-0">Cue</span>
+          <nav className="flex gap-xs h-full items-center min-w-0 overflow-x-auto overflow-y-hidden" style={{ scrollbarWidth: 'none' }}>
             <NavTab label="Operator" active={activeTabId === 'operator'} onClick={() => navigateTo('operator')} />
             <NavTab label="Multiview" active={activeTabId === 'multiview'} onClick={() => navigateTo('multiview')} />
             <NavTab label="Stream" active={activeTabId === 'stream'} onClick={() => navigateTo('stream')} />
@@ -175,9 +192,18 @@ export default function App() {
           </nav>
         </div>
 
-        {/* Windows-only: custom minimize / maximize / close */}
+        {/* Windows-only: app menu + custom minimize / maximize / close. The native
+            menu bar is hidden by the custom titlebar, so this pops the same menu. */}
         {isWin && (
-          <div className="titlebar-nodrag flex items-center h-full ml-auto">
+          <div className="titlebar-nodrag flex items-center h-full ml-auto shrink-0">
+            <WinControl
+              icon="menu"
+              title="Menu"
+              onClick={(e) => {
+                const r = e.currentTarget.getBoundingClientRect();
+                window.cue.window.popupMenu(r.left, r.bottom);
+              }}
+            />
             <WinControl icon="remove" onClick={() => window.cue.window.minimize()} />
             <WinControl icon="crop_square" onClick={() => window.cue.window.maximize()} />
             <WinControl icon="close" onClick={() => window.cue.window.close()} danger />
@@ -375,7 +401,7 @@ function NavTab({ label, active, onClick }) {
   return (
     <button
       onClick={onClick}
-      className={`titlebar-nodrag h-full flex items-center px-sm text-label-sm font-label-sm cursor-pointer transition-colors ${
+      className={`titlebar-nodrag h-full shrink-0 whitespace-nowrap flex items-center px-sm text-label-sm font-label-sm cursor-pointer transition-colors ${
         active
           ? 'text-primary border-b-2 border-primary'
           : 'text-on-surface-variant hover:text-on-surface border-b-2 border-transparent'
@@ -892,10 +918,11 @@ function StagePanel() {
 }
 
 // Windows-only close/min/max buttons
-function WinControl({ icon, onClick, danger }) {
+function WinControl({ icon, onClick, danger, title }) {
   return (
     <button
       onClick={onClick}
+      title={title}
       className={`titlebar-nodrag h-full w-[46px] flex items-center justify-center transition-colors cursor-pointer ${
         danger
           ? 'text-on-surface-variant hover:bg-error hover:text-white'

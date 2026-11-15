@@ -44,6 +44,8 @@ export function shortcutGroups(sc = { go: 'g', logo: 'l', live: 'o' }) {
         { keys: ['`'], desc: 'Open or close the Stage controls' },
         { keys: [combo('mod', ',')], desc: 'Open or leave Settings' },
         { keys: ['?'], desc: 'Show or hide this list' },
+        { keys: [combo('mod', '+'), combo('mod', '−')], desc: 'Make the whole window bigger / smaller (numpad keys too)' },
+        { keys: [combo('mod', '0')], desc: 'Reset the window to normal size' },
       ],
     },
     {

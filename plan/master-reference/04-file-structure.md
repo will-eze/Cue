@@ -13,6 +13,13 @@ src/
 │   │                         program deltas → remoteServer.pushProgram), applyRemoteConfig().
 │   │                         cue-thumb:// video posters fall back to ffmpeg (ffmpegVideoThumb) when the OS thumbnail
 │   │                         service comes up empty — covers exotic codecs and the sandboxed packaged app (§6).
+│   │                         createMainWindow sizes to the primary display's work area (≤1920×1080, min 960×600,
+│   │                         maximised when the screen is under 1600×900) and is safe to call again (macOS
+│   │                         `activate` re-creates it and re-points outputManager/scriptureDetect at it).
+│   ├── app-menu.js           Native application menu (File/Edit/View/Window/Help; View navigates via the
+│   │                         `menu:command` event) + operator-window zoom: a `before-input-event` handler owns
+│   │                         ⌘/Ctrl `+` `−` `0` by physical key code, steps through preset factors (0.5–2),
+│   │                         persists `ui_zoom_factor`. `app-menu:popup` shows the menu from the Windows titlebar.
 │   ├── preload.js            contextBridge → window.cue. The complete renderer API surface.
 │   ├── output-preload.js     Minimal contextBridge for output windows → window.cueOutput only. Also injects
 │   │                         user-installed @font-face rules (fonts:css) into every output window on load.

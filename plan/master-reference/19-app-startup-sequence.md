@@ -7,7 +7,7 @@
    c. `seedBundledBibles()` — import any missing bundled translation (KJV + WEB) from `resources/bible/*.json` (matched by abbrev). Packaged path `process.resourcesPath/bible`; dev path `app.getAppPath()/resources/bible`.
    d. `seedGhsHymnal()` — first run only (gated by `ghs_seeded`): import the bundled GHS hymnal from `resources/ghs/ghs-hymnal.json`; then always `tagGhsSongs()` to backfill the GHS tag. Same packaged/dev path resolution as bibles.
    e. Register all IPC handlers (songs, services, media, output, settings, bible, graphics, themes, remote, fonts)
-   f. `createMainWindow()` — show operator UI
+   f. `createMainWindow()` — show operator UI (sized to the display's work area); installs the app menu + zoom handler (`app-menu.js`), which applies the persisted `ui_zoom_factor` on every page load
    g. `remoteServer.configure(...)` + `outputManager.setRemoteStateListener(...)` + `await applyRemoteConfig()` — start the network control server if `remote_enabled`
    h. `outputManager.init()` — load active channels, create BrowserWindows
    i. On `did-finish-load`: send `output:unresolved-channels` and/or `output:ndi-unavailable` if needed. The renderer does not auto-navigate to Settings — the operator opens it manually. Also arms a one-shot 4s `setTimeout` that calls `checkForUpdate()` and, if newer and not the skipped version, sends `update:available` (§7 *In-app updater — Launch-time auto-check*).

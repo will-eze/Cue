@@ -416,6 +416,15 @@ export default function OperatorView({
     window.cue.scenes.list().then((list) => { scenesRef.current = list || []; });
   }, []);
   useEffect(() => { loadScenes(); }, [loadScenes, bgRefreshTick]);
+  // App-menu hand-off (App.jsx): File › Command Palette, Help › Keyboard Shortcuts.
+  useEffect(() => {
+    const h = (e) => {
+      if (e.detail === 'palette') setPaletteOpen(true);
+      else if (e.detail === 'shortcuts') setHelpOpen(true);
+    };
+    window.addEventListener('cue:menu', h);
+    return () => window.removeEventListener('cue:menu', h);
+  }, []);
   useEffect(() => {
     const h = () => loadScenes();
     window.addEventListener('cue:scenes-changed', h);
@@ -645,16 +654,23 @@ export default function OperatorView({
   // re-runs on every live slide/item change, so each advance restarts the countdown.
   // Scripture-live (synthetic) and items without an interval are skipped. The timer
   // calls the latest handler via shortcutRef so it always sees current live state.
+  //
+  // Keyed on the live item's interval VALUE, not serviceData: a rundown reload
+  // (adding a song) used to restart the countdown, and the restarted timer then
+  // rolled the live bus into the newly-added item. Paused while Logo / Clear owns
+  // the screen (displayMode !== 'content') — an advance there would `output.go`
+  // and knock the logo off air; it restarts from a full interval on return.
   const [autoAdvanceStartAt, setAutoAdvanceStartAt] = useState(null);
+  const liveAdvanceSecs = liveScripture ? null
+    : (serviceData?.items?.find((i) => i.id === liveItemId)?.advance_seconds ?? null);
   useEffect(() => {
     if (liveScripture || !liveItemId) { setAutoAdvanceStartAt(null); return; }
-    const item = serviceData?.items?.find((i) => i.id === liveItemId);
-    const secs = item?.advance_seconds;
-    if (!secs || secs <= 0) { setAutoAdvanceStartAt(null); return; }
+    const secs = liveAdvanceSecs;
+    if (!secs || secs <= 0 || displayMode !== 'content') { setAutoAdvanceStartAt(null); return; }
     setAutoAdvanceStartAt(Date.now());
     const t = setTimeout(() => shortcutRef.current.handleAutoAdvance(), secs * 1000);
     return () => clearTimeout(t);
-  }, [liveItemId, liveSlideIdx, liveScripture, serviceData]);
+  }, [liveItemId, liveSlideIdx, liveScripture, liveAdvanceSecs, displayMode]);
 
   const refreshService = useCallback(() => {
     if (!activeServiceId) return;
@@ -884,8 +900,36 @@ export default function OperatorView({
   // Re-send the live song/scripture when the resolved theme cascade changes, so
   // audience output reflects the new look immediately (operator monitors re-render
   // reactively). Both content types inherit their look from the theme now.
+  //
+  // Two guards, both required: (1) themeMap is rebuilt as a NEW object on every
+  // serviceData reload (adding/reordering a rundown item), so only re-send when the
+  // live item's resolved look actually changed — a blind re-send re-aired the live
+  // song on every rundown edit; (2) never re-send while the program is on Logo /
+  // Clear / idle — `output.go` switches main back to 'content', which knocked the
+  // logo off air whenever a song was added to the rundown.
+  const liveLookRef = useRef(null); // { key, sig } of the look last on air
+  const displayModeRef = useRef(displayMode);
+  displayModeRef.current = displayMode;
+  // Record the look each newly-aired item went live with (GO built its payload from
+  // the current cascade), so the effect below compares against what is really on air.
   useEffect(() => {
-    if (!liveItem || (liveItem.item_type !== 'song' && liveItem.item_type !== 'scripture')) return;
+    if (!liveItem || (liveItem.item_type !== 'song' && liveItem.item_type !== 'scripture')) { liveLookRef.current = null; return; }
+    const key = liveItem.item_type === 'scripture' ? liveItem : liveItem.id;
+    liveLookRef.current = { key, sig: JSON.stringify(effectiveTheme(liveItem) || null) };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveItemId, liveScripture]);
+  useEffect(() => {
+    if (!liveItem || (liveItem.item_type !== 'song' && liveItem.item_type !== 'scripture')) {
+      liveLookRef.current = null;
+      return;
+    }
+    const key = liveItem.item_type === 'scripture' ? liveItem : liveItem.id;
+    const sig = JSON.stringify(effectiveTheme(liveItem) || null);
+    const prev = liveLookRef.current;
+    if (!prev || prev.key !== key) { liveLookRef.current = { key, sig }; return; } // just aired with this look
+    if (prev.sig === sig) return;                                                   // reload, same look
+    if (displayModeRef.current !== 'content') return; // logo/clear owns the screen; keep prev so a later change still re-sends
+    liveLookRef.current = { key, sig };
     const payload = buildPayload(liveItem, liveSlideIdx);
     if (payload) window.cue.output.go(payload);
     // eslint-disable-next-line react-hooks/exhaustive-deps

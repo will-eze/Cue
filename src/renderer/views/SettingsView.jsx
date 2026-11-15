@@ -116,9 +116,9 @@ function SettingsFooter() {
   }, []);
 
   return (
-    <footer className="pt-lg border-t border-outline-variant/30 flex justify-between items-center">
-      <div className="flex items-center gap-md">
-        <div className="flex flex-col">
+    <footer className="pt-lg border-t border-outline-variant/30 flex flex-wrap justify-between items-center gap-md">
+      <div className="flex items-center gap-md min-w-0">
+        <div className="flex flex-col shrink-0">
           <span className="text-label-sm font-label-sm text-on-surface">System Version</span>
           <span className="text-label-sm font-label-sm text-outline">v{__APP_VERSION__} (Build {__BUILD_NUMBER__})</span>
         </div>
@@ -139,7 +139,7 @@ function SettingsFooter() {
           </>
         )}
       </div>
-      <div className="flex items-end gap-md">
+      <div className="flex flex-wrap items-end gap-md">
         <UpdateChecker />
         <button
           onClick={() => {

@@ -411,6 +411,10 @@ Output HTTP surface (view token via `X-Cue-View-Token` header or `?vt=`): `GET /
 
 `window.cue.openExternal(url)` opens an https URL in the default browser (LibreOffice download link).
 
+### `window.cue.window` (custom titlebar)
+- `minimize()` / `maximize()` (toggles) / `close()` — the Windows custom titlebar controls.
+- `popupMenu(x, y)` — pops the native application menu at window coords (Windows/Linux, where the custom titlebar hides the menu bar). Invokes `app-menu:popup`.
+
 ### `window.cue.dialog`
 - `openFile(options)` → `{canceled, filePaths}` — wraps `dialog.showOpenDialog`.
 
@@ -444,6 +448,7 @@ Subscribe to main→renderer events. Returns an unsubscribe function — call it
 - `output:ndi-sender-error` — `{channelId, error}` fired if creating an NDI sender fails (e.g. SDK init error after the window is open)
 - `output:ndi-sender-ok` — `{channelId}` fired when the NDI sender is successfully created
 - `shortcut:next` / `shortcut:prev` — reserved for future hardware remote
+- `menu:command` — an app-menu click from `app-menu.js`: `{type:'navigate', view}` (a top-bar tab id, e.g. `operator`, `settings`), `{type:'palette'}` or `{type:'shortcuts'}`. `App.jsx` navigates; palette/shortcuts switch to Operator and hand off to `OperatorView` via a `cue:menu` window event. Ignored while a modal is open.
 - `remote:command` — a network-control command `{action, itemId?, slideIdx?}` (action: go/clear/logo/next/prev/live/select). OperatorView dispatches it to the same handlers the keyboard uses, so the remote stays in sync with the UI.
 - `stage:schedule` — `{scheduled: [{id, text, showAt, clearAt}]}`, fired after any scheduled-stage-message add/remove/prune. The `StagePanel` pending list follows it; the stage output windows also receive it directly. Anchors are absolute epoch-ms (`clearAt:null` = open-ended).
 - `stage:layout` — `{channelId, elements:[…]}` fired after `stage.setLayout` and on window open (so a late-joining monitor receives the current layout). The `StageMonitor` in `PreviewLivePanel` subscribes per-channel to keep the operator preview in sync; stage output windows rebuild their DOM on receipt.

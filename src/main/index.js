@@ -38,6 +38,7 @@ import { ffmpegPath, installBinary, ensureBinaries } from './youtube/bin.js';
 import * as whisperBin from './scripture-detect/whisper-bin.js';
 import * as embedBin from './scripture-detect/embed-bin.js';
 import { checkForUpdate } from './update/updater.js';
+import { installAppMenu } from './app-menu.js';
 import * as settings from './db/settings.js';
 
 // Must be called synchronously before app is ready
@@ -75,11 +76,19 @@ function isUnderUserData(p) {
 
 function createMainWindow() {
   const isMac = process.platform === 'darwin';
+  // Open at the primary display's work area (capped at 1920×1080) — a hard-coded
+  // 1920×1080 opened larger than a 1366×768 / 125%-scaled laptop screen, and the
+  // old 1280×720 minimum couldn't shrink to fit it either, so the right-hand
+  // controls and bottom panels sat off-screen. The layout itself is responsive
+  // down to the minimum below.
+  const work = screen.getPrimaryDisplay().workAreaSize;
+  const width = Math.min(1920, work.width);
+  const height = Math.min(1080, work.height);
   mainWindow = new BrowserWindow({
-    width: 1920,
-    height: 1080,
-    minWidth: 1280,
-    minHeight: 720,
+    width,
+    height,
+    minWidth: Math.min(960, width),
+    minHeight: Math.min(600, height),
     backgroundColor: '#111317',
     titleBarStyle: isMac ? 'hiddenInset' : 'hidden',
     // Center traffic lights vertically in the 38px titlebar row
@@ -92,7 +101,16 @@ function createMainWindow() {
     },
   });
 
-  // Window control IPC for Windows custom titlebar
+  // A window that opens on a small screen starts maximised so nothing is clipped.
+  if (work.width < 1600 || work.height < 900) mainWindow.maximize();
+
+  // App menu + operator zoom (Ctrl/⌘ +/−/0). See app-menu.js.
+  installAppMenu(mainWindow);
+
+  // Window control IPC for Windows custom titlebar. removeHandler first: macOS
+  // re-creates the main window on dock-click (`activate`), and a second
+  // ipcMain.handle for the same channel throws.
+  for (const ch of ['window:minimize', 'window:maximize', 'window:close']) ipcMain.removeHandler(ch);
   ipcMain.handle('window:minimize', () => mainWindow?.minimize());
   ipcMain.handle('window:maximize', () => {
     if (mainWindow?.isMaximized()) mainWindow.unmaximize();
@@ -514,8 +532,14 @@ app.whenReady().then(async () => {
     } catch { /* silent — this is a background courtesy check */ }
   }, 4000);
 
+  // macOS dock-click with the operator window closed. Key on mainWindow, not the
+  // window count — output windows stay open, so "no windows" never happened and
+  // the operator could not be brought back. Re-point the managers at the new one.
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
+    if (mainWindow && !mainWindow.isDestroyed()) return;
+    createMainWindow();
+    outputManager.setMainWindow(mainWindow);
+    scriptureDetect.setMainWindow(mainWindow);
   });
 });
 

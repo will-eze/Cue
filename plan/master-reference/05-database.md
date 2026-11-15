@@ -309,6 +309,7 @@ Known keys:
 | `keyboard_live` | string | Key char for Live Toggle shortcut (default: 'o') |
 | `shortcut_arm_bare` | boolean | Whether the bare `G`/`Esc` keys are armed (single-press fires). Default true; disarmed → those bare keys are ignored (modifier shortcuts unaffected) |
 | `shortcut_arm_jump` | boolean | Whether the positional verse/slide-jump keys (`Q W E …` → air slide N of the live item) are armed. Default false |
+| `ui_zoom_factor` | number | Operator-window zoom factor (0.5–2, preset steps). Written by `app-menu.js` on every zoom; applied on every operator page load (absent = 1). |
 | `topbar_tabs` | array | Operator-pinned extra top-bar tabs (ordered `settings:<section>` deep-link ids), capped at 6. Drives the customisable nav in `App.jsx`/`TopBarTabs.jsx` |
 | `ghs_seeded` | boolean | Set true after the bundled GHS hymnal is imported on first run; gates re-seeding so deletions stick |
 | `seeded_theme_keys` | array | Names of built-in themes already seeded (`seedBundledThemes`); lets new built-ins add on upgrade without resurrecting user-deleted ones. Supersedes the legacy boolean `themes_seeded` |

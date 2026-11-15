@@ -327,6 +327,8 @@ contextBridge.exposeInMainWorld('cue', {
     minimize: () => ipcRenderer.invoke('window:minimize'),
     maximize: () => ipcRenderer.invoke('window:maximize'),
     close:    () => ipcRenderer.invoke('window:close'),
+    // Windows/Linux: pop the app menu up at (x, y) — the native bar is hidden.
+    popupMenu: (x, y) => ipcRenderer.invoke('app-menu:popup', { x, y }),
   },
   on: (channel, callback) => {
     const allowed = [
@@ -338,6 +340,7 @@ contextBridge.exposeInMainWorld('cue', {
       'stage:schedule', 'stage:layout', 'stage:timer', 'stage:message',
       'shortcut:next', 'shortcut:prev',
       'remote:command',
+      'menu:command',
       'youtube:status',
       'scripture:detected', 'scripture:transcript', 'scripture:status',
       'update:progress', 'update:available',
