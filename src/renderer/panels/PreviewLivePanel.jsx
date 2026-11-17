@@ -5,6 +5,8 @@ import TreatmentOverlays, { glassBoxStyle } from '../components/TreatmentOverlay
 import { flatTextCss, buildBarBg as buildGraphicBarBg, fmtDuration as fmtGfxDuration, fmtClock as fmtGfxClock, CD_DEFAULT_BOX, TIME_BASE as GFX_TIME_BASE, MSG_BASE as GFX_MSG_BASE } from '../components/GraphicsEditor';
 import { mediaUrl } from '../utils/mediaUrl';
 import { mergeSlideStyle } from '../utils/themeStyle';
+import { safeParse } from '../utils/safeParse';
+import { resolveLtPages } from '../../shared/presentation-lt-text';
 
 const GFX_BOX_DEFAULT = { x: 4, y: 70, w: 55, h: 22 };
 const GFX_NAME_BASE  = { fontSize: 54, color: '#ffffff', fontWeight: 700 };
@@ -614,7 +616,7 @@ function LogoMonitor({ logo, isLT }) {
   );
 }
 
-function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroundPath, themeStyle = null, displayMode, channelTemplate, stageChannelId, ltFontScale = 1, transport, overlay, hideProgram, logo = null }) {
+function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroundPath, themeStyle = null, displayMode, channelTemplate, stageChannelId, ltFontScale = 1, transport, overlay, hideProgram, logo = null, ltPage = 0, ltPageDefaults = null }) {
   const wrapRef = useRef(null);
   const [scale, setScale] = useState(0.5);
 
@@ -631,12 +633,23 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
   const slide  = item ? slides[slideIdx] : null;
   // A baked base style wins; otherwise inherit the effective theme (keeping inline
   // runs), so the monitor matches audience output. Mirrors OperatorView.buildPayload.
-  const sectionStyle = slide?.style_json ? JSON.parse(slide.style_json) : null;
+  const sectionStyle = safeParse(slide?.style_json, null);
   const style  = themeStyle ? mergeSlideStyle(sectionStyle, themeStyle) : sectionStyle;
   const isLT   = channelTemplate === 'lowerthird';
   const isStage = channelTemplate === 'stage';
   const isPresentation = item?.item_type === 'presentation';
   const isLiveInput = item?.item_type === 'live-input';
+  // A presentation on a LOWER-THIRD monitor shows the slide's derived text in the LT
+  // bar (same resolver as the payload → lowerthird.js), never the full-frame canvas.
+  // Same resolver + page as the payload (OperatorView.buildPayload): the live monitor shows the
+  // page on air, the preview monitor page 1.
+  const presLt = (() => {
+    if (!(isPresentation && isLT && slide)) return null;
+    const r = resolveLtPages(slide, item?.presentation, ltPageDefaults);
+    const count = Math.max(1, r.pages.length);
+    const page = Math.min(Math.max(0, ltPage | 0), count - 1);
+    return { mode: r.mode, title: r.title, lines: r.pages[page]?.lines || [], count, page };
+  })();
 
   // Attribution line — scripture slides carry "Book c:v (VERSION)", songs use the
   // song copyright. Scripture sits bottom-right; everything else stays centred.
@@ -668,7 +681,7 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
   const ltScale = isLT ? (Number(ltFontScale) > 0 ? Number(ltFontScale) : 1) : 1;
   // Lower-third max-lines shrink (approx by authored line count; mirrors output auto-fit).
   const ltMax = isLT ? (Number(style?.lt?.maxLines) || 0) : 0;
-  const ltLineCount = (slide?.content || '').split('\n').filter((l) => l.trim()).length || 1;
+  const ltLineCount = (presLt ? presLt.lines.length + (presLt.title ? 1 : 0) : ((slide?.content || '').split('\n').filter((l) => l.trim()).length)) || 1;
   const ltShrink = (ltMax > 0 && !slide?.splitVerses && ltLineCount > ltMax) ? (ltMax / ltLineCount) : 1;
   const baseFontPx = (isLT ? (Number(s?.fontSize) || 72) * ltScale : (s?.fontSize ?? 72)) * ltShrink;
   const textStyle = {
@@ -704,7 +717,7 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
           <div style={{ width: NATIVE_W, height: NATIVE_H, transform: `scale(${scale})`, transformOrigin: 'top left', position: 'relative' }}>
                 {isLiveInput && !isStage ? (
                   <LiveInputMonitor liveInput={slide.liveInput || item.liveInput} />
-                ) : isPresentation ? (
+                ) : (isPresentation && !isLT) ? (
                   <PresentationCanvas
                     elements={slide.elements}
                     backgroundPath={slide.background_path || backgroundPath}
@@ -753,7 +766,11 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
                 {!isLT ? <TreatmentOverlays style={style} /> : null}
 
                 {/* Content */}
-                {!hideText && (isLT ? (
+                {!hideText && (isLT && presLt && !presLt.lines.length && !presLt.title ? (
+                  <div className="absolute inset-0 flex items-end justify-center" style={{ paddingBottom: 40 }}>
+                    <span style={{ fontSize: 32, color: 'rgba(255,255,255,0.45)' }}>No lower-third text for this slide</span>
+                  </div>
+                ) : isLT ? (
                   // Lower third: bottom-anchored, matches lowerthird.html exactly
                   <div style={{
                     position: 'absolute', bottom: 0, left: 0, right: 0,
@@ -764,6 +781,12 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
                   }}>
                     {slide.splitVerses ? (
                       <SplitVerses verses={slide.splitVerses} baseStyle={textStyle} maxFontPx={baseFontPx} maxHeightPx={Math.round(NATIVE_H * 0.6)} runs={s?.runs} scale={ltScale} attrColor={copyrightStyle?.color} />
+                    ) : presLt ? (
+                      // Title (if any) as a bolder first line, like lowerthird.js.
+                      <div style={{ ...textStyle, whiteSpace: 'nowrap' }}>
+                        {presLt.title ? <div style={{ fontWeight: 700 }}>{presLt.title}</div> : null}
+                        {presLt.lines.map((l, i) => <div key={i}>{l}</div>)}
+                      </div>
                     ) : (
                       <p style={textStyle} dangerouslySetInnerHTML={{ __html: renderWithRuns(slide.content, s?.runs, ltScale) }} />
                     )}
@@ -834,12 +857,19 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
       )}
 
       {/* State badge */}
-      <div className="absolute top-2 left-2 z-10">
+      <div className="absolute top-2 left-2 z-10 flex items-center gap-xs">
         <span className={`px-sm py-[2px] text-label-sm font-label-sm rounded font-bold ${
           isLive ? 'bg-secondary text-on-secondary' : 'bg-primary text-on-primary'
         }`}>
           {isLive ? 'LIVE' : 'PREVIEW'}
         </span>
+        {/* Lower-third page of a presentation slide ("2/3") — Next steps through these first. */}
+        {presLt && presLt.count > 1 && (
+          <span className="px-sm py-[2px] text-label-sm font-label-sm rounded bg-surface-container-high text-on-surface tabular-nums"
+            title="Lower-third page. Next steps through the pages before the next slide.">
+            {presLt.page + 1}/{presLt.count}
+          </span>
+        )}
       </div>
 
       {/* ON AIR badge */}
@@ -855,7 +885,7 @@ function MonitorFrame({ item, slideIdx, getSlides, emptyLabel, isLive, backgroun
 
 
 export default function PreviewLivePanel({
-  previewItem, liveItem, previewSlideIdx, liveSlideIdx,
+  previewItem, liveItem, previewSlideIdx, liveSlideIdx, liveLtPage = 0, ltPageDefaults = null,
   displayMode, getSlides, previewBgPath, liveBgPath,
   previewThemeStyle = null, liveThemeStyle = null,
   onSelectPreviewSlide, onGoAtPreviewSlide, onSelectLiveSlide,
@@ -1014,6 +1044,8 @@ export default function PreviewLivePanel({
             channelTemplate={channelTemplate}
             stageChannelId={selectedChannel?.id}
             ltFontScale={ltFontScale}
+            ltPage={0}
+            ltPageDefaults={ltPageDefaults}
           />
           <div className={ROW}>
             <span className="text-[12px] text-on-surface-variant truncate min-w-0" title={itemName(previewItem)}>{itemName(previewItem)}</span>
@@ -1058,6 +1090,8 @@ export default function PreviewLivePanel({
             transport={transport}
             overlay={monitorOverlay}
             hideProgram={hideProgram}
+            ltPage={liveLtPage}
+            ltPageDefaults={ltPageDefaults}
           />
 
           {/* Foreground media transport */}

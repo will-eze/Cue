@@ -178,7 +178,7 @@ export default function OutputChannels() {
         <div className="bg-error-container/20 border border-error/40 rounded-lg px-md py-sm flex items-start gap-sm">
           <span className="material-symbols-outlined text-[16px] text-error shrink-0 mt-[1px]">error</span>
           <p className="text-body-sm text-error flex-1">{error}</p>
-          <button onClick={() => setError('')} className="text-error/70 hover:text-error cursor-pointer shrink-0">
+          <button title="Dismiss" aria-label="Dismiss" onClick={() => setError('')} className="text-error/70 hover:text-error cursor-pointer shrink-0">
             <span className="material-symbols-outlined text-[15px]">close</span>
           </button>
         </div>
@@ -422,7 +422,7 @@ function ChannelCard({ channel, monitors, screens, assignedBounds, onUpdate, onD
             >
               Save
             </button>
-            <button
+            <button title="Close" aria-label="Close"
               onClick={() => setEditing(false)}
               className="text-on-surface-variant hover:text-on-surface cursor-pointer shrink-0"
             >
@@ -461,7 +461,7 @@ function ChannelCard({ channel, monitors, screens, assignedBounds, onUpdate, onD
 
             <div className="flex-1" />
 
-            <button
+            <button aria-label="Edit channel"
               onClick={startEdit}
               className="text-on-surface-variant hover:text-on-surface cursor-pointer transition-colors p-xs rounded hover:bg-surface-container-highest"
               title="Edit channel"
@@ -481,7 +481,7 @@ function ChannelCard({ channel, monitors, screens, assignedBounds, onUpdate, onD
                 >No</button>
               </>
             ) : (
-              <button
+              <button aria-label="Delete channel"
                 onClick={() => setConfirmingDelete(true)}
                 className="text-on-surface-variant hover:text-error cursor-pointer transition-colors p-xs rounded hover:bg-error/10"
                 title="Delete channel"
@@ -677,7 +677,7 @@ function MonitorTile({ monitor, screens, onRemove }) {
         {showRes && <div className="font-mono text-[11px] text-on-surface-variant/60 leading-none mt-[1px] tabular-nums">{res}</div>}
         {!isConnected && <div className="text-[11px] font-label-sm text-error leading-tight">Disconnected</div>}
       </div>
-      <button
+      <button aria-label="Remove screen"
         onClick={onRemove}
         className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-surface-container-high border border-outline-variant/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:bg-error hover:border-error hover:text-white"
         title="Remove screen"
@@ -697,7 +697,7 @@ function ScreenPicker({ screens, assignedBounds, onPick, onClose }) {
         <span className="text-label-sm font-label-sm text-on-surface-variant">
           Select a screen to assign
         </span>
-        <button onClick={onClose} className="text-on-surface-variant hover:text-on-surface cursor-pointer">
+        <button title="Close" aria-label="Close" onClick={onClose} className="text-on-surface-variant hover:text-on-surface cursor-pointer">
           <span className="material-symbols-outlined text-[16px]">close</span>
         </button>
       </div>

@@ -77,5 +77,15 @@ const cued = bestReference('john chapter three verse sixteen');
 const bare = bestReference('john three sixteen');
 eq('cued ≥ bare confidence', cued.confidence >= bare.confidence, true);
 
+// ── Psalm 1NN, "oh" digits, Song of Songs (audit regressions) ─────────────────
+eq('psalm one nineteen → 119', ref('psalm one nineteen'), 'Psalms 119');
+eq('psalm one nineteen verse one oh five → 119:105', ref('psalm one nineteen verse one oh five'), 'Psalms 119:105');
+eq('psalm one thirty nine → 139', ref('psalm one thirty nine'), 'Psalms 139');
+eq('psalm one six stays 1:6', ref('psalm one six'), 'Psalms 1:6');
+eq('psalm twenty three one unchanged', ref('psalm twenty three one'), 'Psalms 23:1');
+eq('oh digits', wordsToNumbers('one oh five'), '105');
+eq('song of songs → Song of Solomon (not 1 Kings)', ref('song of songs two one'), 'Song of Solomon 2:1');
+eq('revelations (plural) exact', (bestReference('revelations twenty two twenty')?.confidence ?? 0) >= 0.8, true);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

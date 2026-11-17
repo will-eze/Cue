@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useModalGuard } from '../utils/modalGuard';
+import { useFocusTrap } from '../utils/useFocusTrap';
 import { GPU_MODELS, downloadGpuModel, removeGpuModel, clearGpuModels } from '../audio/gpuModelStore';
 
 // Package Manager — one clean surface for every optional dependency Cue can install:
@@ -26,6 +28,9 @@ const ICONS = {
 };
 
 export default function PackageManagerModal({ onClose }) {
+  useModalGuard();
+  const trapRef = useRef(null);
+  useFocusTrap(trapRef);
   const [pkgs, setPkgs] = useState(null);
   const [progress, setProgress] = useState({});   // id → { percent, file }
   const [busyId, setBusyId] = useState(null);      // id currently installing/removing
@@ -65,7 +70,7 @@ export default function PackageManagerModal({ onClose }) {
   }, []);
 
   useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape' && !busyId) onClose(); };
+    const onKey = (e) => { if (e.key === 'Escape' && !busyId) { e.preventDefault(); e.stopPropagation(); onClose(); } };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [busyId, onClose]);
@@ -103,6 +108,7 @@ export default function PackageManagerModal({ onClose }) {
       onClick={busyId ? undefined : onClose}
     >
       <div
+        ref={trapRef} role="dialog" aria-modal="true"
         onClick={(e) => e.stopPropagation()}
         className="w-[720px] max-w-full max-h-[86vh] flex flex-col bg-surface-container-low rounded-xl border border-outline-variant/30 shadow-2xl ring-1 ring-white/5 overflow-hidden"
       >
@@ -112,6 +118,7 @@ export default function PackageManagerModal({ onClose }) {
           <button
             onClick={onClose}
             disabled={!!busyId}
+            title="Close" aria-label="Close"
             className="ml-auto text-on-surface-variant hover:text-on-surface transition-colors disabled:opacity-30"
           >
             <span className="material-symbols-outlined text-[18px]">close</span>

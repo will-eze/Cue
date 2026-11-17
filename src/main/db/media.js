@@ -149,52 +149,63 @@ export function deleteMany(ids) {
   return removed;
 }
 
-// Media not referenced by any song background, rundown item, channel logo,
-// theme, presentation, or global setting — i.e. safe to delete. Settings store
-// media ids as JSON-encoded integers, and presentation image elements store ids
-// inside elements_json, so both are collected separately from the FK columns.
-export function findUnused() {
+// Every place a media asset can be referenced, as flat { id, kind } rows. This is
+// the SINGLE list of reference sources: findUnused() (anything not here is unused)
+// and usageFor() (where an asset is used, for the delete confirm) both read it, so
+// a new reference site only needs adding once. Settings store media ids as
+// JSON-encoded integers, and presentation image elements store ids inside
+// elements_json, so both are collected separately from the FK columns.
+function collectReferences() {
   const db = getDb();
-  const referenced = new Set();
-  const addAll = (rows) => { for (const r of rows) if (r.id != null) referenced.add(r.id); };
-  addAll(db.prepare('SELECT DISTINCT default_background_id  AS id FROM songs           WHERE default_background_id  IS NOT NULL').all());
-  addAll(db.prepare('SELECT DISTINCT background_override_id AS id FROM service_items   WHERE background_override_id IS NOT NULL').all());
-  addAll(db.prepare('SELECT DISTINCT logo_override_id       AS id FROM output_channels WHERE logo_override_id       IS NOT NULL').all());
-  addAll(db.prepare('SELECT DISTINCT background_id          AS id FROM themes          WHERE background_id          IS NOT NULL').all());
-  addAll(db.prepare('SELECT DISTINCT background_id          AS id FROM presentation_slides    WHERE background_id IS NOT NULL').all());
-  addAll(db.prepare('SELECT DISTINCT background_id          AS id FROM presentation_templates WHERE background_id IS NOT NULL').all());
-  addAll(db.prepare('SELECT DISTINCT background_media_id    AS id FROM graphics               WHERE background_media_id IS NOT NULL').all());
+  const refs = [];
+  const addAll = (rows, kind) => { for (const r of rows) if (r.id != null) refs.push({ id: r.id, kind }); };
+  addAll(db.prepare('SELECT DISTINCT default_background_id  AS id FROM songs           WHERE default_background_id  IS NOT NULL').all(), 'song');
+  addAll(db.prepare('SELECT DISTINCT background_override_id AS id FROM service_items   WHERE background_override_id IS NOT NULL').all(), 'item');
+  addAll(db.prepare('SELECT DISTINCT logo_override_id       AS id FROM output_channels WHERE logo_override_id       IS NOT NULL').all(), 'channel');
+  addAll(db.prepare('SELECT DISTINCT background_id          AS id FROM themes          WHERE background_id          IS NOT NULL').all(), 'theme');
+  addAll(db.prepare('SELECT DISTINCT background_id          AS id FROM presentation_slides    WHERE background_id IS NOT NULL').all(), 'slide');
+  addAll(db.prepare('SELECT DISTINCT background_id          AS id FROM presentation_templates WHERE background_id IS NOT NULL').all(), 'template');
+  addAll(db.prepare('SELECT DISTINCT background_media_id    AS id FROM graphics               WHERE background_media_id IS NOT NULL').all(), 'graphic');
   // onEndMediaId + audioMediaId are stored inside style_json for countdown graphics
   // (no FK column) — the end-action media and the "play while live" audio track.
   for (const { style_json } of db.prepare("SELECT style_json FROM graphics WHERE kind='countdown' AND style_json IS NOT NULL").all()) {
     try {
-      const s = JSON.parse(style_json);
-      if (s.onEndMediaId) referenced.add(Number(s.onEndMediaId));
-      if (s.audioMediaId) referenced.add(Number(s.audioMediaId));
+      const st = JSON.parse(style_json);
+      if (st.onEndMediaId) refs.push({ id: Number(st.onEndMediaId), kind: 'graphic' });
+      if (st.audioMediaId) refs.push({ id: Number(st.audioMediaId), kind: 'graphic' });
     } catch {}
   }
   // Image elements reference media by id inside elements_json (not an FK column).
   for (const r of db.prepare('SELECT elements_json FROM presentation_slides UNION ALL SELECT elements_json FROM presentation_templates').all()) {
-    for (const id of collectImageMediaIds(r.elements_json)) referenced.add(id);
+    for (const id of collectImageMediaIds(r.elements_json)) refs.push({ id, kind: 'slide' });
   }
-  for (const key of ['global_logo_id', 'global_bg_song_id', 'global_bg_scripture_id', 'global_bg_slide_id']) {
+  const globalLabel = { global_logo_id: 'globalLogo', global_bg_song_id: 'globalBg', global_bg_scripture_id: 'globalBg', global_bg_slide_id: 'globalBg' };
+  for (const key of Object.keys(globalLabel)) {
     const row = db.prepare('SELECT value FROM settings WHERE key=?').get(key);
     if (!row) continue;
-    try { const v = JSON.parse(row.value); if (v != null) referenced.add(Number(v)); } catch {}
+    try { const v = JSON.parse(row.value); if (v != null) refs.push({ id: Number(v), kind: globalLabel[key] }); } catch {}
   }
   // Output presets snapshot global background / logo ids inside data_json
   // (backgroundsStage.settings) — keep those assets out of "unused" too.
   for (const { data_json } of db.prepare('SELECT data_json FROM output_presets').all()) {
     try {
-      const s = JSON.parse(data_json)?.backgroundsStage?.settings;
-      if (s) for (const v of Object.values(s)) if (v != null) referenced.add(Number(v));
+      const st = JSON.parse(data_json)?.backgroundsStage?.settings;
+      if (st) for (const v of Object.values(st)) if (v != null) refs.push({ id: Number(v), kind: 'outputPreset' });
     } catch {}
   }
   // Background-library downloads (settings JSON map { manifestId: mediaAssetId },
   // see db/background-library.js) are intentional library additions — keep them
   // out of "unused" even before they're applied to a song/global background.
   const bgRow = db.prepare("SELECT value FROM settings WHERE key='bg_library_downloads'").get();
-  if (bgRow) { try { for (const v of Object.values(JSON.parse(bgRow.value))) if (v != null) referenced.add(Number(v)); } catch {} }
+  if (bgRow) { try { for (const v of Object.values(JSON.parse(bgRow.value))) if (v != null) refs.push({ id: Number(v), kind: 'library' }); } catch {} }
+  return refs;
+}
+
+// Media not referenced by any song background, rundown item, channel logo,
+// theme, presentation, or global setting — i.e. safe to delete.
+export function findUnused() {
+  const db = getDb();
+  const referenced = new Set(collectReferences().map((r) => r.id));
   return db.prepare('SELECT * FROM media_assets ORDER BY filename COLLATE NOCASE').all()
     .filter((m) => !referenced.has(m.id))
     .map((m) => {
@@ -202,6 +213,40 @@ export function findUnused() {
       try { size = fs.statSync(m.path).size; } catch {}
       return { ...m, size_bytes: size };
     });
+}
+
+const USAGE_LABELS = {
+  song:         (n) => `background of ${n} song${n === 1 ? '' : 's'}`,
+  item:         (n) => `background of ${n} rundown item${n === 1 ? '' : 's'}`,
+  channel:      (n) => `logo of ${n} output channel${n === 1 ? '' : 's'}`,
+  theme:        (n) => `background of ${n} theme${n === 1 ? '' : 's'}`,
+  slide:        (n) => `used in ${n} presentation slide${n === 1 ? '' : 's'}`,
+  template:     (n) => `used in ${n} presentation template${n === 1 ? '' : 's'}`,
+  graphic:      (n) => `used by ${n} graphic${n === 1 ? '' : 's'}`,
+  globalLogo:   () => 'the global logo',
+  globalBg:     (n) => (n === 1 ? 'a global background' : `${n} global backgrounds`),
+  outputPreset: () => 'saved in an output preset',
+  library:      () => 'a background-library download',
+};
+
+// Where are these assets used? Returns { inUse, summary, byId } — summary is a short
+// human-readable line ("background of 3 songs, 1 rundown item, the global logo"),
+// combined across all ids for a bulk delete. Uses the same reference list as findUnused().
+export function usageFor(ids) {
+  const want = new Set((Array.isArray(ids) ? ids : [ids]).map(Number));
+  const counts = new Map();
+  const byId = {};
+  for (const r of collectReferences()) {
+    if (!want.has(r.id)) continue;
+    counts.set(r.kind, (counts.get(r.kind) || 0) + 1);
+    (byId[r.id] ||= []).push(r.kind);
+  }
+  const parts = [];
+  for (const kind of Object.keys(USAGE_LABELS)) {
+    const n = counts.get(kind);
+    if (n) parts.push(USAGE_LABELS[kind](n));
+  }
+  return { inUse: parts.length > 0, summary: parts.join(', '), byId };
 }
 
 // Wipe the entire media library: every asset file + DB row + folders. FK columns

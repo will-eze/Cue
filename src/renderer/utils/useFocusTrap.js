@@ -34,12 +34,16 @@ export function useFocusTrap(containerRef, { enabled = true, autoFocus } = {}) {
         .filter((el) => el.offsetParent !== null || el === document.activeElement);
 
     // Focus the requested element, else the first focusable, else the container.
-    const initial = (autoFocus && container.querySelector(autoFocus)) || focusables()[0];
-    if (initial) initial.focus();
-    else { container.setAttribute('tabindex', '-1'); container.focus(); }
+    // If something inside the dialog already took focus (an autoFocus input, or a
+    // layout effect placing a caret), leave it alone — never steal a caret.
+    if (!container.contains(document.activeElement)) {
+      const initial = (autoFocus && container.querySelector(autoFocus)) || focusables()[0];
+      if (initial) initial.focus();
+      else { container.setAttribute('tabindex', '-1'); container.focus(); }
+    }
 
     const onKey = (e) => {
-      if (e.key !== 'Tab') return;
+      if (e.key !== 'Tab' || e.defaultPrevented) return;
       const items = focusables();
       if (!items.length) { e.preventDefault(); return; }
       const first = items[0];
@@ -56,7 +60,7 @@ export function useFocusTrap(containerRef, { enabled = true, autoFocus } = {}) {
       container.removeEventListener('keydown', onKey);
       // Restore focus to whatever was focused before the dialog opened.
       const el = restoreRef.current;
-      if (el && typeof el.focus === 'function' && document.contains(el)) el.focus();
+      if (el && typeof el.focus === 'function' && document.contains(el)) el.focus({ focusVisible: false, preventScroll: true });
     };
   }, [containerRef, enabled, autoFocus]);
 }

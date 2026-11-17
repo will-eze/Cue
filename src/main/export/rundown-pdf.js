@@ -63,8 +63,13 @@ function renderItem(item, index) {
   }
 
   if (item.item_type === 'scripture' && item.scripture) {
+    // Show chapter:verse at the start and whenever the chapter changes, so a passage
+    // crossing a chapter boundary isn't ambiguous on paper.
     const verses = (item.scripture.verses || [])
-      .map((v) => `<span class="vnum">${esc(v.verse)}</span>${esc(v.text)}`)
+      .map((v, i, all) => {
+        const num = i > 0 && all[i - 1].chapter !== v.chapter ? `${v.chapter}:${v.verse}` : v.verse;
+        return `<span class="vnum">${esc(num)}</span>${esc(v.text)}`;
+      })
       .join('\n');
     return `<article class="item scripture">
       <h2>${num}${esc(item.scripture.reference || item.title || 'Scripture')}</h2>

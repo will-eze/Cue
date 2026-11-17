@@ -66,6 +66,13 @@ module.exports = {
     extendInfo: {
       NSMicrophoneUsageDescription: 'Cue listens to the service audio to auto-detect spoken scripture references and quotes.',
       NSCameraUsageDescription: 'Cue captures your video feed (camera or capture device) to composite the broadcast stream.',
+      // NDI is local-network traffic (mDNS discovery of `_ndi._tcp` + TCP/UDP to
+      // receivers). macOS 15 gates that behind the Local Network privacy permission;
+      // declaring the purpose + service type gives the prompt a real explanation and
+      // keeps Bonjour browsing authorised. Without the permission NDI outputs are
+      // invisible to other machines and NDI inputs are never discovered.
+      NSLocalNetworkUsageDescription: 'Cue sends its outputs to, and receives cameras from, other devices on your network over NDI, and serves the remote control page.',
+      NSBonjourServices: ['_ndi._tcp'],
     },
     name: 'Cue',
     executableName: 'cue',

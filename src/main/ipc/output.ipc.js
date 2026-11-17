@@ -10,6 +10,7 @@ export function registerOutputIpc() {
   ipcMain.handle('output:clear', () => outputManager.clear());
   ipcMain.handle('output:logo', () => outputManager.logo());
   ipcMain.handle('output:setLive', (_e, enabled) => outputManager.setOutputsEnabled(enabled));
+  ipcMain.on('output:problem', (e, msg) => outputManager.handleOutputProblem(e.sender, msg));
   ipcMain.handle('output:getState', () => outputManager.getState());
   ipcMain.handle('output:media:control', (_e, action) => outputManager.mediaControl(action));
   ipcMain.handle('output:media:seek', (_e, pos) => outputManager.mediaSeek(pos));

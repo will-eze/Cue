@@ -5,6 +5,7 @@
 
 import { buildSermonStructure, extractText } from './sermon-import.js';
 import * as bible from '../db/bible.js';
+import { paginateVerses, groupLabel } from '../../shared/scripture-ref.js';
 import * as themes from '../db/themes.js';
 import * as presentations from '../db/presentations.js';
 import { get as getSetting } from '../db/settings.js';
@@ -43,22 +44,12 @@ function scriptureSlides(slide, versionId, baseStyle) {
 
   const verses = passage.verses;
   const multi = verses.length > 1;
-  const groups = [];
-  let cur = [], curLen = 0;
-  for (const v of verses) {
-    const piece = (multi ? `${v.verse} ` : '') + v.text;
-    if (cur.length && curLen + piece.length > 360) { groups.push(cur); cur = []; curLen = 0; }
-    cur.push({ ...v, piece });
-    curLen += piece.length;
-  }
-  if (cur.length) groups.push(cur);
+  const groups = paginateVerses(verses, 360);
 
   return groups.map((g) => {
     const body = g.map((v) => v.piece).join('  ');
-    const first = g[0].verse, last = g[g.length - 1].verse;
-    const ref = (multi
-      ? `${passage.bookName} ${passage.verses[0].chapter}:${first}${last !== first ? '-' + last : ''}`
-      : passage.reference) + (passage.versionAbbrev ? ` (${passage.versionAbbrev})` : '');
+    const ref = (multi ? groupLabel(passage.bookName, g) : passage.reference)
+      + (passage.versionAbbrev ? ` (${passage.versionAbbrev})` : '');
     // Verse text shrinks a touch for longer readings.
     const fs = body.length > 220 ? 38 : 46;
     return {

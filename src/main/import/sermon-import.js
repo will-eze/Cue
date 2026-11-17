@@ -13,7 +13,7 @@
 import fs from 'fs';
 import path from 'path';
 import zlib from 'zlib';
-import { BOOKS, lookupBook } from '../db/bible-books.js';
+import { scanScriptureRefs } from '../../shared/scripture-ref.js';
 
 // ── Text extraction ───────────────────────────────────────────────────────────
 
@@ -65,9 +65,28 @@ function readDocxText(buf) {
   const raw = buf.subarray(start, start + entry.compSize);
   const xml = (entry.method === 0 ? raw : zlib.inflateRawSync(raw)).toString('utf8');
 
-  const text = xml
+  return docxXmlToText(xml);
+}
+
+// WordprocessingML → plain text. Beyond tags-to-newlines this must drop content that is
+// in the XML but NOT on the page, or it leaks into slides:
+//   • <w:pPr> paragraph properties (their <w:tabs><w:tab/> tab-STOPS would each become a
+//     stray tab character), <w:instrText> field codes (HYPERLINK "https://…"),
+//     <w:delText> tracked-change deletions,
+//   • <mc:Fallback> — Word stores text-box/shape text twice (Choice + Fallback), so the
+//     whole box would otherwise be duplicated.
+// Soft/non-breaking hyphens are kept readable too.
+export function docxXmlToText(xml) {
+  const text = String(xml)
+    .replace(/<mc:Fallback\b[\s\S]*?<\/mc:Fallback>/g, '')
+    .replace(/<w:pPr\b[\s\S]*?<\/w:pPr>/g, '')
+    .replace(/<w:instrText\b[\s\S]*?<\/w:instrText>/g, '')
+    .replace(/<w:delText\b[\s\S]*?<\/w:delText>/g, '')
+    .replace(/<w:noBreakHyphen\b[^>]*\/?>/g, '-')
+    .replace(/<w:softHyphen\b[^>]*\/?>/g, '')
     .replace(/<w:tab\b[^>]*\/?>/g, '\t')
     .replace(/<w:br\b[^>]*\/?>/g, '\n')
+    .replace(/<w:cr\b[^>]*\/?>/g, '\n')
     .replace(/<\/w:p>/g, '\n')
     .replace(/<[^>]+>/g, '');
   return decodeXmlEntities(text);
@@ -94,53 +113,39 @@ export function extractText(filePath) {
 
 // ── Scripture reference detection ─────────────────────────────────────────────
 
-// One big alternation of every book name + abbreviation, longest-first so
-// "Song of Solomon" wins over "Song" and "1 John" over "John". Built once.
-const BOOK_ALT = (() => {
-  const toks = new Set();
-  for (const b of BOOKS) {
-    toks.add(b.name);
-    for (const a of b.abbrevs) toks.add(a);
-  }
-  return [...toks]
-    .sort((a, b) => b.length - a.length)
-    .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+'))
-    .join('|');
-})();
-
-// Matches "John 3:16", "John 3:16-18", "1 Cor 13", "Ps. 23:1", "Rev 21:1–4".
-const REF_RE = new RegExp(
-  `\\b(${BOOK_ALT})\\.?\\s+(\\d{1,3})(?:\\s*[:.]\\s*(\\d{1,3})(?:\\s*[-–—]\\s*(\\d{1,3}))?)?`,
-  'gi'
-);
+// All reference grammar (book spellings, chapter/verse lists, ranges, false-positive
+// guards) lives in shared/scripture-ref.js; the helpers below only locate references at the
+// ends of strings. No second regex grammar here.
 
 // A scripture reference sitting at the very END of a line (optionally introduced by a
 // dash/colon) — used to peel the anchor ref off a main-point heading ("… SINNERS Jude 1:14-15").
-const TRAILING_REF_RE = new RegExp(
-  `\\s*[-–—:]?\\s*(?:${BOOK_ALT})\\.?\\s+\\d{1,3}(?:\\s*[:.]\\s*\\d{1,3}[a-z]?(?:\\s*[-–—]\\s*\\d{1,3}[a-z]?)?)?\\s*$`,
-  'i'
-);
+// Returns { head, ref } (head = the text before it, separator stripped) or null.
+function splitTrailingRef(line) {
+  const s = String(line || '').replace(/\s+$/, '');
+  const refs = scanScriptureRefs(s);
+  for (let i = refs.length - 1; i >= 0; i--) {
+    const r = refs[i];
+    if (s.slice(r.end).trim() === '') {
+      return { head: s.slice(0, r.index).replace(/[\s\-–—:]+$/, ''), ref: r.ref };
+    }
+  }
+  return null;
+}
 
 // Find scripture references in `text`, de-duplicated in order of first appearance.
-// Returns [{ ref, bookNum, bookName, chapter, vStart, vEnd, index }].
+// Returns [{ ref, bookNum, bookName, chapter, vStart, vEnd, endChapter, segments, index }].
+// The grammar (cross-chapter ranges, comma lists, "II Timothy", "First John", Jude 5 =
+// Jude 1:5, ambiguous short abbreviations needing a verse) is shared/scripture-ref.js.
 export function findScriptureRefs(text) {
   const out = [];
   const seen = new Set();
-  let m;
-  REF_RE.lastIndex = 0;
-  while ((m = REF_RE.exec(text || ''))) {
-    const book = lookupBook(m[1]);
-    if (!book) continue;
-    const chapter = parseInt(m[2], 10);
-    const vStart = m[3] ? parseInt(m[3], 10) : null;
-    const vEnd = m[4] ? parseInt(m[4], 10) : vStart;
-    const ref = vStart == null
-      ? `${book.name} ${chapter}`
-      : (vEnd && vEnd !== vStart ? `${book.name} ${chapter}:${vStart}-${vEnd}` : `${book.name} ${chapter}:${vStart}`);
-    const key = ref.toLowerCase();
+  for (const r of scanScriptureRefs(text || '')) {
+    const key = r.ref.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ ref, bookNum: book.num, bookName: book.name, chapter, vStart, vEnd, index: m.index });
+    // vEnd mirrors vStart for a single verse (null for a whole chapter), as before.
+    out.push({ ref: r.ref, bookNum: r.bookNum, bookName: r.bookName, chapter: r.chapter,
+      vStart: r.vStart, vEnd: r.vEnd, endChapter: r.endChapter, segments: r.segments, index: r.index, end: r.end });
   }
   return out;
 }
@@ -180,6 +185,22 @@ function headingText(line) {
   return null;
 }
 
+// Sentence splitter shared by the flat and outline paths. Splits after . ! ? when the next
+// sentence opens with a capital / quote / bracket, then re-joins false splits caused by
+// abbreviations and initials ("Dr. Jones", "Mr. Smith", "e.g. This", "C. S. Lewis").
+const ABBREV_TAIL = /(?:^|[\s(“"'‘])(?:mr|mrs|ms|dr|st|jr|sr|prof|rev|fr|vs|cf|no|fig|vol|e\.g|i\.e|a\.m|p\.m)\.$/i;
+const INITIAL_TAIL = /(?:^|\s)[B-HJ-Z]\.$/;
+export function splitSentences(text) {
+  const parts = String(text).split(/(?<=[.!?])\s+(?=[“"(A-Z])/).map((x) => x.trim()).filter(Boolean);
+  const out = [];
+  for (const p of parts) {
+    const prev = out[out.length - 1];
+    if (prev && (ABBREV_TAIL.test(prev) || INITIAL_TAIL.test(prev))) out[out.length - 1] = prev + ' ' + p;
+    else out.push(p);
+  }
+  return out;
+}
+
 // Split a body blob into bullet points. Honours existing bullet markers / line
 // breaks; falls back to sentence-splitting a wall-of-text paragraph.
 function toBullets(lines) {
@@ -198,14 +219,41 @@ function toBullets(lines) {
     bullets = cleaned;                                   // one line = one bullet
   } else {
     // A single paragraph — split into sentences so it isn't one giant block.
-    bullets = cleaned[0].split(/(?<=[.!?])\s+(?=[A-Z“"])/).map((s) => s.trim()).filter(Boolean);
+    bullets = splitSentences(cleaned[0]);
   }
   return bullets.filter((b) => b.length);
 }
 
+// Break an over-long bullet into slide-sized pieces at clause / word boundaries. (It used
+// to be cut at 160 chars with an ellipsis — silently dropping the rest of the sentence.)
+export function splitLongBullet(b, max = 160) {
+  const out = [];
+  let rest = String(b).trim();
+  while (rest.length > max) {
+    const win = rest.slice(0, max + 1);
+    let cut = -1;
+    const re = /[;:,—–]\s|[.!?]\s/g;
+    let m;
+    while ((m = re.exec(win))) if (m.index + 1 > max * 0.5) cut = m.index + 1;
+    if (cut < 0) cut = win.lastIndexOf(' ');
+    if (cut <= 0) cut = max;           // one unbroken token — hard cut
+    out.push(rest.slice(0, cut).trim());
+    rest = rest.slice(cut).trim();
+  }
+  if (rest) out.push(rest);
+  return out;
+}
+
 const MAX_BULLETS = 5;       // per point slide
-const MAX_BULLET_CHARS = 160; // hard-wrap an over-long bullet onto its own slide group
+const MAX_BULLET_CHARS = 160; // an over-long bullet is split (never truncated) into pieces this size
 const MAX_SLIDES = 150;
+
+// Line endings, NBSP → space, and invisible characters (BOM, zero-width space / joiner,
+// soft hyphen) that .txt / Word / PDF exports carry and that would otherwise break the
+// title match and heading rules.
+function cleanText(raw) {
+  return String(raw || '').replace(/\r\n?/g, '\n').replace(/\u00a0/g, ' ').replace(/[\ufeff\u200b-\u200d\u2060\u00ad]/g, '');
+}
 
 function chunk(arr, n) {
   const out = [];
@@ -241,30 +289,20 @@ function detectSermonTitle(lines) {
   return null;
 }
 
-// The numeric tail of a reference: "14", "3:16", "5:22-24", "3:3,7", "1:14-15a" — a
-// chapter, an optional verse (with letter suffix), and optional range/comma lists.
-const REF_TAIL = `\\d{1,3}(?:\\s*[:.]\\s*\\d{1,3}[a-z]?(?:\\s*[-–—]\\s*\\d{1,3}[a-z]?)?(?:\\s*,\\s*\\d{1,3}[a-z]?(?:\\s*[-–—]\\s*\\d{1,3}[a-z]?)?)*)?`;
-
-// A scripture reference written INLINE in brackets, e.g. "(Deuteronomy 33:2)",
-// "(Amos 3:3,7)" or "(see Daniel 7:9-10)" — recognises a verse citation that follows a
-// quoted verse.
-const PAREN_REF_SRC = `\\(\\s*(?:see\\s+)?(?:${BOOK_ALT})\\.?\\s*${REF_TAIL}\\s*\\)`;
-const PAREN_REF_RE = new RegExp(`^${PAREN_REF_SRC}\\.?$`, 'i');
+// A bracketed citation: "(Deuteronomy 33:2)", "(Amos 3:3,7)", "(see Daniel 7:9-10)" — the
+// WHOLE parenthetical is exactly one reference. Returns the parenthetical text or null.
+function parenRefOnly(t) {
+  const m = /^\(\s*(?:see\s+)?([^()]+?)\s*\)\.?$/i.exec(String(t || '').trim());
+  if (!m) return null;
+  const refs = scanScriptureRefs(m[1]);
+  return refs.length === 1 && refs[0].index === 0 && m[1].slice(refs[0].end).trim() === '' ? m[0] : null;
+}
 // A verbatim quoted verse immediately followed by its bracketed reference. We drop the
 // quote itself (it's the Bible text) but KEEP the reference, so it can ride on the
 // commentary sentence the quote was illustrating.
-const QUOTE_THEN_REF_RE = new RegExp(`[“"][^“”"]*[”"]\\s*(${PAREN_REF_SRC})`, 'gi');
-// A reference anchored at the START of a string — used to consume a sub-point's leading
-// reference LIST one item at a time (separated by ";").
-const REFLIST_ITEM_RE = new RegExp(`^(${BOOK_ALT})\\.?\\s+(${REF_TAIL})`, 'i');
-
-// Canonicalise a matched book + numeric tail into a display reference, normalising the
-// internal spacing (and en/em dashes) so "Amos  3:3, 7" → "Amos 3:3,7".
-function formatRefItem(bookTok, tail) {
-  const book = lookupBook(bookTok);
-  if (!book) return null;
-  const t = String(tail).replace(/\s+/g, '').replace(/[–—]/g, '-');
-  return `${book.name} ${t}`;
+const QUOTE_THEN_PAREN_RE = /[“"][^“”"]*[”"]\s*(\([^()]*\))/g;
+function collapseQuotedRefs(s) {
+  return s.replace(QUOTE_THEN_PAREN_RE, (all, paren) => (parenRefOnly(paren) ? ' ' + paren : all));
 }
 
 // Pull the leading reference LIST off a sub-point body. The list runs from the start as
@@ -274,12 +312,11 @@ function consumeRefList(rest) {
   const refs = [];
   let s = String(rest || '').trim();
   while (true) {
-    const m = REFLIST_ITEM_RE.exec(s);
-    if (!m) break;
-    const ref = formatRefItem(m[1], m[2]);
-    if (!ref) break;
-    refs.push(ref);
-    s = s.slice(m[0].length);
+    // The next item must START the remaining text (the list is contiguous refs joined by ";").
+    const r = scanScriptureRefs(s)[0];
+    if (!r || r.index !== 0) break;
+    refs.push(r.ref);
+    s = s.slice(r.end);
     const sep = /^\s*;\s*/.exec(s);     // ";" → another ref follows
     if (sep) { s = s.slice(sep[0].length); continue; }
     break;                              // ". " / prose → the list has closed
@@ -296,7 +333,7 @@ function mainMarker(line) {
   if (!m) return null;
   const rest = m[2].trim();
   if (!rest) return { num: m[1], rest: '' };
-  const core = rest.replace(TRAILING_REF_RE, '');
+  const core = splitTrailingRef(rest)?.head ?? rest;
   const letters = core.replace(/[^A-Za-z]/g, '');
   if (letters.length < 3) return null;
   const uppers = core.replace(/[^A-Z]/g, '').length;
@@ -306,9 +343,11 @@ function mainMarker(line) {
 // A line that is essentially nothing but scripture reference(s) — the anchor passage that
 // sits on its own line under a main-point heading ("Jude 1:14-15").
 function isRefOnlyLine(t) {
-  if (!findScriptureRefs(t).length) return false;
-  const leftover = String(t).replace(REF_RE, '').replace(/[^A-Za-z]/g, '');
-  return leftover.length <= 2;
+  const refs = scanScriptureRefs(t);
+  if (!refs.length) return false;
+  let leftover = String(t), cut = 0;
+  for (const r of refs) { leftover = leftover.slice(0, r.index - cut) + leftover.slice(r.end - cut); cut += r.end - r.index; }
+  return leftover.replace(/[^A-Za-z]/g, '').length <= 2;
 }
 
 // Minor words kept lower-case when softening an ALL-CAPS heading into a Title-Case subtitle.
@@ -339,15 +378,15 @@ function dedupRefs(arr) {
 // rides on the preceding commentary sentence ("a sentence references the verse after it").
 function bodyToBullets(text) {
   if (!text) return [];
-  const s = String(text).replace(QUOTE_THEN_REF_RE, ' $1').replace(/\s+/g, ' ').trim();
-  const parts = s.split(/(?<=[.!?])\s+(?=[“"(A-Z])/).map((x) => x.trim()).filter(Boolean);
+  const s = collapseQuotedRefs(String(text)).replace(/\s+/g, ' ').trim();
+  const parts = splitSentences(s);
   const bullets = [];
   for (const part of parts) {
     // A bare parenthetical reference merges onto the previous sentence's bullet (the
     // commentary the dropped quote was illustrating). With no preceding bullet it's the
     // passage citation itself (e.g. the intro's main ref) — that lives on the reference
     // line, so drop it rather than open the slide with a lone "(Jude 1:14-16)".
-    if (PAREN_REF_RE.test(part)) {
+    if (parenRefOnly(part)) {
       // Tidy a PDF-wrapped citation ("(Jonah 3:4- 10)" → "(Jonah 3:4-10)") and attach it.
       const ref = part.replace(/\.\s*$/, '').replace(/\s*([:,–—-])\s*/g, '$1');
       if (bullets.length) bullets[bullets.length - 1] += ' ' + ref;
@@ -460,7 +499,7 @@ function buildHierarchical(rawText, opts = {}) {
     const t = headLines[i].trim().replace(/^[“"(]+|[”")]+$/g, '');
     if (!t) continue;
     const r = findScriptureRefs(t);
-    if (r.length && t.length - r[0].ref.length <= 4) { mainRef = r[0].ref; mainRefIdx = i; break; }
+    if (r.length && t.length - (r[0].end - r[0].index) <= 4) { mainRef = r[0].ref; mainRefIdx = i; break; }
   }
 
   // Introductory commentary — head-region prose after the main-passage line (the opening
@@ -489,8 +528,8 @@ function buildHierarchical(rawText, opts = {}) {
     // A heading that carries its anchor inline ("… AGAINST ALL Jude 1:15") rather than on
     // its own line — peel the trailing ref off.
     if (!anchor) {
-      const tr = heading.match(TRAILING_REF_RE);
-      if (tr) { const ar = findScriptureRefs(tr[0]); if (ar.length) { anchor = ar[0].ref; heading = heading.replace(TRAILING_REF_RE, '').trim(); } }
+      const tr = splitTrailingRef(heading);
+      if (tr) { anchor = tr.ref; heading = tr.head.trim(); }
     }
     const subtitle = `${mp.num}. ${titleCaseFromCaps(heading)}`;
 
@@ -545,8 +584,6 @@ export function buildSermonStructure(rawText, opts = {}) {
 
   // Title: caller-supplied wins; else the first substantial non-reference line.
   let title = (opts.title || '').trim();
-  const refsAll = findScriptureRefs(text);
-  const refSet = new Set(refsAll.map((r) => r.ref.toLowerCase()));
   if (!title) {
     for (const l of lines) {
       const t = l.replace(/^\s{0,3}#{1,6}\s+/, '').trim();
@@ -572,12 +609,13 @@ export function buildSermonStructure(rawText, opts = {}) {
   // heading (other than the title line) form an opening section with no heading.
   let curHeading = null;
   let body = [];
+  let pendingRefLines = []; // standalone ref lines seen under the current heading
   let titleConsumed = false;
   let emittedAny = false;
 
   const flush = () => {
     const bodyText = body.join('\n');
-    const bullets = toBullets(body).filter((b) => !refSet.has(b.toLowerCase()));
+    const bullets = toBullets(body).filter((b) => !isRefOnlyLine(b)).flatMap((b) => splitLongBullet(b, MAX_BULLET_CHARS));
     if (curHeading) {
       // Split any monster bullet into its own slide group; cap bullets per slide.
       const groups = chunk(bullets, MAX_BULLETS);
@@ -587,10 +625,10 @@ export function buildSermonStructure(rawText, opts = {}) {
         groups.forEach((g, i) => slides.push({
           role: 'point',
           title: i === 0 ? curHeading : `${curHeading} (cont.)`,
-          bullets: g.map((b) => (b.length > MAX_BULLET_CHARS ? b.slice(0, MAX_BULLET_CHARS).trimEnd() + '…' : b)),
+          bullets: g,
         }));
       }
-      emitRefsIn(curHeading + '\n' + bodyText);
+      emitRefsIn(curHeading + '\n' + bodyText + '\n' + pendingRefLines.join('\n'));
       emittedAny = true;
     } else if (bullets.length) {
       // Headingless prose — group into untitled point slides.
@@ -599,6 +637,7 @@ export function buildSermonStructure(rawText, opts = {}) {
       emittedAny = true;
     }
     body = [];
+    pendingRefLines = [];
   };
 
   for (const line of lines) {
@@ -609,11 +648,16 @@ export function buildSermonStructure(rawText, opts = {}) {
       titleConsumed = true; continue;
     }
     // A standalone scripture-reference line becomes a scripture slide directly.
-    const lineRefs = findScriptureRefs(t);
-    const isRefLine = lineRefs.length && t.length <= 40 && lineRefs[0].ref.length >= t.length - 6;
+    const isRefLine = t.length <= 60 && isRefOnlyLine(t);
     const h = isRefLine ? null : headingText(line);
     if (h) { flush(); curHeading = h; continue; }
-    if (isRefLine) { flush(); emitRefsIn(t); continue; }
+    if (isRefLine) {
+      // Under a heading the ref stays in the section body: it is filtered out of the
+      // bullets and emitted AFTER the heading's slides. (Flushing here emitted an empty
+      // copy of the heading and then a second, duplicate slide with the same title.)
+      if (curHeading) { pendingRefLines.push(t); continue; }
+      flush(); emitRefsIn(t); continue;
+    }
     body.push(line);
     if (slides.length > MAX_SLIDES) break;
   }

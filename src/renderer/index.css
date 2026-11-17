@@ -116,10 +116,14 @@ summary:focus-visible,
 [role="tab"]:focus-visible,
 [role="menuitem"]:focus-visible,
 [role="option"]:focus-visible,
-[tabindex]:focus-visible {
+[tabindex]:focus-visible,
+.btn:focus-visible,
+.btn-icon:focus-visible,
+.btn-toggle:focus-visible,
+[aria-selected]:focus-visible {
+  /* Crisp ring, no glow. The element keeps its own border-radius (outlines follow it). */
   outline: 2px solid #adc6ff;
   outline-offset: 2px;
-  border-radius: 4px;
 }
 /* Never show a focus ring for pointer interactions on these elements. */
 button:focus:not(:focus-visible),
@@ -153,16 +157,17 @@ button:focus:not(:focus-visible),
 /* ── Kbd shortcut hint ─────────────────────────────────────── */
 .kbd-hint {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 400;
   letter-spacing: 0.05em;
-  opacity: 0.35;
+  /* #8c909f (outline token) = 4.5:1 or better on every surface up to surface-container-high. */
+  color: #8c909f;
 }
 
 /* ── Content area placeholder ──────────────────────────────── */
 [contenteditable][data-placeholder]:empty::before {
   content: attr(data-placeholder);
-  color: #424754;
+  color: #8c909f; /* outline token: 5.85:1 on surface, 5.13:1 on surface-container */
   pointer-events: none;
 }
 
@@ -207,4 +212,19 @@ button:focus:not(:focus-visible),
   .btn:disabled:hover { filter: none; background-color: transparent; }
   .btn-primary:disabled:hover { @apply bg-primary; }
   .btn-go:disabled:hover { @apply bg-tertiary-container; }
+}
+
+/* Reduced motion: operator chrome only. This stylesheet is loaded solely by the operator
+   renderer (main.jsx); output windows use their own CSS and keep their transitions.
+   The ticker-crawl preview is content, not chrome, so it is left alone. */
+@media (prefers-reduced-motion: reduce) {
+  .live-pulse, .dot-pulse,
+  .animate-pulse, .animate-spin, .animate-ping, .animate-bounce {
+    animation: none !important;
+  }
+  *, *::before, *::after {
+    transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
+    scroll-behavior: auto !important;
+  }
 }

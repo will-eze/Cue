@@ -8,6 +8,13 @@
   if (!window.cueOutput || !window.cueOutput.onGraphicUpdate) return;
   if (document.getElementById('cue-gfx')) return; // guard against double-include
 
+  // Log-only failure visibility (shared guard with the other output scripts).
+  if (!window.__cueErrLog) {
+    window.__cueErrLog = true;
+    window.addEventListener('error', (e) => { try { console.error('[cue-output] uncaught error:', e.message, e.filename + ':' + e.lineno); } catch {} });
+    window.addEventListener('unhandledrejection', (e) => { try { console.error('[cue-output] unhandled rejection:', e.reason); } catch {} });
+  }
+
   // graphics=0 → this channel suppresses the broadcast-graphics overlay (e.g. a
   // lower-third channel in "Lyrics Only" mode). Mutable so the operator can toggle
   // it live via content:mode without recreating the window (no NDI sender drop).
@@ -17,7 +24,7 @@
   // Mirrors fullscreen.js pathToUrl: respects CUE_MEDIA_BASE for Remote Output.
   function pathToUrl(p) {
     if (!p) return null;
-    const normalized = p.replace(/\\/g, '/');
+    const normalized = String(p).replace(/\\/g, '/');
     const pathPart = normalized.startsWith('/') ? normalized : '/' + normalized;
     const base = (typeof window !== 'undefined' && window.CUE_MEDIA_BASE) || 'cue-media://localhost';
     const suffix = (typeof window !== 'undefined' && window.CUE_MEDIA_SUFFIX) || '';
@@ -26,7 +33,7 @@
 
   function isVideoPath(p) {
     if (!p) return false;
-    return /\.(mp4|mov|webm|avi)$/i.test(p.split('?')[0]);
+    return /\.(mp4|mov|webm|avi)$/i.test(String(p).split('?')[0]);
   }
 
   // ── Inject base layout (keyframes + ticker crawl + fallback look) ───────────
@@ -190,7 +197,7 @@
       void tickerInner.offsetWidth; // force reflow so the animation restarts cleanly
       const distance = tickerInner.scrollWidth;
       const speed = Math.max(20, Number(t.speed) || 100);
-      tickerInner.style.animationDuration = (distance / speed) + 's';
+      tickerInner.style.animationDuration = Math.max(1, distance / speed) + 's'; // never 0s (a 0s infinite loop spins)
       tickerInner.classList.add('run');
     } else {
       tickerEl.classList.remove('active');
@@ -237,6 +244,13 @@
     const now = c.paused ? (c.frozenAt || Date.now()) : Date.now();
     if (c.mode === 'clock') {
       cdTime.textContent = fmtClock(new Date(now), c.format, c.showSeconds);
+      return;
+    }
+    // Missing/garbage anchor: show 0:00 and stop ticking instead of "NaN:NaN" forever.
+    const anchor = c.mode === 'countup' ? c.startAt : c.endsAt;
+    if (!Number.isFinite(Number(anchor))) {
+      cdTime.textContent = '0:00';
+      if (cdTimer) { clearInterval(cdTimer); cdTimer = null; }
       return;
     }
     if (c.mode === 'countup') {
@@ -383,6 +397,10 @@
     document.body.appendChild(el);
     auxAudioEl = el;
     try { window.CueMediaPlayer.attachAuxAudio(el); } catch {}
+    el.addEventListener('error', () => {
+      if (!el.getAttribute('src') || (el.error && el.error.code === 1)) return;
+      try { console.error('[cue-output] countdown audio failed to load:', el.getAttribute('src')); } catch {}
+    });
     return el;
   }
 
@@ -413,11 +431,13 @@
   }
 
   function apply(o) {
-    setNameTitle(o && o.nameTitle);
-    setTicker(o && o.ticker);
-    setCountdown(o && o.countdown);
-    setCountdownAudio(o && o.countdown);
-    setCustom(o && o.custom);
+    // Each slot is isolated: one malformed graphic must not stop the others updating.
+    const safe = (name, fn) => { try { fn(); } catch (e) { console.error('[cue-output] graphic ' + name + ' failed:', e); } };
+    safe('nameTitle', () => setNameTitle(o && o.nameTitle));
+    safe('ticker', () => setTicker(o && o.ticker));
+    safe('countdown', () => setCountdown(o && o.countdown));
+    safe('countdownAudio', () => setCountdownAudio(o && o.countdown));
+    safe('custom', () => setCustom(o && o.custom));
 
     // Background media: first active slot wins, priority: countdown > custom > nameTitle > ticker
     const bgSlot = (o && o.countdown && o.countdown.bgPath && o.countdown) ||
@@ -425,8 +445,23 @@
                    (o && o.nameTitle && o.nameTitle.bgPath && o.nameTitle) ||
                    (o && o.ticker    && o.ticker.bgPath    && o.ticker)    ||
                    null;
-    setGfxBackground(bgSlot ? bgSlot.bgPath : null, bgSlot ? bgSlot.bgFit : null);
+    safe('background', () => setGfxBackground(bgSlot ? bgSlot.bgPath : null, bgSlot ? bgSlot.bgFit : null));
   }
+
+  // Media failures: log the path and hide the broken layer (no broken-image icon);
+  // clear the active path so the next graphic update retries. Console-only — there is no
+  // output→main status channel.
+  function onGfxMediaFail(e) {
+    const el = e.target;
+    const src = el && el.getAttribute && el.getAttribute('src');
+    if (!src) return; // removeAttribute('src') teardown
+    if (el.error && el.error.code === 1) return;
+    try { console.error('[cue-output] graphic media failed to load:', src); } catch {}
+    try { window.cueOutput?.reportProblem?.({ kind: 'graphic-media', path: String(src).slice(0, 500) }); } catch {}
+    if (el === bgVideo || el === bgImg) { el.style.display = 'none'; bgActivePath = null; }
+  }
+  bgVideo.addEventListener('error', onGfxMediaFail);
+  bgImg.addEventListener('error', onGfxMediaFail);
 
   window.cueOutput.onGraphicUpdate(function (o) {
     lastOverlay = o;

@@ -1,4 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useToast } from '../components/Toast';
+import { cleanErrorMessage } from '../utils/errorMessage';
+import { useModalGuard } from '../utils/modalGuard';
+import { useFocusTrap } from '../utils/useFocusTrap';
+
 
 // Scenes — one-press multi-output state recall (feature-roadmap #11). A scene is a
 // declarative snapshot of the service-independent output layers (broadcast-graphics
@@ -53,10 +58,15 @@ export default function ScenesPanel() {
   // Notify OperatorView (number-key recall) that the scene set changed.
   const notifyChanged = () => window.dispatchEvent(new Event('cue:scenes-changed'));
 
-  function take(scene) { window.cue.scenes.apply(scene); }
+  const toast = useToast();
+  async function take(scene) {
+    try { await window.cue.scenes.apply(scene); }
+    catch (e) { toast.error(`Scene “${scene.name}” didn’t apply: ${cleanErrorMessage(e)}`); }
+  }
 
   async function remove(scene) {
-    await window.cue.scenes.delete(scene.id);
+    try { await window.cue.scenes.delete(scene.id); }
+    catch (e) { toast.error(`Couldn’t delete “${scene.name}”: ${cleanErrorMessage(e)}`); }
     load(); notifyChanged();
   }
 
@@ -131,10 +141,10 @@ function SceneCard({ scene, onTake, onEdit, onDelete }) {
             </>
           ) : (
             <>
-              <button onClick={onEdit} title="Edit" className="btn-icon btn-icon-sm">
+              <button aria-label="Edit" onClick={onEdit} title="Edit" className="btn-icon btn-icon-sm">
                 <span className="material-symbols-outlined text-[15px]">edit</span>
               </button>
-              <button onClick={() => setConfirmingDelete(true)} title="Delete" className="btn-icon btn-icon-sm btn-icon-danger">
+              <button aria-label="Delete" onClick={() => setConfirmingDelete(true)} title="Delete" className="btn-icon btn-icon-sm btn-icon-danger">
                 <span className="material-symbols-outlined text-[15px]">delete</span>
               </button>
             </>
@@ -179,6 +189,21 @@ function SceneCard({ scene, onTake, onEdit, onDelete }) {
 }
 
 function SceneEditor({ scene, onClose, onSaved }) {
+  const toast = useToast();
+  useModalGuard();
+  const trapRef = useRef(null);
+  useFocusTrap(trapRef);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault(); e.stopPropagation();
+      onCloseRef.current?.();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
   const [name, setName] = useState(scene?.name || '');
   const [hotkey, setHotkey] = useState(scene?.hotkey || '');
   const [capturingKey, setCapturingKey] = useState(false);
@@ -212,23 +237,31 @@ function SceneEditor({ scene, onClose, onSaved }) {
 
   async function save() {
     const payload = buildPayload();
-    if (scene?.id) await window.cue.scenes.update(scene.id, payload);
-    else await window.cue.scenes.create(payload);
+    try {
+      if (scene?.id) await window.cue.scenes.update(scene.id, payload);
+      else await window.cue.scenes.create(payload);
+    } catch (e) {
+      toast.error(`Couldn’t save the scene: ${cleanErrorMessage(e)}`);
+      return;
+    }
     onSaved();
   }
 
   // Apply the in-progress scene to the live output without saving — a dry run.
-  function testNow() { window.cue.scenes.apply(buildPayload()); }
+  function testNow() {
+    Promise.resolve(window.cue.scenes.apply(buildPayload()))
+      .catch((e) => toast.error(`Test failed: ${cleanErrorMessage(e)}`));
+  }
 
   const chips = manageOverlay ? overlayChips(overlay) : null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 p-lg" onMouseDown={onClose}>
-      <div className="w-full max-w-[520px] bg-surface-container-high rounded-xl border border-outline-variant/40 flex flex-col max-h-full overflow-hidden" onMouseDown={(e) => e.stopPropagation()}>
+      <div ref={trapRef} role="dialog" aria-modal="true" className="w-full max-w-[520px] bg-surface-container-high rounded-xl border border-outline-variant/40 flex flex-col max-h-full overflow-hidden" onMouseDown={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-sm px-lg h-12 border-b border-outline-variant/30 shrink-0">
           <span className="material-symbols-outlined text-[18px] text-primary">bolt</span>
           <span className="text-label-md font-label-sm text-on-surface">{scene ? 'Edit Scene' : 'New Scene'}</span>
-          <button onClick={onClose} className="ml-auto text-on-surface-variant/60 hover:text-on-surface cursor-pointer">
+          <button onClick={onClose} title="Close" aria-label="Close" className="ml-auto text-on-surface-variant/60 hover:text-on-surface cursor-pointer">
             <span className="material-symbols-outlined text-[18px]">close</span>
           </button>
         </div>

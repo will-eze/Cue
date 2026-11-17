@@ -35,6 +35,30 @@ export function isUnderUserData(p) {
   return resolved === root || resolved.startsWith(root + path.sep);
 }
 
+// Parse a single-range `Range` header against a file of `size` bytes.
+// Returns {start,end} (inclusive, end clamped to size-1), 'unsatisfiable' (416), or
+// null when the header is absent/malformed/unsupported (caller serves the whole file).
+// Supports `bytes=a-b`, `bytes=a-` and suffix `bytes=-N`. Multi-range uses the first.
+export function parseRange(header, size) {
+  if (!header) return null;
+  const m = /^\s*bytes\s*=\s*(\d*)\s*-\s*(\d*)/i.exec(String(header));
+  if (!m || (m[1] === '' && m[2] === '')) return null;
+  let start, end;
+  if (m[1] === '') {
+    // Suffix range: the last N bytes.
+    const n = parseInt(m[2], 10);
+    if (!(n > 0) || size <= 0) return 'unsatisfiable';
+    start = Math.max(0, size - n);
+    end = size - 1;
+  } else {
+    start = parseInt(m[1], 10);
+    end = m[2] === '' ? size - 1 : parseInt(m[2], 10);
+    if (start >= size || end < start) return 'unsatisfiable';
+    if (end > size - 1) end = size - 1;
+  }
+  return { start, end };
+}
+
 // Stream a userData-contained file to a Node http response, honouring Range
 // requests (videos open with `bytes=0-`). Never buffers the file — uses a lazy
 // read stream so multi-GB clips stay bounded in memory (same rule as cue-media).
@@ -64,30 +88,27 @@ export function serveLocalFile(filePath, req, res) {
     'Access-Control-Allow-Origin': '*',
   };
 
-  const rangeHeader = req.headers['range'];
-  if (rangeHeader) {
-    const match = /bytes=(\d*)-(\d*)/.exec(rangeHeader);
-    const start = match && match[1] ? parseInt(match[1], 10) : 0;
-    const end   = match && match[2] ? parseInt(match[2], 10) : stat.size - 1;
-    if (start >= stat.size) {
-      res.writeHead(416, { 'Content-Range': `bytes */${stat.size}`, 'Accept-Ranges': 'bytes' });
-      res.end();
-      return;
-    }
-    const chunkSize = end - start + 1;
-    res.writeHead(206, {
-      ...baseHeaders,
-      'Content-Range': `bytes ${start}-${end}/${stat.size}`,
-      'Content-Length': String(chunkSize),
-    });
-    const stream = fs.createReadStream(filePath, { start, end });
-    stream.on('error', () => { try { res.end(); } catch {} });
-    stream.pipe(res);
+  const range = parseRange(req.headers['range'], stat.size);
+  if (range === 'unsatisfiable') {
+    res.writeHead(416, { 'Content-Range': `bytes */${stat.size}`, 'Accept-Ranges': 'bytes' });
+    res.end();
     return;
   }
 
-  res.writeHead(200, { ...baseHeaders, 'Content-Length': String(stat.size) });
-  const stream = fs.createReadStream(filePath);
+  const stream = range
+    ? fs.createReadStream(filePath, { start: range.start, end: range.end })
+    : fs.createReadStream(filePath);
+  if (range) {
+    res.writeHead(206, {
+      ...baseHeaders,
+      'Content-Range': `bytes ${range.start}-${range.end}/${stat.size}`,
+      'Content-Length': String(range.end - range.start + 1),
+    });
+  } else {
+    res.writeHead(200, { ...baseHeaders, 'Content-Length': String(stat.size) });
+  }
+  // Release the fd if the client aborts (seek, tab close) before the stream finishes.
+  res.on('close', () => { try { stream.destroy(); } catch {} });
   stream.on('error', () => { try { res.end(); } catch {} });
   stream.pipe(res);
 }

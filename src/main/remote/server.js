@@ -180,13 +180,21 @@ function serveStaticAsset(baseRelDir, file, allowedExt, res) {
 
 // ── Request handling ─────────────────────────────────────────────────────────
 
-function readBody(req, cb) {
+function readBody(req, cb, res) {
   let body = '';
   req.on('data', (chunk) => {
     body += chunk;
     if (body.length > 1e5) req.destroy(); // hard cap; commands are tiny
   });
-  req.on('end', () => cb(body));
+  req.on('end', () => {
+    try { cb(body); } catch (err) {
+      console.error('[remote] handler failed:', err && err.message);
+      try {
+        if (res && !res.headersSent) { res.writeHead(500, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'internal error' })); }
+        else if (res) res.end();
+      } catch {}
+    }
+  });
   req.on('error', () => cb(''));
 }
 
@@ -203,8 +211,35 @@ function dispatch(cmd, res) {
   res.end(JSON.stringify({ ok: true, state: fullState() }));
 }
 
+// Outer guard: nothing thrown while handling a request may escape into main.
 function handleRequest(req, res) {
-  const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  try {
+    handleRequestInner(req, res);
+  } catch (err) {
+    console.error('[remote] request failed:', err && err.message);
+    try {
+      if (!res.headersSent) {
+        const bad = err instanceof URIError || err?.code === 'ERR_INVALID_URL';
+        res.writeHead(bad ? 400 : 500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: bad ? 'bad request' : 'internal error' }));
+      } else {
+        res.end();
+      }
+    } catch {}
+  }
+}
+
+function handleRequestInner(req, res) {
+  let url;
+  try {
+    // Parse against a fixed base: the Host header is attacker-controlled and only the
+    // path/query are used, so a malformed Host must not be able to throw here.
+    url = new URL(req.url, 'http://localhost');
+  } catch {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'bad request' }));
+    return;
+  }
   const path = url.pathname;
 
   // The control page carries the pairing token in its URL; keep it out of the Referer
@@ -266,7 +301,13 @@ function handleRequest(req, res) {
       res.writeHead(401); res.end('unauthorized');
       return;
     }
-    const filePath = decodeURIComponent(path.slice('/output/media'.length)); // leading slash kept → absolute path
+    let filePath;
+    try {
+      filePath = decodeURIComponent(path.slice('/output/media'.length)); // leading slash kept → absolute path
+    } catch {
+      res.writeHead(400); res.end('bad request');
+      return;
+    }
     serveLocalFile(filePath, req, res);
     return;
   }
@@ -305,7 +346,7 @@ function handleRequest(req, res) {
 
   // Command via POST body { action, ... } — used by the control page / Companion.
   if (path === '/api/command' && req.method === 'POST') {
-    readBody(req, (body) => dispatch(safeJson(body) || {}, res));
+    readBody(req, (body) => dispatch(safeJson(body) || {}, res), res);
     return;
   }
 
@@ -371,7 +412,7 @@ function handleRequest(req, res) {
         else if (path === '/api/countdown/pause')  { graphicFns.countdownPause(data.target || 'all'); graphicOk(res); }
         else if (path === '/api/countdown/resume') { graphicFns.countdownResume(data.target || 'all'); graphicOk(res); }
         else { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'not found' })); }
-      });
+      }, res);
       return;
     }
   }

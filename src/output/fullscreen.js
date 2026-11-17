@@ -1,3 +1,10 @@
+// Log-only failure visibility (shared guard with the other output scripts).
+if (!window.__cueErrLog) {
+  window.__cueErrLog = true;
+  window.addEventListener('error', (e) => { try { console.error('[cue-output] uncaught error:', e.message, e.filename + ':' + e.lineno); } catch {} });
+  window.addEventListener('unhandledrejection', (e) => { try { console.error('[cue-output] unhandled rejection:', e.reason); } catch {} });
+}
+
 const bg       = document.getElementById('background');
 const scrim    = document.getElementById('scrim');
 const textWrap = document.getElementById('text-wrap');
@@ -14,7 +21,7 @@ if (IS_NDI) {
 
 function pathToUrl(p) {
   if (!p) return null;
-  const normalized = p.replace(/\\/g, '/');
+  const normalized = String(p).replace(/\\/g, '/');
   const pathPart = normalized.startsWith('/') ? normalized : '/' + normalized;
   // Default cue-media:// for real output windows; the remote-output browser sets
   // CUE_MEDIA_BASE (an http /output/media endpoint) + CUE_MEDIA_SUFFIX (?vt=token).
@@ -29,6 +36,9 @@ function esc(str) {
 
 function renderWithRuns(text, runs) {
   if (!text) return '';
+  if (typeof text !== 'string') text = String(text);
+  // Tolerate a malformed runs value (non-array / null entries) rather than throwing.
+  runs = Array.isArray(runs) ? runs.filter((r) => r && typeof r === 'object') : null;
   if (!runs || runs.length === 0) return esc(text).replace(/\n/g, '<br>');
   const sorted = [...runs].sort((a, b) => a.start - b.start);
   let html = '', pos = 0;
@@ -55,6 +65,9 @@ function renderWithRuns(text, runs) {
 // List-style / paragraph-spacing wrapper around renderWithRuns. Mirrors the React
 // version in SongEditor.jsx — keep the two in sync when changing the logic.
 function renderTextContent(text, runs, style) {
+  if (text != null && typeof text !== 'string') text = String(text);
+  runs = Array.isArray(runs) ? runs.filter((r) => r && typeof r === 'object') : null;
+  if (style && typeof style !== 'object') style = null;
   const listStyle = style?.listStyle;
   const bulletSpacing = style?.bulletSpacing;
   const paragraphSpacing = style?.paragraphSpacing;
@@ -111,7 +124,7 @@ function buildDecoration(s) {
 
 // style.boxFill → rgba() background for the fill panel behind the text box.
 function boxFillBg(bf) {
-  const c = (bf && bf.color) || '#000000';
+  const c = String((bf && bf.color) || '#000000');
   const r = parseInt(c.slice(1, 3), 16) || 0;
   const g = parseInt(c.slice(3, 5), 16) || 0;
   const b = parseInt(c.slice(5, 7), 16) || 0;
@@ -176,7 +189,7 @@ function setKenBurns(mode) { _kenBurns = mode || 'none'; }
 // Scale authored 1920×1080 px values to the current viewport size.
 // Uses min(x,y) so the design fits without stretching on any aspect ratio.
 function viewportScale() {
-  return Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+  return Math.min(window.innerWidth / 1920, window.innerHeight / 1080) || 1; // 0-size window → 1, never 0px fonts
 }
 
 // Last-rendered lyric/scripture style — stored so the resize handler can re-apply
@@ -290,6 +303,7 @@ function fitSplitText(maxPx) {
 
 function showLogo(p, scaleMode) {
   if (!p) { logoWrap.innerHTML = ''; logoWrap.className = ''; return; }
+  p = String(p);
   const url = pathToUrl(p);
   const ext = p.split('.').pop().toLowerCase();
   const fit = scaleMode === 'cover' ? 'cover' : 'contain';
@@ -408,9 +422,40 @@ function createLoopBlendBackground(url) {
 // from style_json) so a license-free authored background renders with no asset.
 let _lastBgPath = null;
 
+// ── Media load failures ──────────────────────────────────────────────────────
+// A missing/undecodable file would otherwise leave a broken-image icon or a dead
+// element (black, with the media player still poking it). Degrade to the existing
+// fallback (theme CSS background, else plain black) and log the path. There is no
+// output→main status channel in output-preload.js, so this is console-only for now.
+let _bgFallbackCss = '';
+function onMediaFail(e) {
+  const el = e && e.target;
+  if (!el || !el.tagName || !/^(IMG|VIDEO|AUDIO)$/.test(el.tagName)) return;
+  const src = el.getAttribute('src');
+  if (!src) return; // `el.src = ''` teardown fires an error — not a real failure
+  if (el.id === 'cue-media-el') return; // foreground clip: CueMediaPlayer logs + cleans up
+  if (el.error && el.error.code === 1) return; // MEDIA_ERR_ABORTED (load superseded)
+  try { console.error('[cue-output] media failed to load:', src, (el.error && el.error.message) || ''); } catch {}
+  try { window.cueOutput?.reportProblem?.({ kind: 'slide-media', path: String(src).slice(0, 500) }); } catch {}
+  const host = el.closest ? el.closest('#background, #logo-wrap, #slide-elements') : null;
+  if (!host) return;
+  if (host.id === 'slide-elements') { el.style.visibility = 'hidden'; return; }
+  el.remove();
+  if (host.id === 'background') {
+    _lastBgPath = null; // let the next GO of this path retry
+    if (!host.childElementCount && _bgFallbackCss) host.style.background = _bgFallbackCss;
+  } else if (!host.childElementCount) {
+    host.className = '';
+  }
+}
+bg.addEventListener('error', onMediaFail, true);
+logoWrap.addEventListener('error', onMediaFail, true);
+
 function setBackground(path, bgCss) {
   if (path && path === _lastBgPath) return; // same video already playing — don't restart
   _lastBgPath = path || null;
+  _bgFallbackCss = bgCss || '';
+  path = path ? String(path) : path;
   destroyBgController();
   bg.style.background = '';
   if (path) {
@@ -460,6 +505,7 @@ function setForegroundMedia(media, transport) {
   _lastBgPath = null;
   clearForegroundMedia();
   bg.style.background = '';
+  _bgFallbackCss = '';
   bg.innerHTML = '';
   if (!media || !media.path) return;
   const url = pathToUrl(media.path);
@@ -491,6 +537,7 @@ function setForegroundMedia(media, transport) {
     loop: !!media.loop,
     baseMuted: MUTE_AUDIO,
     transport,
+    onError: (badEl) => { try { badEl.remove(); } catch {} }, // no stuck poster/spinner; bg stays black
   });
   // Offer this element to the stream-audio mixer (stream window only; no-op elsewhere).
   if (window.CueStreamFeed) window.CueStreamFeed.onMediaElement(el);
@@ -664,9 +711,13 @@ function applyCopyrightStyle(el, cs, defaultAlign) {
 const slideEls = document.getElementById('slide-elements');
 
 function scaleSlideCanvas() {
+  // A 0-size window (minimised/hidden) would scale the canvas to 0 and hide it; keep
+  // the last transform — the next resize event restores the right one.
+  if (!window.innerWidth || !window.innerHeight) return;
   slideEls.style.transform = `scale(${window.innerWidth / 1920}, ${window.innerHeight / 1080})`;
 }
 window.addEventListener('resize', scaleSlideCanvas);
+slideEls.addEventListener('error', onMediaFail, true);
 // Re-apply viewport-scaled px values on resize. Order matters: applyStyle first
 // (sets provisional font size), then fitSplitText last (overrides for split verses).
 window.addEventListener('resize', () => {
@@ -743,7 +794,7 @@ function elementHtml(el) {
   } else if (el.type === 'image' && el.path) {
     const url = pathToUrl(el.path);
     const fit = el.fit === 'cover' ? 'cover' : 'contain';
-    const isVideo = el.mediaType === 'video' || ['mp4','webm','mov','avi','m4v','mkv'].includes((el.path.split('.').pop() || '').toLowerCase());
+    const isVideo = el.mediaType === 'video' || ['mp4','webm','mov','avi','m4v','mkv'].includes((String(el.path).split('.').pop() || '').toLowerCase());
     inner = isVideo
       ? `<video autoplay loop muted playsinline src="${url}" style="object-fit:${fit}"></video>`
       : `<img src="${url}" alt="" style="object-fit:${fit}" />`;
@@ -755,8 +806,10 @@ function elementHtml(el) {
 
 function renderElements(elements) {
   scaleSlideCanvas();
-  const sorted = [...(elements || [])].sort((a, b) => (a.z || 0) - (b.z || 0));
-  slideEls.innerHTML = sorted.map(elementHtml).join('');
+  const sorted = (Array.isArray(elements) ? elements : []).filter((e) => e && typeof e === 'object')
+    .sort((a, b) => (a.z || 0) - (b.z || 0));
+  // One malformed element must not blank the whole slide: skip just that element.
+  slideEls.innerHTML = sorted.map((e) => { try { return elementHtml(e); } catch (err) { console.error('[cue-output] bad slide element skipped:', err); return ''; } }).join('');
   slideEls.classList.add('active');
 }
 
@@ -779,6 +832,27 @@ function payloadHasVideo(p) {
 }
 
 const stageEl = document.getElementById('stage');
+
+// Never-throwing payload sanitiser, run BEFORE any DOM mutation. Returns a safe copy
+// (paths coerced to strings, non-array elements/non-object style dropped) or null when
+// the payload is unusable — the caller then keeps the previous good frame. A null
+// styleJson is NORMAL (all-default song) and passes through as null (CSS centres text).
+function normalizePayload(p) {
+  if (!p || typeof p !== 'object' || Array.isArray(p)) return null;
+  const n = Object.assign({}, p);
+  const str = (v) => (v == null || v === '' ? v : String(v));
+  n.backgroundPath = str(n.backgroundPath);
+  n.logoPath = str(n.logoPath);
+  if (n.styleJson != null && typeof n.styleJson !== 'object') n.styleJson = null;
+  if (n.elements != null && !Array.isArray(n.elements)) n.elements = [];
+  if (n.media != null) {
+    if (typeof n.media !== 'object') n.media = null;
+    else n.media = Object.assign({}, n.media, { path: str(n.media.path) });
+  }
+  if (n.liveInput != null && typeof n.liveInput !== 'object') n.liveInput = null;
+  if (n.transition != null && typeof n.transition !== 'object') n.transition = null;
+  return n;
+}
 
 function renderSlide(payload) {
   const { type, text, copyright: copy, backgroundPath, logoPath, logoScaleMode, styleJson } = payload;
@@ -869,7 +943,7 @@ function renderSlide(payload) {
   const sv = payload.scriptureVerses;
   if (Array.isArray(sv) && sv.length > 1) {
     textEl.classList.add('split');
-    textEl.innerHTML = sv.map((b) =>
+    textEl.innerHTML = sv.filter(Boolean).map((b) =>
       `<div class="split-verse"><div class="split-verse-body">${renderWithRuns(b.text || '', styleJson?.runs)}</div>`
       + `<div class="split-verse-attr">${esc(b.attribution || '')}</div></div>`).join('');
     copyright.textContent = '';
@@ -901,6 +975,19 @@ function renderSlide(payload) {
 // are never gated; a text-only or already-cached image renders synchronously so
 // verse advances stay snap-instant.
 const _imgReady = new Map(); // url → decoded HTMLImageElement (retained as the cache signal)
+const IMG_CACHE_MAX = 12;
+// Evict oldest-first down to the cap, but never an image currently in the DOM (on
+// screen / being transitioned to) nor the entry just added.
+function trimImgCache(keepUrl) {
+  if (_imgReady.size <= IMG_CACHE_MAX) return;
+  const inUse = new Set();
+  try { document.querySelectorAll('img').forEach((i) => { if (i.src) inUse.add(i.src); }); } catch {}
+  for (const [u, im] of _imgReady) {
+    if (_imgReady.size <= IMG_CACHE_MAX) break;
+    if (u === keepUrl || inUse.has(im.src)) continue;
+    _imgReady.delete(u);
+  }
+}
 function decodeImg(url) {
   if (!url) return Promise.resolve();
   const cached = _imgReady.get(url);
@@ -908,7 +995,7 @@ function decodeImg(url) {
   const img = new Image();
   img.src = url;
   const done = img.decode ? img.decode() : new Promise((r) => { img.onload = r; img.onerror = r; });
-  return done.then(() => { _imgReady.set(url, img); }, () => {});
+  return done.then(() => { _imgReady.delete(url); _imgReady.set(url, img); trimImgCache(url); }, () => {});
 }
 function payloadImageUrls(p) {
   if (!p) return [];
@@ -922,7 +1009,19 @@ function imagesCached(urls) {
 }
 
 let _renderSeq = 0;
-window.cueOutput.onSlideUpdate((payload) => {
+// slideKey of the presentation slide currently on this screen (null for anything else). A payload
+// flagged `ltPageStep` with the SAME key only changes lower-third text (a page step) — this
+// template has no lower third, so it HOLDS: no re-render, no transition, no video restart.
+// Everything else (a re-GO of the same slide, a different slide, clear/logo) renders as usual.
+let _heldSlideKey = null;
+window.cueOutput.onSlideUpdate((raw) => {
+ try {
+  // Malformed payload → nothing touched yet, so keep the previous good frame.
+  const payload = normalizePayload(raw);
+  if (!payload) { console.error('[cue-output] ignoring malformed slide payload:', raw); return; }
+  if (payload.type === 'content' && payload.ltPageStep && payload.slideKey && payload.slideKey === _heldSlideKey) return;
+  _heldSlideKey = (payload.type === 'content' && payload.elements && payload.slideKey) ? String(payload.slideKey) : null;
+
   // Sync loop settings from the payload. A mode change invalidates the cached path
   // so the next setBackground() re-mounts the video in the new mode.
   if (payload.bgLoopMode === 'jump' || payload.bgLoopMode === 'blend') {
@@ -934,17 +1033,28 @@ window.cueOutput.onSlideUpdate((payload) => {
   const seq = ++_renderSeq;
   const commit = () => {
     if (seq !== _renderSeq) return;
-    // Hard-cut (no transition) whenever a video is on either side: the outgoing stage
-    // already shows one, or the incoming payload brings one (Option 2 — transitions.js).
-    const involvesVideo = !!(stageEl && stageEl.querySelector('video')) || payloadHasVideo(payload);
-    const transition = involvesVideo ? { type: 'none' } : payload.transition;
-    // fgSel '#content' fades/zooms only the text layer in; #background + #scrim stay
-    // solid so a same-background advance never dips to black.
-    if (window.CueTransitions) window.CueTransitions.run(stageEl, transition, () => renderSlide(payload), { fgSel: '#content' });
-    else renderSlide(payload);
+    try {
+      // Hard-cut (no transition) whenever a video is on either side: the outgoing stage
+      // already shows one, or the incoming payload brings one (Option 2 — transitions.js).
+      const involvesVideo = !!(stageEl && stageEl.querySelector('video')) || payloadHasVideo(payload);
+      const transition = involvesVideo ? { type: 'none' } : payload.transition;
+      // fgSel '#content' fades/zooms only the text layer in; #background + #scrim stay
+      // solid so a same-background advance never dips to black.
+      if (window.CueTransitions) window.CueTransitions.run(stageEl, transition, () => renderSlide(payload), { fgSel: '#content' });
+      else renderSlide(payload);
+    } catch (err) {
+      // The render died part-way (DOM may be half-mutated; transitions.js already
+      // dropped any ghost). Log once and fall back to a clean clear state so the
+      // output isn't stuck on a corrupt frame and the next slide renders normally.
+      console.error('[cue-output] slide render failed, falling back to clear:', err);
+      try { renderSlide({ type: 'clear' }); } catch (e2) { console.error('[cue-output] clear fallback failed:', e2); }
+    }
   };
 
   const urls = payloadImageUrls(payload);
-  if (urls.length && !imagesCached(urls)) Promise.all(urls.map(decodeImg)).then(commit);
+  if (urls.length && !imagesCached(urls)) Promise.all(urls.map(decodeImg)).then(commit, commit);
   else commit();
+ } catch (err) {
+  console.error('[cue-output] slide:update handler failed:', err);
+ }
 });

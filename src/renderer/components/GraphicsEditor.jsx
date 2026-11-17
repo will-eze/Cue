@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useModalGuard } from '../utils/modalGuard';
+import { useFocusTrap } from '../utils/useFocusTrap';
 import { FormattingToolbar, DEFAULT_STYLE, styleIsDefault } from './SongEditor';
 import UndoRedoButtons from './UndoRedoButtons';
 import useEditHistory, { useUndoRedoKeys } from '../utils/useEditHistory';
@@ -556,6 +557,9 @@ function PresetTile({ preset, onPick }) {
 // gallery shows only that kind and hides the tabs (used from inside the editor,
 // where the graphic's kind is fixed).
 export function GraphicsPresetModal({ onPick, onClose, lockKind = null }) {
+  useModalGuard();
+  const trapRef = useRef(null);
+  useFocusTrap(trapRef);
   const [presets, setPresets] = useState([]);
   const [query, setQuery] = useState('');
   const [tab, setTab] = useState(lockKind || 'all');
@@ -591,6 +595,7 @@ export function GraphicsPresetModal({ onPick, onClose, lockKind = null }) {
   return createPortal(
     <div className="fixed inset-0 z-[60] bg-background/90 flex flex-col" onMouseDown={onClose}>
       <div
+        ref={trapRef} role="dialog" aria-modal="true"
         className="flex-1 min-h-0 flex flex-col m-lg bg-surface-container-low rounded-xl border border-outline-variant/30 shadow-2xl ring-1 ring-white/5 overflow-hidden"
         onMouseDown={(e) => e.stopPropagation()}
       >
@@ -607,7 +612,7 @@ export function GraphicsPresetModal({ onPick, onClose, lockKind = null }) {
               className="w-full pl-[34px] pr-sm py-xs text-body-sm bg-surface-container rounded-lg border border-outline-variant/30 text-on-surface placeholder:text-on-surface-variant/60 focus:outline-none focus:border-primary/50"
             />
           </div>
-          <button onClick={onClose} className="text-on-surface-variant hover:text-on-surface cursor-pointer flex items-center shrink-0">
+          <button title="Close" aria-label="Close" onClick={onClose} className="text-on-surface-variant hover:text-on-surface cursor-pointer flex items-center shrink-0">
             <span className="material-symbols-outlined">close</span>
           </button>
         </div>
@@ -667,6 +672,8 @@ export function presetToGraphic(preset) {
 
 export default function GraphicsEditor({ graphic, onClose, onSaved }) {
   useModalGuard();
+  const trapRef = useRef(null);
+  useFocusTrap(trapRef);
   const isEdit = !!graphic?.id;
   const fonts = useFonts();
 
@@ -829,6 +836,7 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
     <>
     <div className="fixed inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-50 p-6" onClick={onClose}>
       <div
+        ref={trapRef} role="dialog" aria-modal="true"
         className="bg-surface-container-low border border-outline-variant/30 rounded-xl w-full max-w-6xl h-[86vh] flex flex-col shadow-2xl ring-1 ring-white/5"
         onClick={(e) => e.stopPropagation()}
       >
@@ -852,7 +860,7 @@ export default function GraphicsEditor({ graphic, onClose, onSaved }) {
           </div>
           <div className="flex items-center gap-sm">
             <UndoRedoButtons undo={docH.undo} redo={docH.redo} canUndo={docH.canUndo} canRedo={docH.canRedo} />
-            <button onClick={onClose} className="text-on-surface-variant hover:text-on-surface cursor-pointer">
+            <button title="Close" aria-label="Close" onClick={onClose} className="text-on-surface-variant hover:text-on-surface cursor-pointer">
               <span className="material-symbols-outlined">close</span>
             </button>
           </div>

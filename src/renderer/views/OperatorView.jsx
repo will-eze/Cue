@@ -8,13 +8,44 @@ import { useScriptureAsr } from '../audio/useScriptureAsr';
 import { sectionLabelAt, expandSongSections } from '../utils/sectionLabels';
 import { normalizeLookStyle } from '../utils/presentationThemes';
 import { mergeSlideStyle } from '../utils/themeStyle';
+import { resolveLtPages, ltDefaults as normLtDefaults } from '../../shared/presentation-lt-text';
 import { useToast } from '../components/Toast';
 import { ensureThemeBg } from '../utils/ensureThemeBg';
 import ShortcutsOverlay from '../components/ShortcutsOverlay';
 import CommandPalette from '../components/CommandPalette';
 import { hasOpenModal } from '../utils/modalGuard';
+import { safeParse } from '../utils/safeParse';
+import ErrorBoundary from '../components/ErrorBoundary';
 
 const isMac = window.cue.platform === 'darwin';
+
+const WIDGET_ROLES = new Set(['slider', 'spinbutton', 'combobox', 'listbox', 'menu', 'menuitem', 'textbox']);
+const BUTTONISH_ROLES = new Set(['button', 'tab', 'option']);
+
+// True when the focused element owns the key, so bare transport keys must NOT fire.
+//  - text fields, contentEditable, SELECT: always.
+//  - widget roles (slider/spinbutton/combobox/listbox/menu/menuitem/textbox), or anything
+//    inside an open menu/dialog/aria-modal: always. Exception: rundown rows
+//    (role=option inside the Rundown listbox) are transport targets, never widgets.
+//  - BUTTON / role button|tab|option: SPACE is always transport (never activates a
+//    focused button: programmatic focus restoration after a modal/menu closes can look
+//    keyboard-focused to Chromium, and Space would reopen the editor instead of
+//    advancing live). ENTER still activates a KEYBOARD-focused (:focus-visible) control;
+//    a mouse-focused button never matches, so click-then-Enter falls through to
+//    transport. Rundown rows are exempt regardless.
+function shouldIgnoreTransportKey(el, e) {
+  if (!el) return false;
+  if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable) return true;
+  const inRundownList = !!el.closest?.('[aria-label="Rundown items"]');
+  if (inRundownList) return false;
+  const role = el.getAttribute?.('role');
+  if (role && WIDGET_ROLES.has(role)) return true;
+  if (el.closest?.('[role="menu"],[role="dialog"],[aria-modal="true"]')) return true;
+  if (e.key === 'Enter' && (el.tagName === 'BUTTON' || (role && BUTTONISH_ROLES.has(role)))) {
+    try { if (el.matches(':focus-visible')) return true; } catch { /* old engine: transport wins */ }
+  }
+  return false;
+}
 
 // Positional verse/slide jump keys. Pressing the Nth key airs slide N of the
 // current LIVE item (Q = slide 1, W = slide 2, …). The set is fixed and
@@ -97,6 +128,8 @@ export default function OperatorView({
   viewActive = true,
 }) {
   const toast = useToast();
+  // Theme ids whose background download already failed (warn once per theme, not on every reload).
+  const bgWarnedRef = useRef(new Set());
   const [helpOpen, setHelpOpen] = useState(false);       // ? keyboard-shortcut overlay
   const [paletteOpen, setPaletteOpen] = useState(false); // ⌘K command palette
   const [services, setServices] = useState([]);
@@ -113,7 +146,17 @@ export default function OperatorView({
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const selectionAnchorRef = useRef(null);
   const [liveItemId, setLiveItemId] = useState(null);
-  const [liveSlideIdx, setLiveSlideIdx] = useState(0);
+  const [liveSlideIdx, setLiveSlideIdxRaw] = useState(0);
+  // Which lower-third PAGE of the live presentation slide is on air (0-based). Any move to a
+  // slide (GO, jump, Next past the last page, remote select…) lands on page 0 — only the
+  // page stepper below sets it higher, via setLiveLtPage after calling the raw setter.
+  const [liveLtPage, setLiveLtPage] = useState(0);
+  const setLiveSlideIdx = (i) => { setLiveSlideIdxRaw(i); setLiveLtPage(0); };
+  // Global lower-third pagination defaults for presentations (settings
+  // presentation_lt_max_lines / presentation_lt_max_chars; edited in the presentation editor).
+  const [ltPageDefaults, setLtPageDefaults] = useState(() => normLtDefaults({}));
+  // True while the stream compositor has its lyric band over the feed (it renders lower-third pages).
+  const [streamLtBand, setStreamLtBand] = useState(false);
   // Scripture sent live directly from the Scriptures tab — a synthetic live source
   // that isn't a rundown item. Mutually exclusive with a live rundown item.
   const [liveScripture, setLiveScripture] = useState(null); // { item } | null
@@ -168,6 +211,10 @@ export default function OperatorView({
     // Global max lines/slide for songs — auto-paginates every song in the rundown
     // that hasn't set its own cap. Read live (like the bg/scale defaults) so a
     // Settings change applies without a reload.
+    setLtPageDefaults(normLtDefaults({
+      maxLines: await window.cue.settings.get('presentation_lt_max_lines'),
+      maxChars: await window.cue.settings.get('presentation_lt_max_chars'),
+    }));
     const sml = Number(await window.cue.settings.get('song_max_lines'));
     setSongMaxLines(isFinite(sml) && sml > 0 ? sml : 0);
     // Split-verse (compare) setting — a second translation shown alongside the live
@@ -183,6 +230,26 @@ export default function OperatorView({
     setScriptureSplit(split);
   }, []);
   useEffect(() => { loadScriptureDefaults(); }, [loadScriptureDefaults, bgRefreshTick]);
+  // The presentation editor's "Defaults for all presentations" control changed the L3 pagination.
+  useEffect(() => {
+    const h = () => loadScriptureDefaults();
+    window.addEventListener('cue:lt-defaults-changed', h);
+    return () => window.removeEventListener('cue:lt-defaults-changed', h);
+  }, [loadScriptureDefaults]);
+  // Does the stream compositor show a lyric band? (Studio layout + window open.) Refreshed on
+  // mount, when this view regains focus and on every stream status change.
+  useEffect(() => {
+    let alive = true;
+    const check = async () => {
+      try {
+        const [studio, st] = await Promise.all([window.cue.output.stream.getStudio(), window.cue.output.stream.status()]);
+        if (alive) setStreamLtBand(!!(studio?.layout?.lyricsOverFeed && (st?.active || st?.previewing)));
+      } catch { if (alive) setStreamLtBand(false); }
+    };
+    check();
+    const off = window.cue.on('stream:status', check);
+    return () => { alive = false; off?.(); };
+  }, [viewActive]);
 
   // Resolve the theme cascade: gather the app default + this service's theme + every
   // item override actually in use, load each once (parsed style + resolved bg path),
@@ -213,11 +280,15 @@ export default function OperatorView({
         let style = null;
         // Normalise to the text-style shape so ANY theme — including a presentation
         // token theme — renders correctly as a song/scripture look (one look, any surface).
-        try { style = t.style_json ? normalizeLookStyle(JSON.parse(t.style_json)) : null; } catch { style = null; }
+        { const parsed = safeParse(t.style_json, null); try { style = parsed ? normalizeLookStyle(parsed) : null; } catch { style = null; } }
         let bgPath = t.background_path || null;
         // A media theme may carry an unresolved library ref — resolve it to a path.
         if (!bgPath && style?.bgRef) {
-          try { bgPath = (await window.cue.backgrounds.download(style.bgRef))?.path || null; } catch {}
+          try { bgPath = (await window.cue.backgrounds.download(style.bgRef))?.path || null; } catch { bgPath = null; }
+          if (!bgPath && !bgWarnedRef.current.has(id)) {
+            bgWarnedRef.current.add(id);
+            toast.show({ message: `Couldn't download the background for ${t.name || 'a theme'}. Showing it without one.`, duration: 7000 });
+          }
         }
         map[id] = { style, bgPath };
       }
@@ -301,9 +372,9 @@ export default function OperatorView({
   // Always call the LATEST handleScriptureLive (it closes over live scripture style /
   // background / split state, which load after mount) — mirrors shortcutRef below.
   const scriptureLiveRef = useRef(null);
-  const goLiveFromPassage = useCallback((passage) => {
+  const goLiveFromPassage = useCallback((passage, opts) => {
     const v = passageToVerse(passage);
-    if (v) scriptureLiveRef.current?.(v);
+    if (v) scriptureLiveRef.current?.(v, opts);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -333,7 +404,7 @@ export default function OperatorView({
       });
       // Interim never auto-airs; only the confirmed commit can go live.
       if (!d.interim && d.action === 'live') {
-        goLiveFromPassage(passage); previewCandidateRef.current = null;
+        goLiveFromPassage(passage, { auto: true }); previewCandidateRef.current = null;
       } else if (d.action === 'preview') {
         // Stage only when this candidate isn't already in preview — the commit
         // confirming an interim must not re-stage (would flicker the monitor).
@@ -491,7 +562,7 @@ export default function OperatorView({
   }, [serviceData]);
 
   const shortcutRef = useRef({});
-  shortcutRef.current = { handleNextSlide, handlePrevSlide, handleNextLiveSlide, handlePrevLiveSlide, handleGo, handleClear, handleLogo, handleLiveToggle, handleRemoteSelect, handleAutoAdvance, handleJumpLiveSlide, handleSelectAll, handleEscape, handleDuplicateSelection };
+  shortcutRef.current = { handleNextSlide, handlePrevSlide, handleNextLiveSlide, handlePrevLiveSlide, handleGo, handleClear, handleLogo, handleLiveToggle, handleRemoteSelect, handleAutoAdvance, handleJumpLiveSlide, handleSelectAll, handleEscape, handleDuplicateSelection, handleDeleteKey };
 
   if (transportRef) {
     transportRef.current = { go: handleGo, clear: handleClear, logo: handleLogo };
@@ -508,6 +579,7 @@ export default function OperatorView({
 
   // Debounce the "no output windows" toast so repeated GO presses don't stack toasts.
   const outputWarnRef = useRef(0);
+  const autoStageToastRef = useRef(0); // last 'detected verse staged, not aired' toast
 
   useEffect(() => {
     // canGo is true for a staged rundown item OR a detected/previewed scripture verse.
@@ -544,7 +616,7 @@ export default function OperatorView({
       }
 
       const el = document.activeElement;
-      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
+      if (shouldIgnoreTransportKey(el, e)) return;
 
       // `?` opens the shortcut cheatsheet (Shift+/). Operator-view only.
       if (viewActiveRef.current && e.key === '?') { e.preventDefault(); setHelpOpen((v) => !v); return; }
@@ -594,6 +666,12 @@ export default function OperatorView({
       if (sc.armJump) {
         const jIdx = JUMP_KEYS.indexOf(e.key.toLowerCase());
         if (jIdx >= 0) { e.preventDefault(); h.handleJumpLiveSlide(jIdx); return; }
+      }
+
+      // Delete / Backspace on a focused rundown row removes it (undo toast; never the live item).
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (h.handleDeleteKey(el)) e.preventDefault();
+        return;
       }
 
       // Space always drives LIVE forward; arrow keys drive PREVIEW (auto-GOing
@@ -670,7 +748,7 @@ export default function OperatorView({
     setAutoAdvanceStartAt(Date.now());
     const t = setTimeout(() => shortcutRef.current.handleAutoAdvance(), secs * 1000);
     return () => clearTimeout(t);
-  }, [liveItemId, liveSlideIdx, liveScripture, liveAdvanceSecs, displayMode]);
+  }, [liveItemId, liveSlideIdx, liveLtPage, liveScripture, liveAdvanceSecs, displayMode]);
 
   const refreshService = useCallback(() => {
     if (!activeServiceId) return;
@@ -772,7 +850,33 @@ export default function OperatorView({
     return { text: '', label: '' };
   }
 
-  function buildPayload(item, slideIdx) {
+  // What a lower-third channel shows for a presentation slide (shared with the
+  // editor and the operator LT monitor via shared/presentation-lt-text.js).
+  function ltPresentationFields(item, slide, page) {
+    const r = resolveLtPages(slide, item.presentation, ltPageDefaults);
+    const count = Math.max(1, r.pages.length);
+    const pg = Math.min(Math.max(0, page | 0), count - 1);
+    const lines = r.pages[pg]?.lines || [];
+    return {
+      ltLines: lines, ltText: lines.join('\n'), ltTitle: r.title || null, ltMode: r.mode,
+      ltPage: pg, ltPageCount: count,
+    };
+  }
+
+  // Pages only matter when something can show them: an active lower-third channel (screen or
+  // NDI) or the stream's lyric band. With none, Next moves slides exactly as it always did.
+  const hasLtOutput = streamLtBand || channels.some((c) => c.active && c.template === 'lowerthird');
+  // Number of lower-third pages for a rundown item's slide (1 = nothing to step through).
+  function ltPageCountFor(item, slideIdx) {
+    if (!hasLtOutput || !item || item.item_type !== 'presentation') return 1;
+    const slide = getSlides(item)[slideIdx];
+    if (!slide) return 1;
+    return Math.max(1, resolveLtPages(slide, item.presentation, ltPageDefaults).pages.length);
+  }
+
+  // `page` = which lower-third page of a presentation slide to carry; `step` marks a page-step
+  // re-send of the SAME slide, so fullscreen/stage/remote outputs hold instead of re-rendering.
+  function buildPayload(item, slideIdx, page = 0, step = false) {
     const slides = getSlides(item);
     const slide = slides[slideIdx];
     if (!slide) return null;
@@ -821,7 +925,18 @@ export default function OperatorView({
     if (item.item_type === 'presentation') {
       return {
         ...base,
-        text: slide.content || '', copyright: null, styleJson: null,
+        text: slide.content || '', copyright: null,
+        // Lower-third channels can't show the canvas: they render this derived text
+        // instead (lowerthird.js). `elements` below is untouched for fullscreen, whose
+        // presentation branch runs before it ever reads styleJson. The look is the
+        // effective theme as a TEXT style (effectiveTheme already normalises token
+        // themes); null → lowerthird.js defaults (centre aligned).
+        styleJson: mergeSlideStyle(null, effectiveTheme(item)?.style || null),
+        ...ltPresentationFields(item, slide, page),
+        // Stable identity of this slide: output templates compare it (with `ltPageStep`) to hold
+        // the canvas when only the lower-third page changed.
+        slideKey: `${item.id}:${slide.id ?? ''}:${slideIdx}`,
+        ltPageStep: !!step,
         backgroundPath: resolveBackground(item, slide),
         elements: slide.elements || [],
       };
@@ -844,8 +959,8 @@ export default function OperatorView({
       // inherited LIVE with any inline runs kept on top. So a reset/never-themed song
       // follows the theme; a song with a baked style keeps it until "Reset to theme".
       styleJson: (item.item_type === 'song' || item.item_type === 'scripture')
-        ? mergeSlideStyle(slide.style_json ? JSON.parse(slide.style_json) : null, effectiveTheme(item)?.style || null)
-        : (slide.style_json ? JSON.parse(slide.style_json) : null),
+        ? mergeSlideStyle(safeParse(slide.style_json, null), effectiveTheme(item)?.style || null)
+        : safeParse(slide.style_json, null),
       // The effective Max-Lines/slide cap (per-song → theme → global) — so the lower
       // third can INHERIT the same line budget as fullscreen and auto-fit to it (§A).
       slideMaxLines: item.item_type === 'song'
@@ -1147,7 +1262,20 @@ export default function OperatorView({
   // Send a single scripture verse live, straight from the Scriptures tab. This is
   // a non-rundown live source, so it clears any live rundown item and renders the
   // live monitor from a synthetic scripture item.
-  async function handleScriptureLive(v) {
+  // `opts.auto` = triggered by detection (not an operator click). An automatic
+  // trigger never airs while Logo/Clear owns the screen (displayMode 'logo'/'cleared';
+  // 'idle' = nothing ever aired, so there is nothing to knock off) — `output.go` would knock it
+  // off — so it stages to Preview instead; the operator's own Live/GO is unaffected.
+  async function handleScriptureLive(v, opts) {
+    if (opts?.auto && (displayModeRef.current === 'logo' || displayModeRef.current === 'cleared')) {
+      stageScripturePreview(v);
+      const now = Date.now();
+      if (now - autoStageToastRef.current > 30000) {
+        autoStageToastRef.current = now;
+        toast.show({ message: `Detected ${v.bookName} ${v.chapter}:${v.verse}. Staged in Preview because ${displayModeRef.current === 'logo' ? 'the logo is' : 'Clear is'} on screen.`, duration: 6000 });
+      }
+      return;
+    }
     const ref = `${v.bookName} ${v.chapter}:${v.verse}`;
     const splitVerses = await resolveSplitVerses(v);
     // A verse fired straight from the Scriptures tab is a non-rundown source, so it
@@ -1252,6 +1380,23 @@ export default function OperatorView({
     }
   }
 
+  // Step the live presentation slide's lower-third page by `dir` (+1 / -1). Returns true when it
+  // handled the press (there was a page to step to), false when the caller should move slides.
+  // The page re-sends the SAME slide with `step` set, so fullscreen/stage/remote outputs hold.
+  // Like every other Next, it goes through output.go (which also returns Logo/Clear to content),
+  // so behaviour under Logo/Clear is identical to a normal slide advance.
+  function stepLtPage(dir) {
+    if (!liveItem || liveScripture || liveItem.item_type !== 'presentation') return false;
+    const count = ltPageCountFor(liveItem, liveSlideIdx);
+    const target = liveLtPage + dir;
+    if (count <= 1 || target < 0 || target > count - 1) return false;
+    const payload = buildPayload(liveItem, liveSlideIdx, target, true);
+    if (!payload) return false;
+    window.cue.output.go(payload);
+    setLiveLtPage(target);
+    return true;
+  }
+
   // Space bar — advance the LIVE item forward. Within the live item it sends the
   // next slide; at the last slide it rolls into the next rundown item (and loads
   // it into preview too). Scripture-live (synthetic, not in the rundown) just
@@ -1263,6 +1408,9 @@ export default function OperatorView({
       return;
     }
     const slides = getSlides(liveItem);
+    // Presentation lower-third pages: step through the slide's pages first (screens hold the
+    // same slide), then move on to the next slide below.
+    if (stepLtPage(1)) return;
     if (liveSlideIdx < slides.length - 1) {
       const nextIdx = liveSlideIdx + 1;
       const payload = buildPayload(liveItem, nextIdx);
@@ -1297,6 +1445,9 @@ export default function OperatorView({
   function handlePrevLiveSlide() {
     if (!liveItem) { if (previewItem) handleGo(); return; }
     const slides = getSlides(liveItem);
+    // Mirror of Next: back through this slide's lower-third pages first. (The previous slide
+    // then lands on page 1 — predictable, same as GO.)
+    if (stepLtPage(-1)) return;
     if (liveSlideIdx > 0) {
       const idx = liveSlideIdx - 1;
       const payload = buildPayload(liveItem, idx);
@@ -1334,6 +1485,8 @@ export default function OperatorView({
     if (!liveItem) return;
     const slides = getSlides(liveItem);
     const atItemEnd = liveSlideIdx >= slides.length - 1;
+    // Finish a presentation slide's lower-third pages before looping/advancing the item.
+    if (liveItem.item_type === 'presentation' && liveLtPage < ltPageCountFor(liveItem, liveSlideIdx) - 1) { handleNextLiveSlide(); return; }
 
     // Loop within the item: at the last slide, bounce back to its first slide and
     // keep rotating (a self-contained announcement loop). A single-slide item just
@@ -1388,6 +1541,22 @@ export default function OperatorView({
   async function handleReorder(orderedIds) {
     await window.cue.services.reorderItems(activeServiceId, orderedIds);
     refreshService();
+  }
+
+  // Delete/Backspace with focus on a rundown row. Only goes through the existing remove
+  // paths (both show an Undo toast). The live item is never removed by a keypress.
+  // Returns true when the key was consumed.
+  function handleDeleteKey(el) {
+    if (!el?.closest?.('[aria-label="Rundown items"]')) return false;
+    const rowId = Number(el.closest('[data-item-id]')?.getAttribute('data-item-id'));
+    const ids = selectedIds.size > 0 ? [...selectedIds] : (previewItemId != null ? [previewItemId] : (Number.isFinite(rowId) ? [rowId] : []));
+    if (!ids.length) return false;
+    if (ids.includes(liveItemId)) {
+      toast.show({ message: "The live item can't be deleted with the keyboard. Use its remove button.", duration: 4000 });
+      return true;
+    }
+    if (ids.length > 1) handleBulkDelete(); else handleRemoveItem(ids[0]);
+    return true;
   }
 
   async function handleRemoveItem(itemId) {
@@ -1742,7 +1911,7 @@ export default function OperatorView({
   // baked style inherits it, so the operator preview matches audience output exactly
   // (mirrors buildPayload's styleJson resolution). Only content types are themed.
   const themeStyleFor = (it) =>
-    (it && (it.item_type === 'song' || it.item_type === 'scripture'))
+    (it && (it.item_type === 'song' || it.item_type === 'scripture' || it.item_type === 'presentation'))
       ? (effectiveTheme(it)?.style || null) : null;
   const previewThemeStyle = themeStyleFor(previewItem);
   const liveThemeStyle    = themeStyleFor(liveItem);
@@ -1772,7 +1941,7 @@ export default function OperatorView({
       {/* Top work area */}
       <div style={{ height: `${vPct}%` }} className="flex shrink-0 min-h-0 p-gutter gap-gutter">
         <div style={{ width: `${hPct}%` }} className="shrink-0 min-w-0 overflow-hidden">
-          <RundownPanel
+          <ErrorBoundary compact label="Rundown"><RundownPanel
             services={services}
             activeServiceId={activeServiceId}
             serviceData={serviceData}
@@ -1801,7 +1970,7 @@ export default function OperatorView({
             liveSlideIdx={liveSlideIdx}
             liveSlideCount={getSlides(liveItem).length}
             autoAdvanceStartAt={autoAdvanceStartAt}
-          />
+          /></ErrorBoundary>
         </div>
 
         {/* Horizontal resize handle */}
@@ -1814,11 +1983,13 @@ export default function OperatorView({
         />
 
         <div className="flex-1 min-w-0 overflow-hidden">
-          <PreviewLivePanel
+          <ErrorBoundary compact label="Preview and Live"><PreviewLivePanel
             previewItem={previewItem}
             liveItem={liveItem}
             previewSlideIdx={previewSlideIdx}
             liveSlideIdx={liveSlideIdx}
+            liveLtPage={liveLtPage}
+            ltPageDefaults={ltPageDefaults}
             displayMode={displayMode}
             liveMediaStartAt={liveMediaStartAt}
             onRestartMedia={handleRestartMedia}
@@ -1847,12 +2018,13 @@ export default function OperatorView({
               shortcutsRef.current.armJump = next;
               await window.cue.settings.set('shortcut_arm_jump', next);
             }}
-          />
+          /></ErrorBoundary>
         </div>
       </div>
 
       {/* Scripture detection strip (shown once enabled in Settings or armed via the Scriptures-tab mic) */}
       {(detectCfg?.enabled || detectArmed) && (
+        <ErrorBoundary compact label="Scripture detection">
         <ScriptureDetectionPanel
           armed={detectArmed}
           onToggleArm={onToggleDetect}
@@ -1863,6 +2035,7 @@ export default function OperatorView({
           onGoLive={(s) => { goLiveFromPassage(s.passage); if (previewCandidateRef.current === s.candidateId) previewCandidateRef.current = null; setDetectSuggestions((prev) => prev.filter((x) => x.id !== s.id)); }}
           onDismiss={(s) => { if (previewCandidateRef.current === s.candidateId) previewCandidateRef.current = null; setDetectSuggestions((prev) => prev.filter((x) => x.id !== s.id)); }}
         />
+        </ErrorBoundary>
       )}
 
       {/* Vertical resize handle */}
@@ -1876,7 +2049,7 @@ export default function OperatorView({
 
       {/* Library */}
       <div className="flex-1 min-h-0 overflow-hidden">
-        <LibraryPanel
+        <ErrorBoundary compact label="Library"><LibraryPanel
           activeServiceId={activeServiceId}
           onThemesChanged={() => setThemeTick((t) => t + 1)}
           onApplyThemeToItem={handleApplyThemeToItem}
@@ -1908,7 +2081,7 @@ export default function OperatorView({
           refreshTick={bgRefreshTick + songEditTick}
           focusSearchRef={focusSearchRef}
           cycleTabRef={cycleLibraryTabRef}
-        />
+        /></ErrorBoundary>
       </div>
 
       {helpOpen && <ShortcutsOverlay onClose={() => setHelpOpen(false)} />}

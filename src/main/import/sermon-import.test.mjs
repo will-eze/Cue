@@ -4,7 +4,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import zlib from 'zlib';
-import { findScriptureRefs, buildSermonStructure, extractText } from './sermon-import.js';
+import { findScriptureRefs, buildSermonStructure, extractText, docxXmlToText } from './sermon-import.js';
 
 let pass = 0, fail = 0;
 const ok = (label, cond) => { if (cond) pass++; else { fail++; console.error(`✗ ${label}`); } };
@@ -274,6 +274,56 @@ function crc32(buf) {
     for (let j = 0; j < 8; j++) crc = (crc >>> 1) ^ (0xEDB88320 & -(crc & 1));
   }
   return (~crc) >>> 0;
+}
+
+// ── audit regressions ─────────────────────────────────────────────────────────
+{
+  eq('cross-chapter ref kept whole', findScriptureRefs('Hebrews 11:1-12:2 says').map((r) => r.ref), ['Hebrews 11:1-12:2']);
+  eq('verse list kept', findScriptureRefs('John 3:16-18,20').map((r) => r.ref), ['John 3:16-18,20']);
+  eq('First John is 1 John', findScriptureRefs('First John 4:8').map((r) => r.ref), ['1 John 4:8']);
+  eq('Roman numeral + dot verse sep', findScriptureRefs('II Timothy 3.16').map((r) => r.ref), ['2 Timothy 3:16']);
+  eq('Jude 5 is verse 5', findScriptureRefs('Jude 5').map((r) => r.ref), ['Jude 1:5']);
+  eq('"I am 30" is not Amos', findScriptureRefs('I am 30 years old').length, 0);
+  eq('en-dash range', findScriptureRefs('Rev 22:20–21').map((r) => r.ref), ['Revelation 22:20-21']);
+}
+{
+  // A standalone reference line under a heading: no empty/duplicate heading slide.
+  const { slides } = buildSermonStructure('The Power of Grace\n\n2. Grace Teaches\nTitus 2:11-12\nGrace teaches us to say no.\n');
+  eq('heading appears once', slides.filter((s) => /Grace Teaches/.test(s.title || '')).length, 1);
+  ok('no empty bullet slide for heading', !slides.some((s) => s.role === 'point' && !(s.bullets || []).length));
+  ok('ref still becomes a scripture slide', slides.some((s) => s.role === 'scripture' && s.reference === 'Titus 2:11-12'));
+}
+{
+  const { slides } = buildSermonStructure('Notes\n\nDr. Jones met Mr. Smith at St. Paul’s. They talked for C. S. Lewis hours. It ended.', { title: 'Notes' });
+  const b = slides.flatMap((s) => s.bullets || []);
+  eq('abbreviations do not split sentences', b, ['Dr. Jones met Mr. Smith at St. Paul’s.', 'They talked for C. S. Lewis hours.', 'It ended.']);
+}
+{
+  const long = 'alpha beta gamma, ' .repeat(30).trim();
+  const { slides } = buildSermonStructure('T\n\n## Heading\n' + long + '\n- short\n', { title: 'T' });
+  const b = slides.flatMap((s) => s.bullets || []);
+  ok('long bullet is not truncated', b.join(' ').replace(/\s+/g, ' ').includes(long.replace(/,$/, '')) || b.join(' ').split('gamma').length - 1 === 30);
+  ok('no ellipsis truncation', !b.some((x) => x.endsWith('…')));
+  ok('pieces are slide-sized', b.every((x) => x.length <= 160));
+}
+{
+  eq('BOM stripped from title', buildSermonStructure('\ufeffGrace Alone\n\nbody text here.').title, 'Grace Alone');
+}
+{
+  const xml = '<w:p><w:pPr><w:tabs><w:tab w:val="left" w:pos="720"/></w:tabs></w:pPr><w:r><w:t>Hello</w:t></w:r></w:p>'
+    + '<w:p><w:r><w:instrText> HYPERLINK "https://x.test" </w:instrText></w:r><w:r><w:t>Link</w:t></w:r></w:p>'
+    + '<w:p><w:del><w:r><w:delText>gone</w:delText></w:r></w:del><w:r><w:t>kept</w:t></w:r></w:p>'
+    + '<mc:AlternateContent><mc:Choice><w:p><w:r><w:t>Box</w:t></w:r></w:p></mc:Choice><mc:Fallback><w:p><w:r><w:t>Box</w:t></w:r></w:p></mc:Fallback></mc:AlternateContent>';
+  eq('docx: tab stops, field codes, deletions, fallback dups dropped', docxXmlToText(xml), 'Hello\nLink\nkept\nBox\n');
+}
+{
+  eq('outline path: First John / II Tim', findScriptureRefs('See First John 4:8 and II Tim 3:16.').map((r) => r.ref), ['1 John 4:8', '2 Timothy 3:16']);
+  const st = buildSermonStructure('GRACE AND TRUTH\nJohn 1:14-18\n\n1. WALKING IN LOVE II Tim 3:16\n\n(i) Love is patient – First John 4:8; Romans 8:28. Because God is love, we love.\n(ii) Love endures – II Cor 5:17; Mark 5 minutes ago was long. Then he left.\n');
+  const all = JSON.stringify(st);
+  ok('outline: II Tim anchor peeled off heading', all.includes('2 Timothy 3:16') && !/WALKING IN LOVE II/.test(all));
+  ok('outline: II Cor in 2nd sub-point list, false positive ignored', all.includes('2 Corinthians 5:17') && !st.slides.some((x) => /Mark 5/.test(x.caption || '')));
+  ok('outline: First John in sub-point ref list', all.includes('1 John 4:8') && all.includes('Romans 8:28'));
+  eq('outline: false positive not a ref', findScriptureRefs('We waited Mark 5 minutes ago.').length, 0);
 }
 
 console.log(`\nsermon-import: ${pass} passed, ${fail} failed`);

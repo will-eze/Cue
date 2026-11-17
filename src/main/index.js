@@ -40,6 +40,7 @@ import * as embedBin from './scripture-detect/embed-bin.js';
 import { checkForUpdate } from './update/updater.js';
 import { installAppMenu } from './app-menu.js';
 import * as settings from './db/settings.js';
+import { parseRange } from './remote/media-serve.js';
 
 // Must be called synchronously before app is ready
 protocol.registerSchemesAsPrivileged([
@@ -62,6 +63,37 @@ const MEDIA_MIME = {
 };
 
 let mainWindow;
+let quitting = false;
+
+// Global safety net. Electron's default for an uncaught main-process exception is a
+// blocking error dialog, which stalls a live service; log and keep running instead.
+// (No operator-notice channel exists for generic errors, so this is log-only.)
+process.on('uncaughtException', (err) => {
+  console.error('[Cue] uncaughtException:', err && err.stack ? err.stack : err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[Cue] unhandledRejection:', reason && reason.stack ? reason.stack : reason);
+});
+
+// Single instance: a second launch would open the same SQLite file and, worse, run the
+// YouTube cache wipe / purge against the first instance's live session. The headless
+// installer `--prefetch` run is exempt (it never opens a window or the DB).
+const isPrefetchRun = process.argv.some((a) => a.startsWith('--prefetch'));
+const gotInstanceLock = isPrefetchRun ? true : app.requestSingleInstanceLock();
+if (!gotInstanceLock) {
+  // exit(), not quit(): quit runs the will-quit handlers (YouTube wipeCache, DB snapshot)
+  // against the FIRST instance's live data.
+  app.exit(0);
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
+}
+app.on('before-quit', () => { if (gotInstanceLock) quitting = true; });
 
 // Containment guard for the cue-media:// / cue-thumb:// protocols. Every file they
 // serve (media, thumbnails + their source, user fonts, yt-cache, bin) lives under
@@ -127,6 +159,54 @@ function createMainWindow() {
     );
   }
 
+  // Windows/Linux: closing the operator window must quit the app, otherwise the
+  // fullscreen output windows stay up with no UI. Confirm first if outputs are on.
+  // macOS keeps its dock-click behaviour (operator window can be re-opened).
+  mainWindow.on('close', (e) => {
+    if (isMac || quitting) return;
+    let outputsOn = false;
+    try { outputsOn = !!outputManager.getState()?.outputsEnabled; } catch {}
+    if (outputsOn) {
+      const choice = dialog.showMessageBoxSync(mainWindow, {
+        type: 'warning',
+        buttons: ['Quit', 'Cancel'],
+        defaultId: 1,
+        cancelId: 1,
+        title: 'Quit Cue',
+        message: 'Outputs are still on. Quit Cue and close all outputs?',
+      });
+      if (choice !== 0) { e.preventDefault(); return; }
+    }
+    quitting = true;
+    app.quit();
+  });
+
+  // Operator renderer recovery: outputs live in their own windows and keep running, so
+  // if the operator UI dies, reload it and it re-reads output state from main on load.
+  // Capped (3 per minute) so a crash on load can't spin forever. `unresponsive` is
+  // log-only: a long import can legitimately block the UI for a while.
+  const operatorReloads = [];
+  const win = mainWindow;
+  win.webContents.on('render-process-gone', (_e, details) => {
+    const reason = details && details.reason;
+    if (reason === 'clean-exit' || quitting) return;
+    console.error('[Cue] operator renderer gone:', reason, details && details.exitCode);
+    const now = Date.now();
+    while (operatorReloads.length && now - operatorReloads[0] > 60000) operatorReloads.shift();
+    if (operatorReloads.length >= 3) {
+      console.error('[Cue] operator renderer crashed 3 times in 60s, not reloading again');
+      return;
+    }
+    operatorReloads.push(now);
+    setTimeout(() => {
+      try {
+        if (!win.isDestroyed()) win.reload();
+      } catch (err) { console.error('[Cue] operator reload failed:', err); }
+    }, 300);
+  });
+  win.on('unresponsive', () => console.warn('[Cue] operator window unresponsive'));
+  win.on('responsive', () => console.log('[Cue] operator window responsive again'));
+
   mainWindow.on('closed', () => { mainWindow = null; });
   return mainWindow;
 }
@@ -165,7 +245,8 @@ async function runPrefetch(arg) {
   log('done');
 }
 
-app.whenReady().then(async () => {
+async function boot() {
+  if (!gotInstanceLock) return; // another instance owns the data; we are quitting
   const prefetchArg = process.argv.find((a) => a.startsWith('--prefetch'));
   if (prefetchArg) {
     await runPrefetch(prefetchArg);
@@ -216,18 +297,17 @@ app.whenReady().then(async () => {
       };
 
       if (rangeHeader) {
-        const match = /bytes=(\d*)-(\d*)/.exec(rangeHeader);
-        const start = match[1] ? parseInt(match[1], 10) : 0;
-        const end   = match[2] ? parseInt(match[2], 10) : stat.size - 1;
-        // Defensive: a range whose start is at/past EOF (e.g. a file being written, or
-        // a malformed request) must not hand fs.createReadStream an invalid window.
-        // Answer 416 so Chromium backs off cleanly instead of hanging on a bad stream.
-        if (start >= stat.size) {
+        const range = parseRange(rangeHeader, stat.size);
+        // A range at/past EOF (or malformed numerically) must not hand
+        // fs.createReadStream an invalid window. Answer 416 so Chromium backs off.
+        if (range === 'unsatisfiable') {
           return new Response(null, {
             status: 416,
             headers: { 'Content-Range': `bytes */${stat.size}`, 'Accept-Ranges': 'bytes' },
           });
         }
+        if (range) {
+        const { start, end } = range;
         const chunkSize = end - start + 1;
         // STREAM the requested range — never buffer it. A media element opens
         // playback with `bytes=0-` (the whole remaining file); reading that into one
@@ -249,9 +329,10 @@ app.whenReady().then(async () => {
             ...cacheHeaders,
           },
         });
+        }
       }
 
-      // No range header (images, or a client that wants the whole file). Stream it
+      // No (usable) range header (images, or a client that wants the whole file). Stream it
       // too, so a large asset never lands in a single buffer.
       const fullStream = fs.createReadStream(filePath);
       fullStream.on('error', () => {});
@@ -445,8 +526,10 @@ app.whenReady().then(async () => {
   // Ephemeral YouTube downloads never survive a session. Wipe any leftover files
   // from a previous run (e.g. a crash where will-quit never fired), and drop the
   // single-use cues themselves so they don't reappear in the rundown and re-download.
-  youtube.wipeCache();
-  purgeYoutubeItems();
+  if (gotInstanceLock) {
+    youtube.wipeCache();
+    purgeYoutubeItems();
+  }
 
   registerSongsIpc();
   registerServicesIpc();
@@ -470,7 +553,8 @@ app.whenReady().then(async () => {
   createMainWindow();
   outputManager.setMainWindow(mainWindow);
   scriptureDetect.setMainWindow(mainWindow);
-  await scriptureDetect.init();
+  // Non-critical: a detector/remote failure must not take the whole app down at boot.
+  try { await scriptureDetect.init(); } catch (e) { console.error('[Cue] scripture detect init failed:', e); }
 
   // Network control API: read state from the manager, forward transport commands
   // to the renderer (which owns rundown/preview/live and resolves GO payloads),
@@ -507,9 +591,12 @@ app.whenReady().then(async () => {
   outputManager.setRemoteStateListener(() => remoteServer.pushState());
   // Push program bus deltas (slide / transport / overlay) to browser viewers.
   outputManager.setRemoteProgramListener((delta) => remoteServer.pushProgram(delta));
-  await applyRemoteConfig();
+  try { await applyRemoteConfig(); } catch (e) { console.error('[Cue] remote config failed:', e); }
 
   const unresolvedChannels = await outputManager.init();
+  // The startup send below can fire before React subscribes; let the renderer pull it once.
+  ipcMain.removeHandler('output:getUnresolved');
+  ipcMain.handle('output:getUnresolved', () => unresolvedChannels);
   mainWindow.webContents.once('did-finish-load', () => {
     if (unresolvedChannels.length > 0) {
       mainWindow.webContents.send('output:unresolved-channels', unresolvedChannels);
@@ -541,13 +628,34 @@ app.whenReady().then(async () => {
     outputManager.setMainWindow(mainWindow);
     scriptureDetect.setMainWindow(mainWindow);
   });
+}
+
+app.whenReady().then(boot).catch((err) => {
+  console.error('[Cue] Startup failed:', err && err.stack ? err.stack : err);
+  let dataDir = '(unknown)';
+  try { dataDir = app.getPath('userData'); } catch {}
+  try {
+    dialog.showErrorBox(
+      'Cue could not start',
+      'Something went wrong while Cue was starting up, so it has to close.\n\n' +
+      'Your data has not been deleted.\n\n' +
+      `Database: ${path.join(dataDir, 'cue.db')}\n` +
+      `Automatic backups: ${path.join(dataDir, 'backups')}\n\n` +
+      `Details: ${(err && err.message) || err}\n\n` +
+      'If this keeps happening, restart your computer and try again. If it still fails, ' +
+      'contact support and keep the folders above untouched.'
+    );
+  } catch {}
+  app.exit(1);
 });
 
 app.on('window-all-closed', () => {
+  if (!gotInstanceLock) return;
   if (process.platform !== 'darwin') app.quit();
 });
 
 app.on('will-quit', () => {
+  if (!gotInstanceLock) return; // never touch the first instance's data
   // Auto-backup FIRST, while the cue.db handle is still open (it checkpoints the WAL).
   autoSnapshot();
   outputManager.closeAll();

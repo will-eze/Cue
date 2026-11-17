@@ -1,9 +1,16 @@
+// Log-only failure visibility (shared guard with the other output scripts).
+if (!window.__cueErrLog) {
+  window.__cueErrLog = true;
+  window.addEventListener('error', (e) => { try { console.error('[cue-output] uncaught error:', e.message, e.filename + ':' + e.lineno); } catch {} });
+  window.addEventListener('unhandledrejection', (e) => { try { console.error('[cue-output] unhandled rejection:', e.reason); } catch {} });
+}
+
 const ltDiv     = document.getElementById('lowerthird');
 const textEl    = document.getElementById('text');
 const copyright = document.getElementById('copyright');
 
 function pathToUrl(p) {
-  if (!p) return null;
+  if (!p || typeof p !== 'string') return null;
   // Normalize Windows backslashes and ensure a leading / before encoding
   const normalized = p.replace(/\\/g, '/');
   const pathPart = normalized.startsWith('/') ? normalized : '/' + normalized;
@@ -15,9 +22,15 @@ function esc(str) {
 }
 
 function renderWithRuns(text, runs, scale = 1) {
-  if (!text) return '';
-  if (!runs || runs.length === 0) return esc(text).replace(/\n/g, '<br>');
-  const sorted = [...runs].sort((a, b) => a.start - b.start);
+  if (text == null || text === '') return '';
+  text = String(text);
+  // Drop malformed runs (null entries, non-numeric offsets) rather than throwing.
+  const good = Array.isArray(runs)
+    ? runs.filter((r) => r && typeof r === 'object' && Number.isFinite(Number(r.start)) && Number.isFinite(Number(r.end)))
+        .map((r) => ({ ...r, start: Number(r.start), end: Number(r.end) }))
+    : [];
+  if (good.length === 0) return esc(text).replace(/\n/g, '<br>');
+  const sorted = good.sort((a, b) => a.start - b.start);
   let html = '', pos = 0;
   for (const run of sorted) {
     const s = Math.min(Math.max(0, run.start), text.length);
@@ -206,6 +219,7 @@ function clearBand() {
 const LOGO_VIDEO_EXT = ['mp4', 'webm', 'mov', 'm4v', 'avi', 'mkv'];
 function showLtLogo(path, scaleMode) {
   const url = pathToUrl(path);
+  if (!url) { clearBand(); return; }
   const isVideo = LOGO_VIDEO_EXT.includes(String(path).split('.').pop().toLowerCase());
   const fit = scaleMode === 'contain' ? 'contain' : 'cover'; // fullscreen defaults to cover
   ltDiv.style.background = 'transparent';
@@ -238,13 +252,56 @@ function fitSplitText(maxPx, maxH) {
   }
 }
 
+// Presentation pages are explicit lines (each its own nowrap block), so fit both ways: shrink the
+// font until the block is within maxH tall AND no line is wider than the band.
+function fitPresLines(maxPx, maxH) {
+  const cap = Math.max(20, maxPx);
+  textEl.style.maxHeight = maxH + 'px';
+  textEl.style.overflow = 'hidden';
+  const fits = () => textEl.scrollHeight <= maxH && textEl.scrollWidth <= textEl.clientWidth + 1;
+  textEl.style.fontSize = cap + 'px';
+  if (fits()) return;
+  let lo = 20, hi = cap;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    textEl.style.fontSize = mid + 'px';
+    if (fits()) lo = mid; else hi = mid;
+  }
+  textEl.style.fontSize = lo + 'px';
+}
+
+// The lines + title a presentation payload puts in the band. Current payloads carry `ltLines`
+// (one string per line, the current page) and `ltTitle`; an older payload only has `ltText`
+// (title as its first line), which is split here so both render the same way.
+function presLinesOf(payload) {
+  if (payload.ltMode === 'hide') return { title: '', lines: [] };
+  const title = (typeof payload.ltTitle === 'string' ? payload.ltTitle : '').trim();
+  if (Array.isArray(payload.ltLines)) {
+    return { title, lines: payload.ltLines.map((l) => String(l ?? '').trim()).filter(Boolean) };
+  }
+  let lines = (typeof payload.ltText === 'string' ? payload.ltText : '').split('\n').map((l) => l.trim()).filter(Boolean);
+  if (title && lines[0] === title) lines = lines.slice(1);
+  return { title, lines };
+}
+
 function renderProgram(payload) {
   if (!showProgram || !payload) { clearBand(); return; }
 
-  const { type, text, copyright: copy, styleJson } = payload;
+  if (typeof payload !== 'object') { clearBand(); return; }
+  const { type } = payload;
+  const copy = typeof payload.copyright === 'string' ? payload.copyright : '';
+  // A non-object style is treated as null (= all-default, centre aligned), never a bail-out.
+  const styleJson = payload.styleJson && typeof payload.styleJson === 'object' ? payload.styleJson : null;
 
-  // clear / foreground-media / live-input / presentation blank the lower-third band.
-  if (type === 'clear' || payload.media || payload.liveInput || payload.elements) { clearBand(); return; }
+  // clear / foreground-media / live-input blank the lower-third band.
+  if (type === 'clear' || payload.media || payload.liveInput) { clearBand(); return; }
+  // Presentation slide: the full canvas (`elements`) never fits a band, so the operator
+  // sends the slide's derived text (`ltText`, optional `ltTitle` first line, see
+  // shared/presentation-lt-text.js). No text / hidden / image-only slide → blank band.
+  const isPres = !!payload.elements;
+  const pres = isPres ? presLinesOf(payload) : null;
+  if (isPres && !pres.lines.length && !pres.title) { clearBand(); return; }
+  const text = isPres ? '' : (typeof payload.text === 'string' ? payload.text : '');
   // Logo: an L3 channel shows a logo ONLY when it has its OWN logo override — no global
   // fallback (so by default an L3 output stays blank on a logo cue while the fullscreen
   // output shows the global logo). When set, it renders FULLSCREEN so the operator can
@@ -279,7 +336,7 @@ function renderProgram(payload) {
   const sv = payload.scriptureVerses;
   if (Array.isArray(sv) && sv.length > 1) {
     textEl.classList.add('split');
-    textEl.innerHTML = sv.map((b) =>
+    textEl.innerHTML = sv.filter((b) => b && typeof b === 'object').map((b) =>
       `<div class="split-verse"><div class="split-verse-body">${renderWithRuns(b.text || '', ltStyle?.runs, scale)}</div>`
       + `<div class="split-verse-attr">${esc(b.attribution || '')}</div></div>`).join('');
     copyright.textContent = '';
@@ -290,7 +347,14 @@ function renderProgram(payload) {
     applyLtAnim(appearing ? (styleJson && styleJson.lt && styleJson.lt.anim) : null);
     return;
   }
-  textEl.innerHTML = renderWithRuns(text || '', ltStyle?.runs, scale);
+  if (isPres) {
+    // Plain text through the same band as lyrics: one nowrap block per page line, the title
+    // (repeated on every page) as a bolder first line.
+    textEl.innerHTML = (pres.title ? '<div style="font-weight:700;white-space:nowrap">' + esc(pres.title) + '</div>' : '')
+      + pres.lines.map((l) => '<div style="white-space:nowrap">' + esc(l) + '</div>').join('');
+  } else {
+    textEl.innerHTML = renderWithRuns(text || '', ltStyle?.runs, scale);
+  }
   // Lower-third line budget. Primary tool is the shared Max-Lines/slide cap (§A) which
   // paginates the slide; the L3 INHERITS that cap by default (payload.slideMaxLines) and
   // auto-fits to it. A theme may override with its own tighter cap (lt.maxLines). Either
@@ -301,12 +365,15 @@ function renderProgram(payload) {
   const baseFontPx = (Number(ltStyle?.fontSize) || 72) * scale;
   const lh = Number(ltStyle?.lineSpacing) || 1.2;
   const capH = ltMax > 0 ? Math.ceil(ltMax * lh * baseFontPx) : Infinity;
-  const maxH = Math.min(capH, Math.round(window.innerHeight * 0.45));
-  if (Number.isFinite(maxH)) fitSplitText(baseFontPx, maxH);
+  if (isPres) fitPresLines(baseFontPx, Math.round(window.innerHeight * 0.45));
+  else {
+    const maxH = Math.min(capH, Math.round(window.innerHeight * 0.45));
+    if (Number.isFinite(maxH)) fitSplitText(baseFontPx, maxH);
+  }
   applyLtAnim(appearing ? (styleJson && styleJson.lt && styleJson.lt.anim) : null);
   copyright.textContent = copy || '';
   // Scripture attribution ("John 1:1 (KJV)") right-aligned + stylable; song copyright inherits.
-  applyCopyrightStyle(copyright, payload.copyrightStyle, payload.copyrightAlign === 'right' ? 'right' : '');
+  applyCopyrightStyle(copyright, payload.copyrightStyle && typeof payload.copyrightStyle === 'object' ? payload.copyrightStyle : null, payload.copyrightAlign === 'right' ? 'right' : '');
 }
 
 // The lyric band never contains a video, so transitions are always safe here — the
@@ -315,17 +382,24 @@ function renderProgram(payload) {
 // the content-mode toggle below snaps (it's a mode change, not a slide change).
 const stageEl = document.getElementById('lowerthird');
 
+// A malformed payload must never throw out of an IPC handler (it would leave the band
+// half-rendered on air): fall back to a clean, blank band.
+function safeRender(payload) {
+  try { renderProgram(payload); }
+  catch (err) { console.error('[lowerthird] render failed', err); try { clearBand(); } catch {} }
+}
+
 window.cueOutput.onSlideUpdate((payload) => {
   lastPayload = payload;
-  if (window.CueTransitions) window.CueTransitions.run(stageEl, payload.transition, () => renderProgram(payload));
-  else renderProgram(payload);
+  if (window.CueTransitions) window.CueTransitions.run(stageEl, payload && payload.transition, () => safeRender(payload));
+  else safeRender(payload);
 });
 
 // Live content-mode toggle — switch the lyric band on/off without a window reload.
 if (window.cueOutput.onContentMode) {
   window.cueOutput.onContentMode((m) => {
-    showProgram = m.program !== 0;
-    renderProgram(lastPayload);
+    showProgram = !m || m.program !== 0;
+    safeRender(lastPayload);
   });
 }
 

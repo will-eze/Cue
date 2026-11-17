@@ -63,6 +63,7 @@ contextBridge.exposeInMainWorld('cue', {
     logo: () => ipcRenderer.invoke('output:logo'),
     setLive: (enabled) => ipcRenderer.invoke('output:setLive', enabled),
     getState: () => ipcRenderer.invoke('output:getState'),
+    getUnresolved: () => ipcRenderer.invoke('output:getUnresolved'),
     media: {
       control: (action) => ipcRenderer.invoke('output:media:control', action),
       seek: (pos) => ipcRenderer.invoke('output:media:seek', pos),
@@ -193,6 +194,7 @@ contextBridge.exposeInMainWorld('cue', {
     deleteMany: (ids) => ipcRenderer.invoke('media:deleteMany', ids),
     deleteAll: () => ipcRenderer.invoke('media:deleteAll'),
     findUnused: () => ipcRenderer.invoke('media:findUnused'),
+    usage: (ids) => ipcRenderer.invoke('media:usage', ids),
     getDiskUsage: () => ipcRenderer.invoke('media:getDiskUsage'),
     getMediaDir: () => ipcRenderer.invoke('media:getMediaDir'),
     folders: {
@@ -333,6 +335,7 @@ contextBridge.exposeInMainWorld('cue', {
   on: (channel, callback) => {
     const allowed = [
       'output:unresolved-channels', 'output:state-changed',
+      'output:window-recovered', 'output:media-problem',
       'output:ndi-unavailable', 'output:ndi-sender-error', 'output:ndi-sender-ok',
       'output:multiview-captures',
       'output:media-transport',

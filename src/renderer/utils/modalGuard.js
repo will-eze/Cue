@@ -18,3 +18,13 @@ export function useModalGuard() {
     return () => { count--; };
   }, []);
 }
+
+// Same as useModalGuard but only counts while `active` is true — for components
+// that stay mounted while closed (e.g. a dropdown menu with an `open` prop).
+export function useModalGuardWhile(active) {
+  useEffect(() => {
+    if (!active) return undefined;
+    count++;
+    return () => { count--; };
+  }, [active]);
+}

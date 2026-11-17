@@ -2,9 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import MediaThumb from './MediaThumb';
 import { useModalGuard } from '../utils/modalGuard';
+import { useFocusTrap } from '../utils/useFocusTrap';
 
 export default function MediaPickerModal({ onSelect, onClose, initialId = null }) {
   useModalGuard();
+  const trapRef = React.useRef(null);
+  useFocusTrap(trapRef);
   const [assets, setAssets] = useState([]);
   const [selectedId, setSelectedId] = useState(initialId);
   const fileInputRef = useRef(null);
@@ -39,7 +42,7 @@ export default function MediaPickerModal({ onSelect, onClose, initialId = null }
 
   return createPortal(
     <div className="fixed inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
-      <div className="bg-surface-container-low border border-outline-variant/30 rounded-xl w-full max-w-2xl max-h-[80vh] flex flex-col shadow-2xl ring-1 ring-white/5">
+      <div ref={trapRef} role="dialog" aria-modal="true" className="bg-surface-container-low border border-outline-variant/30 rounded-xl w-full max-w-2xl max-h-[80vh] flex flex-col shadow-2xl ring-1 ring-white/5">
 
         {/* Header */}
         <div className="flex items-center px-lg py-md border-b border-outline-variant/30 bg-surface-container-high rounded-t-xl shrink-0">
@@ -47,7 +50,7 @@ export default function MediaPickerModal({ onSelect, onClose, initialId = null }
             <h2 className="text-headline-md font-bold text-on-surface">Select Background</h2>
             <p className="text-label-sm font-mono text-on-surface-variant">Media Library</p>
           </div>
-          <button
+          <button title="Close" aria-label="Close"
             onClick={onClose}
             className="btn-icon ml-auto"
           >✕</button>

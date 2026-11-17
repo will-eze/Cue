@@ -7,12 +7,26 @@
 // against Date.now() (never per-second IPC); media uses cue-media:// (never file://); the
 // confidence monitor is always muted (no audio tap).
 
+// Log-only failure visibility (shared guard with the other output scripts).
+if (!window.__cueErrLog) {
+  window.__cueErrLog = true;
+  window.addEventListener('error', (e) => { try { console.error('[cue-output] uncaught error:', e.message, e.filename + ':' + e.lineno); } catch {} });
+  window.addEventListener('unhandledrejection', (e) => { try { console.error('[cue-output] unhandled rejection:', e.reason); } catch {} });
+}
+
 const rootEl = document.getElementById('stage-root');
+
+// Wrap a repeating timer callback so a throw can't repeat noisily forever: logs the
+// first failure only, and the interval keeps running (it recovers once state is sane).
+function safeTick(name, fn) {
+  let logged = false;
+  return () => { try { fn(); } catch (e) { if (!logged) { logged = true; console.error('[cue-output] stage ' + name + ' tick failed:', e); } } };
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function pathToUrl(p) {
   if (!p) return null;
-  const normalized = p.replace(/\\/g, '/');
+  const normalized = String(p).replace(/\\/g, '/');
   const pathPart = normalized.startsWith('/') ? normalized : '/' + normalized;
   return 'cue-media://localhost' + pathPart.split('/').map(encodeURIComponent).join('/');
 }
@@ -67,19 +81,28 @@ function buildLayout(elements) {
   rootEl.innerHTML = '';
   nodes = { byId: new Map(), byType: {} };
 
-  (elements && elements.length ? elements : DEFAULT_ELEMENTS).forEach((spec, i) => {
+  const specs = Array.isArray(elements) && elements.length ? elements : DEFAULT_ELEMENTS;
+  specs.forEach((spec, i) => {
+    // One malformed element must not abort the layout or leave a half-built node whose
+    // missing refs would throw on every clock/timer tick: skip it entirely.
+    if (!spec || typeof spec !== 'object') return;
     const box = document.createElement('div');
-    box.className = 'stage-el ' + (TYPE_CLASS[spec.type] || '');
-    box.style.left   = spec.x + '%';
-    box.style.top    = spec.y + '%';
-    box.style.width  = spec.w + '%';
-    box.style.height = spec.h + '%';
-    box.style.zIndex = String(i + 1);
-    const node = { spec, box, refs: {} };
-    (BUILDERS[spec.type] || (() => {}))(node);
-    rootEl.appendChild(box);
-    nodes.byId.set(spec.id, node);
-    (nodes.byType[spec.type] = nodes.byType[spec.type] || []).push(node);
+    try {
+      box.className = 'stage-el ' + (TYPE_CLASS[spec.type] || '');
+      box.style.left   = spec.x + '%';
+      box.style.top    = spec.y + '%';
+      box.style.width  = spec.w + '%';
+      box.style.height = spec.h + '%';
+      box.style.zIndex = String(i + 1);
+      const node = { spec, box, refs: {} };
+      (BUILDERS[spec.type] || (() => {}))(node);
+      rootEl.appendChild(box);
+      nodes.byId.set(spec.id, node);
+      (nodes.byType[spec.type] = nodes.byType[spec.type] || []).push(node);
+    } catch (e) {
+      console.error('[cue-output] stage element skipped:', spec && spec.type, e);
+      try { box.remove(); } catch {}
+    }
   });
 
   // Re-apply all live state to the freshly-built nodes.
@@ -184,7 +207,7 @@ const FITTABLE = ['currentText', 'nextText', 'clock', 'timer', 'elapsedTimer', '
 function fitAllText() {
   if (fitRaf) cancelAnimationFrame(fitRaf);
   fitRaf = requestAnimationFrame(() => {
-    for (const type of FITTABLE) for (const node of nodesOf(type)) fitNode(node);
+    for (const type of FITTABLE) for (const node of nodesOf(type)) { try { fitNode(node); } catch (e) { console.error('[cue-output] stage fit failed:', e); } }
   });
 }
 function fitNode(node) {
@@ -254,7 +277,7 @@ function fmtClock(spec) {
 function tickClock() {
   for (const node of nodesOf('clock')) node.refs.value.textContent = fmtClock(node.spec);
 }
-setInterval(tickClock, 1000);
+setInterval(safeTick('clock', tickClock), 1000);
 
 // ── Presenter timer (countdown) + elapsed (count-up) ──────────────────────────
 // Remaining is allowed to go negative once time is up — the timer keeps counting
@@ -298,10 +321,11 @@ function startLocalCountdown() {
   stopLocalCountdown();
   // Keep ticking past zero into negative (overrun) — never auto-stop here. The
   // timer only stops on an explicit pause/reset command from the operator.
-  timerTick = setInterval(renderTimers, 200);
+  timerTick = setInterval(safeTick('timer', renderTimers), 200);
 }
 function stopLocalCountdown() { if (timerTick) { clearInterval(timerTick); timerTick = null; } }
 function applyTimerCmd(cmd) {
+  if (!cmd || typeof cmd !== 'object') return;
   stopLocalCountdown();
   if ('totalSeconds' in cmd) timer.totalSeconds = cmd.totalSeconds;
   if ('remainingSeconds' in cmd) { timer.remainingSeconds = cmd.remainingSeconds; timer.remainingAtStart = cmd.remainingSeconds; }
@@ -337,7 +361,7 @@ function startCounter(duration, loop) {
   stopCounter();
   if (!isFinite(duration) || duration <= 0) return;
   vcd = { active: true, loop: !!loop, duration };
-  vcdTick = setInterval(renderCounter, 250);
+  vcdTick = setInterval(safeTick('counter', renderCounter), 250);
   renderCounter();
 }
 function stopCounter() {
@@ -372,6 +396,14 @@ function showStageVideo(mediaPath, loop, transport) {
   stageVideoEl = v;
   stageVideoNodeId = node.spec.id;
   v.addEventListener('loadedmetadata', () => startCounter(v.duration, loop), { once: true });
+  // Missing/undecodable preview file: drop the element (no broken/black box) and log.
+  v.addEventListener('error', () => {
+    if (!v.getAttribute('src')) return; // clearStageVideo's `src = ''` teardown
+    if (v.error && v.error.code === 1) return;
+    console.error('[cue-output] stage video failed to load:', v.getAttribute('src'));
+    try { window.cueOutput?.reportProblem?.({ kind: 'stage-video', path: String(v.getAttribute('src')).slice(0, 500) }); } catch {}
+    if (stageVideoEl === v) { clearStageVideo(); stopCounter(); }
+  });
   stagePlayer = window.CueMediaPlayer.attach(v, { loop: !!loop, baseMuted: true, transport });
 }
 
@@ -427,11 +459,13 @@ function renderMessage(text) {
 function applyMessage() {
   renderMessage(resolveMessage());
 }
-setInterval(applyMessage, 1000);
+setInterval(safeTick('message', applyMessage), 1000);
 
 // ── IPC: slide updates ────────────────────────────────────────────────────────
-window.cueOutput.onSlideUpdate((payload) => {
-  const { type, text, nextText, media } = payload;
+function handleSlide(payload) {
+  if (!payload || typeof payload !== 'object') return;
+  const { type, text, nextText } = payload;
+  const media = payload.media && typeof payload.media === 'object' ? payload.media : null;
 
   if (type === 'content') {
     stageTransport = media ? (payload.transport || null) : null;
@@ -444,7 +478,7 @@ window.cueOutput.onSlideUpdate((payload) => {
       stopCounter();
       if (media) {
         const icon = media.type === 'audio' ? '♪' : '⊞';
-        lastContent = { text: icon + ' ' + (payload.title || media.path.split(/[\\/]/).pop()), nextText: nextText || '', ref: '' };
+        lastContent = { text: icon + ' ' + (payload.title || String(media.path || '').split(/[\\/]/).pop()), nextText: nextText || '', ref: '' };
       } else {
         lastContent = { text: text || '', nextText: nextText || '', ref };
       }
@@ -466,6 +500,19 @@ window.cueOutput.onSlideUpdate((payload) => {
   const isIdle = !lastContent.text && !lastContent.nextText;
   statusMode = isIdle ? 'idle' : 'cleared';
   renderContent(); applyMutedClass();
+}
+window.cueOutput.onSlideUpdate((payload) => {
+  try { handleSlide(payload); }
+  catch (e) {
+    // Failed mid-update: log once and fall back to a clean idle state rather than
+    // leaving stale/half-updated content.
+    console.error('[cue-output] stage slide update failed:', e);
+    try {
+      stageTransport = null; clearStageVideo(); stopCounter();
+      lastContent = { text: '', nextText: '', ref: '' }; statusMode = 'idle';
+      renderContent(); applyMutedClass();
+    } catch (e2) { console.error('[cue-output] stage fallback failed:', e2); }
+  }
 });
 
 // Keep the video countdown clock in sync with transport (pause freezes it, etc.).
@@ -474,10 +521,10 @@ if (window.cueOutput.onMediaTransport) {
 }
 
 // ── IPC: stage-specific ───────────────────────────────────────────────────────
-if (window.cueOutput.onStageLayout)   window.cueOutput.onStageLayout(({ elements }) => buildLayout(elements));
+if (window.cueOutput.onStageLayout)   window.cueOutput.onStageLayout((l) => { try { buildLayout(l && l.elements); } catch (e) { console.error('[cue-output] stage layout failed:', e); try { buildLayout(DEFAULT_ELEMENTS); } catch {} } });
 if (window.cueOutput.onStageTimer)    window.cueOutput.onStageTimer(applyTimerCmd);
-if (window.cueOutput.onStageMessage)  window.cueOutput.onStageMessage(({ text }) => { immediateMessage = text || ''; applyMessage(); });
-if (window.cueOutput.onStageSchedule) window.cueOutput.onStageSchedule(({ scheduled }) => { scheduledMessages = scheduled || []; applyMessage(); });
+if (window.cueOutput.onStageMessage)  window.cueOutput.onStageMessage((m) => { immediateMessage = (m && m.text) ? String(m.text) : ''; applyMessage(); });
+if (window.cueOutput.onStageSchedule) window.cueOutput.onStageSchedule((m) => { const sc = m && m.scheduled; scheduledMessages = Array.isArray(sc) ? sc.filter((x) => x && typeof x === 'object') : []; applyMessage(); });
 
 // Render the default layout immediately; the per-channel layout (stage:layout) replaces it.
 buildLayout(DEFAULT_ELEMENTS);

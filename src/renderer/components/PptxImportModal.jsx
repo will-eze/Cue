@@ -1,5 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useModalGuard } from '../utils/modalGuard';
+import { useFocusTrap } from '../utils/useFocusTrap';
 import { rasterizePdf } from '../utils/pdfRaster';
 
 const DOWNLOAD_URL = 'https://www.libreoffice.org/download/download-libreoffice/';
@@ -10,6 +12,9 @@ const DOWNLOAD_URL = 'https://www.libreoffice.org/download/download-libreoffice/
 //   rasterising → done. The deck becomes a native presentation whose slides each
 //   hold one full-bleed image, so it inherits every existing rundown control.
 export default function PptxImportModal({ onClose, onDone }) {
+  useModalGuard();
+  const trapRef = useRef(null);
+  useFocusTrap(trapRef);
   const [status, setStatus] = useState('checking'); // checking|missing|ready|converting|rasterizing|error
   const [detect, setDetect] = useState(null);
   const [error, setError] = useState('');
@@ -75,16 +80,30 @@ export default function PptxImportModal({ onClose, onDone }) {
 
   const busy = status === 'converting' || status === 'rasterizing';
 
+  // Own the keyboard while open (operator transport keys stand down), trap Tab,
+  // and let Esc close — except mid-operation, where closing would lose work.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== 'Escape' || busy) return;
+      e.preventDefault(); e.stopPropagation();
+      onCloseRef.current?.();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [busy]);
+
   return createPortal(
     <div className="fixed inset-0 z-[60] bg-background/80 backdrop-blur-sm flex items-center justify-center p-lg"
       onClick={busy ? undefined : onClose}>
-      <div onClick={(e) => e.stopPropagation()}
+      <div ref={trapRef} role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}
         className="w-[480px] max-w-full bg-surface-container-low rounded-xl border border-outline-variant/30 shadow-2xl ring-1 ring-white/5 overflow-hidden">
         <div className="flex items-center gap-sm px-lg h-12 bg-surface-container-high border-b border-outline-variant/30">
           <span className="material-symbols-outlined text-primary">slideshow</span>
           <span className="text-label-sm font-label-sm text-on-surface">Import PowerPoint</span>
           {!busy && (
-            <button onClick={onClose} className="ml-auto text-on-surface-variant hover:text-on-surface transition-colors">
+            <button onClick={onClose} title="Close" aria-label="Close" className="ml-auto text-on-surface-variant hover:text-on-surface transition-colors">
               <span className="material-symbols-outlined text-[18px]">close</span>
             </button>
           )}
@@ -142,7 +161,7 @@ export default function PptxImportModal({ onClose, onDone }) {
                   <p className="text-body-md text-on-surface">LibreOffice detected</p>
                   {detect?.version && <p className="text-label-sm font-label-sm text-on-surface-variant truncate">{detect.version}</p>}
                 </div>
-                <button onClick={check} title="Re-check" className="ml-auto text-on-surface-variant hover:text-on-surface transition-colors">
+                <button aria-label="Re-check" onClick={check} title="Re-check" className="ml-auto text-on-surface-variant hover:text-on-surface transition-colors">
                   <span className="material-symbols-outlined text-[16px]">refresh</span>
                 </button>
               </div>

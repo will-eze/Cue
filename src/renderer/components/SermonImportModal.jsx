@@ -1,5 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useModalGuard } from '../utils/modalGuard';
+import { useFocusTrap } from '../utils/useFocusTrap';
 import { extractPdfText } from '../utils/pdfText';
 
 // Sermon → Slides. Pick a sermon doc (PDF / .docx / .txt / .md), choose a theme
@@ -15,6 +17,9 @@ function baseName(p) {
 }
 
 export default function SermonImportModal({ onClose, onDone }) {
+  useModalGuard();
+  const trapRef = useRef(null);
+  useFocusTrap(trapRef);
   const [filePath, setFilePath] = useState('');
   const [title, setTitle] = useState('');
   const [themes, setThemes] = useState([]);
@@ -76,16 +81,30 @@ export default function SermonImportModal({ onClose, onDone }) {
 
   const busy = status === 'reading' || status === 'generating';
 
+  // Own the keyboard while open (operator transport keys stand down), trap Tab,
+  // and let Esc close — except mid-operation, where closing would lose work.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== 'Escape' || busy) return;
+      e.preventDefault(); e.stopPropagation();
+      onCloseRef.current?.();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [busy]);
+
   return createPortal(
     <div className="fixed inset-0 z-[60] bg-background/80 backdrop-blur-sm flex items-center justify-center p-lg"
       onClick={busy ? undefined : onClose}>
-      <div onClick={(e) => e.stopPropagation()}
+      <div ref={trapRef} role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}
         className="w-[520px] max-w-full bg-surface-container-low rounded-xl border border-outline-variant/30 shadow-2xl ring-1 ring-white/5 overflow-hidden">
         <div className="flex items-center gap-sm px-lg h-12 bg-surface-container-high border-b border-outline-variant/30">
           <span className="material-symbols-outlined text-primary">menu_book</span>
           <span className="text-label-sm font-label-sm text-on-surface">Sermon to Slides</span>
           {!busy && (
-            <button onClick={onClose} className="ml-auto text-on-surface-variant hover:text-on-surface transition-colors">
+            <button onClick={onClose} title="Close" aria-label="Close" className="ml-auto text-on-surface-variant hover:text-on-surface transition-colors">
               <span className="material-symbols-outlined text-[18px]">close</span>
             </button>
           )}

@@ -23,7 +23,7 @@ export function shortcutGroups(sc = { go: 'g', logo: 'l', live: 'o' }) {
     {
       title: 'Going live',
       rows: [
-        { keys: ['Space'], desc: 'Next slide on live' },
+        { keys: ['Space'], desc: 'Next slide on live (a presentation steps its lower-third pages first)' },
         { keys: [up(sc.go)], desc: 'GO: send preview to live (when Hotkeys are on)' },
         { keys: ['Esc'], desc: 'Clear all outputs (when Hotkeys are on)' },
         { keys: [up(sc.logo)], desc: 'Show the logo' },
@@ -67,6 +67,7 @@ export function shortcutGroups(sc = { go: 'g', logo: 'l', live: 'o' }) {
         { keys: [combo('mod', 'Z'), combo('mod', 'shift', 'Z')], desc: 'Undo / redo in editors' },
         { keys: [combo('mod', 'A')], desc: 'Select all rundown items (or all text, when text is selected)' },
         { keys: [combo('mod', 'D')], desc: 'Duplicate the selected rundown items' },
+        { keys: ['Delete', 'Backspace'], desc: 'Remove the focused rundown item (Undo appears; the live item is protected)' },
       ],
     },
   ];

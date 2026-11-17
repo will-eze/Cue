@@ -43,6 +43,18 @@ try {
 // buffers that pile up and exhaust memory.
 const senders = new Map();
 
+// Log the first failure of each kind, then at most once every 10s (with a count of
+// what was suppressed) — NDI send errors used to be swallowed entirely, which made
+// "NDI is black / not arriving" impossible to diagnose from a packaged build.
+const errLog = new Map(); // key → { last, suppressed }
+function logNdiError(key, msg) {
+  const now = Date.now();
+  const e = errLog.get(key) || { last: 0, suppressed: 0 };
+  if (e.last && now - e.last < 10000) { e.suppressed++; errLog.set(key, e); return; }
+  console.error(`[NDI] ${key}: ${msg}${e.suppressed ? ` (+${e.suppressed} similar suppressed)` : ''}`);
+  errLog.set(key, { last: now, suppressed: 0 });
+}
+
 export function isAvailable() {
   return ndiAvailable;
 }
@@ -53,15 +65,48 @@ export function getGrandi() {
   return ndiAvailable ? grandi : null;
 }
 
-export async function createSender(channelId, name) {
-  if (!ndiAvailable) return null;
+// Sender lifecycle is serialised per channel. grandi.send() is async, so two quick
+// re-syncs (or Outputs off→on) used to overlap: a destroy that arrived while a create
+// was still pending found nothing to destroy, and the late sender was then orphaned —
+// still holding the NDI name, so the replacement was published as "Name (2)" while
+// receivers stayed bound to the dead, frameless original. Three guards fix it:
+//   generation — every create/destroy bumps it; a create that resolves into a newer
+//                generation destroys its own sender instead of registering it.
+//   chain      — creates for one channel run strictly one after another.
+//   freed      — a destroy deferred behind an in-flight video() must finish before
+//                the next create, or the old name is still registered.
+const generation = new Map(); // channelId → number
+const chain = new Map();      // channelId → Promise (tail of the create queue)
+const freed = new Map();      // channelId → Promise (pending deferred destroy)
+const bump = (id) => { const g = (generation.get(id) || 0) + 1; generation.set(id, g); return g; };
+
+export function createSender(channelId, name) {
+  if (!ndiAvailable) return Promise.resolve(null);
+  const myGen = bump(channelId);
+  const run = (chain.get(channelId) || Promise.resolve())
+    .then(() => createSenderNow(channelId, name, myGen));
+  chain.set(channelId, run.catch(() => {}));
+  return run;
+}
+
+async function createSenderNow(channelId, name, myGen) {
   try {
+    if (generation.get(channelId) !== myGen) return null; // superseded while queued
+    if (senders.has(channelId)) releaseSender(channelId);
+    // Wait (bounded) for a deferred destroy so the name is free again.
+    const pending = freed.get(channelId);
+    if (pending) await Promise.race([pending, new Promise((r) => setTimeout(r, 1500))]);
     const sender = await grandi.send({
       name: `Cue - ${name}`,
       clockVideo: false,
       clockAudio: false,
     });
-    senders.set(channelId, { sender, inflight: false });
+    if (generation.get(channelId) !== myGen) {
+      // Destroyed or re-created while grandi.send() was pending — never register it.
+      try { sender.destroy(); } catch {}
+      return null;
+    }
+    senders.set(channelId, { sender, inflight: false, audioInflight: 0 });
     console.log(`[NDI] Sender "${name}" ready as "${sender.sourcename()}"`);
     return null;
   } catch (err) {
@@ -74,6 +119,13 @@ export function sendFrame(channelId, bgraBuffer, width, height, fps) {
   if (!ndiAvailable) return;
   const entry = senders.get(channelId);
   if (!entry || entry.inflight) return;
+
+  // The buffer must be exactly stride*height. A mismatch (e.g. a scaled/HiDPI paint
+  // bitmap) would make the native layer read past the end or skew the picture.
+  if (!bgraBuffer || bgraBuffer.length < width * height * 4) {
+    logNdiError('frame size mismatch', `buffer ${bgraBuffer ? bgraBuffer.length : 0}B < ${width}x${height}x4 — frame dropped`);
+    return;
+  }
 
   entry.inflight = true;
   entry.sender
@@ -88,8 +140,20 @@ export function sendFrame(channelId, bgraBuffer, width, height, fps) {
       data: bgraBuffer,
       fourCC: FOURCC_BGRA,
     })
-    .catch(() => {})
-    .finally(() => { entry.inflight = false; });
+    .catch((err) => logNdiError('video send failed', err && err.message))
+    .finally(() => {
+      entry.inflight = false;
+      finishIfIdle(entry);
+    });
+}
+
+// destroySender() was requested mid-send: free the sender only once BOTH the video
+// and every audio native call have returned (freeing under a pending call = UAF).
+function finishIfIdle(entry) {
+  if (!entry.destroyWhenIdle || entry.inflight || entry.audioInflight > 0 || entry.destroyed) return;
+  entry.destroyed = true;
+  try { entry.sender.destroy(); } catch {}
+  entry.onFreed?.();
 }
 
 // Send one program-audio frame to a sender. `planar` is a Buffer of Float32
@@ -100,6 +164,7 @@ export function sendAudio(channelId, planar, sampleRate, noChannels, noSamples) 
   if (!ndiAvailable) return;
   const entry = senders.get(channelId);
   if (!entry) return;
+  entry.audioInflight = (entry.audioInflight || 0) + 1;
   entry.sender
     .audio({
       sampleRate,
@@ -109,13 +174,29 @@ export function sendAudio(channelId, planar, sampleRate, noChannels, noSamples) 
       data: planar,
       fourCC: FOURCC_FLTP,
     })
-    .catch(() => {});
+    .catch((err) => logNdiError('audio send failed', err && err.message))
+    .finally(() => {
+      entry.audioInflight--;
+      finishIfIdle(entry);
+    });
 }
 
 export function destroySender(channelId) {
+  bump(channelId); // invalidates any create still pending for this channel
+  releaseSender(channelId);
+}
+
+function releaseSender(channelId) {
   const entry = senders.get(channelId);
   if (entry) {
-    try { entry.sender.destroy(); } catch {}
+    // Never free the sender while sender.video() is awaiting in the native layer
+    // (same use-after-free hazard as the NDI-input receiver) — defer to its finally.
+    if (entry.inflight || entry.audioInflight > 0) {
+      entry.destroyWhenIdle = true;
+      const p = new Promise((resolve) => { entry.onFreed = resolve; });
+      freed.set(channelId, p);
+      p.then(() => { if (freed.get(channelId) === p) freed.delete(channelId); });
+    } else { try { entry.sender.destroy(); } catch {} }
     senders.delete(channelId);
     console.log(`[NDI] Sender ${channelId} destroyed`);
   }

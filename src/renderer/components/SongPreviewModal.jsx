@@ -4,6 +4,7 @@ import { splitSectionContent, splitByMaxLines, maxLinesOf, sectionLabels } from 
 import { useLyricsCopy, sectionChipClass } from '../utils/lyricsClipboard';
 import { useToast } from './Toast';
 import { useModalGuard } from '../utils/modalGuard';
+import { useFocusTrap } from '../utils/useFocusTrap';
 
 const TYPE_LABELS = {
   verse: 'Verse', chorus: 'Chorus', bridge: 'Bridge',
@@ -12,6 +13,8 @@ const TYPE_LABELS = {
 
 export default function SongPreviewModal({ song, onClose, onEdit, onAddToRundown }) {
   useModalGuard();
+  const trapRef = React.useRef(null);
+  useFocusTrap(trapRef);
   const [fullSong, setFullSong] = useState(null);
   const [globalMaxLines, setGlobalMaxLines] = useState(0);
   const lyricsRef = React.useRef(null);
@@ -51,6 +54,7 @@ export default function SongPreviewModal({ song, onClose, onEdit, onAddToRundown
       onClick={onClose}
     >
       <div
+        ref={trapRef} role="dialog" aria-modal="true"
         className="bg-surface-container-low border border-outline-variant/30 rounded-xl w-full max-w-md max-h-[80vh] flex flex-col shadow-2xl ring-1 ring-white/5"
         onClick={(e) => e.stopPropagation()}
       >

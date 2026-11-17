@@ -24,6 +24,7 @@ import SheetMusicImportModal from '../components/SheetMusicImportModal';
 import AddYouTubeModal from '../components/AddYouTubeModal';
 import { mediaUrl } from '../utils/mediaUrl';
 import { looksLikeYouTube } from '../utils/youtube';
+import { cleanErrorMessage } from '../utils/errorMessage';
 import { useModalGuard } from '../utils/modalGuard';
 import { useFocusTrap } from '../utils/useFocusTrap';
 
@@ -215,6 +216,50 @@ function MediaGrid({ assets, onDelete, onSetBackground, onAddToRundown, onApplyB
   );
 }
 
+// Confirm before permanently deleting a media file; spells out where it is used.
+function MediaDeleteConfirm({ asset, usage, onCancel, onConfirm }) {
+  useModalGuard();
+  const ref = useRef(null);
+  useFocusTrap(ref, { autoFocus: '[data-cancel]' });
+  const cancelRef = useRef(onCancel);
+  cancelRef.current = onCancel;
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault(); e.stopPropagation();
+      cancelRef.current?.();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+  const inUse = !!usage?.inUse;
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-background/70 p-lg" onMouseDown={onCancel}>
+      <div ref={ref} role="alertdialog" aria-modal="true"
+        className={`w-full max-w-[420px] bg-surface-container-high rounded-xl border flex flex-col overflow-hidden ${inUse ? 'border-secondary/40' : 'border-outline-variant/40'}`}
+        onMouseDown={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-sm px-lg h-12 border-b border-outline-variant/30 shrink-0">
+          <span className={`material-symbols-outlined text-[18px] ${inUse ? 'text-secondary' : 'text-error'}`}>{inUse ? 'warning' : 'delete'}</span>
+          <span className="text-label-md font-label-sm text-on-surface">Delete this file?</span>
+        </div>
+        <div className="p-lg flex flex-col gap-sm">
+          <span className="text-body-md text-on-surface break-words">“{asset.filename}” will be removed from the media library and deleted from disk. This can’t be undone.</span>
+          {inUse && (
+            <span className="text-body-md text-secondary">It is in use: {usage.summary}. Those will lose it.</span>
+          )}
+          {!inUse && usage && (
+            <span className="text-body-md text-on-surface-variant">It isn’t used anywhere.</span>
+          )}
+        </div>
+        <div className="flex items-center gap-sm px-lg h-14 border-t border-outline-variant/30 shrink-0">
+          <button data-cancel onClick={onCancel} className="btn btn-ghost ml-auto">Cancel</button>
+          <button onClick={onConfirm} className="btn btn-danger-solid">Delete</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const SECTION_TYPE_LABELS = { verse: 'Verse', chorus: 'Chorus', bridge: 'Bridge', 'pre-chorus': 'Pre-Chorus', tag: 'Tag', intro: 'Intro', outro: 'Outro' };
 
 // Single-click on a library song opens this centred modal with the FULL song —
@@ -303,7 +348,7 @@ function SongPreviewModal({ song, onClose, onEdit, onAddToRundown }) {
         <div className="absolute top-md right-lg flex gap-xs">
           <button onClick={() => { onAddToRundown(song.id); onClose(); }} className="btn btn-sm btn-primary">Add</button>
           <button onClick={() => onEdit(fullSong || song)} className="btn btn-sm btn-secondary">Edit</button>
-          <button onClick={onClose} className="btn-icon">
+          <button onClick={onClose} title="Close" aria-label="Close" className="btn-icon">
             <span className="material-symbols-outlined text-[16px]">close</span>
           </button>
         </div>
@@ -560,6 +605,7 @@ export default function LibraryPanel({ activeServiceId, onThemesChanged, onApply
   const [folderTree, setFolderTree] = useState([]);
   const [activeFolderId, setActiveFolderId] = useState(null);
   const [importing, setImporting] = useState(false);
+  const [mediaDeleteAsk, setMediaDeleteAsk] = useState(null); // { asset, usage } awaiting confirm
   const [importPreview, setImportPreview] = useState(null); // parsed song files awaiting confirm
   const [parsingSongs, setParsingSongs] = useState(false);
   const [importMenuOpen, setImportMenuOpen] = useState(false);
@@ -783,10 +829,26 @@ export default function LibraryPanel({ activeServiceId, onThemesChanged, onApply
     try { await window.cue.media.import(result.filePaths); loadMedia(); } finally { setImporting(false); }
   }
 
+  // Deleting a media file is permanent (file + thumbnail go with it), so ask first
+  // and say plainly where it's in use. If the usage lookup fails we still ask.
   async function handleDeleteMedia(asset) {
-    await window.cue.media.delete(asset.id);
+    let usage = null;
+    try { usage = await window.cue.media.usage([asset.id]); } catch { /* ask without a summary */ }
+    setMediaDeleteAsk({ asset, usage });
+  }
+
+  async function confirmDeleteMedia() {
+    const ask = mediaDeleteAsk;
+    setMediaDeleteAsk(null);
+    if (!ask) return;
+    try {
+      await window.cue.media.delete(ask.asset.id);
+    } catch (e) {
+      toast.error(`Couldn’t delete "${ask.asset.filename}": ${cleanErrorMessage(e)}`);
+      return;
+    }
     loadMedia();
-    toast.show({ message: `"${asset.filename}" deleted`, kind: 'info', duration: 4000 });
+    toast.show({ message: `"${ask.asset.filename}" deleted`, kind: 'info', duration: 4000 });
   }
 
   async function handleDeletePresentation(pres) {
@@ -802,7 +864,8 @@ export default function LibraryPanel({ activeServiceId, onThemesChanged, onApply
         onClick: async () => {
           await window.cue.presentations.create({
             title: full.title,
-            slides: (full.slides || []).map((s) => ({ label: s.label, background_id: s.background_id, elements: s.elements })),
+            lt_mode: full.lt_mode,
+            slides: (full.slides || []).map((s) => ({ label: s.label, background_id: s.background_id, elements: s.elements, lt_json: s.lt_json })),
           });
           loadPresentations();
         },
@@ -999,7 +1062,7 @@ export default function LibraryPanel({ activeServiceId, onThemesChanged, onApply
                 <span className="material-symbols-outlined text-[14px]">content_paste</span>
                 Add YouTube link from clipboard
               </button>
-              <button
+              <button aria-label="Dismiss"
                 onClick={dismissClipboardYt}
                 title="Dismiss"
                 className="flex items-center justify-center w-4 h-4 rounded text-primary/70 hover:text-primary hover:bg-primary/15 cursor-pointer"
@@ -1262,6 +1325,14 @@ export default function LibraryPanel({ activeServiceId, onThemesChanged, onApply
         <SermonImportModal
           onClose={() => setSermonImport(false)}
           onDone={(id) => { setSermonImport(false); loadPresentations(); setEditPresentation({ id }); }}
+        />
+      )}
+      {mediaDeleteAsk && (
+        <MediaDeleteConfirm
+          asset={mediaDeleteAsk.asset}
+          usage={mediaDeleteAsk.usage}
+          onCancel={() => setMediaDeleteAsk(null)}
+          onConfirm={confirmDeleteMedia}
         />
       )}
       {ytModal && (

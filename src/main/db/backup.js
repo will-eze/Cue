@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import * as tar from 'tar';
 import Database from 'better-sqlite3';
-import { getDb, closeDb } from './schema.js';
+import { getDb, closeDb, initDb, SUPPORTED_SCHEMA_VERSION, newerVersionMessage } from './schema.js';
 
 // A `.cuebackup` is a gzipped tar of the two things that hold all user state:
 //   cue.db   — the single SQLite database (songs, rundowns, themes, settings…)
@@ -86,57 +86,93 @@ export async function importBackup(srcPath) {
         "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('settings','songs')"
       ).all();
       if (t.length < 2) throw new Error('Archive does not look like a Cue database.');
+      let v = 0;
+      try { v = probe.prepare('SELECT version FROM db_version').get()?.version || 0; } catch {}
+      if (v > SUPPORTED_SCHEMA_VERSION) throw new Error(newerVersionMessage(v).replace('last opened by', 'created by'));
     } finally {
       probe.close();
     }
 
-    // --- point of no return: swap files on disk ---
+    // --- swap files on disk, reversibly ---
+    // Safety net first: a DB-only snapshot of the live database (checkpoints the WAL,
+    // lands in userData/backups). Then the live files are RENAMED aside to
+    // `*.pre-restore` (never deleted) and only removed once the restore has fully
+    // succeeded. Any failure rolls the originals back.
+    autoSnapshot();
     closeDb();
 
     const dbPath = path.join(userData, 'cue.db');
-    for (const suffix of ['', '-wal', '-shm']) {
-      try { fs.rmSync(dbPath + suffix, { force: true }); } catch {}
-    }
-    fs.copyFileSync(stagedDb, dbPath);
-
     const mediaDir = path.join(userData, 'media');
-    fs.rmSync(mediaDir, { recursive: true, force: true });
-    const stagedMedia = path.join(tmpDir, 'media');
-    if (fs.existsSync(stagedMedia)) fs.renameSync(stagedMedia, mediaDir);
-    else fs.mkdirSync(mediaDir, { recursive: true });
-
-    // User-installed fonts (userData/fonts) travel with the backup too.
     const fontsDir = path.join(userData, 'fonts');
-    fs.rmSync(fontsDir, { recursive: true, force: true });
-    const stagedFonts = path.join(tmpDir, 'fonts');
-    if (fs.existsSync(stagedFonts)) fs.renameSync(stagedFonts, fontsDir);
+    const liveTargets = [dbPath, dbPath + '-wal', dbPath + '-shm', mediaDir, fontsDir];
+    const moved = []; // targets whose original is now at <target>.pre-restore
+    const placed = []; // targets where a staged/restored copy now exists (safe to remove on rollback)
 
-    // media_assets.path is stored absolute, so a backup restored on a different
-    // machine/account would point at the old userData dir. Rewrite each path to
-    // this install's media dir (keeping the file's basename) so assets resolve.
-    const fixDb = new Database(dbPath);
     try {
-      const rows = fixDb.prepare('SELECT id, path FROM media_assets').all();
-      const upd = fixDb.prepare('UPDATE media_assets SET path=? WHERE id=?');
-      fixDb.transaction(() => {
-        for (const r of rows) upd.run(path.join(mediaDir, path.basename(r.path)), r.id);
-      })();
-
-      // user_fonts is a JSON array in settings with absolute file paths — rewrite
-      // each to this install's fonts dir so custom fonts resolve after a restore.
-      const fontsDir = path.join(userData, 'fonts');
-      const frow = fixDb.prepare("SELECT value FROM settings WHERE key='user_fonts'").get();
-      if (frow) {
-        try {
-          const list = JSON.parse(frow.value);
-          if (Array.isArray(list)) {
-            for (const f of list) if (f && f.path) f.path = path.join(fontsDir, path.basename(f.path));
-            fixDb.prepare("UPDATE settings SET value=? WHERE key='user_fonts'").run(JSON.stringify(list));
-          }
-        } catch {}
+      for (const t of liveTargets) {
+        if (!fs.existsSync(t)) continue;
+        fs.rmSync(t + '.pre-restore', { recursive: true, force: true }); // stale leftover
+        fs.renameSync(t, t + '.pre-restore');
+        moved.push(t);
       }
-    } finally {
-      fixDb.close();
+
+      placed.push(dbPath); // marked before the copy: a partial copy must be cleaned up too
+      fs.copyFileSync(stagedDb, dbPath);
+
+      const stagedMedia = path.join(tmpDir, 'media');
+      if (fs.existsSync(stagedMedia)) fs.renameSync(stagedMedia, mediaDir);
+      else fs.mkdirSync(mediaDir, { recursive: true });
+      placed.push(mediaDir);
+
+      // User-installed fonts (userData/fonts) travel with the backup too.
+      const stagedFonts = path.join(tmpDir, 'fonts');
+      if (fs.existsSync(stagedFonts)) { fs.renameSync(stagedFonts, fontsDir); placed.push(fontsDir); }
+
+      // media_assets.path is stored absolute, so a backup restored on a different
+      // machine/account would point at the old userData dir. Rewrite each path to
+      // this install's media dir (keeping the file's basename) so assets resolve.
+      const fixDb = new Database(dbPath);
+      try {
+        const rows = fixDb.prepare('SELECT id, path FROM media_assets').all();
+        const upd = fixDb.prepare('UPDATE media_assets SET path=? WHERE id=?');
+        fixDb.transaction(() => {
+          for (const r of rows) upd.run(path.join(mediaDir, path.basename(r.path)), r.id);
+        })();
+
+        // user_fonts is a JSON array in settings with absolute file paths — rewrite
+        // each to this install's fonts dir so custom fonts resolve after a restore.
+        const frow = fixDb.prepare("SELECT value FROM settings WHERE key='user_fonts'").get();
+        if (frow) {
+          try {
+            const list = JSON.parse(frow.value);
+            if (Array.isArray(list)) {
+              for (const f of list) if (f && f.path) f.path = path.join(fontsDir, path.basename(f.path));
+              fixDb.prepare("UPDATE settings SET value=? WHERE key='user_fonts'").run(JSON.stringify(list));
+            }
+          } catch {}
+        }
+      } finally {
+        fixDb.close();
+      }
+    } catch (err) {
+      // Roll back: drop ONLY what the restore itself placed, then put back ONLY
+      // what was moved aside. A path that was never moved is still the live
+      // original and must never be deleted.
+      for (const t of placed) {
+        try { fs.rmSync(t, { recursive: true, force: true }); } catch {}
+      }
+      for (const t of moved) {
+        try { fs.renameSync(t + '.pre-restore', t); } catch {}
+      }
+      try { initDb(); } catch {} // reopen the original database for the running app
+      throw new Error(
+        `Restore failed and your existing data was put back unchanged. (${err.message || err})`
+      );
+    }
+
+    // Success — the originals are no longer needed.
+    for (const t of moved) {
+      try { fs.rmSync(t + '.pre-restore', { recursive: true, force: true }); } catch {}
     }
 
     return { ok: true };

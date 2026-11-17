@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useModalGuard } from '../utils/modalGuard';
+import { useFocusTrap } from '../utils/useFocusTrap';
 import MediaPickerModal from './MediaPickerModal';
 import ThemePickerModal from './ThemePickerModal';
 import UndoRedoButtons from './UndoRedoButtons';
@@ -27,6 +28,8 @@ const SAMPLE_REF = 'John 3:16';
 
 export default function ScriptureEditor({ onClose, onSave }) {
   useModalGuard();
+  const trapRef = React.useRef(null);
+  useFocusTrap(trapRef);
   const toast = useToast();
   // Undoable working document: verse style, reference style, default background.
   // The target toggle / preview template / modals below are ephemeral UI, not history.
@@ -187,7 +190,7 @@ export default function ScriptureEditor({ onClose, onSave }) {
 
   return createPortal(
     <div className="fixed inset-0 bg-background/90 backdrop-blur-sm flex items-center justify-center z-50 p-2">
-      <div className="bg-surface-container-low border border-outline-variant/30 rounded-xl w-full h-full max-w-[98vw] max-h-[96vh] flex flex-col shadow-2xl ring-1 ring-white/5 overflow-hidden">
+      <div ref={trapRef} role="dialog" aria-modal="true" className="bg-surface-container-low border border-outline-variant/30 rounded-xl w-full h-full max-w-[98vw] max-h-[96vh] flex flex-col shadow-2xl ring-1 ring-white/5 overflow-hidden">
 
         {/* Header */}
         <div className="flex items-center gap-md px-lg py-sm border-b border-outline-variant/30 bg-surface-container-high flex-shrink-0">

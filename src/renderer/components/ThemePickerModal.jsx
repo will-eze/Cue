@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { SlidePreview, DEFAULT_STYLE } from './SongEditor';
 import { useModalGuard } from '../utils/modalGuard';
+import { useFocusTrap } from '../utils/useFocusTrap';
 import { sortThemes, filterBrowseThemes, isCuratedTheme } from '../utils/themeSort';
 import { normalizeLookStyle } from '../utils/presentationThemes';
 import { themeSearchText } from '../utils/themeSearch';
@@ -44,6 +45,8 @@ function PickCard({ theme, bgThumb, onPick }) {
 
 export default function ThemePickerModal({ onPick, onClose, category = 'song', currentId = null }) {
   useModalGuard();
+  const trapRef = React.useRef(null);
+  useFocusTrap(trapRef);
   const [themes, setThemes] = useState([]);
   const [bgThumbs, setBgThumbs] = useState({});
   const [query, setQuery] = useState('');
@@ -104,6 +107,7 @@ export default function ThemePickerModal({ onPick, onClose, category = 'song', c
   return createPortal(
     <div className="fixed inset-0 z-50 bg-background/90 flex flex-col" onMouseDown={onClose}>
       <div
+        ref={trapRef} role="dialog" aria-modal="true"
         className="flex-1 min-h-0 flex flex-col m-lg bg-surface-container-low rounded-xl border border-outline-variant/30 shadow-2xl ring-1 ring-white/5 overflow-hidden"
         onMouseDown={(e) => e.stopPropagation()}
       >
@@ -137,7 +141,7 @@ export default function ThemePickerModal({ onPick, onClose, category = 'song', c
               {showLegacy ? 'Hide legacy' : 'Show legacy'}
             </button>
           )}
-          <button onClick={onClose} className="text-on-surface-variant hover:text-on-surface cursor-pointer flex items-center shrink-0">
+          <button title="Close" aria-label="Close" onClick={onClose} className="text-on-surface-variant hover:text-on-surface cursor-pointer flex items-center shrink-0">
             <span className="material-symbols-outlined">close</span>
           </button>
         </div>

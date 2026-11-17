@@ -51,6 +51,8 @@ contextBridge.exposeInMainWorld('cueOutput', {
     ipcRenderer.on('audio:tap', wrapper);
     return () => ipcRenderer.removeListener('audio:tap', wrapper);
   },
+  // Report an asset load failure to the operator (main validates + rate-limits).
+  reportProblem: (p) => ipcRenderer.send('output:problem', p),
   sendAudioPcm: (buffer, meta) => ipcRenderer.send('output:audio-pcm', buffer, meta),
   // Stream-window tap: external feed audio (+ optional Cue media) → RTMP. Separate
   // from the in-room tap above so stream audio diverges from in-room audio.

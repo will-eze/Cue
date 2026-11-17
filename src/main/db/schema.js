@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import { app } from 'electron';
+import fs from 'fs';
 
 let db;
 
@@ -931,7 +932,53 @@ const migrations = [
       CREATE INDEX IF NOT EXISTS idx_song_aliases_song ON song_aliases(song_id);
     `);
   },
+  // v36 — Presentation content on the lower third. `presentations.lt_mode` is the
+  // deck default ('auto' = text extracted from the slide's text elements, 'hide' =
+  // blank band). `presentation_slides.lt_json` is the per-slide override
+  // ({"mode":"auto"|"custom"|"hide","text":"..."}), NULL = inherit the deck mode.
+  // Guarded with table_info so a re-run (or a hand-patched DB) is a no-op.
+  function v36(database) {
+    const hasCol = (table, col) => database.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === col);
+    if (!hasCol('presentations', 'lt_mode')) {
+      database.exec(`ALTER TABLE presentations ADD COLUMN lt_mode TEXT NOT NULL DEFAULT 'auto'`);
+    }
+    if (!hasCol('presentation_slides', 'lt_json')) {
+      database.exec(`ALTER TABLE presentation_slides ADD COLUMN lt_json TEXT`);
+    }
+  },
 ];
+
+// Newest schema version this build can open (one per migration entry).
+export const SUPPORTED_SCHEMA_VERSION = migrations.length;
+
+export function newerVersionMessage(v) {
+  return `This data was last opened by a newer version of Cue (v${v}). Install the latest version to open it.`;
+}
+
+// Copy cue.db to userData/backups/cue-pre-v<target>-<stamp>.db before migrating an
+// EXISTING database. Never throws (a failed snapshot must not block startup). Keeps
+// the newest 3 pre-migration copies; autoSnapshot's pruning only matches its own names.
+function preMigrationSnapshot(targetVersion) {
+  try {
+    const userData = app.getPath('userData');
+    const dbPath = path.join(userData, 'cue.db');
+    if (!fs.existsSync(dbPath)) return;
+    try { db.pragma('wal_checkpoint(TRUNCATE)'); } catch {}
+    const dir = path.join(userData, 'backups');
+    fs.mkdirSync(dir, { recursive: true });
+    const d = new Date();
+    const p2 = (n) => String(n).padStart(2, '0');
+    const stamp = `${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}`;
+    fs.copyFileSync(dbPath, path.join(dir, `cue-pre-v${targetVersion}-${stamp}.db`));
+    const pre = fs.readdirSync(dir).filter((f) => /^cue-pre-v\d+-\d{8}-\d{6}\.db$/.test(f))
+      .sort((a, b) => a.slice(a.indexOf('-', 8) + 1).localeCompare(b.slice(b.indexOf('-', 8) + 1)));
+    for (const f of pre.slice(0, Math.max(0, pre.length - 3))) {
+      try { fs.rmSync(path.join(dir, f), { force: true }); } catch {}
+    }
+  } catch (e) {
+    console.error('[Cue] pre-migration snapshot failed (continuing):', e && e.message ? e.message : e);
+  }
+}
 
 function runMigrations() {
   db.exec(`CREATE TABLE IF NOT EXISTS db_version (version INTEGER NOT NULL)`);
@@ -939,8 +986,13 @@ function runMigrations() {
   const currentVersion = row ? row.version : 0;
   if (!row) db.prepare('INSERT INTO db_version (version) VALUES (0)').run();
 
+  if (currentVersion > SUPPORTED_SCHEMA_VERSION) {
+    throw new Error(newerVersionMessage(currentVersion));
+  }
+
   const pending = migrations.slice(currentVersion);
   if (!pending.length) return;
+  if (currentVersion > 0) preMigrationSnapshot(migrations.length);
 
   // Disable FK enforcement during migrations so table rebuilds (DROP + recreate)
   // don't trigger ON DELETE CASCADE on referencing tables. The pragma is a no-op

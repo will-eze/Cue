@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useModalGuard } from '../utils/modalGuard';
+import { useFocusTrap } from '../utils/useFocusTrap';
 import { rasterizePdf } from '../utils/pdfRaster';
 import { structureSheet } from '../ocr/sheetParse';
 import { sheetModelPresent, downloadSheetModel, SHEET_MODEL } from '../ocr/sheetOcrStore';
@@ -21,6 +23,9 @@ function isAccepted(file) {
 }
 
 export default function SheetMusicImportModal({ onClose, onDone }) {
+  useModalGuard();
+  const trapRef = useRef(null);
+  useFocusTrap(trapRef);
   const [modelReady, setModelReady]   = useState(null); // null = checking
   const [dlPct, setDlPct]             = useState(0);
   const [status, setStatus]           = useState('idle'); // idle|need-model|downloading|rendering|ocr|done|error
@@ -138,16 +143,30 @@ export default function SheetMusicImportModal({ onClose, onDone }) {
 
   const reset = () => { setResult(null); setRawText(''); setError(''); setFileName(''); setStatus(modelReady ? 'idle' : 'need-model'); };
 
+  // Own the keyboard while open (operator transport keys stand down), trap Tab,
+  // and let Esc close — except mid-operation, where closing would lose work.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== 'Escape' || busy) return;
+      e.preventDefault(); e.stopPropagation();
+      onCloseRef.current?.();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [busy]);
+
   return createPortal(
     <div className="fixed inset-0 z-[60] bg-background/80 backdrop-blur-sm flex items-center justify-center p-lg"
       onClick={busy ? undefined : onClose}>
-      <div onClick={(e) => e.stopPropagation()}
+      <div ref={trapRef} role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}
         className="w-[560px] max-w-full bg-surface-container-low rounded-xl border border-outline-variant/30 shadow-2xl ring-1 ring-white/5 overflow-hidden">
         <div className="flex items-center gap-sm px-lg h-12 bg-surface-container-high border-b border-outline-variant/30">
           <span className="material-symbols-outlined text-primary">music_note</span>
           <span className="text-label-sm font-label-sm text-on-surface">Sheet Music to Song</span>
           {!busy && (
-            <button onClick={onClose} className="ml-auto text-on-surface-variant hover:text-on-surface transition-colors">
+            <button onClick={onClose} title="Close" aria-label="Close" className="ml-auto text-on-surface-variant hover:text-on-surface transition-colors">
               <span className="material-symbols-outlined text-[18px]">close</span>
             </button>
           )}

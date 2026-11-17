@@ -1,4 +1,4 @@
-import { BrowserWindow, screen, app, systemPreferences } from 'electron';
+import { BrowserWindow, screen, app, systemPreferences, powerMonitor } from 'electron';
 import path from 'path';
 import { getDb } from '../db/schema.js';
 import { get as getSetting, set as setSetting } from '../db/settings.js';
@@ -198,22 +198,188 @@ function getTemplatePath(template) {
 // outgoing Space animation can take up to ~1s), then stop. This is the reliable form of
 // the "assert setFullScreen after the window is shown" rule — keep it on every create.
 function enforceFullScreen(win, tries = 8) {
-  if (!win || win.isDestroyed() || win.isFullScreen()) return;
+  // A window being closed must NOT be dragged back to fullscreen (macOS exits
+  // fullscreen as part of close()).
+  if (!win || win.isDestroyed() || win._cueClosing || win.isFullScreen()) return;
   win.setFullScreen(true);
   if (tries > 0) setTimeout(() => enforceFullScreen(win, tries - 1), 200);
 }
 
-function createMonitorWindow(channel, monitor) {
-  if (!monitor.display_bounds) return null;
-  const bounds = JSON.parse(monitor.display_bounds);
-  const displays = screen.getAllDisplays();
-  const display = displays.find(
+// The ONE way an output window is closed. Marks it closing first so the
+// `leave-full-screen` re-assert / enforceFullScreen timer / crash recovery all stand
+// down. A window whose renderer crashed is destroyed outright (close() waits on a
+// dead renderer).
+function closeOutputWindow(win) {
+  if (!win || win.isDestroyed()) return;
+  win._cueClosing = true;
+  try {
+    if (win._cueCrashed) win.destroy();
+    else win.close();
+  } catch {}
+}
+
+// Per-window send that can never throw into a broadcast loop: one destroyed window,
+// crashed renderer, or non-cloneable payload must not abort delivery to the others.
+// Failures are logged at most once per channel per 10 s.
+const sendErrLogAt = new Map();
+function safeSend(win, channel, ...args) {
+  try {
+    if (!win || win.isDestroyed() || win._cueCrashed) return false;
+    const wc = win.webContents;
+    if (!wc || wc.isDestroyed()) return false;
+    wc.send(channel, ...args);
+    return true;
+  } catch (err) {
+    const now = Date.now();
+    if (now - (sendErrLogAt.get(channel) || 0) > 10000) {
+      sendErrLogAt.set(channel, now);
+      console.warn(`[Output] send '${channel}' failed:`, err && err.message ? err.message : err);
+    }
+    return false;
+  }
+}
+
+// ── Crash / hang recovery ─────────────────────────────────────────────────────
+// Output windows have no UI of their own: if one's renderer dies mid-service the
+// screen stays black. attachRecovery rebuilds that ONE window in place (the new
+// window's did-finish-load re-dispatches the current state). Backoff: at most
+// MAX_REBUILDS per window key per RECOVERY_WINDOW_MS, then we stop and tell the
+// operator instead of looping.
+const MAX_REBUILDS = 3;
+const RECOVERY_WINDOW_MS = 60000;
+const UNRESPONSIVE_GRACE_MS = 5000;
+const rebuildHistory = new Map(); // key → [timestamps]
+
+function emitWindowRecovered(info) {
+  notifyMainWindow('output:window-recovered', info);
+}
+
+// Output template → operator: a media file failed to load. Validated and
+// rate-limited (one per channel+path per 30 s); channel comes from the sender.
+const PROBLEM_KINDS = new Set(['background', 'logo', 'slide-media', 'graphic-media', 'stage-video']);
+const problemSeen = new Map();
+export function handleOutputProblem(senderWc, msg) {
+  try {
+    if (!msg || typeof msg !== 'object' || !PROBLEM_KINDS.has(msg.kind)) return;
+    if (typeof msg.path !== 'string' || msg.path.length > 500) return;
+    let key = null;
+    for (const [k, w] of windows) { if (w && !w.isDestroyed() && w.webContents === senderWc) { key = k; break; } }
+    if (key == null) return;
+    const db = getDb();
+    let channel;
+    if (typeof key === 'string' && key.startsWith('ndi-')) {
+      channel = db.prepare('SELECT name FROM output_channels WHERE id = ?').get(key.slice(4));
+    } else {
+      channel = db.prepare('SELECT c.name FROM channel_monitors m JOIN output_channels c ON c.id = m.channel_id WHERE m.id = ?').get(key);
+    }
+    const channelName = (channel && channel.name) || 'Output';
+    const name = msg.path.split(/[\\/]/).pop().split('?')[0].slice(0, 120) || 'a file';
+    const rk = `${channelName}|${msg.path}`;
+    const now = Date.now();
+    if (now - (problemSeen.get(rk) || 0) < 30000) return;
+    problemSeen.set(rk, now);
+    if (problemSeen.size > 200) problemSeen.clear();
+    notifyMainWindow('output:media-problem', { channelName, kind: msg.kind, name });
+  } catch {}
+}
+
+function attachRecovery(win, { key, kind, channelId = null, channelName = '', rebuild, onGiveUp }) {
+  const info = (reason, gaveUp) => ({ channelId, channelName, kind, reason, gaveUp });
+  let hangTimer = null;
+  const clearHang = () => { if (hangTimer) { clearTimeout(hangTimer); hangTimer = null; } };
+
+  const recover = (reason) => {
+    if (win._cueClosing) return;
+    if (win._cueRecovering) return;       // gone + did-fail-load + hang can overlap
+    win._cueRecovering = true;
+    win._cueCrashed = true;               // unhealthy from here on (getState, safeSend)
+    clearHang();
+
+    const now = Date.now();
+    const hist = (rebuildHistory.get(key) || []).filter((t) => now - t < RECOVERY_WINDOW_MS);
+    if (hist.length >= MAX_REBUILDS) {
+      rebuildHistory.set(key, hist);
+      console.error(`[Output] ${kind} window '${key}' failed (${reason}) — ${MAX_REBUILDS} rebuilds in ${RECOVERY_WINDOW_MS / 1000}s, giving up`);
+      emitWindowRecovered(info(reason, true));
+      outputsChanged();
+      if (onGiveUp) { try { onGiveUp(); } catch (err) { console.error('[Output] onGiveUp threw:', err); } }
+      return;
+    }
+    hist.push(now);
+    rebuildHistory.set(key, hist);
+    console.error(`[Output] ${kind} window '${key}' failed (${reason}) — rebuilding (${hist.length}/${MAX_REBUILDS})`);
+    emitWindowRecovered(info(reason, false));
+    // Defer: we are inside a webContents event handler for the dying window.
+    setImmediate(() => {
+      try { rebuild(); } catch (err) {
+        console.error(`[Output] rebuild of '${key}' threw:`, err);
+      }
+    });
+  };
+
+  win.webContents.on('render-process-gone', (_e, details) => {
+    const reason = (details && details.reason) || 'gone';
+    if (reason === 'clean-exit') return;
+    recover(`render-process-gone:${reason}`);
+  });
+  win.webContents.on('did-fail-load', (_e, errorCode, errorDescription, _url, isMainFrame) => {
+    if (!isMainFrame || errorCode === -3) return; // sub-frames, and ABORTED (superseded nav)
+    recover(`did-fail-load:${errorCode} ${errorDescription || ''}`.trim());
+  });
+  win.on('unresponsive', () => {
+    if (win._cueClosing || hangTimer) return;
+    console.warn(`[Output] ${kind} window '${key}' unresponsive`);
+    hangTimer = setTimeout(() => {
+      hangTimer = null;
+      if (win.isDestroyed() || win._cueClosing) return;
+      console.error(`[Output] ${kind} window '${key}' still hung after ${UNRESPONSIVE_GRACE_MS / 1000}s`);
+      // Killing the renderer fires render-process-gone → recover(). If that API
+      // is unavailable or throws, rebuild directly.
+      try { win.webContents.forcefullyCrashRenderer(); } catch { recover('unresponsive'); }
+      // Belt and braces: if the gone event never arrives, still recover.
+      setTimeout(() => { if (!win.isDestroyed()) recover('unresponsive'); }, 2000);
+    }, UNRESPONSIVE_GRACE_MS);
+  });
+  win.on('responsive', clearHang);
+  win.on('closed', clearHang);
+}
+
+// Rebuild ONE screen window in place (same monitor record, same display).
+function rebuildScreenWindow(monitorId) {
+  const old = windows.get(monitorId);
+  if (old) { windows.delete(monitorId); closeOutputWindow(old); }
+  if (!outputsEnabled) { outputsChanged(); return; }
+  const db = getDb();
+  const monitor = db.prepare('SELECT * FROM channel_monitors WHERE id = ?').get(monitorId);
+  const channel = monitor && db.prepare('SELECT * FROM output_channels WHERE id = ?').get(monitor.channel_id);
+  if (!monitor || !channel || !channel.active || !monitor.active) { outputsChanged(); return; }
+  const win = createMonitorWindow(channel, monitor);
+  if (win) windows.set(monitorId, win);
+  else {
+    notifyMainWindow('output:unresolved-channels', [{ ...channel, _monitorId: monitor.id, _monitorBounds: monitor.display_bounds }]);
+  }
+  outputsChanged();
+}
+
+// display_bounds JSON → the connected Display with EXACTLY those bounds (never
+// display_index). Null when absent/unparseable.
+function findDisplayForMonitor(monitor) {
+  if (!monitor || !monitor.display_bounds) return null;
+  let bounds;
+  try { bounds = JSON.parse(monitor.display_bounds); } catch { return null; }
+  if (!bounds) return null;
+  return screen.getAllDisplays().find(
     (d) =>
       d.bounds.x === bounds.x &&
       d.bounds.y === bounds.y &&
       d.bounds.width === bounds.width &&
       d.bounds.height === bounds.height,
-  );
+  ) || null;
+}
+
+function createMonitorWindow(channel, monitor) {
+  if (!monitor.display_bounds) return null;
+  const display = findDisplayForMonitor(monitor);
   if (!display) return null;
 
   const preload = getOutputPreloadPath();
@@ -264,7 +430,23 @@ function createMonitorWindow(channel, monitor) {
     else sendGraphicToWindow(win, 'screen'); // fullscreen + lower-third carry the overlay
   });
   // Re-enter fullscreen if the user accidentally exits (e.g. Escape key, green button).
-  win.on('leave-full-screen', () => { if (!win.isDestroyed()) win.setFullScreen(true); });
+  // Skipped for a window that is closing (macOS exits fullscreen as part of close()).
+  win.on('leave-full-screen', () => {
+    if (win.isDestroyed() || win._cueClosing) return;
+    if (win._cueRefit) {
+      // Display metrics changed: land on the display's CURRENT bounds, then re-enter.
+      win._cueRefit = false;
+      const d = win._cueDisplayId != null && screen.getAllDisplays().find((x) => x.id === win._cueDisplayId);
+      if (d) { try { win.setBounds(d.bounds); } catch {} }
+    }
+    win.setFullScreen(true);
+  });
+  win._cueDisplayId = display.id;
+  attachRecovery(win, {
+    key: monitor.id, kind: 'screen', channelId: channel.id, channelName: channel.name || '',
+    // Identity check: a superseded window's late crash must not replace its successor.
+    rebuild: () => { if (windows.get(monitor.id) === win) rebuildScreenWindow(monitor.id); },
+  });
   // Template tag: live-input frames are only fanned out to program-video windows
   // (fullscreen template); stage/lower-third windows never render full-frame video.
   win._cueTemplate = channel.template || 'fullscreen';
@@ -354,6 +536,16 @@ function createNdiWindow(channel) {
     startNdiCapture(channel.id, win, channel);
   });
   win._cueTemplate = channel.template || 'fullscreen';
+  // Crash/hang → tear down + recreate through syncChannel (stopNdiCapture →
+  // ndi.destroySender, then a fresh window + createSender), so the capture loop and
+  // sender are never orphaned.
+  attachRecovery(win, {
+    key: `ndi-${channel.id}`, kind: 'ndi', channelId: channel.id, channelName: channel.name || '',
+    rebuild: () => {
+      if (windows.get(`ndi-${channel.id}`) !== win) return;
+      if (outputsEnabled) syncChannel(channel.id); else outputsChanged();
+    },
+  });
   return win;
 }
 
@@ -420,7 +612,108 @@ function stopNdiCapture(channelId) {
   ndi.destroySender(channelId);
 }
 
+// ── Display hot-plug / sleep-wake reconcile ──────────────────────────────────
+// Registered ONCE from init() (after app.whenReady — `screen` and `powerMonitor` are
+// unusable before). One debounced handler reconciles SCREEN windows against the
+// connected displays, matching by display_bounds. NDI + stream windows are never
+// touched (recreating an NDI window drops its sender), and windows that are already
+// correct are left alone (no flicker on an unrelated display change).
+let displayHandlersRegistered = false;
+let reconcileTimer = null;
+
+function scheduleDisplayReconcile(delayMs = 1000) {
+  if (reconcileTimer) clearTimeout(reconcileTimer);
+  reconcileTimer = setTimeout(() => {
+    reconcileTimer = null;
+    try { reconcileDisplays(); } catch (err) { console.error('[Output] display reconcile failed:', err); }
+  }, delayMs);
+}
+
+function registerDisplayHandlers() {
+  if (displayHandlersRegistered) return;
+  displayHandlersRegistered = true;
+  for (const ev of ['display-added', 'display-removed', 'display-metrics-changed']) {
+    screen.on(ev, () => scheduleDisplayReconcile(1000));
+  }
+  // The projector often re-enumerates a couple of seconds after wake.
+  powerMonitor.on('resume', () => scheduleDisplayReconcile(2000));
+}
+
+function reconcileDisplays() {
+  if (!outputsEnabled) return; // outputs off: reopen nothing
+  const db = getDb();
+  const displays = screen.getAllDisplays();
+  const channels = db.prepare("SELECT * FROM output_channels WHERE active = 1 AND type != 'ndi'").all();
+  const gone = [];
+  let changed = false;
+
+  for (const channel of channels) {
+    const monitors = db.prepare('SELECT * FROM channel_monitors WHERE channel_id = ? AND active = 1').all(channel.id);
+    for (const monitor of monitors) {
+      if (!monitor.display_bounds) continue;
+      const win = windows.get(monitor.id);
+      const live = win && !win.isDestroyed() && !win._cueClosing ? win : null;
+      const display = findDisplayForMonitor(monitor);
+
+      if (!display) {
+        if (live && live._cueDisplayId != null) {
+          // Same display id still connected but its bounds changed (resolution / arrangement
+          // change): keep the window and re-fit it to the display's new bounds.
+          const same = displays.find((d) => d.id === live._cueDisplayId);
+          if (same) { refitWindow(live, same); continue; }
+        }
+        if (live) {
+          // Its display is gone: close it so it cannot squat on another display.
+          windows.delete(monitor.id);
+          closeOutputWindow(live);
+          gone.push({ ...channel, _monitorId: monitor.id, _monitorBounds: monitor.display_bounds });
+          changed = true;
+        }
+        continue;
+      }
+
+      if (!live) {
+        // Display (re)appeared with no window → open it; did-finish-load sends state.
+        if (win && win.isDestroyed()) windows.delete(monitor.id);
+        const nw = createMonitorWindow(channel, monitor);
+        if (nw) { windows.set(monitor.id, nw); changed = true; }
+        continue;
+      }
+      refitWindow(live, display); // only acts when the window no longer covers it
+    }
+  }
+
+  if (gone.length) notifyMainWindow('output:unresolved-channels', gone);
+  if (changed) outputsChanged();
+}
+
+// Make sure `win` still covers `display`. No-op when it already does.
+function refitWindow(win, display) {
+  const b = win.getBounds();
+  const d = display.bounds;
+  const near = (a, c) => Math.abs(a - c) <= 2; // tolerate DPI rounding
+  // A fullscreen window already on the assigned display is correct as-is: on a notched
+  // MacBook panel macOS fullscreen sits below the notch, so its bounds never equal
+  // display.bounds and the bounds check would leave/re-enter fullscreen (visible on air).
+  let onDisplay = false;
+  try { onDisplay = win.isFullScreen() && screen.getDisplayMatching(b).id === display.id; } catch {}
+  if (onDisplay) { win._cueDisplayId = display.id; return; }
+  const covers = win.isFullScreen() && near(b.x, d.x) && near(b.y, d.y) && near(b.width, d.width) && near(b.height, d.height);
+  if (covers) { win._cueDisplayId = display.id; return; }
+  win._cueDisplayId = display.id;
+  if (win.isFullScreen()) {
+    // Leave and re-enter fullscreen on the new bounds: the leave-full-screen handler
+    // applies the bounds and re-asserts fullscreen (Sequoia rule).
+    win._cueRefit = true;
+    win.setFullScreen(false);
+  } else {
+    try { win.setBounds(d); } catch {}
+    enforceFullScreen(win);
+  }
+}
+
 export async function init() {
+  registerDisplayHandlers();
   const db = getDb();
   const channels = db.prepare('SELECT * FROM output_channels WHERE active = 1').all();
   const unresolved = [];
@@ -470,7 +763,7 @@ export async function openMonitor(channelId, monitor) {
 export function closeMonitor(monitorId, { silent = false } = {}) {
   const win = windows.get(monitorId);
   const had = windows.delete(monitorId); // before close(), so its 'closed' handler is a no-op
-  if (win && !win.isDestroyed()) win.close();
+  closeOutputWindow(win);
   // Batch callers (syncChannel / closeChannel) report once at the end instead.
   if (had && !silent) outputsChanged();
 }
@@ -489,7 +782,7 @@ export async function syncChannel(channelId) {
   stopNdiCapture(channelId);
   const ndiKey = `ndi-${channelId}`;
   const ndiWin = windows.get(ndiKey);
-  if (ndiWin && !ndiWin.isDestroyed()) ndiWin.close();
+  closeOutputWindow(ndiWin);
   windows.delete(ndiKey);
 
   const channel = db.prepare('SELECT * FROM output_channels WHERE id = ?').get(channelId);
@@ -534,7 +827,7 @@ export function setChannelContentMode(channelId) {
     for (const m of monitors) { const w = windows.get(m.id); if (w) wins.push(w); }
   }
   for (const w of wins) {
-    try { if (!w.isDestroyed()) w.webContents.send('content:mode', msg); } catch {}
+    try { if (!w.isDestroyed()) safeSend(w, 'content:mode', msg); } catch {}
   }
   notifyMainWindow('output:state-changed', getState());
 }
@@ -557,7 +850,7 @@ export function setChannelContentScale(channelId) {
     for (const m of monitors) { const w = windows.get(m.id); if (w) wins.push(w); }
   }
   for (const w of wins) {
-    try { if (!w.isDestroyed()) w.webContents.send('content:scale', frac); } catch {}
+    try { if (!w.isDestroyed()) safeSend(w, 'content:scale', frac); } catch {}
   }
 }
 
@@ -571,7 +864,7 @@ export function closeChannel(channelId) {
   stopNdiCapture(channelId);
   const ndiKey = `ndi-${channelId}`;
   const ndiWin = windows.get(ndiKey);
-  if (ndiWin && !ndiWin.isDestroyed()) ndiWin.close();
+  closeOutputWindow(ndiWin);
   windows.delete(ndiKey);
   outputsChanged();
 }
@@ -581,7 +874,7 @@ export function closeAll() {
     if (typeof key === 'string' && key.startsWith('ndi-')) {
       stopNdiCapture(parseInt(key.slice(4)));
     }
-    if (win && !win.isDestroyed()) win.close();
+    closeOutputWindow(win);
   }
   windows.clear();
   ndiInput.stopAll();
@@ -596,14 +889,14 @@ function getAllOutputWindows() {
   for (const channel of channels) {
     if (channel.type === 'ndi') {
       const win = windows.get(`ndi-${channel.id}`);
-      if (win && !win.isDestroyed()) wins.push(win);
+      if (win && !win.isDestroyed() && !win._cueCrashed) wins.push(win);
     } else {
       const monitors = db
         .prepare('SELECT * FROM channel_monitors WHERE channel_id = ? AND active = 1')
         .all(channel.id);
       for (const monitor of monitors) {
         const win = windows.get(monitor.id);
-        if (win && !win.isDestroyed()) wins.push(win);
+        if (win && !win.isDestroyed() && !win._cueCrashed) wins.push(win);
       }
     }
   }
@@ -619,7 +912,7 @@ function getAllOutputWindows() {
 function getLiveInputTargets() {
   const wins = [];
   for (const [, win] of windows) {
-    if (win && !win.isDestroyed() && (win._cueTemplate || 'fullscreen') === 'fullscreen') wins.push(win);
+    if (win && !win.isDestroyed() && !win._cueCrashed && (win._cueTemplate || 'fullscreen') === 'fullscreen') wins.push(win);
   }
   if (streamWin && !streamWin.isDestroyed()) wins.push(streamWin);
   return wins;
@@ -686,7 +979,7 @@ function getLiveAudioTargets() {
 function routeLiveInputAudio(sourceName, planar, sampleRate, channels, samples) {
   const msg = { sourceName, sampleRate, channels, samples, data: planar };
   for (const win of getLiveAudioTargets()) {
-    try { if (!win.isDestroyed()) win.webContents.send('live:audio', msg); } catch {}
+    try { if (!win.isDestroyed()) safeSend(win, 'live:audio', msg); } catch {}
   }
   for (const id of audioEnabledNdi) ndi.sendAudio(id, planar, sampleRate, channels, samples);
 }
@@ -751,7 +1044,7 @@ function sendStateToWindow(win, channel) {
   if (win.isDestroyed()) return;
 
   if (state.displayMode === 'idle') {
-    win.webContents.send('slide:update', {
+    safeSend(win, 'slide:update', {
       type: 'clear', text: null, backgroundPath: null, logoPath: null,
       copyright: null, sectionLabel: null,
     });
@@ -759,7 +1052,7 @@ function sendStateToWindow(win, channel) {
   }
 
   if (state.displayMode === 'cleared') {
-    win.webContents.send('slide:update', {
+    safeSend(win, 'slide:update', {
       type: 'clear', text: null, backgroundPath: state.livePayload?.backgroundPath ?? null,
       logoPath: null, copyright: null, sectionLabel: null,
     });
@@ -771,7 +1064,7 @@ function sendStateToWindow(win, channel) {
     const scaleSetting = db.prepare('SELECT value FROM settings WHERE key = ?').get('logo_scale_mode');
     const logoScaleMode = scaleSetting ? JSON.parse(scaleSetting.value) : 'cover';
     const { path: logoPath, fromOverride: logoFromOverride } = channel ? resolveLogo(channel) : { path: null, fromOverride: false };
-    win.webContents.send('slide:update', {
+    safeSend(win, 'slide:update', {
       type: 'logo', logoPath, logoFromOverride, logoScaleMode, text: null,
       backgroundPath: null, copyright: null, sectionLabel: null,
     });
@@ -779,7 +1072,7 @@ function sendStateToWindow(win, channel) {
   }
 
   // content
-  win.webContents.send('slide:update', { ...state.livePayload, type: 'content', transport: { ...transport }, ltFontScale: ltFontScaleFraction(), bgLoopMode: bgLoopMode(), bgLoopBlendSecs: bgLoopBlendSecs() });
+  safeSend(win, 'slide:update', { ...state.livePayload, type: 'content', transport: { ...transport }, ltFontScale: ltFontScaleFraction(), bgLoopMode: bgLoopMode(), bgLoopBlendSecs: bgLoopBlendSecs() });
 }
 
 function emitSlides() {
@@ -791,7 +1084,7 @@ function emitSlides() {
 
   if (state.displayMode === 'idle') {
     for (const win of getAllOutputWindows()) {
-      win.webContents.send('slide:update', {
+      safeSend(win, 'slide:update', {
         type: 'clear', text: null, backgroundPath: null, logoPath: null,
         copyright: null, sectionLabel: null, transition,
       });
@@ -802,7 +1095,7 @@ function emitSlides() {
   if (state.displayMode === 'cleared') {
     const bgPath = state.livePayload?.backgroundPath ?? null;
     for (const win of getAllOutputWindows()) {
-      win.webContents.send('slide:update', {
+      safeSend(win, 'slide:update', {
         type: 'clear', text: null, backgroundPath: bgPath, logoPath: null,
         copyright: null, sectionLabel: null, transition,
       });
@@ -823,20 +1116,20 @@ function emitSlides() {
         backgroundPath: null, copyright: null, sectionLabel: null, transition };
       if (channel.type === 'ndi') {
         const win = windows.get(`ndi-${channel.id}`);
-        if (win && !win.isDestroyed()) win.webContents.send('slide:update', logoPayload);
+        if (win && !win.isDestroyed()) safeSend(win, 'slide:update', logoPayload);
       } else {
         const monitors = db
           .prepare('SELECT * FROM channel_monitors WHERE channel_id = ? AND active = 1')
           .all(channel.id);
         for (const monitor of monitors) {
           const win = windows.get(monitor.id);
-          if (win && !win.isDestroyed()) win.webContents.send('slide:update', logoPayload);
+          if (win && !win.isDestroyed()) safeSend(win, 'slide:update', logoPayload);
         }
       }
     }
     // Stream window uses the global logo (no per-channel override).
     if (streamWin && !streamWin.isDestroyed()) {
-      streamWin.webContents.send('slide:update', {
+      safeSend(streamWin, 'slide:update', {
         type: 'logo', logoPath: resolveLogo({}).path, logoScaleMode, text: null,
         backgroundPath: null, copyright: null, sectionLabel: null, transition,
       });
@@ -848,7 +1141,7 @@ function emitSlides() {
   const loopMode = bgLoopMode();
   const blendSecs = bgLoopBlendSecs();
   for (const win of getAllOutputWindows()) {
-    win.webContents.send('slide:update', { ...state.livePayload, type: 'content', transport: { ...transport }, transition, ltFontScale: ltFontScaleFraction(), bgLoopMode: loopMode, bgLoopBlendSecs: blendSecs });
+    safeSend(win, 'slide:update', { ...state.livePayload, type: 'content', transport: { ...transport }, transition, ltFontScale: ltFontScaleFraction(), bgLoopMode: loopMode, bgLoopBlendSecs: blendSecs });
   }
 }
 
@@ -903,9 +1196,19 @@ export function setRemoteProgramListener(cb) {
 }
 
 export function go(payload) {
+  // A presentation LOWER-THIRD PAGE STEP re-sends the slide that is already on air with only the
+  // lt* fields changed (`ltPageStep` + an unchanged `slideKey`, set by OperatorView's page
+  // stepper). Fullscreen/stage/remote outputs HOLD it (fullscreen.js), so it is not a new slide:
+  // keep the transport as-is and skip the transport re-broadcast. Any other go() — including a
+  // plain re-GO of the same slide — is a normal slide change.
+  const pageStep = !!(payload && payload.ltPageStep && payload.slideKey
+    && state.displayMode === 'content' && state.livePayload && state.livePayload.slideKey === payload.slideKey
+    && !payload.media);
   // Stamp a fresh transport so every output window — and the operator preview —
   // derive the same playhead from the shared machine clock (no skew, no capture).
-  if (payload && payload.media) {
+  if (pageStep) {
+    // transport unchanged
+  } else if (payload && payload.media) {
     transport = {
       active: true,
       startAt: Date.now(),
@@ -922,10 +1225,16 @@ export function go(payload) {
   state.displayMode = 'content';
   state.preLogoMode = null;
   pendingTransition = transitionFor('slide');
-  syncLiveInput();
-  sendCurrentState();
-  broadcastTransport();
-  notifyMainWindow('output:state-changed', getState());
+  // A throw while dispatching must not skip the transport broadcast / operator notice.
+  try {
+    syncLiveInput();
+    sendCurrentState();
+  } catch (err) {
+    console.error('[Output] go() dispatch failed:', err);
+  } finally {
+    if (!pageStep) broadcastTransport();
+    notifyMainWindow('output:state-changed', getState());
+  }
 }
 
 // Toggle: content ↔ cleared (background stays, text hidden).
@@ -943,9 +1252,14 @@ export function clear() {
   }
 
   pendingTransition = transitionFor('clear');
-  syncLiveInput();
-  sendCurrentState();
-  notifyMainWindow('output:state-changed', getState());
+  try {
+    syncLiveInput();
+    sendCurrentState();
+  } catch (err) {
+    console.error('[Output] clear() dispatch failed:', err);
+  } finally {
+    notifyMainWindow('output:state-changed', getState());
+  }
 }
 
 // Toggle: current mode ↔ logo.
@@ -959,9 +1273,14 @@ export function logo() {
   }
 
   pendingTransition = transitionFor('logo');
-  syncLiveInput();
-  sendCurrentState();
-  notifyMainWindow('output:state-changed', getState());
+  try {
+    syncLiveInput();
+    sendCurrentState();
+  } catch (err) {
+    console.error('[Output] logo() dispatch failed:', err);
+  } finally {
+    notifyMainWindow('output:state-changed', getState());
+  }
 }
 
 export function shortcut(direction) {
@@ -974,10 +1293,10 @@ export function shortcut(direction) {
 function broadcastTransport() {
   const snapshot = { ...transport };
   for (const [, win] of windows) {
-    try { if (!win.isDestroyed()) win.webContents.send('media:transport', snapshot); } catch {}
+    try { if (!win.isDestroyed()) safeSend(win, 'media:transport', snapshot); } catch {}
   }
   if (streamWin && !streamWin.isDestroyed()) {
-    try { streamWin.webContents.send('media:transport', snapshot); } catch {}
+    try { safeSend(streamWin, 'media:transport', snapshot); } catch {}
   }
   mirrorTransport = snapshot;
   emitProgramChange({ transport: snapshot });
@@ -999,7 +1318,7 @@ export function setProgramAudioDevice(device) {
   setSetting('program_audio_device', snapshot);
   // Push to every open output window so a live change applies without re-GO.
   for (const [, win] of windows) {
-    try { if (!win.isDestroyed()) win.webContents.send('audio:output-device', snapshot); } catch {}
+    try { if (!win.isDestroyed()) safeSend(win, 'audio:output-device', snapshot); } catch {}
   }
   return snapshot;
 }
@@ -1022,7 +1341,7 @@ function updateAudioTapState() {
   const needed = audioEnabledNdi.size > 0;
   // Broadcast to every output window; only the audible (primary) one taps.
   for (const [, win] of windows) {
-    try { if (!win.isDestroyed()) win.webContents.send('audio:tap', needed); } catch {}
+    try { if (!win.isDestroyed()) safeSend(win, 'audio:tap', needed); } catch {}
   }
 }
 
@@ -1147,7 +1466,7 @@ export function setStreamConfig(cfg) {
   const dimsChanged = merged.width !== prev.width || merged.height !== prev.height || merged.fps !== prev.fps;
   if (dimsChanged && !streaming && streamWin && !streamWin.isDestroyed()) {
     stopStreamCapture();
-    try { streamWin.close(); } catch {}
+    closeOutputWindow(streamWin);
     streamWin = null;
     if (streamPreviewRefCount > 0) prepareStream();
   }
@@ -1207,12 +1526,12 @@ function pushStreamConfig() {
   if (!streamWin || streamWin.isDestroyed()) return;
   const s = getStreamStudio();
   try {
-    streamWin.webContents.send('stream:input', {
+    safeSend(streamWin, 'stream:input', {
       videoDeviceId: s.videoDeviceId, videoLabel: s.videoLabel,
       audioDeviceId: s.audioDeviceId, audioLabel: s.audioLabel,
       audioMode: s.audioMode,
     });
-    streamWin.webContents.send('stream:layout', s.layout);
+    safeSend(streamWin, 'stream:layout', s.layout);
   } catch {}
 }
 
@@ -1255,7 +1574,7 @@ export function closeStreamStudio() {
 function maybeTeardownStream() {
   if (streaming || streamPreviewRefCount > 0) return;
   stopStreamCapture();
-  if (streamWin && !streamWin.isDestroyed()) { try { streamWin.close(); } catch {} }
+  closeOutputWindow(streamWin);
   streamWin = null;
 }
 
@@ -1281,7 +1600,7 @@ export async function startStream() {
   };
   streaming = true; // the capture loop spawns ffmpeg on the next paint
   // Enable the stream window's own audio tap (external feed + optional Cue media).
-  try { streamWin?.webContents.send('stream:audio-tap', true); } catch {}
+  try { safeSend(streamWin, 'stream:audio-tap', true); } catch {}
   return { ok: true };
 }
 
@@ -1289,7 +1608,7 @@ export async function stopStream() {
   if (!streaming && !rtmp.isActive()) { maybeTeardownStream(); return { ok: true }; }
   streaming = false;
   streamEncodeConfig = null;
-  try { if (streamWin && !streamWin.isDestroyed()) streamWin.webContents.send('stream:audio-tap', false); } catch {}
+  try { if (streamWin && !streamWin.isDestroyed()) safeSend(streamWin, 'stream:audio-tap', false); } catch {}
   await rtmp.stop();
   emitStreamStatus({ state: 'idle', detail: null });
   maybeTeardownStream(); // keep the window if a Stream tab is still previewing
@@ -1323,10 +1642,38 @@ function createStreamWindow(config) {
     sendGraphicToWindow(win, 'stream');    // stream-targeted broadcast graphics
     pushStreamConfig();                    // input devices + layout
     startStreamCapture(win, config);
-    if (streaming) { try { win.webContents.send('stream:audio-tap', true); } catch {} }
+    if (streaming) { try { safeSend(win, 'stream:audio-tap', true); } catch {} }
   });
-  win.on('closed', () => { if (win === streamWin) streamWin = null; });
+  // Clear the capture timer when the window goes away (it would otherwise survive and
+  // early-return every tick) and drop the reference.
+  win.on('closed', () => {
+    if (streamCapture && streamCapture.win === win) stopStreamCapture();
+    if (win === streamWin) streamWin = null;
+  });
+  attachRecovery(win, {
+    key: 'stream', kind: 'stream', channelName: 'Stream',
+    rebuild: () => rebuildStreamWindow(win),
+    // Looping compositor: stop cleanly rather than leave Cue saying "live" while the
+    // encoder is fed a stale frame.
+    onGiveUp: async () => {
+      if (streamWin === win) { stopStreamCapture(); streamWin = null; }
+      closeOutputWindow(win);
+      await stopStream();
+      emitStreamStatus({ state: 'error', detail: 'The stream compositor kept crashing, so the stream was stopped' });
+    },
+  });
   return win;
+}
+
+// Compositor crashed/hung: rebuild it. If ffmpeg is already running we KEEP it — the
+// new capture loop adopts the active encoder (see tick) and the same-size frames keep
+// flowing. If recovery gave up, rebuildStreamWindow is not called (see onGaveUp).
+function rebuildStreamWindow(oldWin) {
+  if (streamWin !== oldWin) return;       // superseded
+  stopStreamCapture();
+  streamWin = null;
+  closeOutputWindow(oldWin);
+  if (streaming || streamPreviewRefCount > 0) prepareStream();
 }
 
 function startStreamCapture(win, config) {
@@ -1368,6 +1715,9 @@ function startStreamCapture(win, config) {
 
     if (streaming && streamEncodeConfig) {
       // Spawn ffmpeg on the FIRST real frame so -video_size matches the actual surface.
+      // A rebuilt compositor window inherits a still-running ffmpeg: adopt it rather
+      // than calling start() (which would fail with 'already streaming' forever).
+      if (!rtmpReady && !rtmpStarting && rtmp.isActive()) rtmpReady = true;
       if (!rtmpReady && !rtmpStarting) {
         rtmpStarting = true;
         const res = await rtmp.start(
@@ -1511,7 +1861,7 @@ export async function setOutputsEnabled(enabled) {
       if (typeof key === 'string' && key.startsWith('ndi-')) {
         stopNdiCapture(parseInt(key.slice(4)));
       }
-      if (win && !win.isDestroyed()) win.close();
+      closeOutputWindow(win);
     }
     windows.clear();
     syncLiveInput(); // outputs off → release the NDI input (and its tally)
@@ -1530,7 +1880,7 @@ export function getState() {
     isLive: state.displayMode !== 'idle',
     displayMode: state.displayMode,
     livePayload: state.livePayload,
-    activeWindows: [...windows.values()].filter((w) => w && !w.isDestroyed()).length,
+    activeWindows: [...windows.values()].filter((w) => w && !w.isDestroyed() && !w._cueCrashed).length,
     activeChannels: [...windows.keys()],
     outputsEnabled,
     transport: { ...transport },
@@ -1624,13 +1974,13 @@ function getAllStageWindows() {
 }
 
 function sendStageState(win, channel) {
-  win.webContents.send('stage:timer',    { ...stageState.timer });
-  win.webContents.send('stage:message',  { text: stageState.message });
-  win.webContents.send('stage:schedule', { scheduled: stageState.scheduled });
+  safeSend(win, 'stage:timer',    { ...stageState.timer });
+  safeSend(win, 'stage:message',  { text: stageState.message });
+  safeSend(win, 'stage:schedule', { scheduled: stageState.scheduled });
   // Per-channel layout — the window builds its DOM from this. NULL column → default.
   if (channel) {
     const layout = getStageLayout(channel.id);
-    win.webContents.send('stage:layout', { channelId: channel.id, elements: layout.elements });
+    safeSend(win, 'stage:layout', { channelId: channel.id, elements: layout.elements });
   }
 }
 
@@ -1638,7 +1988,7 @@ function sendStageState(win, channel) {
 // pending list stays live). The anchors are absolute — windows tick them locally.
 function broadcastStageSchedule() {
   for (const win of getAllStageWindows()) {
-    win.webContents.send('stage:schedule', { scheduled: stageState.scheduled });
+    safeSend(win, 'stage:schedule', { scheduled: stageState.scheduled });
   }
   notifyMainWindow('stage:schedule', { scheduled: stageState.scheduled });
 }
@@ -1688,7 +2038,7 @@ export function unscheduleStageMessage(id) {
 export function setStageMessage(text) {
   stageState.message = text ?? '';
   for (const win of getAllStageWindows()) {
-    win.webContents.send('stage:message', { text: stageState.message });
+    safeSend(win, 'stage:message', { text: stageState.message });
   }
   notifyMainWindow('stage:message', { text: stageState.message });
 }
@@ -1710,7 +2060,7 @@ export function setLowerthirdFontScale(pct) {
   if (state.displayMode === 'content' && state.livePayload) {
     for (const win of getAllOutputWindows()) {
       if (win.isDestroyed()) continue;
-      win.webContents.send('slide:update', {
+      safeSend(win, 'slide:update', {
         ...state.livePayload, type: 'content',
         transport: { ...transport }, transition: { type: 'none' },
         ltFontScale: ltFontScaleFraction(),
@@ -1745,7 +2095,7 @@ export function stageTimerCmd(action, seconds) {
     t.startedAt        = null;
   }
   for (const win of getAllStageWindows()) {
-    win.webContents.send('stage:timer', { ...t });
+    safeSend(win, 'stage:timer', { ...t });
   }
   notifyMainWindow('stage:timer', { ...t });
 }
@@ -1851,7 +2201,7 @@ export function setStageLayout(channelId, layout) {
   getDb().prepare('UPDATE output_channels SET stage_layout_json = ? WHERE id = ?').run(JSON.stringify(norm), channelId);
   const msg = { channelId: Number(channelId), elements: norm.elements };
   for (const win of getChannelStageWindows(channelId)) {
-    try { win.webContents.send('stage:layout', msg); } catch {}
+    try { safeSend(win, 'stage:layout', msg); } catch {}
   }
   notifyMainWindow('stage:layout', msg);
   return norm;
@@ -1878,8 +2228,12 @@ export function deleteStagePreset(id) {
 }
 
 function notifyMainWindow(channel, ...args) {
-  if (mainWindowRef && !mainWindowRef.isDestroyed()) {
-    mainWindowRef.webContents.send(channel, ...args);
+  try {
+    if (mainWindowRef && !mainWindowRef.isDestroyed() && !mainWindowRef.webContents.isDestroyed()) {
+      mainWindowRef.webContents.send(channel, ...args);
+    }
+  } catch (err) {
+    console.warn(`[Output] notify '${channel}' failed:`, err && err.message ? err.message : err);
   }
   // Mirror display-state changes to the network-control remote (reads getState itself).
   if (channel === 'output:state-changed' && remoteStateCb) {
@@ -1932,12 +2286,12 @@ function overlayForKind(kind) {
 // (createMonitorWindow → 'screen', createNdiWindow → 'ndi').
 function sendGraphicToWindow(win, kind = 'screen') {
   if (win.isDestroyed()) return;
-  win.webContents.send('graphic:update', overlayForKind(kind));
+  safeSend(win, 'graphic:update', overlayForKind(kind));
 }
 
 function broadcastGraphic() {
   for (const { win, kind } of getGraphicsWindowInfos()) {
-    try { win.webContents.send('graphic:update', overlayForKind(kind)); } catch {}
+    try { safeSend(win, 'graphic:update', overlayForKind(kind)); } catch {}
   }
   mirrorOverlay = overlayForKind('screen');
   emitProgramChange({ overlay: mirrorOverlay });

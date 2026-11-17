@@ -73,7 +73,9 @@
   const ltEsc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   function ltRenderRuns(text, runs, scale = 1) {
     if (!text) return '';
-    if (!runs || runs.length === 0) return ltEsc(text).replace(/\n/g, '<br>');
+    text = String(text);
+    runs = Array.isArray(runs) ? runs.filter((r) => r && typeof r === 'object' && Number.isFinite(Number(r.start)) && Number.isFinite(Number(r.end))) : [];
+    if (runs.length === 0) return ltEsc(text).replace(/\n/g, '<br>');
     const sorted = [...runs].sort((a, b) => a.start - b.start);
     let html = '', pos = 0;
     for (const run of sorted) {
@@ -135,17 +137,54 @@
   function clearLT() { ltBand.classList.remove('active'); ltText.innerHTML = ''; ltCopy.textContent = ''; ltBand.style.background = 'transparent'; }
   function renderLT(p) {
     if (!ltVisible || !p) { clearLT(); return; }
-    const { type, text, copyright: copy, styleJson } = p;
-    // clear / logo / media / presentation carry no lyric band (matches lowerthird.js).
-    if (type === 'clear' || type === 'logo' || p.media || p.elements) { clearLT(); return; }
+    const { type, copyright: copy, styleJson } = p;
+    // clear / logo / media carry no lyric band (matches lowerthird.js).
+    if (type === 'clear' || type === 'logo' || p.media) { clearLT(); return; }
+    // Presentation slide: its derived text (`ltText`, optional bold `ltTitle` first line —
+    // shared/presentation-lt-text.js) goes through the same band; hidden / empty → blank.
+    const isPres = !!p.elements;
+    let text = typeof p.text === 'string' ? p.text : '';
+    let presTitle = '';
+    let presLines = [];
+    if (isPres) {
+      // `ltLines` = the current lower-third page, one string per line; `ltText` (title first) is
+      // the older shape, split here so both render identically.
+      if (p.ltMode !== 'hide') {
+        presTitle = typeof p.ltTitle === 'string' ? p.ltTitle.trim() : '';
+        if (Array.isArray(p.ltLines)) presLines = p.ltLines.map((l) => String(l == null ? '' : l).trim()).filter(Boolean);
+        else {
+          presLines = (typeof p.ltText === 'string' ? p.ltText : '').split('\n').map((l) => l.trim()).filter(Boolean);
+          if (presTitle && presLines[0] === presTitle) presLines = presLines.slice(1);
+        }
+      }
+      if (!presLines.length && !presTitle) { clearLT(); return; }
+    }
     const scale = (Number(p.ltFontScale) > 0) ? Number(p.ltFontScale) : 1;
-    ltApplyStyle(ltText, styleJson, scale);
-    ltText.innerHTML = ltRenderRuns(text || '', styleJson?.runs, scale);
-    ltCopy.textContent = copy || '';
+    const sj = styleJson && typeof styleJson === 'object' ? styleJson : null;
+    ltApplyStyle(ltText, sj, scale);
+    if (isPres) {
+      ltText.innerHTML = (presTitle ? '<div style="font-weight:700;white-space:nowrap">' + ltEsc(presTitle) + '</div>' : '')
+        + presLines.map((l) => '<div style="white-space:nowrap">' + ltEsc(l) + '</div>').join('');
+    } else {
+      ltText.innerHTML = ltRenderRuns(text, sj?.runs, scale);
+    }
+    ltCopy.textContent = isPres || typeof copy !== 'string' ? '' : copy;
     ltApplyCopyright(ltCopy, p.copyrightStyle, p.copyrightAlign === 'right' ? 'right' : '');
     ltBand.classList.add('active');
+    if (isPres) {
+      // Explicit page lines: shrink until no line is wider than the band and the block stays
+      // within ~45% of the 1080 design frame.
+      const cap = parseFloat(ltText.style.fontSize) || 48;
+      const ok = () => ltText.scrollWidth <= ltText.clientWidth + 1 && ltText.scrollHeight <= 486;
+      ltText.style.overflow = 'hidden';
+      if (!ok()) {
+        let lo = 20, hi = cap;
+        while (hi - lo > 1) { const mid = (lo + hi) >> 1; ltText.style.fontSize = mid + 'px'; if (ok()) lo = mid; else hi = mid; }
+        ltText.style.fontSize = lo + 'px';
+      }
+    }
   }
-  window.cueOutput.onSlideUpdate?.((p) => { lastSlide = p; renderLT(p); });
+  window.cueOutput.onSlideUpdate?.((p) => { lastSlide = p; try { renderLT(p); } catch (err) { console.error('[stream-feed] lyric band render failed', err); try { clearLT(); } catch {} } });
 
   // ── Design space (resolution independence) ────────────────────────────────────
   // Cue content (the program #stage, the lower-third band, and the broadcast-graphics

@@ -14,6 +14,7 @@ export function registerMediaIpc() {
   ipcMain.handle('media:deleteMany', h((_e, ids) => media.deleteMany(ids)));
   ipcMain.handle('media:deleteAll', h(() => media.deleteAllMedia()));
   ipcMain.handle('media:findUnused', h(() => media.findUnused()));
+  ipcMain.handle('media:usage', h((_e, ids) => media.usageFor(ids)));
   ipcMain.handle('media:folders:create', h((_e, name, parentId) => media.createFolder(name, parentId)));
   ipcMain.handle('media:folders:rename', h((_e, id, name) => media.renameFolder(id, name)));
   ipcMain.handle('media:folders:delete', h((_e, id) => media.deleteFolder(id)));

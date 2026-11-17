@@ -127,7 +127,7 @@ function matchBookAt(tokens, i) {
 
 // Parse chapter[:verse[-end]] beginning at index i. Tolerates "chapter"/"verse"
 // keyword cues and the bare two-number form ("john 3 16" → 3:16).
-function parseNumbers(tokens, i, singleChapter = false) {
+function parseNumbers(tokens, i, singleChapter = false, psalms = false) {
   let idx = i;
   let hadChapterKw = false, hadVerseCue = false;
   if (tokens[idx] === 'chapter') { hadChapterKw = true; idx++; }
@@ -152,6 +152,12 @@ function parseNumbers(tokens, i, singleChapter = false) {
   idx++;
   let chapter = first.n, vStart = first.v, vEnd = first.e;
   if (first.v != null) hadVerseCue = true;
+  // "psalm one nineteen" is Psalm 119, not 1:19 (Psalm 1 has six verses): in Psalms a
+  // spoken "1 NN" with NN 10-50 is the 1NN chapter (110-150).
+  if (psalms && first.n === 1 && first.v == null && first.e == null) {
+    const nx = parseNumToken(tokens[idx] || '');
+    if (nx && nx.v == null && nx.e == null && nx.n >= 10 && nx.n <= 50) { chapter = 100 + nx.n; idx++; }
+  }
 
   if (vStart == null) {
     // Optional explicit verse cue.
@@ -210,7 +216,7 @@ export function parseReferences(rawText) {
   while (i < tokens.length) {
     const bm = matchBookAt(tokens, i);
     if (!bm) { i++; continue; }
-    const nums = parseNumbers(tokens, bm.nextIdx, SINGLE_CHAPTER.has(bm.book.num));
+    const nums = parseNumbers(tokens, bm.nextIdx, SINGLE_CHAPTER.has(bm.book.num), bm.book.num === 19);
     if (!nums) { i = bm.nextIdx; continue; }
     // Reject ambiguous short abbrevs unless an explicit cue backs them.
     const cued = nums.hadChapterKw || nums.hadVerseCue;

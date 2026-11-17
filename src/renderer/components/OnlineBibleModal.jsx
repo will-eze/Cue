@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useModalGuard } from '../utils/modalGuard';
+import { useFocusTrap } from '../utils/useFocusTrap';
 
 // Browse + download Bible translations from the online catalog (getbible.net v2).
 // Multi-select, then download → import into the library. Licence responsibility
@@ -8,6 +9,8 @@ import { useModalGuard } from '../utils/modalGuard';
 
 export default function OnlineBibleModal({ onClose, onImported }) {
   useModalGuard();
+  const trapRef = React.useRef(null);
+  useFocusTrap(trapRef);
   const [versions, setVersions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -68,7 +71,7 @@ export default function OnlineBibleModal({ onClose, onImported }) {
 
   return createPortal(
     <div className="fixed inset-0 bg-background/90 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-surface-container-low border border-outline-variant/30 rounded-xl w-full max-w-2xl h-[80vh] flex flex-col shadow-2xl ring-1 ring-white/5 overflow-hidden">
+      <div ref={trapRef} role="dialog" aria-modal="true" className="bg-surface-container-low border border-outline-variant/30 rounded-xl w-full max-w-2xl h-[80vh] flex flex-col shadow-2xl ring-1 ring-white/5 overflow-hidden">
 
         {/* Header */}
         <div className="flex items-center gap-md px-lg py-sm border-b border-outline-variant/30 bg-surface-container-high flex-shrink-0">
@@ -77,7 +80,7 @@ export default function OnlineBibleModal({ onClose, onImported }) {
             <h2 className="text-headline-md font-bold text-primary leading-tight tracking-tight">Import from Online</h2>
             <p className="text-[11px] font-mono text-on-surface-variant/60">getbible.net catalog</p>
           </div>
-          <button onClick={() => !progress && onClose()}
+          <button title="Close" aria-label="Close" onClick={() => !progress && onClose()}
             className="btn-icon">
             ✕
           </button>

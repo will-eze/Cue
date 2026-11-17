@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useModalGuard } from '../utils/modalGuard';
+import { useFocusTrap } from '../utils/useFocusTrap';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
 } from '@dnd-kit/core';
@@ -18,6 +19,10 @@ import { mediaUrl } from '../utils/mediaUrl';
 import { StaticSlide } from './SlideElements';
 import ResponsiveToolbar from './ResponsiveToolbar';
 import { PRES_LAYOUTS, PLAIN_THEME, buildThemeSlide, reskinSlide, detectThemeId, normalizeToPresTokens } from '../utils/presentationThemes';
+import { normaliseLt, ltDefaults } from '../../shared/presentation-lt-text';
+import LowerThirdEditor from './LowerThirdEditor';
+import { normalizeLookStyle } from '../utils/presentationThemes';
+import { mergeSlideStyle } from '../utils/themeStyle';
 
 const NATIVE_W = 1920;
 const NATIVE_H = 1080;
@@ -279,6 +284,8 @@ function SlideThumb({ slide, idx, active, onClick, onContext }) {
 
 export default function PresentationEditor({ presentationId, onClose, onSave }) {
   useModalGuard();
+  const trapRef = useRef(null);
+  useFocusTrap(trapRef); // Tab can't reach the live operator UI behind the editor; focus restored on close
   const fonts = useFonts();
   // Undoable working document: title + the slides array (each slide's elements).
   // Slide selection (cur) and element selection (selId) are ephemeral UI, kept out
@@ -286,14 +293,21 @@ export default function PresentationEditor({ presentationId, onClose, onSave }) 
   // are discrete steps, continuous element drags coalesce via patchElement's tag).
   const doc = useEditHistory({
     title: 'Untitled Presentation',
-    slides: [{ _key: newId(), label: null, background_id: null, background_path: null, elements: [] }],
+    ltMode: 'auto', // deck default for the lower third: 'auto' | 'hide'
+    slides: [{ _key: newId(), label: null, background_id: null, background_path: null, elements: [], lt: null }],
   });
-  const { title, slides } = doc.state;
+  const { title, slides, ltMode } = doc.state;
   const setTitle = (value) => doc.set((d) => ({ ...d, title: value }), 'title');
+  const setLtMode = (value) => doc.set((d) => ({ ...d, ltMode: value }));
   const setSlides = (updater, coalesce) =>
     doc.set((d) => ({ ...d, slides: typeof updater === 'function' ? updater(d.slides) : updater }), coalesce);
   useUndoRedoKeys(doc.undo, doc.redo);
   const [cur, setCur] = useState(0);
+  const ltCtx = useLtContext();
+  const [ltFontScale, setLtFontScale] = useState(1);
+  useEffect(() => {
+    window.cue.settings.get('lowerthird_font_scale').then((v) => { const n = Number(v); setLtFontScale(n > 0 ? n / 100 : 1); }).catch(() => {});
+  }, []);
   const [selId, setSelId] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [guides, setGuides] = useState([]); // smart-snap guide lines during an element drag
@@ -315,9 +329,11 @@ export default function PresentationEditor({ presentationId, onClose, onSave }) 
       // Seed via reset() so the DB hydrate is the baseline, not the first undo step.
       doc.reset({
         title: p.title,
+        ltMode: p.lt_mode === 'hide' ? 'hide' : 'auto',
         slides: (p.slides && p.slides.length ? p.slides : [{ elements: [] }]).map((s) => ({
           _key: newId(), label: s.label || null, background_id: s.background_id || null,
           background_path: s.background_path || null, elements: s.elements || [],
+          lt: parseLt(s.lt_json),
         })),
       });
     });
@@ -474,7 +490,8 @@ export default function PresentationEditor({ presentationId, onClose, onSave }) 
     try {
       const payload = {
         title,
-        slides: slides.map((s) => ({ label: s.label, background_id: s.background_id, elements: s.elements })),
+        lt_mode: ltMode,
+        slides: slides.map((s) => ({ label: s.label, background_id: s.background_id, elements: s.elements, lt_json: s.lt || null })),
       };
       if (presentationId) await window.cue.presentations.update(presentationId, payload);
       else await window.cue.presentations.create(payload);
@@ -514,7 +531,7 @@ export default function PresentationEditor({ presentationId, onClose, onSave }) 
   }); // eslint-disable-line react-hooks/exhaustive-deps
 
   return createPortal(
-    <div className="fixed inset-0 z-50 bg-background/90 backdrop-blur-sm flex flex-col">
+    <div ref={trapRef} className="fixed inset-0 z-50 bg-background/90 backdrop-blur-sm flex flex-col">
       {downloadingBg && (
         <div className="fixed bottom-6 right-6 z-[80] bg-surface-container-high border border-outline-variant/30 rounded-lg px-md py-sm text-label-sm text-on-surface-variant flex items-center gap-sm shadow-xl pointer-events-none">
           <span className="material-symbols-outlined text-[16px] text-primary animate-spin">progress_activity</span>
@@ -535,11 +552,18 @@ export default function PresentationEditor({ presentationId, onClose, onSave }) 
             </button>
           </div>
         </div>
-        <div className="flex items-center gap-md px-lg pb-sm">
-          <span className="material-symbols-outlined text-primary">slideshow</span>
+        <div className="flex items-center gap-md px-lg pb-sm min-w-0">
+          <span className="material-symbols-outlined text-primary shrink-0">slideshow</span>
           <input
-            className="bg-surface-container-lowest border border-outline-variant/50 rounded-lg px-md py-xs text-on-surface text-body-md focus:outline-none focus:border-primary w-80"
+            className="bg-surface-container-lowest border border-outline-variant/50 rounded-lg px-md py-xs text-on-surface text-body-md focus:outline-none focus:border-primary w-80 min-w-0 shrink"
             value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Presentation title" />
+          <div className="ml-auto shrink-0 flex items-center gap-xs" title="What lower-third channels show for this presentation's slides. Each slide can override this.">
+            <span className="text-label-sm font-label-sm text-on-surface-variant mr-xs">Lower third</span>
+            {[{ id: 'auto', label: 'Auto' }, { id: 'hide', label: 'Hide' }].map((o) => (
+              <button key={o.id} type="button" onClick={() => setLtMode(o.id)}
+                className={`btn btn-toggle btn-xs ${ltMode === o.id ? 'is-on' : ''}`}>{o.label}</button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -637,6 +661,11 @@ export default function PresentationEditor({ presentationId, onClose, onSave }) 
                   className="bg-surface-container-lowest border border-outline-variant/40 rounded px-sm py-xs text-body-md text-on-surface outline-none focus:border-primary"
                 />
               </label>
+              {slide && (
+                <LowerThirdEditor slide={slide} deckMode={ltMode} defaults={ltCtx.defaults}
+                  themeStyle={ltCtx.look.style} themeBgPath={ltCtx.look.bgPath} ltFontScale={ltFontScale}
+                  onChange={(lt, co) => patchSlide({ lt }, co)} onDefaultsChange={ltCtx.setDefault} />
+              )}
             </div>
           )}
         </div>
@@ -660,6 +689,47 @@ export default function PresentationEditor({ presentationId, onClose, onSave }) 
     </div>,
     document.body
   );
+}
+
+function parseLt(v) { return normaliseLt(v); }
+
+// Global lower-third pagination defaults (settings presentation_lt_max_lines / _max_chars) and the
+// default theme's text style + background, so the page strip is drawn with a real look.
+function useLtContext() {
+  const [defaults, setDefaults] = useState(() => ltDefaults({}));
+  const [look, setLook] = useState({ style: null, bgPath: null });
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const [ml, mc] = await Promise.all([
+          window.cue.settings.get('presentation_lt_max_lines'), window.cue.settings.get('presentation_lt_max_chars'),
+        ]);
+        if (alive) setDefaults(ltDefaults({ maxLines: ml, maxChars: mc }));
+        const id = Number(await window.cue.settings.get('default_theme_id_slide')) || Number(await window.cue.settings.get('default_theme_id')) || null;
+        if (!id) return;
+        const t = (await window.cue.themes.list()).find((x) => x.id === id);
+        if (!t) return;
+        let raw = null;
+        try { raw = typeof t.style_json === 'string' ? JSON.parse(t.style_json) : t.style_json; } catch {}
+        const style = raw ? normalizeLookStyle(raw) : null;
+        if (alive) setLook({ style: mergeSlideStyle(null, style), bgPath: t.background_path || null });
+      } catch { /* the strip falls back to the default look */ }
+    })();
+    return () => { alive = false; };
+  }, []);
+  const setDefault = (patch) => {
+    setDefaults((cur) => {
+      const next = ltDefaults({ ...cur, ...patch });
+      try {
+        window.cue.settings.set('presentation_lt_max_lines', String(next.maxLines));
+        window.cue.settings.set('presentation_lt_max_chars', String(next.maxChars));
+        window.dispatchEvent(new Event('cue:lt-defaults-changed'));
+      } catch { /* settings write failed: the editor value still applies this session */ }
+      return next;
+    });
+  };
+  return { defaults, look, setDefault };
 }
 
 function MenuItem({ children, onClick, danger }) {

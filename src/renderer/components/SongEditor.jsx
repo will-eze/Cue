@@ -2,6 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from
 import { createPortal } from 'react-dom';
 import MediaPickerModal from './MediaPickerModal';
 import { useModalGuard } from '../utils/modalGuard';
+import { useFocusTrap } from '../utils/useFocusTrap';
 import ThemePickerModal from './ThemePickerModal';
 import UndoRedoButtons from './UndoRedoButtons';
 import useEditHistory, { useUndoRedoKeys } from '../utils/useEditHistory';
@@ -376,7 +377,7 @@ export function copyrightCss(cs, defaultAlign = 'center', allowPos = true) {
   return css;
 }
 
-function buildBarBg(ltBar) {
+export function buildBarBg(ltBar) {
   if (!ltBar) return 'transparent';
   if (ltBar.css) return ltBar.css;
   const c  = ltBar.color   ?? '#000000';
@@ -1361,7 +1362,7 @@ function SortableArrangementRow({ rid, label, typeColor, onRemove }) {
       <span className={`text-label-sm font-semibold truncate flex-1 rounded px-sm ${typeColor}`}>
         {label}
       </span>
-      <button
+      <button aria-label="Remove from arrangement"
         onClick={onRemove}
         tabIndex={-1}
         title="Remove from arrangement"
@@ -1713,6 +1714,8 @@ function PasteView({ onParse, onCancel }) {
 
 export default function SongEditor({ song, onClose, onSave }) {
   useModalGuard();
+  const trapRef = useRef(null);
+  useFocusTrap(trapRef);
   const toast = useToast();
   // Undoable working document: the song fields, sections, style, background, lock
   // and tag selection. Ephemeral UI (active section, preview, modals, saving) stays
@@ -2755,7 +2758,7 @@ export default function SongEditor({ song, onClose, onSave }) {
 
   return createPortal(
     <div className="fixed inset-0 bg-background/90 backdrop-blur-sm flex items-center justify-center z-50 p-2">
-      <div className="bg-surface-container-low border border-outline-variant/30 rounded-xl w-full h-full max-w-[98vw] max-h-[96vh] flex flex-col shadow-2xl ring-1 ring-white/5 overflow-hidden">
+      <div ref={trapRef} role="dialog" aria-modal="true" className="bg-surface-container-low border border-outline-variant/30 rounded-xl w-full h-full max-w-[98vw] max-h-[96vh] flex flex-col shadow-2xl ring-1 ring-white/5 overflow-hidden">
 
         {/* ── Header ──────────────────────────────────────────────────── */}
         <div className="flex items-center gap-md px-lg py-sm border-b border-outline-variant/30 bg-surface-container-high flex-shrink-0">
@@ -2790,7 +2793,7 @@ export default function SongEditor({ song, onClose, onSave }) {
             <span className="material-symbols-outlined text-[18px]">{showMeta ? 'expand_less' : 'expand_more'}</span>
             {showMeta ? 'Hide details' : 'Show details'}
           </button>
-          <button onClick={onClose} title="Close (Esc)"
+          <button aria-label="Close (Esc)" onClick={onClose} title="Close (Esc)"
             className="btn-icon">
             <span className="material-symbols-outlined text-[20px]">close</span>
           </button>
@@ -2917,7 +2920,7 @@ export default function SongEditor({ song, onClose, onSave }) {
                 {aliases.map((a) => (
                   <span key={a.alias} className="flex items-center gap-[2px] text-label-sm pl-sm pr-[2px] py-[1px] rounded-full border border-outline-variant/40 text-on-surface">
                     {a.alias}
-                    <button
+                    <button aria-label="Forget this name"
                       onClick={async () => {
                         try { await window.cue.songs.forgetAlias(song.id, a.alias); } catch { /* ignore */ }
                         setAliases((prev) => prev.filter((x) => x.alias !== a.alias));

@@ -95,5 +95,11 @@ export function wordsToNumbers(text) {
     }
   }
   emit();
+  // "one oh five" → 105 (ministers say Psalm 119:105 this way). Only digit-oh-digit.
+  for (let i = 0; i + 2 < out.length; i++) {
+    if (out[i + 1] === 'oh' && /^\d$/.test(out[i]) && /^[1-9]$/.test(out[i + 2])) {
+      out.splice(i, 3, `${out[i]}0${out[i + 2]}`);
+    }
+  }
   return out.join(' ');
 }

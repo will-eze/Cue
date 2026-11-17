@@ -30,6 +30,13 @@ function SortableTab({ id, active, onNavigate, onRemove }) {
       {...attributes}
       {...listeners}
       onClick={() => onNavigate(id)}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return; // let the nested unpin button handle its own keys
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onNavigate(id); }
+      }}
+      role="button"
+      tabIndex={0}
+      aria-current={active ? 'page' : undefined}
       title={`${labelFor(id)} — drag to reorder`}
       className={`titlebar-nodrag group relative h-full flex items-center gap-xs pl-sm pr-md text-label-sm font-label-sm cursor-pointer transition-colors border-b-2 ${
         active
@@ -43,7 +50,8 @@ function SortableTab({ id, active, onNavigate, onRemove }) {
         onClick={(e) => { e.stopPropagation(); onRemove(id); }}
         onPointerDown={(e) => e.stopPropagation()}
         title="Unpin tab"
-        className="absolute right-[2px] top-1/2 -translate-y-1/2 w-3.5 h-3.5 hidden group-hover:flex items-center justify-center rounded-full text-on-surface-variant/60 hover:text-error hover:bg-surface-variant"
+        aria-label={`Unpin ${labelFor(id)} tab`}
+        className="absolute right-[2px] top-1/2 -translate-y-1/2 w-3.5 h-3.5 hidden group-hover:flex group-focus-within:flex focus-visible:flex items-center justify-center rounded-full text-on-surface-variant/60 hover:text-error hover:bg-surface-variant"
       >
         <span className="material-symbols-outlined text-[12px]">close</span>
       </button>
@@ -83,6 +91,9 @@ export default function TopBarTabs({ extraTabs, activeTabId, onNavigate, onReord
           ref={pickerBtnRef}
           onClick={() => setPickerOpen((v) => !v)}
           title="Pin a Settings section as a tab"
+          aria-label="Pin a Settings section as a tab"
+          aria-haspopup="menu"
+          aria-expanded={pickerOpen}
           className={`btn-icon btn-icon-sm ${pickerOpen ? 'is-on' : ''}`}
         >
           <span className="material-symbols-outlined text-[16px]">add</span>

@@ -22,6 +22,13 @@
 // clock don't mix (see CLAUDE.md / media-player.js), so any video swap is a hard
 // cut — this module therefore never clones a playing video.
 (function () {
+  // Log-only failure visibility (shared guard: every output script may include this).
+  if (!window.__cueErrLog) {
+    window.__cueErrLog = true;
+    window.addEventListener('error', (e) => { try { console.error('[cue-output] uncaught error:', e.message, e.filename + ':' + e.lineno); } catch {} });
+    window.addEventListener('unhandledrejection', (e) => { try { console.error('[cue-output] unhandled rejection:', e.reason); } catch {} });
+  }
+
   const REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // The selectable library. Mirrored (for labels) in renderer/TransitionSettings.jsx.
@@ -72,7 +79,7 @@
     finish();
     opts = opts || {};
 
-    const type = (transition && transition.type) || 'none';
+    const type = String((transition && transition.type) || 'none');
     const dur = Math.max(0, Math.min(2000, Number(transition && transition.durationMs) || 0));
     const easing = (transition && transition.easing) || 'ease';
 
@@ -82,17 +89,48 @@
     }
 
     // Snapshot the current look as a ghost layered directly above the live stage.
-    const ghost = stage.cloneNode(true);
-    ghost.style.pointerEvents = 'none';
-    ghost.style.willChange = 'transform, opacity';
-    // Defensive: a ghost should never hold a playing video (those swaps arrive as
-    // 'none'), but if one slips through, neutralise it rather than spawn a 2nd decoder.
-    ghost.querySelectorAll('video, audio').forEach((m) => { try { m.pause(); } catch {} m.remove(); });
-    stage.after(ghost); // right above the live stage, below the #cue-gfx overlay
+    let ghost;
+    try {
+      ghost = stage.cloneNode(true);
+      ghost.style.pointerEvents = 'none';
+      ghost.style.willChange = 'transform, opacity';
+      // Defensive: a ghost should never hold a playing video (those swaps arrive as
+      // 'none'), but if one slips through, neutralise it rather than spawn a 2nd decoder.
+      ghost.querySelectorAll('video, audio').forEach((m) => { try { m.pause(); } catch {} m.remove(); });
+      stage.after(ghost); // right above the live stage, below the #cue-gfx overlay
+    } catch (err) {
+      // Couldn't build the ghost: skip the animation, never block the render.
+      try { if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost); } catch {}
+      render();
+      return;
+    }
 
-    // Render the new content into the live stage (underneath the ghost).
-    render();
+    // Render the new content into the live stage (underneath the ghost). If the render
+    // throws, the ghost (a frozen picture of the OLD slide at full opacity) must not be
+    // left above the stage, or every later slide renders invisibly beneath it. Drop it,
+    // strip any inline animation state, and let the caller handle the failure.
+    const abort = () => {
+      try { if (ghost.parentNode) ghost.parentNode.removeChild(ghost); } catch {}
+      try { strip(stage); } catch {}
+      try { const f = opts.fgSel ? stage.querySelector(opts.fgSel) : null; if (f) strip(f); } catch {}
+    };
+    try {
+      render();
+    } catch (err) {
+      abort();
+      throw err;
+    }
 
+    try {
+      animate(ghost, stage, type, dur, easing, opts);
+    } catch (err) {
+      // Render succeeded; only the animation failed — show the new slide un-animated.
+      try { console.error('[cue-output] transition failed:', err); } catch {}
+      abort();
+    }
+  }
+
+  function animate(ghost, stage, type, dur, easing, opts) {
     const t = `transform ${dur}ms ${easing}, opacity ${dur}ms ${easing}`;
     const fg = opts.fgSel ? stage.querySelector(opts.fgSel) : stage;
 

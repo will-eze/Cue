@@ -2,7 +2,8 @@ import fs from 'fs';
 import path from 'path';
 import { app } from 'electron';
 import { getDb } from './schema.js';
-import { BOOKS, lookupBook } from './bible-books.js';
+import { BOOKS } from './bible-books.js';
+import { parseScriptureRef, segmentContains, passageLabel } from '../../shared/scripture-ref.js';
 import { parseBibleFile, deriveAbbrev } from './bible-import.js';
 
 export function listVersions() {
@@ -140,26 +141,15 @@ export function seedBundledBibles() {
   }
 }
 
-// Parse a free-text reference like "John 3:16", "John 3:16-18", "Psalm 23",
-// "1 John 2:1-2" into { bookNum, bookName, chapter, vStart, vEnd } or null.
-function parseReference(ref) {
-  const m = /^\s*(.+?)\s+(\d+)(?:\s*[:.]\s*(\d+)(?:\s*-\s*(\d+))?)?\s*$/.exec(ref || '');
-  if (!m) return null;
-  const book = lookupBook(m[1]);
-  if (!book) return null;
-  const chapter = parseInt(m[2], 10);
-  const vStart = m[3] ? parseInt(m[3], 10) : null;
-  const vEnd = m[4] ? parseInt(m[4], 10) : vStart;
-  return { bookNum: book.num, bookName: book.name, chapter, vStart, vEnd };
-}
-
 // Resolve a reference against a version into a self-contained passage payload
 // suitable for storing on a service_item. Returns null if nothing matched.
+// Reference grammar (cross-chapter ranges, comma lists, single-chapter books, roman /
+// ordinal book prefixes, a trailing translation tag) lives in shared/scripture-ref.js.
 export function resolvePassage(versionId, ref, versesPerSlide = 1) {
   const db = getDb();
   const version = db.prepare('SELECT * FROM bible_versions WHERE id = ?').get(versionId);
   if (!version) return null;
-  const parsed = parseReference(ref);
+  const parsed = parseScriptureRef(ref);
   if (!parsed) return null;
 
   // Match the parsed canonical book to the version's actual stored book_name.
@@ -168,24 +158,17 @@ export function resolvePassage(versionId, ref, versesPerSlide = 1) {
   ).get(versionId, parsed.bookNum);
   const storedBookName = bookRow?.book_name || parsed.bookName;
 
-  let rows;
-  if (parsed.vStart == null) {
-    rows = db.prepare(
-      'SELECT chapter, verse, text FROM bible_verses WHERE version_id = ? AND book_num = ? AND chapter = ? ORDER BY verse',
-    ).all(versionId, parsed.bookNum, parsed.chapter);
-  } else {
-    rows = db.prepare(
-      `SELECT chapter, verse, text FROM bible_verses
-       WHERE version_id = ? AND book_num = ? AND chapter = ? AND verse BETWEEN ? AND ?
-       ORDER BY verse`,
-    ).all(versionId, parsed.bookNum, parsed.chapter, parsed.vStart, parsed.vEnd);
-  }
+  // One query over the chapter span; the segments then pick the exact verses (clamped to
+  // what the version really contains — a range past the end of a chapter just stops).
+  const lo = Math.min(...parsed.segments.map((g) => g.chapter));
+  const hi = Math.max(...parsed.segments.map((g) => g.endChapter));
+  const all = db.prepare(
+    `SELECT chapter, verse, text FROM bible_verses
+     WHERE version_id = ? AND book_num = ? AND chapter BETWEEN ? AND ?
+     ORDER BY chapter, verse`,
+  ).all(versionId, parsed.bookNum, lo, hi);
+  const rows = all.filter((r) => parsed.segments.some((g) => segmentContains(g, r.chapter, r.verse)));
   if (!rows.length) return null;
-
-  const first = rows[0], last = rows[rows.length - 1];
-  const reference = rows.length > 1
-    ? `${storedBookName} ${parsed.chapter}:${first.verse}-${last.verse}`
-    : `${storedBookName} ${parsed.chapter}:${first.verse}`;
 
   return {
     versionId,
@@ -193,7 +176,7 @@ export function resolvePassage(versionId, ref, versesPerSlide = 1) {
     versionName: version.name,
     bookNum: parsed.bookNum,
     bookName: storedBookName,
-    reference,
+    reference: passageLabel(storedBookName, parsed.segments, rows),
     versesPerSlide: Math.max(1, versesPerSlide | 0),
     verses: rows.map((r) => ({ chapter: r.chapter, verse: r.verse, text: r.text })),
   };

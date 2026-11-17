@@ -1,4 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useModalGuard } from '../utils/modalGuard';
+import { useFocusTrap } from '../utils/useFocusTrap';
+import { useToast } from '../components/Toast';
+import { cleanErrorMessage } from '../utils/errorMessage';
 import { diffOutputPreset } from '../utils/outputPresetDiff';
 
 // Output Presets — save & recall the OUTPUT RIG (which channels are on, their display /
@@ -22,6 +26,9 @@ const countOn = (data) => (data?.channels || []).filter((c) => c.active).length;
 
 // ── Recall: replay a captured snapshot onto the live outputs ────────────────────────
 async function applyOutputPreset(data, inc, onBgChanged, currentChannels) {
+  const failures = []; // human-readable "what failed" so recall never half-applies silently
+  const nameOf = (id) => ((data.channels || []).find((c) => c.id === id)?.name) || `channel ${id}`;
+  const attempt = async (label, fn) => { try { await fn(); } catch (e) { failures.push(`${label} (${cleanErrorMessage(e, 80)})`); } };
   // 1+2. Channel fields — combine `active` + Displays/NDI fields into ONE update per
   // channel so a single syncChannel rebuilds the window once (not twice).
   const updates = new Map(); // id -> partial channel row
@@ -43,19 +50,19 @@ async function applyOutputPreset(data, inc, onBgChanged, currentChannels) {
     if (cur && Object.entries(fields).every(([k, v]) => cur[k] === v)) continue;
     // Tolerate a stale snapshot (e.g. a channel deleted since capture) — a single failed
     // call shouldn't abort the rest of the recall.
-    try { await window.cue.output.channels.update(id, fields); } catch {}
+    await attempt(nameOf(id), () => window.cue.output.channels.update(id, fields));
   }
 
   // Monitor (display) reconciliation — only for channels this preset captured.
   if (inc.displaysNdi && data.displaysNdi) {
     const capturedIds = new Set((data.displaysNdi.channels || []).map((c) => c.id));
-    await reconcileMonitors(data.displaysNdi.monitors || [], capturedIds);
+    await attempt('Monitors', () => reconcileMonitors(data.displaysNdi.monitors || [], capturedIds, failures));
   }
 
   // 3. Stream Studio + RTMP config.
   if (inc.stream && data.stream) {
-    if (data.stream.studio) await window.cue.output.stream.setStudio(data.stream.studio);
-    if (data.stream.config) await window.cue.output.stream.setConfig(data.stream.config);
+    if (data.stream.studio) await attempt('Stream layout', () => window.cue.output.stream.setStudio(data.stream.studio));
+    if (data.stream.config) await attempt('Stream settings', () => window.cue.output.stream.setConfig(data.stream.config));
   }
 
   // 4. Global background/logo defaults + per-channel stage layout — SEPARATE layers so a
@@ -68,21 +75,22 @@ async function applyOutputPreset(data, inc, onBgChanged, currentChannels) {
   if (bs && (incBackgrounds || incStage)) {
     if (incBackgrounds) {
       const s = bs.settings || {};
-      await window.cue.settings.setGlobalBackground('song', s.global_bg_song_id ?? null);
-      await window.cue.settings.setGlobalBackground('scripture', s.global_bg_scripture_id ?? null);
-      await window.cue.settings.setGlobalBackground('slide', s.global_bg_slide_id ?? null);
-      await window.cue.settings.setGlobalLogo(s.global_logo_id ?? null);
+      await attempt('Song background', () => window.cue.settings.setGlobalBackground('song', s.global_bg_song_id ?? null));
+      await attempt('Scripture background', () => window.cue.settings.setGlobalBackground('scripture', s.global_bg_scripture_id ?? null));
+      await attempt('Slide background', () => window.cue.settings.setGlobalBackground('slide', s.global_bg_slide_id ?? null));
+      await attempt('Logo', () => window.cue.settings.setGlobalLogo(s.global_logo_id ?? null));
       onBgChanged?.();
     }
     if (incStage) {
       for (const st of (bs.stage || [])) {
-        if (st.layout) await window.cue.output.stage.setLayout(st.channel_id, st.layout);
+        if (st.layout) await attempt(`Stage layout for ${nameOf(st.channel_id)}`, () => window.cue.output.stage.setLayout(st.channel_id, st.layout));
       }
     }
   }
+  return failures;
 }
 
-async function reconcileMonitors(presetMonitors, capturedIds) {
+async function reconcileMonitors(presetMonitors, capturedIds, failures = []) {
   const current = await window.cue.output.monitors.list(); // all rows (carry ids)
   const curByCh = new Map();
   for (const m of current) { (curByCh.get(m.channel_id) || curByCh.set(m.channel_id, []).get(m.channel_id)).push(m); }
@@ -97,10 +105,10 @@ async function reconcileMonitors(presetMonitors, capturedIds) {
     const desSet = new Set(des.map((m) => String(m.display_bounds)));
     const curSet = new Set(cur.map((m) => String(m.display_bounds)));
     for (const m of cur) if (!desSet.has(String(m.display_bounds))) {
-      try { await window.cue.output.monitors.delete(m.id); } catch {}
+      try { await window.cue.output.monitors.delete(m.id); } catch (e) { failures.push(`Remove monitor ${m.label || ''}`.trim()); }
     }
     for (const m of des) if (!curSet.has(String(m.display_bounds))) {
-      try { await window.cue.output.monitors.create(chId, { display_bounds: m.display_bounds, label: m.label }); } catch {}
+      try { await window.cue.output.monitors.create(chId, { display_bounds: m.display_bounds, label: m.label }); } catch (e) { failures.push(`Add monitor ${m.label || ''}`.trim()); }
     }
   }
 }
@@ -110,18 +118,32 @@ export default function OutputPresetsPanel({ onBackgroundDefaultChanged }) {
   const [editor, setEditor] = useState(null);   // {} = new, row = edit, null = closed
   const [confirm, setConfirm] = useState(null);  // { preset, data, inc, reasons }
   const [appliedId, setAppliedId] = useState(null);
+  const toast = useToast();
 
-  const load = useCallback(() => { window.cue.outputPresets.list().then(setPresets); }, []);
+  const load = useCallback(() => { window.cue.outputPresets.list().then(setPresets).catch((e) => toast.error(`Couldn’t load output presets: ${cleanErrorMessage(e)}`)); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, [load]);
 
   async function doApply(preset, data, inc, currentChannels) {
-    await applyOutputPreset(data, inc, onBackgroundDefaultChanged, currentChannels);
+    let failures;
+    try {
+      failures = await applyOutputPreset(data, inc, onBackgroundDefaultChanged, currentChannels);
+    } catch (e) {
+      toast.error(`Couldn’t recall “${preset.name}”: ${cleanErrorMessage(e)}`);
+      return;
+    }
+    if (failures && failures.length) {
+      toast.error(`“${preset.name}” only partly applied. Failed: ${failures.join('; ')}`);
+      return;
+    }
     setAppliedId(preset.id);
     setTimeout(() => setAppliedId((id) => (id === preset.id ? null : id)), 1400);
   }
 
   // Recall — safe by default; only prompt when the change would disrupt a live output.
   async function take(preset) {
+    try { await takeInner(preset); } catch (e) { toast.error(`Couldn’t recall “${preset.name}”: ${cleanErrorMessage(e)}`); }
+  }
+  async function takeInner(preset) {
     const data = safeParse(preset.data_json) || {};
     const inc = safeParse(preset.includes_json) || {};
     const [currentChannels, currentMonitors, liveState] = await Promise.all([
@@ -134,7 +156,10 @@ export default function OutputPresetsPanel({ onBackgroundDefaultChanged }) {
     doApply(preset, data, inc, currentChannels);
   }
 
-  async function remove(preset) { await window.cue.outputPresets.delete(preset.id); load(); }
+  async function remove(preset) {
+    try { await window.cue.outputPresets.delete(preset.id); } catch (e) { toast.error(`Couldn’t delete “${preset.name}”: ${cleanErrorMessage(e)}`); }
+    load();
+  }
   function onSaved() { setEditor(null); load(); }
 
   return (
@@ -207,10 +232,10 @@ function PresetCard({ preset, applied, onTake, onEdit, onDelete }) {
             </>
           ) : (
             <>
-              <button onClick={onEdit} title="Edit" className="btn-icon btn-icon-sm">
+              <button aria-label="Edit" onClick={onEdit} title="Edit" className="btn-icon btn-icon-sm">
                 <span className="material-symbols-outlined text-[15px]">edit</span>
               </button>
-              <button onClick={() => setConfirmingDelete(true)} title="Delete" className="btn-icon btn-icon-sm btn-icon-danger">
+              <button aria-label="Delete" onClick={() => setConfirmingDelete(true)} title="Delete" className="btn-icon btn-icon-sm btn-icon-danger">
                 <span className="material-symbols-outlined text-[15px]">delete</span>
               </button>
             </>
@@ -247,6 +272,21 @@ function PresetCard({ preset, applied, onTake, onEdit, onDelete }) {
 }
 
 function PresetEditor({ preset, onClose, onSaved }) {
+  useModalGuard();
+  const trapRef = useRef(null);
+  useFocusTrap(trapRef);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault(); e.stopPropagation();
+      onCloseRef.current?.();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+  const toast = useToast();
   const [name, setName] = useState(preset?.name || '');
   const [includes, setIncludes] = useState(() => ({ ...defaultIncludes(), ...(preset ? safeParse(preset.includes_json) : {}) }));
   const [data, setData] = useState(() => (preset ? safeParse(preset.data_json) : null));
@@ -290,6 +330,8 @@ function PresetEditor({ preset, onClose, onSaved }) {
         },
       });
       setCaptured(true);
+    } catch (e) {
+      toast.error(`Couldn’t capture the current output: ${cleanErrorMessage(e)}`);
     } finally { setBusy(false); }
   }
 
@@ -299,18 +341,23 @@ function PresetEditor({ preset, onClose, onSaved }) {
 
   async function save() {
     const payload = { name: name.trim() || 'Output Preset', includes, data: data || {} };
-    if (preset?.id) await window.cue.outputPresets.update(preset.id, payload);
-    else await window.cue.outputPresets.create(payload);
+    try {
+      if (preset?.id) await window.cue.outputPresets.update(preset.id, payload);
+      else await window.cue.outputPresets.create(payload);
+    } catch (e) {
+      toast.error(`Couldn’t save the preset: ${cleanErrorMessage(e)}`);
+      return;
+    }
     onSaved();
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 p-lg" onMouseDown={onClose}>
-      <div className="w-full max-w-[520px] bg-surface-container-high rounded-xl border border-outline-variant/40 flex flex-col max-h-full overflow-hidden" onMouseDown={(e) => e.stopPropagation()}>
+      <div ref={trapRef} role="dialog" aria-modal="true" className="w-full max-w-[520px] bg-surface-container-high rounded-xl border border-outline-variant/40 flex flex-col max-h-full overflow-hidden" onMouseDown={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-sm px-lg h-12 border-b border-outline-variant/30 shrink-0">
           <span className="material-symbols-outlined text-[18px] text-primary">tune</span>
           <span className="text-label-md font-label-sm text-on-surface">{preset ? 'Edit Output Preset' : 'New Output Preset'}</span>
-          <button onClick={onClose} className="ml-auto text-on-surface-variant/60 hover:text-on-surface cursor-pointer">
+          <button onClick={onClose} title="Close" aria-label="Close" className="ml-auto text-on-surface-variant/60 hover:text-on-surface cursor-pointer">
             <span className="material-symbols-outlined text-[18px]">close</span>
           </button>
         </div>
@@ -387,9 +434,23 @@ function PresetEditor({ preset, onClose, onSaved }) {
 }
 
 function ConfirmDisruptive({ reasons, onCancel, onConfirm }) {
+  useModalGuard();
+  const trapRef = useRef(null);
+  useFocusTrap(trapRef);
+  const onCloseRef = useRef(onCancel);
+  onCloseRef.current = onCancel;
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault(); e.stopPropagation();
+      onCloseRef.current?.();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-background/70 p-lg" onMouseDown={onCancel}>
-      <div className="w-full max-w-[420px] bg-surface-container-high rounded-xl border border-secondary/40 flex flex-col overflow-hidden" onMouseDown={(e) => e.stopPropagation()}>
+      <div ref={trapRef} role="alertdialog" aria-modal="true" className="w-full max-w-[420px] bg-surface-container-high rounded-xl border border-secondary/40 flex flex-col overflow-hidden" onMouseDown={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-sm px-lg h-12 border-b border-outline-variant/30 shrink-0">
           <span className="material-symbols-outlined text-[18px] text-secondary">warning</span>
           <span className="text-label-md font-label-sm text-on-surface">Reconfigure live output?</span>

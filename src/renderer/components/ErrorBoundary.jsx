@@ -23,6 +23,25 @@ export default class ErrorBoundary extends React.Component {
     const { error } = this.state;
     if (!error) return this.props.children;
 
+    // Compact variant: a small in-panel card for wrapping a single panel. Resets only
+    // this boundary. Usage: <ErrorBoundary compact label="Rundown">…</ErrorBoundary>
+    if (this.props.compact) {
+      const name = this.props.label || 'This panel';
+      return (
+        <div role="alert" className="h-full w-full flex items-center justify-center p-md bg-surface">
+          <div className="max-w-xs w-full bg-surface-container-low border border-error/40 rounded-xl px-md py-md flex flex-col items-start gap-sm">
+            <div className="flex items-center gap-sm">
+              <span className="material-symbols-outlined text-error text-[18px]" aria-hidden="true" style={{ fontVariationSettings: "'FILL' 1" }}>error</span>
+              <p className="text-body-sm text-on-surface">{name} hit a problem. Your outputs are still running.</p>
+            </div>
+            <button onClick={() => this.setState({ error: null })} className="btn btn-secondary btn-sm">
+              Reload panel
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="h-full w-full flex items-center justify-center p-xl bg-surface">
         <div className="max-w-lg w-full bg-surface-container-low border border-error/40 rounded-xl overflow-hidden">

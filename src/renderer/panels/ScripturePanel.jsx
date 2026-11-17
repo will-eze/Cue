@@ -3,6 +3,7 @@ import ScriptureEditor from '../components/ScriptureEditor';
 import ContextMenu from '../components/ContextMenu';
 import AnchoredMenu from '../components/AnchoredMenu';
 import OnlineBibleModal from '../components/OnlineBibleModal';
+import { matchBooks } from '../../shared/scripture-ref.js';
 
 // EasyWorship-style live scripture browser.
 //
@@ -139,12 +140,11 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, onPrevie
   }, [selectedIdx, chapterData]);
 
   // ── book autocomplete ────────────────────────────────────────────────────────
+  // Shared abbreviation table (jn, ps, 1 cor, rev, song of songs…): exact abbreviation hits
+  // first, then name/abbreviation prefixes; an ambiguous prefix returns every candidate.
   const filterBooks = useCallback((q) => {
-    const n = q.trim().toLowerCase();
-    if (!n) return books.slice(0, 8);
-    const starts = books.filter((b) => b.book_name.toLowerCase().startsWith(n));
-    if (starts.length) return starts.slice(0, 8);
-    return books.filter((b) => b.book_name.toLowerCase().includes(n)).slice(0, 8);
+    if (!String(q || '').trim()) return books.slice(0, 8);
+    return matchBooks(q, books).matches.slice(0, 20);
   }, [books]);
 
   function handleBookChange(e) {
@@ -161,7 +161,8 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, onPrevie
     const best = matches[0];
     // Ghost-complete: rewrite the field to the best match and select the suffix so
     // the next keystroke overwrites it (classic browser autocomplete feel).
-    if (!deleting && best && best.book_name.toLowerCase().startsWith(typed.toLowerCase())
+    // Only when the prefix is unambiguous — "jo" must list Job/Joel/John/… not pick one.
+    if (!deleting && best && matches.length === 1 && best.book_name.toLowerCase().startsWith(typed.toLowerCase())
         && best.book_name.length > typed.length) {
       input.value = best.book_name;
       input.setSelectionRange(typed.length, best.book_name.length);
@@ -170,8 +171,13 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, onPrevie
 
   async function commitBook(rawName) {
     const typed = (rawName ?? bookInputRef.current?.value ?? '').trim();
-    const book = books.find((b) => b.book_name.toLowerCase() === typed.toLowerCase())
-      || filterBooks(typed)[0];
+    const mm = typed ? matchBooks(typed, books) : { matches: [], exact: false };
+    // Ambiguous short prefix: show every candidate and let the operator pick (never guess).
+    if (mm.matches.length > 1 && !mm.exact) {
+      setBookMatches(mm.matches.slice(0, 20)); setShowBookMenu(true); setError('');
+      return false;
+    }
+    const book = books.find((b) => b.book_name.toLowerCase() === typed.toLowerCase()) || mm.matches[0];
     setShowBookMenu(false);
     if (!book) { setError(`No book matching "${typed}".`); return false; }
     if (bookInputRef.current) bookInputRef.current.value = book.book_name;
@@ -483,7 +489,7 @@ export default function ScripturePanel({ onGoLive, onAdd, onStyleSaved, onPrevie
               onBlur={() => setTimeout(() => setShowBookMenu(false), 120)}
               onKeyDown={(e) => {
                 if (e.key === 'Tab' || e.key === ':' || e.key === '/' ) {
-                  e.preventDefault(); commitBook().then(() => { setTimeout(() => { chapterInputRef.current?.focus(); chapterInputRef.current?.select(); }, 0); });
+                  e.preventDefault(); commitBook().then((ok) => { if (ok) setTimeout(() => { chapterInputRef.current?.focus(); chapterInputRef.current?.select(); }, 0); });
                 } else if (e.key === 'Enter') {
                   e.preventDefault();
                   commitBook().then((ok) => { if (ok) setTimeout(() => { chapterInputRef.current?.focus(); chapterInputRef.current?.select(); }, 0); });

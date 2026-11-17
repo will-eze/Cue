@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { safeParse } from '../utils/safeParse';
 import { createPortal } from 'react-dom';
 import AnchoredMenu from '../components/AnchoredMenu';
 import {
@@ -54,7 +55,7 @@ const DERIVE_DISPLAY = ['Montserrat', 'Oswald', 'Bebas Neue', 'Playfair Display'
 
 function titleFromBgItem(item) {
   const tag = (item.tags || []).find((t) => t && t.length > 2 && !/^\d/.test(t));
-  if (!tag) return 'New Look';
+  if (!tag) return 'New Theme';
   return tag.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
@@ -901,7 +902,7 @@ function ThemeCard({ theme, services, activeServiceId, onEdit, onCustomize, onDu
   // Every theme is one "look" — normalise any stored shape (incl. a legacy
   // presentation token theme) into the text-style shape so the card previews it
   // uniformly as a lyric slide, exactly how a song/scripture would render it.
-  const raw = theme.style_json ? JSON.parse(theme.style_json) : null;
+  const raw = safeParse(theme.style_json, null);
   const style = { ...DEFAULT_STYLE, ...(normalizeLookStyle(raw) || {}) };
   // A theme carries a background if it has a media asset, an authored CSS gradient,
   // or a media-library reference (bgRef) resolved on apply.

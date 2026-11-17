@@ -12,6 +12,13 @@
 // transport = { active, startAt, pausedAt, loop, muted }
 //   position(now) = ((pausedAt ?? now) - startAt) / 1000   (mod duration if loop)
 (function () {
+  // Log-only failure visibility (shared guard with the other output scripts).
+  if (!window.__cueErrLog) {
+    window.__cueErrLog = true;
+    window.addEventListener('error', (e) => { try { console.error('[cue-output] uncaught error:', e.message, e.filename + ':' + e.lineno); } catch {} });
+    window.addEventListener('unhandledrejection', (e) => { try { console.error('[cue-output] unhandled rejection:', e.reason); } catch {} });
+  }
+
   const TICK_MS   = 250;   // correction cadence
   const HARD_SEEK = 0.5;   // seconds of drift above which we hard-seek
   const NUDGE_K   = 0.5;   // playbackRate gain
@@ -110,6 +117,7 @@
     let transport = opts.transport || latestTransport || null;
     let timer = null;
     let destroyed = false;
+    let failed = false; // the file is missing/undecodable: stop driving a dead element
 
     const computeExpected = () => {
       if (!transport || !transport.active) return null;
@@ -131,7 +139,7 @@
     };
 
     const tick = () => {
-      if (destroyed || !transport || !transport.active) return;
+      if (destroyed || failed || !transport || !transport.active) return;
       applyMuted();
       const expected = computeExpected();
       if (expected == null) return;
@@ -192,6 +200,18 @@
       if (transport && transport.active && transport.pausedAt == null) el.play().catch(() => {});
       else if (transport && transport.pausedAt != null) el.pause();
     };
+    // A missing/undecodable file never fires loadedmetadata. Without this the 250ms tick
+    // keeps calling play()/seeking a dead element forever. Stop the loop, log the path,
+    // and let the caller (opts.onError) drop the element so no poster/spinner is left.
+    el.addEventListener('error', () => {
+      const src = el.getAttribute('src');
+      if (destroyed || failed || !src) return; // `el.src = ''` teardown is not a failure
+      if (el.error && el.error.code === 1) return; // MEDIA_ERR_ABORTED
+      failed = true;
+      if (timer) { clearInterval(timer); timer = null; }
+      try { console.error('[cue-output] foreground media failed to load:', src, (el.error && el.error.message) || ''); } catch {}
+      try { if (typeof opts.onError === 'function') opts.onError(el); } catch {}
+    });
     el.addEventListener('loadedmetadata', onMeta, { once: true });
     if (el.readyState >= 1) onMeta();
 

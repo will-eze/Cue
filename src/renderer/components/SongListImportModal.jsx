@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import SongEditor from './SongEditor';
 import AnchoredMenu from './AnchoredMenu';
 import { useModalGuard } from '../utils/modalGuard';
+import { useFocusTrap } from '../utils/useFocusTrap';
 import { useLyricsCopy, sectionChipClass } from '../utils/lyricsClipboard';
 import { sectionLabels } from '../utils/sectionLabels';
 
@@ -54,7 +55,7 @@ function SongOption({ song, current, onPick, onPreview, isPreviewing }) {
         {song.author && <span className="text-label-sm font-label-sm text-on-surface-variant truncate">— {song.author}</span>}
         {current && <span className="ml-auto text-label-sm font-label-sm text-on-surface-variant shrink-0">current</span>}
       </button>
-      <button
+      <button aria-label="Preview lyrics"
         onClick={() => onPreview(song)}
         title="Preview lyrics"
         className={`shrink-0 cursor-pointer transition-colors ${isPreviewing ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}
@@ -214,7 +215,7 @@ function ResultRow({ row, index, dupOf, onChange, onPreview, onCreate, onSplit, 
 
       {/* Replace / pick-different toggle (available on every row) */}
       <div className="relative shrink-0">
-        <button
+        <button aria-label="Search for a different song"
           ref={pickerBtnRef}
           onClick={() => setOpen((o) => !o)}
           title="Search for a different song"
@@ -242,7 +243,7 @@ function ResultRow({ row, index, dupOf, onChange, onPreview, onCreate, onSplit, 
                   className="flex-1 bg-transparent py-sm text-body-md text-on-surface focus:outline-none placeholder:text-on-surface-variant/60"
                 />
                 {q && (
-                  <button onClick={() => setQ('')} className="text-on-surface-variant hover:text-on-surface cursor-pointer">
+                  <button title="Close" aria-label="Close" onClick={() => setQ('')} className="text-on-surface-variant hover:text-on-surface cursor-pointer">
                     <span className="material-symbols-outlined text-[16px]">close</span>
                   </button>
                 )}
@@ -402,6 +403,8 @@ function PreviewPane({ song, loading }) {
 
 export default function SongListImportModal({ onCancel, onAddManyToRundown }) {
   useModalGuard();
+  const trapRef = React.useRef(null);
+  useFocusTrap(trapRef);
   const [step, setStep] = useState('input'); // 'input' | 'matching' | 'results' | 'adding'
   const [text, setText] = useState('');
   const [rows, setRows] = useState([]);
@@ -564,6 +567,7 @@ export default function SongListImportModal({ onCancel, onAddManyToRundown }) {
       onClick={step === 'matching' || step === 'adding' ? undefined : onCancel}
     >
       <div
+        ref={trapRef} role="dialog" aria-modal="true"
         className="bg-surface-container-low border border-outline-variant/30 rounded-xl w-full max-w-[88rem] max-h-[88vh] flex flex-col shadow-2xl ring-1 ring-white/5"
         onClick={(e) => e.stopPropagation()}
       >
@@ -585,7 +589,7 @@ export default function SongListImportModal({ onCancel, onAddManyToRundown }) {
               </p>
             </div>
           </div>
-          <button
+          <button title="Close" aria-label="Close"
             onClick={onCancel}
             disabled={step === 'matching' || step === 'adding'}
             className="text-on-surface-variant hover:text-on-surface cursor-pointer disabled:opacity-40"

@@ -1,7 +1,7 @@
 {
   "name": "cue",
   "productName": "Cue",
-  "version": "35.1.0",
+  "version": "36.0.0",
   "description": "Unified graphics engine for worship presentation and broadcast overlays",
   "main": ".vite/build/index.js",
   "scripts": {
@@ -10,7 +10,7 @@
     "make": "electron-forge make",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
     "gen-font-previews": "node scripts/gen-font-previews.mjs",
-    "test": "node --experimental-detect-module src/main/scripture-detect/reference-parser.test.mjs && node --experimental-detect-module src/main/scripture-detect/match-score.test.mjs && node --experimental-detect-module src/shared/stage-schedule.test.mjs && node --experimental-detect-module src/shared/lyrics-parse.test.mjs && node --experimental-detect-module src/shared/setlist-match.test.mjs && node --experimental-detect-module src/main/import/sermon-import.test.mjs && node --experimental-detect-module src/main/songs/song-scrape.test.mjs && node --experimental-detect-module src/renderer/ocr/sheetParse.test.mjs"
+    "test": "node --experimental-detect-module src/main/scripture-detect/reference-parser.test.mjs && node --experimental-detect-module src/main/scripture-detect/match-score.test.mjs && node --experimental-detect-module src/shared/stage-schedule.test.mjs && node --experimental-detect-module src/shared/lyrics-parse.test.mjs && node --experimental-detect-module src/shared/setlist-match.test.mjs && node --experimental-detect-module src/main/import/sermon-import.test.mjs && node --experimental-detect-module src/main/import/soffice-run.test.mjs && node --experimental-detect-module src/shared/scripture-ref.test.mjs && node --experimental-detect-module src/main/songs/song-scrape.test.mjs && node --experimental-detect-module src/renderer/ocr/sheetParse.test.mjs && node --experimental-detect-module src/shared/presentation-lt-text.test.mjs"
   },
   "keywords": [],
   "author": "William Eze",

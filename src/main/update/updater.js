@@ -45,17 +45,34 @@ function getJson(url, depth = 0) {
   });
 }
 
+// Only GitHub-hosted https URLs may be downloaded (initial URL and every redirect hop).
+function isAllowedDownloadUrl(u) {
+  try {
+    const x = new URL(u);
+    if (x.protocol !== 'https:') return false;
+    const h = x.hostname.toLowerCase();
+    return h === 'github.com' || h === 'githubusercontent.com' || h.endsWith('.githubusercontent.com');
+  } catch {
+    return false;
+  }
+}
+
 // Stream a URL to `dest`, following GitHub's 302 redirect to the S3/objects host.
 // Reports {received,total} via onProgress. Node's https.get does NOT auto-follow
-// redirects, so we recurse on Location.
+// redirects, so we recurse on Location. Rejects (and removes the partial file) on a
+// non-200, a network error/abort, or a short/long body vs content-length.
 function download(url, dest, onProgress, depth = 0) {
   return new Promise((resolve, reject) => {
     if (depth > 5) return reject(new Error('Too many redirects'));
+    if (!isAllowedDownloadUrl(url)) return reject(new Error('Refusing to download from a non-GitHub host'));
+    const fail = (err) => fs.rm(dest, { force: true }, () => reject(err));
     https
       .get(url, { headers: { 'User-Agent': UA, Accept: 'application/octet-stream' } }, (res) => {
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
           res.resume();
-          return resolve(download(res.headers.location, dest, onProgress, depth + 1));
+          let next;
+          try { next = new URL(res.headers.location, url).toString(); } catch { return reject(new Error('Bad redirect')); }
+          return resolve(download(next, dest, onProgress, depth + 1));
         }
         if (res.statusCode !== 200) {
           res.resume();
@@ -63,16 +80,33 @@ function download(url, dest, onProgress, depth = 0) {
         }
         const total = Number(res.headers['content-length']) || 0;
         let received = 0;
+        let settled = false;
         const file = fs.createWriteStream(dest);
+        const abort = (err) => {
+          if (settled) return;
+          settled = true;
+          try { res.destroy(); } catch {}
+          file.destroy();
+          fail(err);
+        };
         res.on('data', (chunk) => {
           received += chunk.length;
           onProgress?.({ received, total });
         });
+        res.on('error', (e) => abort(e));
+        res.on('aborted', () => abort(new Error('Connection lost during download')));
         res.pipe(file);
-        file.on('finish', () => file.close(() => resolve({ received, total })));
-        file.on('error', (e) => { fs.rm(dest, { force: true }, () => reject(e)); });
+        file.on('finish', () => file.close(() => {
+          if (settled) return;
+          if (!res.complete || (total && received !== total)) {
+            return abort(new Error(`Incomplete download (${received} of ${total || 'unknown'} bytes)`));
+          }
+          settled = true;
+          resolve({ received, total });
+        }));
+        file.on('error', (e) => abort(e));
       })
-      .on('error', reject);
+      .on('error', (e) => fail(e));
   });
 }
 
@@ -123,9 +157,19 @@ export async function checkForUpdate() {
 // launches cleanly, open the installer, then quit so the user can replace the app.
 export async function downloadAndInstall(asset, win) {
   if (!asset?.url) return { ok: false, error: 'No asset to download' };
-  const dest = path.join(app.getPath('temp'), asset.name);
+  if (!isAllowedDownloadUrl(asset.url)) return { ok: false, error: 'Update URL is not a GitHub https address' };
+  // The name comes from the renderer: reduce to a bare file name and require an
+  // installer extension so it can't escape the temp dir or launch an arbitrary file.
+  const name = path.basename(String(asset.name || ''));
+  if (!/\.(dmg|exe)$/i.test(name)) return { ok: false, error: 'Unexpected installer file name' };
+  const dest = path.join(app.getPath('temp'), name);
   try {
-    await download(asset.url, dest, (p) => win?.webContents.send('update:progress', p));
+    const got = await download(asset.url, dest, (p) => win?.webContents.send('update:progress', p));
+    const expected = Number(asset.size) || 0;
+    if (expected && got.received !== expected) {
+      fs.rmSync(dest, { force: true });
+      throw new Error(`Size mismatch (${got.received} of ${expected} bytes)`);
+    }
   } catch (e) {
     return { ok: false, error: `Download failed: ${e.message || e}` };
   }

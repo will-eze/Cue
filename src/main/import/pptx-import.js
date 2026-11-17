@@ -1,9 +1,8 @@
 import { execFileSync } from 'child_process';
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
-import { pathToFileURL } from 'url';
 import * as settings from '../db/settings.js';
+import { convertWithSoffice } from './soffice-run.js';
 
 // PowerPoint import is done by rendering each slide to a high-fidelity image — the
 // only reliable, format-complete renderer is LibreOffice (`soffice`), which we
@@ -64,7 +63,7 @@ export function setLibreOfficePath(p) {
 // Uses an isolated -env:UserInstallation profile so it never collides with a
 // LibreOffice instance the user already has open (the classic "soffice silently
 // does nothing" lock). Cleans up its temp dirs.
-export function convertPptxToPdf(filePath) {
+export async function convertPptxToPdf(filePath) {
   if (!filePath || !fs.existsSync(filePath)) return { ok: false, error: 'Source file not found' };
 
   // A PDF (e.g. exported straight from PowerPoint / Keynote / Google Slides, which
@@ -81,24 +80,5 @@ export function convertPptxToPdf(filePath) {
   const soffice = findLibreOffice();
   if (!soffice) return { ok: false, error: 'not_found' };
 
-  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cue-pptx-'));
-  const profileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cue-lo-profile-'));
-  try {
-    execFileSync(soffice, [
-      '--headless', '--norestore', '--invisible',
-      `-env:UserInstallation=${pathToFileURL(profileDir).href}`,
-      '--convert-to', 'pdf', '--outdir', outDir, filePath,
-    ], { timeout: 180000, stdio: 'ignore' });
-
-    const base = path.basename(filePath, path.extname(filePath));
-    const pdfPath = path.join(outDir, base + '.pdf');
-    if (!fs.existsSync(pdfPath)) return { ok: false, error: 'LibreOffice produced no PDF' };
-    const bytes = fs.readFileSync(pdfPath);
-    return { ok: true, pdf: bytes, name: base };
-  } catch (e) {
-    return { ok: false, error: e.message || 'Conversion failed' };
-  } finally {
-    try { fs.rmSync(outDir, { recursive: true, force: true }); } catch {}
-    try { fs.rmSync(profileDir, { recursive: true, force: true }); } catch {}
-  }
+  return convertWithSoffice(soffice, filePath);
 }

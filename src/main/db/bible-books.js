@@ -24,7 +24,7 @@ export const BOOKS = [
   { num: 19, name: 'Psalms',          abbrevs: ['psa', 'ps', 'psalm', 'pss', 'psm'] },
   { num: 20, name: 'Proverbs',        abbrevs: ['pro', 'pr', 'prov', 'prv'] },
   { num: 21, name: 'Ecclesiastes',    abbrevs: ['ecc', 'ec', 'eccl', 'qoh'] },
-  { num: 22, name: 'Song of Solomon', abbrevs: ['sng', 'so', 'song', 'sos', 'canticles', 'cant'] },
+  { num: 22, name: 'Song of Solomon', abbrevs: ['sng', 'so', 'song', 'sos', 'canticles', 'cant', 'song of songs'] },
   { num: 23, name: 'Isaiah',          abbrevs: ['isa', 'is'] },
   { num: 24, name: 'Jeremiah',        abbrevs: ['jer', 'je', 'jr'] },
   { num: 25, name: 'Lamentations',    abbrevs: ['lam', 'la'] },
@@ -68,7 +68,7 @@ export const BOOKS = [
   { num: 63, name: '2 John',          abbrevs: ['2jn', '2jo', '2 jn', '2 jhn', '2joh'] },
   { num: 64, name: '3 John',          abbrevs: ['3jn', '3jo', '3 jn', '3 jhn', '3joh'] },
   { num: 65, name: 'Jude',            abbrevs: ['jud', 'jde'] },
-  { num: 66, name: 'Revelation',      abbrevs: ['rev', 're', 'rv', 'apocalypse'] },
+  { num: 66, name: 'Revelation',      abbrevs: ['rev', 're', 'rv', 'apocalypse', 'revelations'] },
 ];
 
 const norm = (s) => String(s || '').toLowerCase().replace(/\./g, '').replace(/\s+/g, ' ').trim();
@@ -94,10 +94,13 @@ export function lookupBook(input) {
   if (INDEX.has(n)) return INDEX.get(n);
   const compact = n.replace(/\s+/g, '');
   if (INDEX.has(compact)) return INDEX.get(compact);
-  // Prefix fallback — "philipp" → Philippians, "psa" already covered above.
-  for (const b of BOOKS) {
+  // Prefix fallback — "philipp" → Philippians. Only for 3+ chars and only when the
+  // prefix is UNAMBIGUOUS: "jo"/"ju"/"ph" used to silently resolve to whichever book came
+  // first in canonical order (Joshua/Judges/Philippians).
+  if (compact.length < 3) return null;
+  const hits = BOOKS.filter((b) => {
     const bn = norm(b.name);
-    if (bn.startsWith(n) || bn.replace(/\s+/g, '').startsWith(compact)) return b;
-  }
-  return null;
+    return bn.startsWith(n) || bn.replace(/\s+/g, '').startsWith(compact);
+  });
+  return hits.length === 1 ? hits[0] : null;
 }

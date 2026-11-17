@@ -28,17 +28,16 @@ function songHasBakedStyle(item) {
   if (item.background_override_id) return true;
   for (const sec of item.sections || []) {
     if (!sec.style_json) continue;
-    try {
-      const s = JSON.parse(sec.style_json);
-      if (s && Object.keys(s).some((k) => !CONTENT_ONLY_KEYS.has(k))) return true;
-    } catch { /* ignore malformed */ }
+    const s = safeParse(sec.style_json, null);
+    if (s && typeof s === 'object' && Object.keys(s).some((k) => !CONTENT_ONLY_KEYS.has(k))) return true;
   }
   return false;
 }
 import PresentationEditor from '../components/PresentationEditor';
 import MediaThumb from '../components/MediaThumb';
+import { safeParse } from '../utils/safeParse';
 
-function SortableItem({ item, index, bgPath, isPreview, isLive, isSelected, liveSlideIdx, liveSlideCount, autoAdvanceStartAt, onClick, onDoubleClick, onContextMenu, onSetItemBackground }) {
+function SortableItem({ item, index, tabStop, bgPath, isPreview, isLive, isSelected, liveSlideIdx, liveSlideCount, autoAdvanceStartAt, onClick, onDoubleClick, onContextMenu, onSetItemBackground }) {
   const [isDragOver, setIsDragOver] = useState(false);
   const canDropBg = item.item_type === 'song' || item.item_type === 'scripture';
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
@@ -110,6 +109,10 @@ function SortableItem({ item, index, bgPath, isPreview, isLive, isSelected, live
     <div
       ref={setNodeRef}
       data-item-id={item.id}
+      role="option"
+      aria-selected={isPreview || isSelected}
+      aria-current={isLive ? 'true' : undefined}
+      tabIndex={tabStop ? 0 : -1}
       style={{ ...dndStyle, minHeight: 44 }}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
@@ -134,8 +137,10 @@ function SortableItem({ item, index, bgPath, isPreview, isLive, isSelected, live
       {/* Drag handle */}
       <button
         className="drag-handle shrink-0 flex items-center justify-center opacity-20 group-hover:opacity-100 transition-opacity"
-        style={{ width: 14, color: '#424754' }}
+        style={{ width: 24, margin: '0 -5px', color: '#424754' }}
         onClick={(e) => e.stopPropagation()}
+        aria-label="Drag to reorder"
+        title="Drag to reorder"
         {...attributes}
         {...listeners}
         tabIndex={-1}
@@ -385,7 +390,7 @@ function ServiceLookChip({ serviceData, onChanged }) {
       const m = {};
       for (const t of (l || [])) {
         let accent = null;
-        try { accent = t.style_json ? JSON.parse(t.style_json).accent?.color : null; } catch {}
+        try { accent = safeParse(t.style_json, null)?.accent?.color || null; } catch {}
         m[t.id] = { name: t.name, accent };
       }
       setNames(m);
@@ -411,7 +416,7 @@ function ServiceLookChip({ serviceData, onChanged }) {
         <span className="material-symbols-outlined text-[15px] text-on-surface-variant/60 shrink-0">expand_more</span>
       </button>
       {svcId && (
-        <button onClick={reset} title="Reset to app default" className="shrink-0 w-4 h-4 flex items-center justify-center text-on-surface-variant/60 hover:text-on-surface cursor-pointer">
+        <button onClick={reset} title="Reset to app default" aria-label="Reset rundown theme to app default" className="shrink-0 w-6 h-6 -m-1 flex items-center justify-center rounded-md text-on-surface-variant/60 hover:text-on-surface cursor-pointer">
           <span className="material-symbols-outlined text-[13px]">close</span>
         </button>
       )}
@@ -724,6 +729,8 @@ export default function RundownPanel({
           </button>
           <button
             onClick={() => { setShowNewService(false); setNewServiceTitle(''); }}
+            title="Cancel"
+            aria-label="Cancel new rundown"
             className="shrink-0 text-on-surface-variant hover:text-on-surface cursor-pointer"
           >
             <span className="material-symbols-outlined text-[16px]">close</span>
@@ -785,12 +792,12 @@ export default function RundownPanel({
           <div className="flex flex-col items-center justify-center h-full gap-xs text-on-surface-variant/70 px-lg text-center">
             <span className="material-symbols-outlined text-4xl">calendar_today</span>
             <span className="text-label-sm font-label-sm">
-              {services.length === 0 ? 'No service yet' : 'Select a Service'}
+              {services.length === 0 ? 'No rundown yet' : 'Select a Rundown'}
             </span>
             <span className="text-[12px] text-on-surface-variant/60 max-w-[220px] leading-snug">
               {services.length === 0
-                ? 'Create a service with the + above, then add songs, scripture and media to build your rundown.'
-                : 'Pick a service from the dropdown above to load its rundown.'}
+                ? 'Create a rundown with the + above, then add songs, scripture and media to build your rundown.'
+                : 'Pick a rundown from the dropdown above to load it.'}
             </span>
           </div>
         ) : items.length === 0 ? (
@@ -804,11 +811,13 @@ export default function RundownPanel({
         ) : (
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
+              <div role="listbox" aria-label="Rundown items" aria-multiselectable="true">
               {items.map((item, index) => (
                 <SortableItem
                   key={item.id}
                   item={item}
                   index={index}
+                  tabStop={item.id === (items.some((i) => i.id === previewItemId) ? previewItemId : items[0]?.id)}
                   bgPath={resolveItemBg ? resolveItemBg(item) : null}
                   isPreview={item.id === previewItemId}
                   isLive={item.id === liveItemId}
@@ -822,6 +831,7 @@ export default function RundownPanel({
                   onSetItemBackground={onSetItemBackground}
                 />
               ))}
+              </div>
             </SortableContext>
           </DndContext>
         )}

@@ -18,6 +18,10 @@ export default function ContextMenu({ x, y, items, onClose }) {
   onCloseRef.current = onClose;
   // Index of the item whose submenu is currently open (one nesting level).
   const [openSub, setOpenSub] = useState(null);
+  const openSubRef = useRef(null);
+  openSubRef.current = openSub;
+  // Bumped when a submenu is opened by keyboard so its first item takes focus.
+  const [subFocusTick, setSubFocusTick] = useState(0);
   // Index of the item waiting for inline confirmation (confirm: true items).
   const [confirmIdx, setConfirmIdx] = useState(null);
 
@@ -26,7 +30,37 @@ export default function ContextMenu({ x, y, items, onClose }) {
       if (ref.current && !ref.current.contains(e.target)) onCloseRef.current();
     }
     function handleKeyDown(e) {
-      if (e.key === 'Escape') onCloseRef.current();
+      if (e.key === 'Escape') { e.stopPropagation(); onCloseRef.current(); return; }
+      const root = ref.current;
+      if (!root) return;
+      const inSub = (el) => !!el?.closest?.('[data-ctx-sub]');
+      const itemsIn = (scope) => Array.from(scope.querySelectorAll('button:not([disabled])'))
+        .filter((b) => (scope === root ? !inSub(b) : true));
+      const active = document.activeElement;
+      const activeInSub = root.contains(active) && inSub(active);
+      const scope = activeInSub ? active.closest('[data-ctx-sub]') : root;
+      const list = itemsIn(scope);
+      const i = list.indexOf(active);
+      const move = (el) => { e.preventDefault(); e.stopPropagation(); el?.focus(); };
+      if (e.key === 'ArrowDown') move(list[(i + 1) % list.length]);
+      else if (e.key === 'ArrowUp') move(list[(i <= 0 ? list.length : i) - 1]);
+      else if (e.key === 'Home') move(list[0]);
+      else if (e.key === 'End') move(list[list.length - 1]);
+      else if (e.key === 'ArrowRight' || (e.key === 'Enter' && active?.dataset?.hasSub)) {
+        if (active?.dataset?.hasSub) {
+          e.preventDefault(); e.stopPropagation();
+          setOpenSub(Number(active.dataset.hasSub));
+          setSubFocusTick((n) => n + 1);
+        }
+      } else if (e.key === 'ArrowLeft' && activeInSub) {
+        e.preventDefault(); e.stopPropagation();
+        const parent = root.querySelector(`[data-has-sub="${openSubRef.current}"]`);
+        setOpenSub(null);
+        parent?.focus();
+      } else if (e.key === 'Enter' || e.key === ' ') {
+        // Native button click does the work; keep the operator's GO/Space off it.
+        e.stopPropagation();
+      }
     }
     // Small delay so this listener doesn't fire on the mousedown that opened the menu
     const id = setTimeout(() => {
@@ -38,6 +72,21 @@ export default function ContextMenu({ x, y, items, onClose }) {
       document.removeEventListener('mousedown', handleMouseDown);
       document.removeEventListener('keydown', handleKeyDown);
     };
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!subFocusTick || !ref.current) return;
+    ref.current.querySelector('[data-ctx-sub] button:not([disabled])')?.focus();
+  }, [subFocusTick]);
+
+  // Focus the first item on open so the menu is keyboard-usable immediately.
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => {
+      if (ref.current && !ref.current.contains(document.activeElement)) {
+        ref.current.querySelector('button:not([disabled])')?.focus({ preventScroll: true });
+      }
+    });
+    return () => cancelAnimationFrame(raf);
   }, []);
 
   const [pos, setPos] = useState({ top: y, left: x, visible: false });
@@ -56,6 +105,7 @@ export default function ContextMenu({ x, y, items, onClose }) {
   return createPortal(
     <div
       ref={ref}
+      role="menu"
       style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999, minWidth: 180, visibility: pos.visible ? 'visible' : 'hidden' }}
       className="bg-surface-container-high border border-outline-variant/40 rounded-lg shadow-2xl py-xs ring-1 ring-white/5"
     >
@@ -72,12 +122,13 @@ export default function ContextMenu({ x, y, items, onClose }) {
               onMouseEnter={() => setOpenSub(i)}
               onMouseLeave={() => setOpenSub((cur) => (cur === i ? null : cur))}
             >
-              <button className={ITEM_CLS(item)}>
+              <button role="menuitem" aria-haspopup="menu" aria-expanded={open} data-has-sub={i} className={ITEM_CLS(item)}>
                 <span className="whitespace-nowrap">{item.label}</span>
                 <span className="material-symbols-outlined text-[16px] shrink-0 opacity-70">chevron_right</span>
               </button>
               {open && (
                 <div
+                  data-ctx-sub role="menu"
                   style={{ position: 'absolute', top: -4, [subLeftSide ? 'right' : 'left']: '100%', minWidth: 180, maxHeight: '70vh' }}
                   className="bg-surface-container-high border border-outline-variant/40 rounded-lg shadow-2xl py-xs ring-1 ring-white/5 overflow-y-auto"
                 >
@@ -85,7 +136,7 @@ export default function ContextMenu({ x, y, items, onClose }) {
                     sub.separator ? (
                       <div key={j} className="border-t border-outline-variant/20 my-xs" />
                     ) : (
-                      <button key={j} onClick={sub.onClick} className={ITEM_CLS(sub)}>
+                      <button key={j} role="menuitem" onClick={sub.onClick} className={ITEM_CLS(sub)}>
                         <span className="whitespace-nowrap">{sub.label}</span>
                       </button>
                     )
@@ -112,13 +163,13 @@ export default function ContextMenu({ x, y, items, onClose }) {
             );
           }
           return (
-            <button key={i} onClick={() => setConfirmIdx(i)} className={ITEM_CLS(item)}>
+            <button key={i} role="menuitem" onClick={() => setConfirmIdx(i)} className={ITEM_CLS(item)}>
               <span className="whitespace-nowrap">{item.label}</span>
             </button>
           );
         }
         return (
-          <button key={i} onClick={item.disabled ? undefined : item.onClick} disabled={item.disabled} className={ITEM_CLS(item)}>
+          <button key={i} role="menuitem" onClick={item.disabled ? undefined : item.onClick} disabled={item.disabled} className={ITEM_CLS(item)}>
             <span className="whitespace-nowrap">{item.label}</span>
           </button>
         );

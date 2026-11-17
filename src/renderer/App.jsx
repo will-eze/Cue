@@ -7,6 +7,7 @@ import SettingsView from './views/SettingsView';
 import TopBarTabs from './components/TopBarTabs';
 import ErrorBoundary from './components/ErrorBoundary';
 import UpdateAvailableModal from './components/UpdateAvailableModal';
+import { useToast } from './components/Toast';
 import { injectUserFontFaces } from './utils/fonts';
 import { hasOpenModal } from './utils/modalGuard';
 import { resolveAnchors, collides, overlapIds } from '../shared/stage-schedule.js';
@@ -16,6 +17,9 @@ const isMac    = platform === 'darwin';
 const isWin    = platform === 'win32';
 
 export default function App() {
+  const toast = useToast();
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
   const [view, setView] = useState('operator');
   // Deep-link into a Settings subsection (set when a pinned subsection tab is used);
   // the nonce re-fires the scroll even when the same tab is re-clicked.
@@ -81,6 +85,56 @@ export default function App() {
     const offState = window.cue.on('output:state-changed', applyState);
     window.cue.output.getState().then(applyState);
     return () => { offNdi(); offUpdate(); offState(); };
+  }, []);
+
+  // Recovery / display / media-problem notices from main. One subscription each; the
+  // dedupe maps keep a flapping output from stacking identical toasts.
+  useEffect(() => {
+    const recent = new Map(); // `${key}` -> last toast time
+    const throttle = (key, ms) => {
+      const now = Date.now();
+      if (now - (recent.get(key) || 0) < ms) return false;
+      recent.set(key, now);
+      return true;
+    };
+    const missing = new Map(); // monitor id -> channel name, for the "back" notice
+    const noteUnresolved = (list) => {
+      if (!Array.isArray(list)) return;
+      for (const ch of list) {
+        const name = (ch && ch.name) || 'Output';
+        if (ch && ch._monitorId != null) missing.set(ch._monitorId, name);
+        if (!throttle(`unres:${name}`, 10000)) continue;
+        toastRef.current.show({
+          kind: 'error', duration: 30000,
+          message: `Screen for ${name} isn't connected. Its output is off until the display comes back.`,
+        });
+      }
+    };
+    const offRec = window.cue.on('output:window-recovered', (info) => {
+      const name = (info && info.channelName) || 'Output';
+      if (!throttle(`rec:${name}:${info && info.gaveUp ? 'x' : 'r'}`, 10000)) return;
+      if (info && info.gaveUp) {
+        toastRef.current.show({ kind: 'error', duration: 30000, message: `${name} output keeps failing and has been stopped. Turn Outputs off and on, or restart Cue.` });
+      } else {
+        toastRef.current.show({ kind: 'info', message: `${name} output restarted after a problem.` });
+      }
+    });
+    const offUnres = window.cue.on('output:unresolved-channels', noteUnresolved);
+    window.cue.output.getUnresolved?.().then(noteUnresolved).catch(() => {});
+    const offBack = window.cue.on('output:state-changed', (st) => {
+      if (!missing.size || !st || !Array.isArray(st.activeChannels)) return;
+      for (const [id, name] of [...missing]) {
+        if (st.activeChannels.includes(id)) {
+          missing.delete(id);
+          toastRef.current.show({ kind: 'success', message: `${name} is back on its screen.` });
+        }
+      }
+    });
+    const offMedia = window.cue.on('output:media-problem', (p) => {
+      if (!p) return;
+      toastRef.current.show({ kind: 'info', duration: 8000, message: `${p.channelName || 'Output'}: couldn't load ${p.name || 'a file'}. The output is showing without it.` });
+    });
+    return () => { offRec(); offUnres(); offBack(); offMedia(); };
   }, []);
 
   useEffect(() => {
@@ -204,9 +258,9 @@ export default function App() {
                 window.cue.window.popupMenu(r.left, r.bottom);
               }}
             />
-            <WinControl icon="remove" onClick={() => window.cue.window.minimize()} />
-            <WinControl icon="crop_square" onClick={() => window.cue.window.maximize()} />
-            <WinControl icon="close" onClick={() => window.cue.window.close()} danger />
+            <WinControl icon="remove" title="Minimize" onClick={() => window.cue.window.minimize()} />
+            <WinControl icon="crop_square" title="Maximize" onClick={() => window.cue.window.maximize()} />
+            <WinControl icon="close" title="Close" onClick={() => window.cue.window.close()} danger />
           </div>
         )}
       </div>
@@ -215,12 +269,26 @@ export default function App() {
       <div className="bg-surface-container shrink-0 flex items-center px-md gap-md border-b border-outline-variant/20" style={{ height: 40 }}>
 
         {/* Live indicator */}
-        <div className="flex items-center gap-sm">
-          <span className={`w-[6px] h-[6px] rounded-full shrink-0 ${headerState.isLive ? 'bg-secondary dot-pulse' : 'bg-outline-variant'}`} />
-          <span className={`text-label-sm font-label-sm ${headerState.isLive ? 'text-secondary' : 'text-on-surface-variant/60'}`}>
-            {headerState.isLive ? 'Live' : 'Idle'}
-          </span>
-        </div>
+        {/* Truthful on-air state: red "Live" only when content is actually on the bus
+            AND outputs are on AND neither Logo nor Clear is up. */}
+        {(() => {
+          const onAir = headerState.isLive && outputsEnabled && displayMode === 'content';
+          const status = onAir ? 'Live'
+            : !outputsEnabled ? 'Outputs off'
+            : displayMode === 'logo' ? 'Logo'
+            : displayMode === 'cleared' ? 'Cleared'
+            : 'Idle';
+          const tone = onAir ? 'text-secondary'
+            : status === 'Logo' ? 'text-primary'
+            : status === 'Outputs off' ? 'text-on-surface-variant'
+            : 'text-on-surface-variant/60';
+          return (
+            <div className="flex items-center gap-sm" aria-live="polite">
+              <span aria-hidden="true" className={`w-[6px] h-[6px] rounded-full shrink-0 ${onAir ? 'bg-secondary dot-pulse' : status === 'Logo' ? 'bg-primary' : 'bg-outline-variant'}`} />
+              <span className={`text-label-sm font-label-sm ${tone}`}>{status}</span>
+            </div>
+          );
+        })()}
 
         <span className="w-px h-3 bg-outline-variant/40 shrink-0" />
         <span className="text-label-sm font-timecode-lg text-on-surface tabular-nums">{clock}</span>
@@ -237,6 +305,8 @@ export default function App() {
             NDI SDK missing
             <button
               onClick={() => setNdiWarning(false)}
+              title="Dismiss"
+              aria-label="Dismiss NDI warning"
               className="ml-xs opacity-60 hover:opacity-100 transition-opacity cursor-pointer"
             >
               <span className="material-symbols-outlined text-[13px]">close</span>
@@ -266,6 +336,7 @@ export default function App() {
         <button
           onClick={() => transportRef.current.clear()}
           title="Clear output (Esc)"
+          aria-pressed={displayMode === 'cleared'}
           className={`shrink-0 h-7 px-md text-label-sm font-label-sm font-bold rounded transition-all active:scale-95 cursor-pointer flex items-center gap-xs ${
             displayMode === 'cleared'
               ? 'bg-error-container text-error border border-error/70 shadow-[0_0_8px_rgba(255,180,171,0.2)]'
@@ -282,6 +353,7 @@ export default function App() {
         <button
           onClick={() => transportRef.current.logo()}
           title="Show logo (L)"
+          aria-pressed={displayMode === 'logo'}
           className={`shrink-0 h-7 px-md text-label-sm font-label-sm font-bold rounded transition-all active:scale-95 cursor-pointer flex items-center gap-xs ${
             displayMode === 'logo'
               ? 'bg-primary-container/40 text-primary border border-primary/70 shadow-[0_0_8px_rgba(173,198,255,0.2)]'
@@ -336,6 +408,7 @@ export default function App() {
           <button
             onClick={() => setStageOpen((v) => !v)}
             title="Stage display controls"
+            aria-expanded={stageOpen}
             className={`btn btn-sm btn-toggle btn-toggle-outline ${stageOpen ? 'is-on' : ''}`}
           >
             <span className="material-symbols-outlined text-[13px]" style={{ fontVariationSettings: "'FILL' 1" }}>monitor_heart</span>
@@ -401,6 +474,7 @@ function NavTab({ label, active, onClick }) {
   return (
     <button
       onClick={onClick}
+      aria-current={active ? 'page' : undefined}
       className={`titlebar-nodrag h-full shrink-0 whitespace-nowrap flex items-center px-sm text-label-sm font-label-sm cursor-pointer transition-colors ${
         active
           ? 'text-primary border-b-2 border-primary'
@@ -717,7 +791,7 @@ function StagePanel() {
             <button onClick={handleToggle}
               title={running ? 'Pause the timer' : 'Start (commits the duration shown)'}
               className={`btn btn-sm flex-1 ${running ? 'btn-secondary' : 'btn-go'}`}>
-              {running ? '⏸ Pause' : (totalSec > 0 && remaining !== totalSec ? '▶ Resume' : '▶ Start')}
+              {running ? 'Pause' : (totalSec > 0 && remaining !== totalSec ? 'Resume' : 'Start')}
             </button>
             <button onClick={handleReset} title="Reset to the set duration"
               className="btn btn-sm btn-secondary">
@@ -761,7 +835,9 @@ function StagePanel() {
                   </button>
                   <button
                     onClick={() => deletePreset(preset)}
-                    className="opacity-0 group-hover:opacity-70 hover:!opacity-100 text-on-surface-variant hover:text-error cursor-pointer transition-all ml-[2px]"
+                    title="Remove preset"
+                    aria-label={`Remove preset ${preset}`}
+                    className="opacity-0 group-hover:opacity-70 group-focus-within:opacity-70 focus-visible:!opacity-100 hover:!opacity-100 text-on-surface-variant hover:text-error cursor-pointer transition-all ml-[2px]"
                   >
                     <span className="material-symbols-outlined text-[11px]">close</span>
                   </button>
@@ -852,7 +928,7 @@ function StagePanel() {
                 Appears <span className="text-primary">{fmtClockShort(preview.showAt)}</span>
                 <span className="text-outline"> · in {fmtCountdown(preview.showAt - nowTick)}</span>
                 {preview.clearAt && <span className="text-outline"> · clears {fmtClockShort(preview.clearAt)}</span>}
-                {previewOverlaps && <span className="text-secondary"> · ⚠ overlaps an existing message</span>}
+                {previewOverlaps && <span className="text-secondary"> · overlaps an existing message</span>}
               </p>
             )}
 
@@ -864,7 +940,7 @@ function StagePanel() {
                 </p>
                 {overlaps.size > 0 && (
                   <p className="text-[11px] font-mono text-on-surface-variant mb-xs leading-snug">
-                    ⚠ Overlapping messages share the bar — the later-starting one shows while they coincide.
+                    Overlapping messages share the bar — the later-starting one shows while they coincide.
                   </p>
                 )}
                 <ul className="flex flex-col gap-xs">
@@ -902,7 +978,7 @@ function StagePanel() {
                         </div>
                         <button onClick={() => unschedule(m.id)}
                           className="shrink-0 w-4 h-4 flex items-center justify-center text-[13px] leading-none text-outline hover:text-error cursor-pointer transition-colors"
-                          title="Remove">×</button>
+                          title="Remove" aria-label="Remove scheduled message">×</button>
                       </li>
                     );
                   })}
@@ -923,6 +999,7 @@ function WinControl({ icon, onClick, danger, title }) {
     <button
       onClick={onClick}
       title={title}
+      aria-label={title}
       className={`titlebar-nodrag h-full w-[46px] flex items-center justify-center transition-colors cursor-pointer ${
         danger
           ? 'text-on-surface-variant hover:bg-error hover:text-white'

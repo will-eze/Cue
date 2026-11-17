@@ -1,4 +1,5 @@
 import { getDb } from './schema.js';
+import { normaliseLt } from '../../shared/presentation-lt-text.js';
 
 // Presentations — native multi-element slides (a PowerPoint-style editor that
 // drops into the rundown and inherits every existing control). A presentation is
@@ -119,6 +120,7 @@ export function get(id) {
       background_id: s.background_id,
       background_path: bg?.path || null,
       elements: resolveElements(parseElements(s.elements_json), mediaMap),
+      lt_json: s.lt_json ?? null,
     };
   });
   return presentation;
@@ -126,8 +128,8 @@ export function get(id) {
 
 function insertSlides(db, presentationId, slides) {
   const stmt = db.prepare(`
-    INSERT INTO presentation_slides (presentation_id, order_index, label, background_id, elements_json)
-    VALUES (?,?,?,?,?)
+    INSERT INTO presentation_slides (presentation_id, order_index, label, background_id, elements_json, lt_json)
+    VALUES (?,?,?,?,?,?)
   `);
   (slides || []).forEach((s, i) => {
     const elements = Array.isArray(s.elements) ? s.elements : [];
@@ -136,16 +138,27 @@ function insertSlides(db, presentationId, slides) {
       i,
       s.label || null,
       s.background_id || null,
-      JSON.stringify(elements)
+      JSON.stringify(elements),
+      normLtJson(s.lt_json)
     );
   });
 }
+
+// Per-slide lower-third settings — accepts the stored JSON string or an object, returns a
+// normalised JSON string or null (= inherit everything). Shape and clamping live in
+// shared/presentation-lt-text.js `normaliseLt` (the editor uses the same function):
+// { mode: inherit|auto|custom|hide, text?, maxLines 1-4, maxChars 20-80, title?, titleText? }.
+function normLtJson(v) {
+  const o = normaliseLt(v);
+  return o ? JSON.stringify(o) : null;
+}
+function normLtMode(v) { return v === 'hide' ? 'hide' : 'auto'; }
 
 export function create(data) {
   const db = getDb();
   let id;
   db.transaction(() => {
-    const { lastInsertRowid } = db.prepare('INSERT INTO presentations (title) VALUES (?)').run(data.title || 'Untitled Presentation');
+    const { lastInsertRowid } = db.prepare('INSERT INTO presentations (title, lt_mode) VALUES (?,?)').run(data.title || 'Untitled Presentation', normLtMode(data.lt_mode));
     id = Number(lastInsertRowid);
     const slides = data.slides && data.slides.length ? data.slides : [{ label: null, elements: [] }];
     insertSlides(db, id, slides);
@@ -156,7 +169,7 @@ export function create(data) {
 export function update(id, data) {
   const db = getDb();
   db.transaction(() => {
-    db.prepare(`UPDATE presentations SET title=?, updated_at=datetime('now') WHERE id=?`).run(data.title || 'Untitled Presentation', id);
+    db.prepare(`UPDATE presentations SET title=?, lt_mode=COALESCE(?, lt_mode), updated_at=datetime('now') WHERE id=?`).run(data.title || 'Untitled Presentation', data.lt_mode == null ? null : normLtMode(data.lt_mode), id);
     // Slides rebuild — replaces all existing (mirrors songs.update section rebuild).
     db.prepare('DELETE FROM presentation_slides WHERE presentation_id=?').run(id);
     insertSlides(db, id, data.slides || []);

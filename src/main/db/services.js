@@ -1,6 +1,7 @@
 import { getDb } from './schema.js';
 import { collectImageMediaIds } from './presentations.js';
 import * as youtube from '../youtube/downloader.js';
+import { groupLabel } from '../../shared/scripture-ref.js';
 
 export function list() {
   return getDb().prepare('SELECT * FROM services ORDER BY date DESC, id DESC').all();
@@ -15,11 +16,9 @@ function resolveScripture(item) {
     const slides = [];
     for (let i = 0; i < passage.verses.length; i += vps) {
       const group = passage.verses.slice(i, i + vps);
-      const first = group[0];
-      const last = group[group.length - 1];
-      const ref = group.length > 1
-        ? `${passage.bookName} ${first.chapter}:${first.verse}-${last.verse}`
-        : `${passage.bookName} ${first.chapter}:${first.verse}`;
+      // groupLabel handles a group that crosses a chapter (Gen 1:31-2:3), which the
+      // old `${first.chapter}:${first.verse}-${last.verse}` mislabelled as "1:31-3".
+      const ref = groupLabel(passage.bookName, group);
       // Split (compare) view: carry both translations so output + monitor stack them.
       // Only when the secondary text actually resolved for this group's verses.
       let splitVerses = null;
@@ -66,7 +65,7 @@ function resolveItems(db, items) {
   const slidesByPres = new Map();
   if (presIds.length) {
     const ph = presIds.map(() => '?').join(',');
-    for (const p of db.prepare(`SELECT id, title FROM presentations WHERE id IN (${ph})`).all(...presIds)) {
+    for (const p of db.prepare(`SELECT id, title, lt_mode FROM presentations WHERE id IN (${ph})`).all(...presIds)) {
       presMap.set(p.id, p);
     }
     for (const s of db.prepare(`SELECT * FROM presentation_slides WHERE presentation_id IN (${ph}) ORDER BY presentation_id, order_index`).all(...presIds)) {
@@ -156,7 +155,7 @@ function resolveItems(db, items) {
             }
             return el;
           });
-          return { id: s.id, label: s.label, background_id: s.background_id, background_path: bg?.path || null, elements };
+          return { id: s.id, label: s.label, background_id: s.background_id, background_path: bg?.path || null, elements, lt_json: s.lt_json ?? null };
         });
       }
     }
